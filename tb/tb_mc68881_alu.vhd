@@ -15,12 +15,12 @@ architecture sim of tb_mc68881_alu is
   signal valid  : std_logic;
 
   procedure check_result(
-    constant expected : fp80_t;
-    constant label    : string
+    constant expected  : fp80_t;
+    constant test_name : string
   ) is
   begin
     assert result = expected
-      report "Mismatch: " & label
+      report "Mismatch: " & test_name
       severity failure;
   end procedure;
 

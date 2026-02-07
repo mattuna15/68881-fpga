@@ -18,16 +18,16 @@ architecture rtl of mc68881_alu is
   signal a_u : unsigned(FP_WIDTH-1 downto 0);
   signal b_u : unsigned(FP_WIDTH-1 downto 0);
   signal r_u : unsigned(FP_WIDTH-1 downto 0);
-  signal r_ext : unsigned((FP_WIDTH*2)-1 downto 0);
 begin
   a_u <= unsigned(a_in);
   b_u <= unsigned(b_in);
 
   process(op_sel, a_u, b_u)
+    variable product : unsigned((FP_WIDTH*2)-1 downto 0);
   begin
     r_u   <= (others => '0');
-    r_ext <= (others => '0');
     valid <= '1';
+    product := (others => '0');
 
     case op_sel is
       when FPU_OP_ADD =>
@@ -35,8 +35,8 @@ begin
       when FPU_OP_SUB =>
         r_u <= a_u - b_u;
       when FPU_OP_MUL =>
-        r_ext <= a_u * b_u;
-        r_u   <= r_ext(FP_WIDTH-1 downto 0);
+        product := a_u * b_u;
+        r_u     <= product(FP_WIDTH-1 downto 0);
       when FPU_OP_DIV =>
         if b_u = 0 then
           r_u <= (others => '0');

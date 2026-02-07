@@ -469,7 +469,7 @@ begin
     cs_n   <= '0';
     as_n   <= '0';
     ds_n   <= '0';
-    wait for CLK_PERIOD/2;
+    wait until (dsack0_n = '0') or (dsack1_n = '0');
     report "DSACK 32-bit A4=1: dsack1_n=" & std_logic'image(dsack1_n) &
            " dsack0_n=" & std_logic'image(dsack0_n) &
            " cycle=" & integer'image(cycle_cnt)
@@ -478,8 +478,16 @@ begin
       report "DSACK mismatch for 32-bit with A4=1"
       severity failure;
 
+    cs_n <= '1';
+    as_n <= '1';
+    ds_n <= '1';
+    wait for CLK_PERIOD;
+
     a_in <= "00000";
-    wait for CLK_PERIOD/2;
+    cs_n <= '0';
+    as_n <= '0';
+    ds_n <= '0';
+    wait until (dsack0_n = '0') or (dsack1_n = '0');
     report "DSACK 32-bit A4=0: dsack1_n=" & std_logic'image(dsack1_n) &
            " dsack0_n=" & std_logic'image(dsack0_n) &
            " cycle=" & integer'image(cycle_cnt)
@@ -488,8 +496,16 @@ begin
       report "DSACK mismatch for 32-bit with A4=0"
       severity failure;
 
+    cs_n <= '1';
+    as_n <= '1';
+    ds_n <= '1';
+    wait for CLK_PERIOD;
+
     size_n <= "10";
-    wait for CLK_PERIOD/2;
+    cs_n <= '0';
+    as_n <= '0';
+    ds_n <= '0';
+    wait until (dsack0_n = '0') or (dsack1_n = '0');
     report "DSACK 16-bit: dsack1_n=" & std_logic'image(dsack1_n) &
            " dsack0_n=" & std_logic'image(dsack0_n) &
            " cycle=" & integer'image(cycle_cnt)
@@ -498,8 +514,16 @@ begin
       report "DSACK mismatch for 16-bit access"
       severity failure;
 
+    cs_n <= '1';
+    as_n <= '1';
+    ds_n <= '1';
+    wait for CLK_PERIOD;
+
     size_n <= "01";
-    wait for CLK_PERIOD/2;
+    cs_n <= '0';
+    as_n <= '0';
+    ds_n <= '0';
+    wait until (dsack0_n = '0') or (dsack1_n = '0');
     report "DSACK 8-bit: dsack1_n=" & std_logic'image(dsack1_n) &
            " dsack0_n=" & std_logic'image(dsack0_n) &
            " cycle=" & integer'image(cycle_cnt)
@@ -508,8 +532,16 @@ begin
       report "DSACK mismatch for 8-bit access"
       severity failure;
 
+    cs_n <= '1';
+    as_n <= '1';
+    ds_n <= '1';
+    wait for CLK_PERIOD;
+
     size_n <= "00";
-    wait for CLK_PERIOD/2;
+    cs_n <= '0';
+    as_n <= '0';
+    ds_n <= '0';
+    wait for CLK_PERIOD;
     report "DSACK wait: dsack1_n=" & std_logic'image(dsack1_n) &
            " dsack0_n=" & std_logic'image(dsack0_n) &
            " cycle=" & integer'image(cycle_cnt)

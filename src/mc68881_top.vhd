@@ -46,6 +46,7 @@ architecture rtl of mc68881_top is
 
   signal bus_write : std_logic;
   signal bus_read  : std_logic;
+  signal start_access : std_logic;
   signal addr      : unsigned(4 downto 0);
 
   constant ADDR_OPSEL  : unsigned(4 downto 0) := to_unsigned(0, 5);
@@ -60,11 +61,29 @@ architecture rtl of mc68881_top is
   constant ADDR_RES_E  : unsigned(4 downto 0) := to_unsigned(9, 5);
   constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
   constant ADDR_FPCR   : unsigned(4 downto 0) := to_unsigned(11, 5);
+  constant ADDR_CIR_SAVE    : unsigned(4 downto 0) := to_unsigned(12, 5);
+  constant ADDR_CIR_RESPONSE: unsigned(4 downto 0) := to_unsigned(13, 5);
+
+  type dsack_state_t is (DSACK_IDLE, DSACK_WAIT_ASSERT, DSACK_ASSERTED);
+  signal dsack_state  : dsack_state_t := DSACK_IDLE;
+  signal dsack_count  : natural range 0 to 3 := 0;
+  signal dsack_active : std_logic := '0';
+  signal latched_size : std_logic_vector(1 downto 0) := (others => '0');
+  signal latched_a4   : std_logic := '0';
+  signal sync_read    : std_logic := '0';
+  signal d_out_reg    : std_logic_vector(31 downto 0) := (others => '0');
+  signal d_out_comb   : std_logic_vector(31 downto 0) := (others => '0');
+
+  constant DSACK_ASSERT_CYCLES_READ  : natural := 1;
+  constant DSACK_ASSERT_CYCLES_WRITE : natural := 1;
 
 begin
   addr      <= unsigned(a_in);
   bus_write <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '0') else '0';
   bus_read  <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '1') else '0';
+  -- START = CS + AS + (R/W · DS) (active low signals except R/W).
+  start_access <= '1' when (cs_n = '0' and as_n = '0' and ((rw = '1' and ds_n = '0') or rw = '0')) else '0';
+  sync_read <= '1' when (bus_read = '1' and (addr = ADDR_CIR_SAVE or addr = ADDR_CIR_RESPONSE)) else '0';
   -- FPCR mode control: bits 7-6 precision, 5-4 rounding mode.
   round_mode <= decode_round_mode(fpcr_reg(5 downto 4));
   round_prec <= decode_round_prec(fpcr_reg(7 downto 6));
@@ -134,42 +153,95 @@ begin
       end if;
 
       status_busy <= busy;
-      if bus_read = '1' and addr = ADDR_STATUS and valid = '0' then
-        status_valid <= '0';
-      end if;
     end if;
   end process;
 
-  process(addr, bus_read, result_lo, result_hi, result_ex, status_valid, status_busy)
+  process(addr, bus_read, result_lo, result_hi, result_ex, status_valid, status_busy, fpcr_reg)
   begin
-    d_out <= (others => '0');
+    d_out_comb <= (others => '0');
     if bus_read = '1' then
       case addr is
-        when ADDR_RES_L => d_out <= result_lo;
-        when ADDR_RES_H => d_out <= result_hi;
-        when ADDR_RES_E => d_out(15 downto 0) <= result_ex;
+        when ADDR_RES_L => d_out_comb <= result_lo;
+        when ADDR_RES_H => d_out_comb <= result_hi;
+        when ADDR_RES_E => d_out_comb(15 downto 0) <= result_ex;
         when ADDR_STATUS =>
-          d_out(0) <= status_valid;
-          d_out(1) <= status_busy;
+          d_out_comb(0) <= status_valid;
+          d_out_comb(1) <= status_busy;
         when ADDR_FPCR =>
-          d_out <= fpcr_reg;
-        when others => d_out <= (others => '0');
+          d_out_comb <= fpcr_reg;
+        when others => d_out_comb <= (others => '0');
       end case;
     end if;
   end process;
 
-  -- DSACK generation placeholder: immediate response based on size and A4.
-  process(cs_n, as_n, ds_n, size_n, a_in)
+  process(clk, reset_n)
     variable size_code : std_logic_vector(1 downto 0);
+    variable dsack_wait : boolean;
+    variable assert_cycles : natural;
+  begin
+    if reset_n = '0' then
+      dsack_state  <= DSACK_IDLE;
+      dsack_count  <= 0;
+      dsack_active <= '0';
+      latched_size <= (others => '0');
+      latched_a4   <= '0';
+      d_out_reg    <= (others => '0');
+    elsif rising_edge(clk) then
+      if sync_read = '1' and start_access = '1' then
+        d_out_reg <= d_out_comb;
+      end if;
+
+      case dsack_state is
+        when DSACK_IDLE =>
+          dsack_active <= '0';
+          if start_access = '1' then
+            size_code := not size_n;
+            latched_size <= size_code;
+            latched_a4   <= a_in(4);
+            dsack_wait := (size_code = "11");
+            if bus_read = '1' then
+              assert_cycles := DSACK_ASSERT_CYCLES_READ;
+            else
+              assert_cycles := DSACK_ASSERT_CYCLES_WRITE;
+            end if;
+            if dsack_wait then
+              dsack_state <= DSACK_IDLE;
+            elsif assert_cycles = 0 then
+              dsack_active <= '1';
+              dsack_state <= DSACK_ASSERTED;
+            else
+              dsack_count <= assert_cycles - 1;
+              dsack_state <= DSACK_WAIT_ASSERT;
+            end if;
+          end if;
+        when DSACK_WAIT_ASSERT =>
+          if start_access = '0' then
+            dsack_state <= DSACK_IDLE;
+            dsack_active <= '0';
+          elsif dsack_count = 0 then
+            dsack_active <= '1';
+            dsack_state <= DSACK_ASSERTED;
+          else
+            dsack_count <= dsack_count - 1;
+          end if;
+        when DSACK_ASSERTED =>
+          dsack_active <= '1';
+          if start_access = '0' then
+            dsack_active <= '0';
+            dsack_state <= DSACK_IDLE;
+          end if;
+      end case;
+    end if;
+  end process;
+
+  process(latched_size, latched_a4, dsack_active)
   begin
     dsack0_i <= '1';
     dsack1_i <= '1';
-
-    if (cs_n = '0' and as_n = '0' and ds_n = '0') then
-      size_code := not size_n;
-      case size_code is
+    if dsack_active = '1' then
+      case latched_size is
         when "00" =>
-          if a_in(4) = '1' then
+          if latched_a4 = '1' then
             dsack1_i <= '0';
             dsack0_i <= '0';
           else
@@ -189,6 +261,7 @@ begin
     end if;
   end process;
 
+  d_out <= d_out_reg when sync_read = '1' else d_out_comb;
   dsack0_n <= dsack0_i;
   dsack1_n <= dsack1_i;
   sense_n  <= 'Z';

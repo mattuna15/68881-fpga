@@ -121,7 +121,7 @@ begin
       end if;
 
       status_busy <= busy;
-      if bus_read = '1' and addr = ADDR_STATUS then
+      if bus_read = '1' and addr = ADDR_STATUS and valid = '0' then
         status_valid <= '0';
       end if;
     end if;

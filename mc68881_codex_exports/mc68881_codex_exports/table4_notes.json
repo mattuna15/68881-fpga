@@ -1,0 +1,9 @@
+{
+  "notes": [
+    "* Add the appropriate effective address calculation time.",
+    "** If the source or destination is an MC68020 data register, subtract 5 (source) or 2 (destination) clock cycles, respectively.",
+    "*** Assume a static K-factor is used if the destination data format is packed decimal. Add 14 clock cycles if a dynamic K-factor is used.",
+    "**** The source operand is from the constant ROM rather than a floating-point data register.",
+    "Rows with None indicate the table shows a dash (not applicable / not defined in the table)."
+  ]
+}

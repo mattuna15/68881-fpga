@@ -1,0 +1,9 @@
+instruction,state_frame,best_case,cache_case,worst_case
+FRESTORE,Null,19,21,22
+FRESTORE,Idle,55,57,58
+FRESTORE,Busy,312,314,315
+FSAVE,Null,14,16,18
+FSAVE,Idle (Minimum),50,52,54
+FSAVE,Idle (Maximum),286,218,290
+FSAVE,Busy (Minimum),316,318,320
+FSAVE,Busy (Maximum),552,554,556

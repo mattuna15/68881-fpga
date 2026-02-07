@@ -1,0 +1,14 @@
+signal_name,mnemonic,direction,active_state,three_state
+Address Bus,A0–A4,Input,High,—
+Data Bus,D0–D31,Input/Output,High,Yes
+Size,SIZE,Input,Low,—
+Address Strobe,AS,Input,Low,—
+Chip Select,CS,Input,Low,—
+Read/Write,R/W,Input,High/Low,—
+Data Strobe,DS,Input,Low,—
+Data Transfer and Size Acknowledge,"DSACK0, DSACK1",Output,Low,Yes
+Reset,RESET,Input,Low,—
+Clock,CLK,Input,—,—
+Sense Device,SENSE,Input/Output,Low,No
+Power Input,VCC,Input,—,—
+Ground,GND,Input,—,—

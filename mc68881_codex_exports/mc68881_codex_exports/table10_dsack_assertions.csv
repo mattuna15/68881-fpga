@@ -1,0 +1,6 @@
+data_bus,A4,DSACK1,DSACK0,comments
+32-bit,1,Low,Low,Valid Data on D31–D0
+32-bit,0,Low,High,Valid Data on D31–D16
+16-bit,x,Low,High,Valid Data on D31–D16 or D15–D0
+8-bit,x,High,Low,"Valid Data on D31–D24, D23–D16, D15–D8, or D7–D0"
+All,x,High,High,Insert Wait States in Current Bus Cycle

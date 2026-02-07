@@ -1,0 +1,18 @@
+instruction,comments,best_case,cache_case,worst_case
+FBcc.W,Branch Taken,18,20,23
+FBcc.W,Branch Not Taken,16,18,19
+FBcc.L,Branch Taken,18,20,23
+FBcc.L,Branch Not Taken,16,18,21
+FDBcc,"True, Not Taken",18,20,24
+FDBcc,"False, Not Taken",22,24,32
+FDBcc,"False, Taken",18,20,26
+FNOP,No Operation,16,18,19
+FScc,Dn,16,18,21
+FScc,(An)+ or -(An)*,18,22,25
+FScc,Memory**,16,20,23
+FTRAPcc,Trap Taken,36,39,47
+FTRAPcc,Trap Not Taken,16,18,22
+FTRAPcc.W,Trap Taken,38,41,45
+FTRAPcc.W,Trap Not Taken,18,20,23
+FTRAPcc.L,Trap Taken,40,43,52
+FTRAPcc.L,Trap Not Taken,20,22,27

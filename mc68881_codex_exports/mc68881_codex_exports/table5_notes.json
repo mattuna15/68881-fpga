@@ -1,0 +1,6 @@
+{
+  "notes": [
+    "* Add the appropriate effective address calculation time.",
+    "** n is the number of registers transferred."
+  ]
+}

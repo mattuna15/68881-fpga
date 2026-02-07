@@ -1,0 +1,6 @@
+{
+  "notes": [
+    "* For condition true; subtract one clock for condition false.",
+    "** Add the appropriate effective address calculation time."
+  ]
+}

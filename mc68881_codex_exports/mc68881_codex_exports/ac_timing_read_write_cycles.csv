@@ -1,0 +1,34 @@
+num,characteristic,f12_min,f12_max,f16_min,f16_max,f20_min,f20_max,f25_min,f25_max,unit,notes_ref
+6,Address Valid to AS Asserted,20.0,,15.0,,10.0,,5.0,,ns,5
+6A,Address Valid to DS Asserted (Read),20.0,,15.0,,10.0,,5.0,,ns,5
+6B,Address Valid to DS Asserted (Write),65.0,,50.0,,50.0,,35.0,,ns,5
+7,AS Negated to Address Invalid,15.0,,10.0,,10.0,,5.0,,ns,5
+7A,DS Negated to Address Invalid,15.0,,10.0,,10.0,,5.0,,ns,6
+8,CS Negated to AS Asserted,0.0,,0.0,,0.0,,0.0,,ns,9
+8A,CS Negated to DS Asserted (Read),0.0,,0.0,,0.0,,0.0,,ns,9
+8B,CS Asserted to DS Asserted (Write),40.0,,30.0,,25.0,,20.0,,ns,
+9,AS Negated to CS Negated,10.0,,10.0,,10.0,,5.0,,ns,
+9A,DS Negated to CS Negated,10.0,,10.0,,10.0,,5.0,,ns,
+10,R/W High to AS Asserted (Read),20.0,,15.0,,10.0,,5.0,,ns,
+10A,R/W High to DS Asserted (Read),20.0,,15.0,,10.0,,5.0,,ns,
+10B,R/W Low to DS Asserted (Write),45.0,,35.0,,30.0,,25.0,,ns,
+11,AS Negated to R/W Low (Read) or AS Negated to R/W High (Write),15.0,,10.0,,10.0,,5.0,,ns,
+11A,DS Negated to R/W Low (Read) or DS Negated to R/W High (Write),15.0,,10.0,,10.0,,5.0,,ns,
+12,DS Width Asserted (Write),50.0,,40.0,,38.0,,30.0,,ns,
+13,DS Width Negated,50.0,,40.0,,38.0,,30.0,,ns,
+13A,DS Negated to AS Asserted,40.0,,30.0,,30.0,,25.0,,ns,4
+14,"CS, DS Asserted to Data-Out Valid (Read)",,110,,80,,60,,45,ns,2
+15,DS Negated to Data-Out Invalid (Read),0.0,,0.0,,0.0,,0.0,,ns,
+16,DS Negated to Data-Out High Impedance (Read),,70,,50,,30,,30,ns,
+17,Data-In Valid to DS Asserted (Write),20.0,,15.0,,10.0,,5.0,,ns,
+18,DS Negated to Data-In Invalid (Write),20.0,,15.0,,10.0,,5.0,,ns,
+19,START True to DSACK0 and DSACK1 Asserted,,70,,50,,35,,25,ns,2
+19A,DSACK0 Asserted to DSACK1 Asserted (Skew),-20.0,20,-15.0,15,-10.0,10,-10.0,10,ns,7
+20,DSACK0 or DSACK1 Asserted to Data-Out Valid,,60,,50,,43,,32,ns,
+21,START False to DSACK0 and DSACK1 Negated,,70,,50,,30,,30,ns,8
+22,START False to DSACK0 and DSACK1 High Impedance,,90,,70,,40,,40,ns,8
+23,START True to Clock High (Synchronous Read),0.0,,0.0,,0.0,,0.0,,ns,"3,8"
+24,Clock Low to Data-Out Valid (Synchronous Read),,140,,105,,80,,60,ns,3
+25,START True to Data-Out Valid (Synchronous Read),1.5,140+2.5,1.5,105+2.5,1.5,80+2.5,1.5,60+2.5,Clks/ns,"3,8"
+26,Clock Low to DSACK0 and DSACK1 Asserted (Synchronous Read),,100,,75,,55,,45,ns,3
+27,START True to DSACK0 and DSACK1 Asserted (Synchronous Read),1.5,100+2.5,1.5,75+2.5,1.5,55+2.5,1.5,45+2.5,Clks/ns,"3,8"

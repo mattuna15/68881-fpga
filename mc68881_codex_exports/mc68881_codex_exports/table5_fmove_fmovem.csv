@@ -1,0 +1,13 @@
+instruction_family,form,best_case,cache_case,worst_case,formula_n
+FMOVE,"FPcr,Rn",29,31,34,
+FMOVE,"FPcr,(ea)",31,33,36,
+FMOVE,"Rn,FPcr",26,28,31,
+FMOVE,"(ea),FPcr",31,33,36,
+FMOVE,"#(data),FPcr",30,30,31,
+FMOVEM,"FPcr_list,(ea)",25,27,30,+ 6n
+FMOVEM,"(ea),FPcr_list",25,27,30,+ 6n
+FMOVEM,"#(data),FPcr_list",24,25,29,+ 6n
+FMOVEM,"FPdr_list,(ea)",35,37,40,+ 25n
+FMOVEM,"(ea),FPdr_list",33,35,38,+ 23n
+FMOVEM,"Dn,(ea)",49,51,54,+ 25n
+FMOVEM,"(ea),Dn",47,49,52,+ 23n

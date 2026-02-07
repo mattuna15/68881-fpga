@@ -1,0 +1,13 @@
+{
+  "notes": [
+    "1) Timing measurements referenced to low=0.8V and high=2.0V unless otherwise noted.",
+    "2) Specs apply only if MC68881 has completed internal operations initiated by termination of previous bus cycle when DS was negated.",
+    "3) Synchronous read cycles occur only when the save or response CIR locations are read.",
+    "4) Applies to systems with back-to-back accesses (read-write or write-write) of operand CIR. With MC68020/68030 as coprocessor, can occur when addressing mode is immediate.",
+    "5) If SIZE pin is not strapped to VCC or GND, it must have same setup times as addresses.",
+    "6) If SIZE pin is not strapped to VCC or GND, it must have same hold times as addresses.",
+    "7) This number is reduced to 5 ns if DSACK0 and DSACK1 have equal loads.",
+    "8) START is not external; logical condition indicating start of access. START = CS + AS + (R/W \u00b7 DS).",
+    "9) If subsequent access is not FPcr access, CS must be negated before assertion of AS and/or DS on the non-FPcr access; these replace old specs 8 and 8A."
+  ]
+}

@@ -44,7 +44,7 @@ B) Instruction Cycle Accounting
     - FMUL: 71 (FPM reg), 92-100 (mem single/int), 96-98 (mem ext/dbl), 908 (packed)
     - FDIV: 103 (FPM reg), 124-132 (mem single/int), 128-130 (mem ext/dbl), 940 (packed)
 
-[ ] B2. Add EA cycles per Table 3:
+[x] B2. Add EA cycles per Table 3:
     - Example: (An) +0..2, (An)+ +3..6, (d16,An) +0..3, (xxx).L +1..5, etc.
 
 [ ] B3. Apply Table 4 notes:

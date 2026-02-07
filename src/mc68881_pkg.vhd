@@ -33,8 +33,40 @@ package mc68881_pkg is
     FP_PREC_RESERVED
   );
 
+  type ea_cycle_case_t is (
+    EA_CYCLE_BEST,
+    EA_CYCLE_CACHE,
+    EA_CYCLE_WORST
+  );
+
+  type ea_mode_t is (
+    EA_MODE_DN_AN,
+    EA_MODE_AN_INDIRECT,
+    EA_MODE_AN_POSTINC,
+    EA_MODE_AN_PREDEC,
+    EA_MODE_D16_AN_PC,
+    EA_MODE_ABS_W,
+    EA_MODE_ABS_L,
+    EA_MODE_IMMEDIATE,
+    EA_MODE_D8_AN_PC_XN,
+    EA_MODE_D16_AN_PC_XN,
+    EA_MODE_B,
+    EA_MODE_D16_B,
+    EA_MODE_D32_B,
+    EA_MODE_B_INDIRECT_I,
+    EA_MODE_B_INDIRECT_I_D16,
+    EA_MODE_B_INDIRECT_I_D32,
+    EA_MODE_D16_B_INDIRECT_I,
+    EA_MODE_D16_B_INDIRECT_I_D16,
+    EA_MODE_D16_B_INDIRECT_I_D32,
+    EA_MODE_D32_B_INDIRECT_I,
+    EA_MODE_D32_B_INDIRECT_I_D16,
+    EA_MODE_D32_B_INDIRECT_I_D32
+  );
+
   function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t;
   function decode_round_prec(bits : std_logic_vector(1 downto 0)) return fp_round_prec_t;
+  function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural;
 
   function to_fp80(value : unsigned) return fp80_t;
   function fp80_from_int(value : integer) return fp80_t;
@@ -88,6 +120,42 @@ package body mc68881_pkg is
       when "01" => return FP_PREC_SINGLE;
       when "10" => return FP_PREC_DOUBLE;
       when others => return FP_PREC_RESERVED;
+    end case;
+  end function;
+
+  function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural is
+    function pick(best_case : natural; cache_case : natural; worst_case : natural) return natural is
+    begin
+      case cycle_case is
+        when EA_CYCLE_BEST => return best_case;
+        when EA_CYCLE_CACHE => return cache_case;
+        when others => return worst_case;
+      end case;
+    end function;
+  begin
+    case mode is
+      when EA_MODE_DN_AN => return pick(0, 0, 0);
+      when EA_MODE_AN_INDIRECT => return pick(0, 2, 2);
+      when EA_MODE_AN_POSTINC => return pick(3, 6, 6);
+      when EA_MODE_AN_PREDEC => return pick(3, 6, 6);
+      when EA_MODE_D16_AN_PC => return pick(0, 2, 3);
+      when EA_MODE_ABS_W => return pick(0, 2, 3);
+      when EA_MODE_ABS_L => return pick(1, 4, 5);
+      when EA_MODE_IMMEDIATE => return pick(0, 0, 0);
+      when EA_MODE_D8_AN_PC_XN => return pick(1, 4, 5);
+      when EA_MODE_D16_AN_PC_XN => return pick(3, 6, 7);
+      when EA_MODE_B => return pick(3, 6, 7);
+      when EA_MODE_D16_B => return pick(5, 8, 9);
+      when EA_MODE_D32_B => return pick(11, 14, 16);
+      when EA_MODE_B_INDIRECT_I => return pick(8, 11, 12);
+      when EA_MODE_B_INDIRECT_I_D16 => return pick(8, 11, 12);
+      when EA_MODE_B_INDIRECT_I_D32 => return pick(10, 13, 15);
+      when EA_MODE_D16_B_INDIRECT_I => return pick(10, 13, 14);
+      when EA_MODE_D16_B_INDIRECT_I_D16 => return pick(10, 13, 15);
+      when EA_MODE_D16_B_INDIRECT_I_D32 => return pick(12, 15, 17);
+      when EA_MODE_D32_B_INDIRECT_I => return pick(16, 19, 21);
+      when EA_MODE_D32_B_INDIRECT_I_D16 => return pick(16, 19, 21);
+      when EA_MODE_D32_B_INDIRECT_I_D32 => return pick(18, 21, 24);
     end case;
   end function;
 

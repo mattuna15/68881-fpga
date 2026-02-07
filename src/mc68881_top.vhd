@@ -33,6 +33,10 @@ architecture rtl of mc68881_top is
   signal result_hi : std_logic_vector(31 downto 0) := (others => '0');
   signal result_ex : std_logic_vector(15 downto 0) := (others => '0');
   signal valid     : std_logic := '0';
+  signal busy      : std_logic := '0';
+  signal op_start  : std_logic := '0';
+  signal status_valid : std_logic := '0';
+  signal status_busy  : std_logic := '0';
 
   signal dsack0_i  : std_logic := '1';
   signal dsack1_i  : std_logic := '1';
@@ -51,6 +55,7 @@ architecture rtl of mc68881_top is
   constant ADDR_RES_L  : unsigned(4 downto 0) := to_unsigned(7, 5);
   constant ADDR_RES_H  : unsigned(4 downto 0) := to_unsigned(8, 5);
   constant ADDR_RES_E  : unsigned(4 downto 0) := to_unsigned(9, 5);
+  constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
 
 begin
   addr      <= unsigned(a_in);
@@ -59,11 +64,15 @@ begin
 
   alu_inst : entity work.mc68881_alu
     port map (
+      clk    => clk,
+      reset_n => reset_n,
+      start  => op_start,
       op_sel => op_sel,
       a_in   => operand(0),
       b_in   => operand(1),
       result => result,
-      valid  => valid
+      valid  => valid,
+      busy   => busy
     );
 
   process(clk, reset_n)
@@ -74,7 +83,12 @@ begin
       result_lo   <= (others => '0');
       result_hi   <= (others => '0');
       result_ex   <= (others => '0');
+      op_start    <= '0';
+      status_valid <= '0';
+      status_busy  <= '0';
     elsif rising_edge(clk) then
+      op_start <= '0';
+
       if bus_write = '1' then
         case addr is
           when ADDR_OPSEL =>
@@ -85,6 +99,10 @@ begin
               when "100" => op_sel <= FPU_OP_DIV;
               when others => op_sel <= FPU_OP_NOP;
             end case;
+            if busy = '0' then
+              op_start <= '1';
+              status_valid <= '0';
+            end if;
           when ADDR_OPA_L => operand(0)(31 downto 0)  <= d_in;
           when ADDR_OPA_H => operand(0)(63 downto 32) <= d_in;
           when ADDR_OPA_E => operand(0)(79 downto 64) <= d_in(15 downto 0);
@@ -99,11 +117,17 @@ begin
         result_lo <= result(31 downto 0);
         result_hi <= result(63 downto 32);
         result_ex <= result(79 downto 64);
+        status_valid <= '1';
+      end if;
+
+      status_busy <= busy;
+      if bus_read = '1' and addr = ADDR_STATUS and valid = '0' then
+        status_valid <= '0';
       end if;
     end if;
   end process;
 
-  process(addr, bus_read, result_lo, result_hi, result_ex)
+  process(addr, bus_read, result_lo, result_hi, result_ex, status_valid, status_busy)
   begin
     d_out <= (others => '0');
     if bus_read = '1' then
@@ -111,6 +135,9 @@ begin
         when ADDR_RES_L => d_out <= result_lo;
         when ADDR_RES_H => d_out <= result_hi;
         when ADDR_RES_E => d_out(15 downto 0) <= result_ex;
+        when ADDR_STATUS =>
+          d_out(0) <= status_valid;
+          d_out(1) <= status_busy;
         when others => d_out <= (others => '0');
       end case;
     end if;

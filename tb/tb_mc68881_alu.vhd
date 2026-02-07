@@ -24,11 +24,9 @@ architecture sim of tb_mc68881_alu is
       severity failure;
   end procedure;
 
-  function fp80_of(value : natural) return fp80_t is
-    variable tmp : fp80_t := (others => '0');
+  function fp80_from_int(value : integer) return fp80_t is
   begin
-    tmp(31 downto 0) := std_logic_vector(to_unsigned(value, 32));
-    return tmp;
+    return work.mc68881_pkg.fp80_from_int(value);
   end function;
 
 begin
@@ -45,31 +43,38 @@ begin
   begin
     -- ADD
     op_sel <= FPU_OP_ADD;
-    a_in   <= fp80_of(10);
-    b_in   <= fp80_of(5);
+    a_in   <= fp80_from_int(10);
+    b_in   <= fp80_from_int(5);
     wait for 10 ns;
-    check_result(fp80_of(15), "ADD 10+5");
+    check_result(fp80_from_int(15), "ADD 10+5");
 
     -- SUB
     op_sel <= FPU_OP_SUB;
-    a_in   <= fp80_of(10);
-    b_in   <= fp80_of(3);
+    a_in   <= fp80_from_int(10);
+    b_in   <= fp80_from_int(3);
     wait for 10 ns;
-    check_result(fp80_of(7), "SUB 10-3");
+    check_result(fp80_from_int(7), "SUB 10-3");
+
+    -- SUB negative result
+    op_sel <= FPU_OP_SUB;
+    a_in   <= fp80_from_int(3);
+    b_in   <= fp80_from_int(10);
+    wait for 10 ns;
+    check_result(fp80_from_int(-7), "SUB 3-10");
 
     -- MUL
     op_sel <= FPU_OP_MUL;
-    a_in   <= fp80_of(7);
-    b_in   <= fp80_of(9);
+    a_in   <= fp80_from_int(7);
+    b_in   <= fp80_from_int(9);
     wait for 10 ns;
-    check_result(fp80_of(63), "MUL 7*9");
+    check_result(fp80_from_int(63), "MUL 7*9");
 
     -- DIV
     op_sel <= FPU_OP_DIV;
-    a_in   <= fp80_of(40);
-    b_in   <= fp80_of(5);
+    a_in   <= fp80_from_int(40);
+    b_in   <= fp80_from_int(5);
     wait for 10 ns;
-    check_result(fp80_of(8), "DIV 40/5");
+    check_result(fp80_from_int(8), "DIV 40/5");
 
     wait;
   end process;

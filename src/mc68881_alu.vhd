@@ -31,9 +31,9 @@ begin
 
     case op_sel is
       when FPU_OP_ADD =>
-        r_u <= a_u + b_u;
+        r_u <= unsigned(add_sub_fp80(a_in, b_in, false));
       when FPU_OP_SUB =>
-        r_u <= a_u - b_u;
+        r_u <= unsigned(add_sub_fp80(a_in, b_in, true));
       when FPU_OP_MUL =>
         product := a_u * b_u;
         r_u     <= product(FP_WIDTH-1 downto 0);

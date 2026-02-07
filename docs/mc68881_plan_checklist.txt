@@ -32,7 +32,7 @@ A) External Interface (Signals + Bus Timing)
     - 8-bit => DSACK1=1, DSACK0=0
     - Wait states => DSACK1=1, DSACK0=1
 
-[ ] A3. Apply AC timing constraints for read/write cycles:
+[x] A3. Apply AC timing constraints for read/write cycles:
     - Address to AS/DS, CS to DS, DS width, data valid, DSACK timing.
     - Implement synchronous read cycles only for save/response CIR reads.
     - START = CS + AS + (R/W · DS).

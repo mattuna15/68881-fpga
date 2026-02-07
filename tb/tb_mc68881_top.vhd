@@ -87,7 +87,7 @@ begin
     wait for 2 * CLK_PERIOD;
 
     -- Write operands and op select (ADD)
-    size_n <= "00";
+    size_n <= "11";
     bus_write(to_unsigned(0, 5), x"00000001");
     bus_write(to_unsigned(1, 5), x"0000000A");
     bus_write(to_unsigned(2, 5), x"00000000");
@@ -102,7 +102,7 @@ begin
       severity failure;
 
     -- DSACK behavior coverage
-    size_n <= "00";
+    size_n <= "11";
     a_in   <= "10000";
     cs_n   <= '0';
     as_n   <= '0';
@@ -118,19 +118,19 @@ begin
       report "DSACK mismatch for 32-bit with A4=0"
       severity failure;
 
-    size_n <= "01";
+    size_n <= "10";
     wait for CLK_PERIOD/2;
     assert dsack0_n = '1' and dsack1_n = '0'
       report "DSACK mismatch for 16-bit access"
       severity failure;
 
-    size_n <= "10";
+    size_n <= "01";
     wait for CLK_PERIOD/2;
     assert dsack0_n = '0' and dsack1_n = '1'
       report "DSACK mismatch for 8-bit access"
       severity failure;
 
-    size_n <= "11";
+    size_n <= "00";
     wait for CLK_PERIOD/2;
     assert dsack0_n = '1' and dsack1_n = '1'
       report "DSACK mismatch for wait state insertion"

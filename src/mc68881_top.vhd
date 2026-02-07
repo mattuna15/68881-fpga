@@ -118,12 +118,14 @@ begin
 
   -- DSACK generation placeholder: immediate response based on size and A4.
   process(cs_n, as_n, ds_n, size_n, a_in)
+    variable size_code : std_logic_vector(1 downto 0);
   begin
     dsack0_i <= '1';
     dsack1_i <= '1';
 
     if (cs_n = '0' and as_n = '0' and ds_n = '0') then
-      case size_n is
+      size_code := not size_n;
+      case size_code is
         when "00" =>
           if a_in(4) = '1' then
             dsack1_i <= '0';

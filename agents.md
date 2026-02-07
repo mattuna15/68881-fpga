@@ -11,3 +11,8 @@
 - Testbenches in `tb/` must be self-checking (assertions with descriptive names), wait on
    DUT-valid signals before checking results, and avoid reserved identifiers (e.g., `label`)
    in procedure/function arguments or signal names.
+- Testbenches in `tb/` should log key transactions and expected vs. observed results using
+  `report` statements (severity `note`) to aid debugging.
+- Testbenches that validate FP80 values must deconstruct the value into sign/exponent/mantissa
+  (or full 80-bit recomposition from bus words) and compare against the expected FP80 encoding
+  before asserting; do not compare raw integer literals against FP80 results.

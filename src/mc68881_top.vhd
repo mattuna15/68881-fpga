@@ -54,8 +54,8 @@ architecture rtl of mc68881_top is
 
 begin
   addr      <= unsigned(a_in);
-  bus_write <= (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '0');
-  bus_read  <= (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '1');
+  bus_write <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '0') else '0';
+  bus_read  <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '1') else '0';
 
   alu_inst : entity work.mc68881_alu
     port map (

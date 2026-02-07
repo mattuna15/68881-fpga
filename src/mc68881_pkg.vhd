@@ -31,6 +31,7 @@ end package mc68881_pkg;
 package body mc68881_pkg is
   constant FP_GRS_BITS : natural := 3;
   constant FP_MANT_EXT_WIDTH : natural := FP_MANT_WIDTH + FP_GRS_BITS;
+  constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
 
   type fp_unpacked_t is record
     sign : std_logic;
@@ -218,7 +219,7 @@ package body mc68881_pkg is
       if mant_sum(mant_sum'left) = '1' then
         mant_sum(mant_sum'left-1 downto 0) := shift_right_with_sticky(mant_sum(mant_sum'left-1 downto 0), 1);
         mant_sum(mant_sum'left) := '0';
-        if exp_res /= (others => '1') then
+        if exp_res /= FP_EXP_ALL_ONES then
           exp_res := exp_res + 1;
         end if;
       end if;
@@ -252,7 +253,7 @@ package body mc68881_pkg is
       mant_round := ('0' & mant_main) + 1;
       if mant_round(mant_round'left) = '1' then
         mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
-        if exp_res /= (others => '1') then
+        if exp_res /= FP_EXP_ALL_ONES then
           exp_res := exp_res + 1;
         end if;
       else
@@ -267,7 +268,7 @@ package body mc68881_pkg is
       return pack_fp80(res_u);
     end if;
 
-    if exp_res = (others => '1') then
+    if exp_res = FP_EXP_ALL_ONES then
       res_u.exp := exp_res;
       res_u.mant := (others => '0');
       return pack_fp80(res_u);

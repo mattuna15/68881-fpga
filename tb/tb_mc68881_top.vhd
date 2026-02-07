@@ -21,46 +21,75 @@ architecture sim of tb_mc68881_top is
   signal reset_n  : std_logic := '0';
   signal clk      : std_logic := '0';
   signal sense_n  : std_logic;
+  signal rd_lo    : std_logic_vector(31 downto 0) := (others => '0');
+  signal rd_hi    : std_logic_vector(31 downto 0) := (others => '0');
+  signal rd_ex    : std_logic_vector(31 downto 0) := (others => '0');
+  signal rd_res   : fp80_t := (others => '0');
+  signal cycle_cnt: natural := 0;
 
   constant CLK_PERIOD : time := 10 ns;
 
   procedure bus_write(
-    constant addr : unsigned(4 downto 0);
-    constant data : std_logic_vector(31 downto 0)
+    signal a_in_s  : out std_logic_vector(4 downto 0);
+    signal d_in_s  : out std_logic_vector(31 downto 0);
+    signal rw_s    : out std_logic;
+    signal cs_n_s  : out std_logic;
+    signal as_n_s  : out std_logic;
+    signal ds_n_s  : out std_logic;
+    constant addr  : unsigned(4 downto 0);
+    constant data  : std_logic_vector(31 downto 0)
   ) is
   begin
-    a_in <= std_logic_vector(addr);
-    d_in <= data;
-    rw   <= '0';
-    cs_n <= '0';
-    as_n <= '0';
-    ds_n <= '0';
+    a_in_s <= std_logic_vector(addr);
+    d_in_s <= data;
+    rw_s   <= '0';
+    cs_n_s <= '0';
+    as_n_s <= '0';
+    ds_n_s <= '0';
     wait for CLK_PERIOD;
-    cs_n <= '1';
-    as_n <= '1';
-    ds_n <= '1';
-    rw   <= '1';
+    cs_n_s <= '1';
+    as_n_s <= '1';
+    ds_n_s <= '1';
+    rw_s   <= '1';
     wait for CLK_PERIOD;
   end procedure;
 
   procedure bus_read(
-    constant addr : unsigned(4 downto 0)
+    signal a_in_s    : out std_logic_vector(4 downto 0);
+    signal rw_s      : out std_logic;
+    signal cs_n_s    : out std_logic;
+    signal as_n_s    : out std_logic;
+    signal ds_n_s    : out std_logic;
+    signal dsack0_n_s: in  std_logic;
+    signal dsack1_n_s: in  std_logic;
+    signal d_out_s   : in  std_logic_vector(31 downto 0);
+    signal data_s    : out std_logic_vector(31 downto 0);
+    constant addr    : unsigned(4 downto 0)
   ) is
   begin
-    a_in <= std_logic_vector(addr);
-    rw   <= '1';
-    cs_n <= '0';
-    as_n <= '0';
-    ds_n <= '0';
-    wait for CLK_PERIOD;
-    cs_n <= '1';
-    as_n <= '1';
-    ds_n <= '1';
+    a_in_s <= std_logic_vector(addr);
+    rw_s   <= '1';
+    cs_n_s <= '0';
+    as_n_s <= '0';
+    ds_n_s <= '0';
+    wait until (dsack0_n_s = '0') or (dsack1_n_s = '0');
+    wait for CLK_PERIOD/4;
+    data_s <= d_out_s;
+    wait for CLK_PERIOD/4;
+    cs_n_s <= '1';
+    as_n_s <= '1';
+    ds_n_s <= '1';
     wait for CLK_PERIOD;
   end procedure;
 
 begin
   clk <= not clk after CLK_PERIOD/2;
+  cycle_counter : process(clk)
+  begin
+    if rising_edge(clk) then
+      cycle_cnt <= cycle_cnt + 1;
+    end if;
+  end process;
 
   dut : entity work.mc68881_top
     port map (
@@ -80,6 +109,10 @@ begin
     );
 
   process
+    variable op_a : fp80_t := (others => '0');
+    variable op_b : fp80_t := (others => '0');
+    variable exp_r: fp80_t := (others => '0');
+    variable rd_full : fp80_t := (others => '0');
   begin
     reset_n <= '0';
     wait for 2 * CLK_PERIOD;
@@ -88,17 +121,40 @@ begin
 
     -- Write operands and op select (ADD)
     size_n <= "11";
-    bus_write(to_unsigned(0, 5), x"00000001");
-    bus_write(to_unsigned(1, 5), x"0000000A");
-    bus_write(to_unsigned(2, 5), x"00000000");
-    bus_write(to_unsigned(3, 5), x"00000000");
-    bus_write(to_unsigned(4, 5), x"00000005");
-    bus_write(to_unsigned(5, 5), x"00000000");
-    bus_write(to_unsigned(6, 5), x"00000000");
+    op_a := fp80_from_int(10);
+    op_b := fp80_from_int(5);
+    exp_r := add_sub_fp80(op_a, op_b, false);
+    report "ADD operands: op_a=" & to_hstring(op_a) & " op_b=" & to_hstring(op_b)
+      severity note;
+    report "ADD expected: " & to_hstring(exp_r)
+      severity note;
+    report "ADD cycle start: " & integer'image(cycle_cnt)
+      severity note;
 
-    bus_read(to_unsigned(7, 5));
-    assert d_out = x"0000000F"
-      report "ADD result lower word mismatch"
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    wait until rising_edge(clk);
+    wait for CLK_PERIOD/2;
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    rd_res  <= rd_full;
+    report "ADD readback: ex=" & to_hstring(rd_ex) & " hi=" & to_hstring(rd_hi) & " lo=" & to_hstring(rd_lo)
+      severity note;
+    report "ADD result:  " & to_hstring(rd_full)
+      severity note;
+    report "ADD cycle end: " & integer'image(cycle_cnt)
+      severity note;
+    assert rd_full = exp_r
+      report "ADD result mismatch (full FP80)"
       severity failure;
 
     -- DSACK behavior coverage
@@ -108,30 +164,50 @@ begin
     as_n   <= '0';
     ds_n   <= '0';
     wait for CLK_PERIOD/2;
+    report "DSACK 32-bit A4=1: dsack1_n=" & std_logic'image(dsack1_n) &
+           " dsack0_n=" & std_logic'image(dsack0_n) &
+           " cycle=" & integer'image(cycle_cnt)
+      severity note;
     assert dsack0_n = '0' and dsack1_n = '0'
       report "DSACK mismatch for 32-bit with A4=1"
       severity failure;
 
     a_in <= "00000";
     wait for CLK_PERIOD/2;
+    report "DSACK 32-bit A4=0: dsack1_n=" & std_logic'image(dsack1_n) &
+           " dsack0_n=" & std_logic'image(dsack0_n) &
+           " cycle=" & integer'image(cycle_cnt)
+      severity note;
     assert dsack0_n = '1' and dsack1_n = '0'
       report "DSACK mismatch for 32-bit with A4=0"
       severity failure;
 
     size_n <= "10";
     wait for CLK_PERIOD/2;
+    report "DSACK 16-bit: dsack1_n=" & std_logic'image(dsack1_n) &
+           " dsack0_n=" & std_logic'image(dsack0_n) &
+           " cycle=" & integer'image(cycle_cnt)
+      severity note;
     assert dsack0_n = '1' and dsack1_n = '0'
       report "DSACK mismatch for 16-bit access"
       severity failure;
 
     size_n <= "01";
     wait for CLK_PERIOD/2;
+    report "DSACK 8-bit: dsack1_n=" & std_logic'image(dsack1_n) &
+           " dsack0_n=" & std_logic'image(dsack0_n) &
+           " cycle=" & integer'image(cycle_cnt)
+      severity note;
     assert dsack0_n = '0' and dsack1_n = '1'
       report "DSACK mismatch for 8-bit access"
       severity failure;
 
     size_n <= "00";
     wait for CLK_PERIOD/2;
+    report "DSACK wait: dsack1_n=" & std_logic'image(dsack1_n) &
+           " dsack0_n=" & std_logic'image(dsack0_n) &
+           " cycle=" & integer'image(cycle_cnt)
+      severity note;
     assert dsack0_n = '1' and dsack1_n = '1'
       report "DSACK mismatch for wait state insertion"
       severity failure;
@@ -141,6 +217,8 @@ begin
     ds_n <= '1';
     wait for CLK_PERIOD;
 
+    report "TB SUCCESS: all checks passed"
+      severity note;
     wait;
   end process;
 end architecture sim;

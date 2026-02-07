@@ -218,7 +218,9 @@ package body mc68881_pkg is
       if mant_sum(mant_sum'left) = '1' then
         mant_sum(mant_sum'left-1 downto 0) := shift_right_with_sticky(mant_sum(mant_sum'left-1 downto 0), 1);
         mant_sum(mant_sum'left) := '0';
-        exp_res := exp_res + 1;
+        if exp_res /= (others => '1') then
+          exp_res := exp_res + 1;
+        end if;
       end if;
     else
       if mant_a_ext >= mant_b_ext then
@@ -250,7 +252,9 @@ package body mc68881_pkg is
       mant_round := ('0' & mant_main) + 1;
       if mant_round(mant_round'left) = '1' then
         mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
-        exp_res := exp_res + 1;
+        if exp_res /= (others => '1') then
+          exp_res := exp_res + 1;
+        end if;
       else
         mant_main := mant_round(mant_round'left-1 downto 0);
       end if;

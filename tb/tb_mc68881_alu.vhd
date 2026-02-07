@@ -64,17 +64,17 @@ begin
 
     -- MUL
     op_sel <= FPU_OP_MUL;
-    a_in   <= to_fp80(to_unsigned(7, 32));
-    b_in   <= to_fp80(to_unsigned(9, 32));
+    a_in   <= fp80_from_int(7);
+    b_in   <= fp80_from_int(9);
     wait for 10 ns;
-    check_result(to_fp80(to_unsigned(63, 32)), "MUL 7*9");
+    check_result(fp80_from_int(63), "MUL 7*9");
 
     -- DIV
     op_sel <= FPU_OP_DIV;
-    a_in   <= to_fp80(to_unsigned(40, 32));
-    b_in   <= to_fp80(to_unsigned(5, 32));
+    a_in   <= fp80_from_int(40);
+    b_in   <= fp80_from_int(5);
     wait for 10 ns;
-    check_result(to_fp80(to_unsigned(8, 32)), "DIV 40/5");
+    check_result(fp80_from_int(8), "DIV 40/5");
 
     wait;
   end process;

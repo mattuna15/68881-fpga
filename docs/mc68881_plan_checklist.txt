@@ -25,7 +25,7 @@ A) External Interface (Signals + Bus Timing)
     - A0-A4, D0-D31, SIZE, AS, CS, R/W, DS, DSACK0/DSACK1, RESET, CLK, SENSE.
     - Direction/active state per Table 11.
 
-[~] A2. Implement DSACK behavior per Table 10:
+[x] A2. Implement DSACK behavior per Table 10:
     - 32-bit A4=1 => DSACK1=0, DSACK0=0 (D31-D0)
     - 32-bit A4=0 => DSACK1=0, DSACK0=1 (D31-D16)
     - 16-bit => DSACK1=0, DSACK0=1
@@ -70,7 +70,7 @@ D) Arithmetic Datapath (Start: ADD/SUB/MUL/DIV)
 E) Verification / Testbench Coverage
 ------------------------------------
 [~] E1. Unit tests for add/sub/mul/div datapath (behavioral reference vs DUT).
-[ ] E2. Bus interface tests: DSACK sequencing, wait-states, START logic.
+[x] E2. Bus interface tests: DSACK sequencing, wait-states, START logic.
 [ ] E3. Cycle-count checks for FADD/FSUB/FMUL/FDIV + EA additions.
 [ ] E4. AC timing conformance assertions where simulatable.
 

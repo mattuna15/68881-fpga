@@ -11,7 +11,7 @@ architecture sim of tb_mc68881_top is
   signal a_in     : std_logic_vector(4 downto 0) := (others => '0');
   signal d_in     : std_logic_vector(31 downto 0) := (others => '0');
   signal d_out    : std_logic_vector(31 downto 0);
-  signal size_n   : std_logic := '1';
+  signal size_n   : std_logic_vector(1 downto 0) := "11";
   signal as_n     : std_logic := '1';
   signal cs_n     : std_logic := '1';
   signal rw       : std_logic := '1';
@@ -87,6 +87,7 @@ begin
     wait for 2 * CLK_PERIOD;
 
     -- Write operands and op select (ADD)
+    size_n <= "11";
     bus_write(to_unsigned(0, 5), x"00000001");
     bus_write(to_unsigned(1, 5), x"0000000A");
     bus_write(to_unsigned(2, 5), x"00000000");
@@ -100,10 +101,45 @@ begin
       report "ADD result lower word mismatch"
       severity failure;
 
-    -- DSACK should not be both high during active cycle
-    assert not (dsack0_n = '1' and dsack1_n = '1')
-      report "DSACK should acknowledge immediate response in stub"
-      severity note;
+    -- DSACK behavior coverage
+    size_n <= "11";
+    a_in   <= "10000";
+    cs_n   <= '0';
+    as_n   <= '0';
+    ds_n   <= '0';
+    wait for CLK_PERIOD/2;
+    assert dsack0_n = '0' and dsack1_n = '0'
+      report "DSACK mismatch for 32-bit with A4=1"
+      severity failure;
+
+    a_in <= "00000";
+    wait for CLK_PERIOD/2;
+    assert dsack0_n = '1' and dsack1_n = '0'
+      report "DSACK mismatch for 32-bit with A4=0"
+      severity failure;
+
+    size_n <= "10";
+    wait for CLK_PERIOD/2;
+    assert dsack0_n = '1' and dsack1_n = '0'
+      report "DSACK mismatch for 16-bit access"
+      severity failure;
+
+    size_n <= "01";
+    wait for CLK_PERIOD/2;
+    assert dsack0_n = '0' and dsack1_n = '1'
+      report "DSACK mismatch for 8-bit access"
+      severity failure;
+
+    size_n <= "00";
+    wait for CLK_PERIOD/2;
+    assert dsack0_n = '1' and dsack1_n = '1'
+      report "DSACK mismatch for wait state insertion"
+      severity failure;
+
+    cs_n <= '1';
+    as_n <= '1';
+    ds_n <= '1';
+    wait for CLK_PERIOD;
 
     wait;
   end process;

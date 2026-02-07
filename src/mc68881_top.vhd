@@ -10,7 +10,7 @@ entity mc68881_top is
     a_in    : in  std_logic_vector(4 downto 0);
     d_in    : in  std_logic_vector(31 downto 0);
     d_out   : out std_logic_vector(31 downto 0);
-    size_n  : in  std_logic; -- active low
+    size_n  : in  std_logic_vector(1 downto 0); -- active low
     as_n    : in  std_logic; -- active low
     cs_n    : in  std_logic; -- active low
     rw      : in  std_logic; -- high=read, low=write
@@ -118,23 +118,32 @@ begin
 
   -- DSACK generation placeholder: immediate response based on size and A4.
   process(cs_n, as_n, ds_n, size_n, a_in)
+    variable size_code : std_logic_vector(1 downto 0);
   begin
     dsack0_i <= '1';
     dsack1_i <= '1';
 
     if (cs_n = '0' and as_n = '0' and ds_n = '0') then
-      if size_n = '0' then
-        dsack1_i <= '0';
-        dsack0_i <= '1';
-      else
-        if a_in(4) = '1' then
-          dsack1_i <= '0';
-          dsack0_i <= '0';
-        else
+      size_code := not size_n;
+      case size_code is
+        when "00" =>
+          if a_in(4) = '1' then
+            dsack1_i <= '0';
+            dsack0_i <= '0';
+          else
+            dsack1_i <= '0';
+            dsack0_i <= '1';
+          end if;
+        when "01" =>
           dsack1_i <= '0';
           dsack0_i <= '1';
-        end if;
-      end if;
+        when "10" =>
+          dsack1_i <= '1';
+          dsack0_i <= '0';
+        when others =>
+          dsack1_i <= '1';
+          dsack0_i <= '1';
+      end case;
     end if;
   end process;
 

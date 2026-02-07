@@ -1,0 +1,80 @@
+MC68881 VHDL-2008 Implementation Plan (Checklist)
+=================================================
+
+Scope: Full 80-bit extended-precision MC68881-compatible FPU for M68000 bus.
+Target: Xilinx Artix-7 (100T/200T), DSP-pipelined datapath, cycle counts per datasheet.
+
+Sources (Codex Export Bundle):
+- Table 11 (Signal Summary): table11_signal_summary.csv
+- Table 10 (DSACK assertions): table10_dsack_assertions.csv
+- AC Timing Read/Write: ac_timing_read_write_cycles.csv + ac_timing_notes.json
+- Instruction cycle counts: table4_arithmetic.csv + table4_notes.json
+- Effective address cycles: table3_effective_address.csv
+- FMOVE/FMOVEM timing: table5_fmove_fmovem.csv + table5_notes.json
+- Conditional timing: table6_conditional.csv + table6_notes.json
+- FSAVE/FRESTORE timing: table7_fsave_frestore.csv + table7_notes.json
+
+Legend:
+[ ] Not started
+[~] In progress
+[x] Done
+
+A) External Interface (Signals + Bus Timing)
+-------------------------------------------
+[~] A1. Implement MC68881 external signal set:
+    - A0-A4, D0-D31, SIZE, AS, CS, R/W, DS, DSACK0/DSACK1, RESET, CLK, SENSE.
+    - Direction/active state per Table 11.
+
+[~] A2. Implement DSACK behavior per Table 10:
+    - 32-bit A4=1 => DSACK1=0, DSACK0=0 (D31-D0)
+    - 32-bit A4=0 => DSACK1=0, DSACK0=1 (D31-D16)
+    - 16-bit => DSACK1=0, DSACK0=1
+    - 8-bit => DSACK1=1, DSACK0=0
+    - Wait states => DSACK1=1, DSACK0=1
+
+[ ] A3. Apply AC timing constraints for read/write cycles:
+    - Address to AS/DS, CS to DS, DS width, data valid, DSACK timing.
+    - Implement synchronous read cycles only for save/response CIR reads.
+    - START = CS + AS + (R/W · DS).
+
+B) Instruction Cycle Accounting
+-------------------------------
+[~] B1. Base arithmetic cycles (Table 4):
+    - FADD/FSUB: 51 (FPM reg), 72-80 (mem single/integer), 76-78 (mem ext/dbl), 888 (packed)
+    - FMUL: 71 (FPM reg), 92-100 (mem single/int), 96-98 (mem ext/dbl), 908 (packed)
+    - FDIV: 103 (FPM reg), 124-132 (mem single/int), 128-130 (mem ext/dbl), 940 (packed)
+
+[ ] B2. Add EA cycles per Table 3:
+    - Example: (An) +0..2, (An)+ +3..6, (d16,An) +0..3, (xxx).L +1..5, etc.
+
+[ ] B3. Apply Table 4 notes:
+    - Add EA time.
+    - Adjust for MC68020 data register source/dest.
+    - Packed decimal K-factor +14 when dynamic.
+
+C) Core Microarchitecture
+-------------------------
+[~] C1. Top-level entity (mc68881_top) with bus and internal core.
+[~] C2. Bus interface: decode access class (CIR/operand/FPCR/FPSR/etc), manage DSACK.
+[ ] C3. Microsequencer: enforce total cycle count = base op + EA (+ adjustments).
+[ ] C4. State frames: FSAVE/FRESTORE behavior and timing.
+
+D) Arithmetic Datapath (Start: ADD/SUB/MUL/DIV)
+-----------------------------------------------
+[~] D1. 80-bit internal operand format + pack/unpack scaffolding.
+[~] D2. ADD/SUB pipeline (alignment, add/sub, normalize, round) using DSP slices.
+[~] D3. MUL pipeline using DSP cascade partial products.
+[~] D4. DIV pipeline (restoring/SRT) with cycle-count gating.
+[ ] D5. IEEE exception flags and FPSR update.
+
+E) Verification / Testbench Coverage
+------------------------------------
+[~] E1. Unit tests for add/sub/mul/div datapath (behavioral reference vs DUT).
+[ ] E2. Bus interface tests: DSACK sequencing, wait-states, START logic.
+[ ] E3. Cycle-count checks for FADD/FSUB/FMUL/FDIV + EA additions.
+[ ] E4. AC timing conformance assertions where simulatable.
+
+Notes:
+- This plan intentionally prioritizes cycle-accurate external behavior with DSP-optimized
+  internal pipelines, using DSACK wait-states to match datasheet cycle counts.
+- Additional opcodes (FSQRT, transcendental, FMOVE/FMOVEM, FSAVE/FRESTORE) are next phases.

@@ -26,12 +26,21 @@ package mc68881_pkg is
     b        : fp80_t;
     subtract : boolean
   ) return fp80_t;
+  function mul_fp80(
+    a : fp80_t;
+    b : fp80_t
+  ) return fp80_t;
+  function div_fp80(
+    a : fp80_t;
+    b : fp80_t
+  ) return fp80_t;
 end package mc68881_pkg;
 
 package body mc68881_pkg is
   constant FP_GRS_BITS : natural := 3;
   constant FP_MANT_EXT_WIDTH : natural := FP_MANT_WIDTH + FP_GRS_BITS;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
+  constant FP_EXP_MAX : integer := (2**FP_EXP_WIDTH) - 1;
 
   type fp_unpacked_t is record
     sign : std_logic;
@@ -274,6 +283,231 @@ package body mc68881_pkg is
       return pack_fp80(res_u);
     end if;
 
+    res_u.exp := exp_res;
+    res_u.mant := mant_main;
+    return pack_fp80(res_u);
+  end function;
+
+  function mul_fp80(
+    a : fp80_t;
+    b : fp80_t
+  ) return fp80_t is
+    variable a_u : fp_unpacked_t := unpack_fp80(a);
+    variable b_u : fp_unpacked_t := unpack_fp80(b);
+    variable res_u : fp_unpacked_t;
+    variable mant_prod : unsigned((FP_MANT_WIDTH*2)-1 downto 0) := (others => '0');
+    variable mant_ext  : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
+    variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable exp_res_i : integer := 0;
+    variable exp_res   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable shift     : integer := 0;
+    variable sticky    : std_logic := '0';
+    variable guard     : std_logic := '0';
+    variable round_bit : std_logic := '0';
+    variable increment : std_logic := '0';
+    variable mant_round : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
+    variable low_or : std_logic := '0';
+  begin
+    res_u.sign := a_u.sign xor b_u.sign;
+    res_u.exp  := (others => '0');
+    res_u.mant := (others => '0');
+
+    if (a_u.exp = 0 and a_u.mant = 0) or (b_u.exp = 0 and b_u.mant = 0) then
+      res_u.sign := '0';
+      return pack_fp80(res_u);
+    end if;
+
+    if a_u.exp = FP_EXP_ALL_ONES or b_u.exp = FP_EXP_ALL_ONES then
+      res_u.exp := FP_EXP_ALL_ONES;
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    exp_res_i := to_integer(a_u.exp) + to_integer(b_u.exp) - FP_EXP_BIAS;
+    mant_prod := a_u.mant * b_u.mant;
+
+    if mant_prod(mant_prod'left) = '1' then
+      shift := 1;
+      exp_res_i := exp_res_i + 1;
+    else
+      shift := 0;
+    end if;
+
+    mant_ext := mant_prod(mant_prod'left-shift downto mant_prod'left-shift-(FP_MANT_EXT_WIDTH-1));
+    if (mant_prod'left-shift-(FP_MANT_EXT_WIDTH) >= 0) then
+      for idx in 0 to mant_prod'left-shift-FP_MANT_EXT_WIDTH loop
+        if mant_prod(idx) = '1' then
+          low_or := '1';
+        end if;
+      end loop;
+    end if;
+
+    if low_or = '1' then
+      mant_ext(0) := mant_ext(0) or low_or;
+    end if;
+
+    guard := mant_ext(2);
+    round_bit := mant_ext(1);
+    sticky := mant_ext(0);
+    mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
+
+    if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(0) = '1') then
+      increment := '1';
+    end if;
+
+    if increment = '1' then
+      mant_round := ('0' & mant_main) + 1;
+      if mant_round(mant_round'left) = '1' then
+        mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
+        exp_res_i := exp_res_i + 1;
+      else
+        mant_main := mant_round(mant_round'left-1 downto 0);
+      end if;
+    end if;
+
+    if exp_res_i <= 0 then
+      res_u.sign := '0';
+      res_u.exp := (others => '0');
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    if exp_res_i >= FP_EXP_MAX then
+      res_u.exp := FP_EXP_ALL_ONES;
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    exp_res := to_unsigned(exp_res_i, FP_EXP_WIDTH);
+    res_u.exp := exp_res;
+    res_u.mant := mant_main;
+    return pack_fp80(res_u);
+  end function;
+
+  function div_fp80(
+    a : fp80_t;
+    b : fp80_t
+  ) return fp80_t is
+    variable a_u : fp_unpacked_t := unpack_fp80(a);
+    variable b_u : fp_unpacked_t := unpack_fp80(b);
+    variable res_u : fp_unpacked_t;
+    variable num : unsigned((FP_MANT_WIDTH*2)+FP_GRS_BITS-1 downto 0) := (others => '0');
+    variable quot : unsigned((FP_MANT_WIDTH*2)+FP_GRS_BITS-1 downto 0) := (others => '0');
+    variable mant_ext : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
+    variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable exp_res_i : integer := 0;
+    variable exp_res   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable shift     : integer := 0;
+    variable guard     : std_logic := '0';
+    variable round_bit : std_logic := '0';
+    variable sticky    : std_logic := '0';
+    variable increment : std_logic := '0';
+    variable mant_round : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
+    variable low_or : std_logic := '0';
+    variable top_index : integer := FP_MANT_WIDTH + FP_GRS_BITS;
+  begin
+    res_u.sign := a_u.sign xor b_u.sign;
+    res_u.exp  := (others => '0');
+    res_u.mant := (others => '0');
+
+    if b_u.exp = 0 and b_u.mant = 0 then
+      res_u.exp := FP_EXP_ALL_ONES;
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    if a_u.exp = 0 and a_u.mant = 0 then
+      res_u.sign := '0';
+      return pack_fp80(res_u);
+    end if;
+
+    if a_u.exp = FP_EXP_ALL_ONES or b_u.exp = FP_EXP_ALL_ONES then
+      res_u.exp := FP_EXP_ALL_ONES;
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    exp_res_i := to_integer(a_u.exp) - to_integer(b_u.exp) + FP_EXP_BIAS;
+
+    num := a_u.mant & (FP_MANT_WIDTH+FP_GRS_BITS-1 downto 0 => '0');
+    quot := num / b_u.mant;
+
+    if quot(top_index+1) = '1' then
+      shift := 1;
+      exp_res_i := exp_res_i + 1;
+    elsif quot(top_index) = '0' then
+      shift := -1;
+      exp_res_i := exp_res_i - 1;
+    else
+      shift := 0;
+    end if;
+
+    if shift = 1 then
+      mant_ext := quot(top_index+1 downto top_index+1-(FP_MANT_EXT_WIDTH-1));
+      if top_index+1-FP_MANT_EXT_WIDTH >= 0 then
+        for idx in 0 to top_index+1-FP_MANT_EXT_WIDTH loop
+          if quot(idx) = '1' then
+            low_or := '1';
+          end if;
+        end loop;
+      end if;
+    elsif shift = -1 then
+      mant_ext := quot(top_index-1 downto top_index-1-(FP_MANT_EXT_WIDTH-1));
+      if top_index-1-FP_MANT_EXT_WIDTH >= 0 then
+        for idx in 0 to top_index-1-FP_MANT_EXT_WIDTH loop
+          if quot(idx) = '1' then
+            low_or := '1';
+          end if;
+        end loop;
+      end if;
+    else
+      mant_ext := quot(top_index downto top_index-(FP_MANT_EXT_WIDTH-1));
+      if top_index-FP_MANT_EXT_WIDTH >= 0 then
+        for idx in 0 to top_index-FP_MANT_EXT_WIDTH loop
+          if quot(idx) = '1' then
+            low_or := '1';
+          end if;
+        end loop;
+      end if;
+    end if;
+
+    if low_or = '1' then
+      mant_ext(0) := mant_ext(0) or low_or;
+    end if;
+
+    guard := mant_ext(2);
+    round_bit := mant_ext(1);
+    sticky := mant_ext(0);
+    mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
+
+    if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(0) = '1') then
+      increment := '1';
+    end if;
+
+    if increment = '1' then
+      mant_round := ('0' & mant_main) + 1;
+      if mant_round(mant_round'left) = '1' then
+        mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
+        exp_res_i := exp_res_i + 1;
+      else
+        mant_main := mant_round(mant_round'left-1 downto 0);
+      end if;
+    end if;
+
+    if exp_res_i <= 0 then
+      res_u.sign := '0';
+      res_u.exp := (others => '0');
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    if exp_res_i >= FP_EXP_MAX then
+      res_u.exp := FP_EXP_ALL_ONES;
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    exp_res := to_unsigned(exp_res_i, FP_EXP_WIDTH);
     res_u.exp := exp_res;
     res_u.mant := mant_main;
     return pack_fp80(res_u);

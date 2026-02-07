@@ -23,8 +23,24 @@ covering:
 - Core microarchitecture and datapath pipelines for ADD/SUB/MUL/DIV.
 - Verification goals for arithmetic, bus behavior, and cycle counts.
 
-## Running simulations (example)
-Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). For example, with GHDL:
+## Running simulations
+Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). The repo includes a test
+script that runs both testbenches:
+
+```powershell
+scripts/run_tests.ps1
+```
+
+The script uses `GHDL_EXE` if set, otherwise it defaults to
+`C:\code\ghdl-mcode-5.1.1-mingw64\bin\ghdl.exe` and finally `ghdl` on PATH.
+
+The pre-push hook in `.githooks/pre-push` runs the same tests. To enable hooks locally:
+
+```sh
+git config core.hooksPath .githooks
+```
+
+Example direct GHDL usage:
 
 ```sh
 ghdl -a --std=08 src/mc68881_pkg.vhd src/mc68881_alu.vhd tb/tb_mc68881_alu.vhd

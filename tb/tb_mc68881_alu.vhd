@@ -1,6 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use std.env.all;
 
 use work.mc68881_pkg.all;
 
@@ -12,6 +13,8 @@ architecture sim of tb_mc68881_alu is
   signal reset_n: std_logic := '0';
   signal start  : std_logic := '0';
   signal op_sel : fpu_op_t := FPU_OP_NOP;
+  signal round_mode : fp_round_mode_t := FP_RND_NEAREST;
+  signal round_prec : fp_round_prec_t := FP_PREC_EXTENDED;
   signal a_in   : fp80_t := (others => '0');
   signal b_in   : fp80_t := (others => '0');
   signal result : fp80_t;
@@ -62,6 +65,33 @@ architecture sim of tb_mc68881_alu is
     return work.mc68881_pkg.fp80_from_int(value);
   end function;
 
+  function make_fp80(
+    constant sign : std_logic;
+    constant exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
+    constant mant : unsigned(FP_MANT_WIDTH-1 downto 0)
+  ) return fp80_t is
+    variable fp_value : fp80_t := (others => '0');
+  begin
+    fp_value(FP_WIDTH-1) := sign;
+    fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := std_logic_vector(exp);
+    fp_value(FP_MANT_WIDTH-1 downto 0) := std_logic_vector(mant);
+    return fp_value;
+  end function;
+
+  constant DIV_1_15_EXP : unsigned(FP_EXP_WIDTH-1 downto 0) := to_unsigned(16#3FFB#, FP_EXP_WIDTH);
+  constant DIV_1_15_MANT : unsigned(FP_MANT_WIDTH-1 downto 0) := x"8888888888888889";
+  constant DIV_1_15_EXPECTED : fp80_t := make_fp80('0', DIV_1_15_EXP, DIV_1_15_MANT);
+  constant DIV_1_7_EXP : unsigned(FP_EXP_WIDTH-1 downto 0) := to_unsigned(16#3FFC#, FP_EXP_WIDTH);
+  constant DIV_1_7_MANT_DOWN : unsigned(FP_MANT_WIDTH-1 downto 0) := x"9249249249249249";
+  constant DIV_1_7_MANT_UP : unsigned(FP_MANT_WIDTH-1 downto 0) := x"924924924924924A";
+  constant DIV_1_7_RZ_EXPECTED : fp80_t := make_fp80('0', DIV_1_7_EXP, DIV_1_7_MANT_DOWN);
+  constant DIV_1_7_RP_EXPECTED : fp80_t := make_fp80('0', DIV_1_7_EXP, DIV_1_7_MANT_UP);
+  constant DIV_1_10_EXP : unsigned(FP_EXP_WIDTH-1 downto 0) := to_unsigned(16#3FFB#, FP_EXP_WIDTH);
+  constant DIV_1_10_MANT_SINGLE : unsigned(FP_MANT_WIDTH-1 downto 0) := x"CCCCCD0000000000";
+  constant DIV_1_10_MANT_DOUBLE : unsigned(FP_MANT_WIDTH-1 downto 0) := x"CCCCCCCCCCCCD000";
+  constant DIV_1_10_SINGLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_SINGLE);
+  constant DIV_1_10_DOUBLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_DOUBLE);
+
 begin
   clk <= not clk after CLK_PERIOD/2;
   cycle_counter : process(clk)
@@ -77,6 +107,8 @@ begin
       reset_n => reset_n,
       start  => start,
       op_sel => op_sel,
+      round_mode => round_mode,
+      round_prec => round_prec,
       a_in   => a_in,
       b_in   => b_in,
       result => result,
@@ -92,6 +124,10 @@ begin
     reset_n <= '1';
     wait for 2 * CLK_PERIOD;
 
+    round_mode <= FP_RND_NEAREST;
+    round_prec <= FP_PREC_EXTENDED;
+    wait for 0 ns;
+
     -- ADD
     op_sel <= FPU_OP_ADD;
     a_in   <= fp80_from_int(10);
@@ -99,6 +135,7 @@ begin
     start <= '1';
     wait until rising_edge(clk);
     start <= '0';
+    wait for 0 ns;
     start_cycle := cycle_cnt;
     wait until valid = '1';
     report "ADD latency cycles: " & integer'image(cycle_cnt - start_cycle)
@@ -115,6 +152,7 @@ begin
     start <= '1';
     wait until rising_edge(clk);
     start <= '0';
+    wait for 0 ns;
     start_cycle := cycle_cnt;
     wait until valid = '1';
     report "SUB latency cycles: " & integer'image(cycle_cnt - start_cycle)
@@ -131,6 +169,7 @@ begin
     start <= '1';
     wait until rising_edge(clk);
     start <= '0';
+    wait for 0 ns;
     start_cycle := cycle_cnt;
     wait until valid = '1';
     report "SUB neg latency cycles: " & integer'image(cycle_cnt - start_cycle)
@@ -147,6 +186,7 @@ begin
     start <= '1';
     wait until rising_edge(clk);
     start <= '0';
+    wait for 0 ns;
     start_cycle := cycle_cnt;
     wait until valid = '1';
     report "MUL latency cycles: " & integer'image(cycle_cnt - start_cycle)
@@ -163,6 +203,7 @@ begin
     start <= '1';
     wait until rising_edge(clk);
     start <= '0';
+    wait for 0 ns;
     start_cycle := cycle_cnt;
     wait until valid = '1';
     report "DIV latency cycles: " & integer'image(cycle_cnt - start_cycle)
@@ -172,6 +213,116 @@ begin
       severity failure;
     check_result(fp80_from_int(8), "DIV 40/5");
 
+    -- DIV fractional rounding (1/15)
+    op_sel <= FPU_OP_DIV;
+    a_in   <= fp80_from_int(1);
+    b_in   <= fp80_from_int(15);
+    report "DIV 1/15 expected: " & to_hstring(DIV_1_15_EXPECTED)
+      severity note;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "DIV 1/15 latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = DIV_LATENCY
+      report "DIV 1/15 latency mismatch"
+      severity failure;
+    report "DIV 1/15 result: " & to_hstring(result)
+      severity note;
+    check_result(DIV_1_15_EXPECTED, "DIV 1/15");
+
+    -- DIV rounding mode (1/7)
+    round_prec <= FP_PREC_EXTENDED;
+    round_mode <= FP_RND_ZERO;
+    op_sel <= FPU_OP_DIV;
+    a_in   <= fp80_from_int(1);
+    b_in   <= fp80_from_int(7);
+    report "DIV 1/7 RZ expected: " & to_hstring(DIV_1_7_RZ_EXPECTED)
+      severity note;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "DIV 1/7 RZ latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = DIV_LATENCY
+      report "DIV 1/7 RZ latency mismatch"
+      severity failure;
+    report "DIV 1/7 RZ result: " & to_hstring(result)
+      severity note;
+    check_result(DIV_1_7_RZ_EXPECTED, "DIV 1/7 RZ");
+
+    round_mode <= FP_RND_PLUS_INF;
+    op_sel <= FPU_OP_DIV;
+    a_in   <= fp80_from_int(1);
+    b_in   <= fp80_from_int(7);
+    report "DIV 1/7 RP expected: " & to_hstring(DIV_1_7_RP_EXPECTED)
+      severity note;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "DIV 1/7 RP latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = DIV_LATENCY
+      report "DIV 1/7 RP latency mismatch"
+      severity failure;
+    report "DIV 1/7 RP result: " & to_hstring(result)
+      severity note;
+    check_result(DIV_1_7_RP_EXPECTED, "DIV 1/7 RP");
+
+    -- DIV precision control (1/10)
+    round_mode <= FP_RND_NEAREST;
+    round_prec <= FP_PREC_SINGLE;
+    op_sel <= FPU_OP_DIV;
+    a_in   <= fp80_from_int(1);
+    b_in   <= fp80_from_int(10);
+    report "DIV 1/10 single expected: " & to_hstring(DIV_1_10_SINGLE_EXPECTED)
+      severity note;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "DIV 1/10 single latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = DIV_LATENCY
+      report "DIV 1/10 single latency mismatch"
+      severity failure;
+    report "DIV 1/10 single result: " & to_hstring(result)
+      severity note;
+    check_result(DIV_1_10_SINGLE_EXPECTED, "DIV 1/10 single");
+
+    round_prec <= FP_PREC_DOUBLE;
+    op_sel <= FPU_OP_DIV;
+    a_in   <= fp80_from_int(1);
+    b_in   <= fp80_from_int(10);
+    report "DIV 1/10 double expected: " & to_hstring(DIV_1_10_DOUBLE_EXPECTED)
+      severity note;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "DIV 1/10 double latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = DIV_LATENCY
+      report "DIV 1/10 double latency mismatch"
+      severity failure;
+    report "DIV 1/10 double result: " & to_hstring(result)
+      severity note;
+    check_result(DIV_1_10_DOUBLE_EXPECTED, "DIV 1/10 double");
+
+    std.env.stop;
     wait;
   end process;
 end architecture sim;

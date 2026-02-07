@@ -1,0 +1,25 @@
+name: GHDL CI
+
+on:
+  push:
+
+jobs:
+  ghdl:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ghdl/setup-ghdl@v1
+        with:
+          version: latest
+          backend: mcode
+      - name: Analyze
+        run: |
+          ghdl -a --std=08 src/mc68881_pkg.vhd src/mc68881_alu.vhd src/mc68881_top.vhd tb/tb_mc68881_alu.vhd tb/tb_mc68881_top.vhd
+      - name: Run tb_mc68881_alu
+        run: |
+          ghdl -e --std=08 tb_mc68881_alu
+          ghdl -r --std=08 tb_mc68881_alu --assert-level=error
+      - name: Run tb_mc68881_top
+        run: |
+          ghdl -e --std=08 tb_mc68881_top
+          ghdl -r --std=08 tb_mc68881_top --assert-level=error

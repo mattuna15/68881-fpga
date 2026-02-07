@@ -1,6 +1,7 @@
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
+use std.env.all;
 
 use work.mc68881_pkg.all;
 
@@ -25,10 +26,18 @@ architecture sim of tb_mc68881_top is
   signal rd_hi    : std_logic_vector(31 downto 0) := (others => '0');
   signal rd_ex    : std_logic_vector(31 downto 0) := (others => '0');
   signal rd_res   : fp80_t := (others => '0');
+  signal status_word : std_logic_vector(31 downto 0) := (others => '0');
   signal cycle_cnt: natural := 0;
 
   constant CLK_PERIOD : time := 10 ns;
   constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
+  constant ADDR_FPCR   : unsigned(4 downto 0) := to_unsigned(11, 5);
+
+  constant FPCR_RND_NEAREST : std_logic_vector(31 downto 0) := x"00000000";
+  constant FPCR_RND_ZERO    : std_logic_vector(31 downto 0) := x"00000010";
+  constant FPCR_RND_PLUS    : std_logic_vector(31 downto 0) := x"00000030";
+  constant FPCR_PREC_SINGLE : std_logic_vector(31 downto 0) := x"00000040";
+  constant FPCR_PREC_DOUBLE : std_logic_vector(31 downto 0) := x"00000080";
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -62,6 +71,33 @@ architecture sim of tb_mc68881_top is
              " got=" & to_hstring(got)
       severity failure;
   end procedure;
+
+  function make_fp80(
+    constant sign : std_logic;
+    constant exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
+    constant mant : unsigned(FP_MANT_WIDTH-1 downto 0)
+  ) return fp80_t is
+    variable result : fp80_t := (others => '0');
+  begin
+    result(FP_WIDTH-1) := sign;
+    result(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := std_logic_vector(exp);
+    result(FP_MANT_WIDTH-1 downto 0) := std_logic_vector(mant);
+    return result;
+  end function;
+
+  constant DIV_1_15_EXP : unsigned(FP_EXP_WIDTH-1 downto 0) := to_unsigned(16#3FFB#, FP_EXP_WIDTH);
+  constant DIV_1_15_MANT : unsigned(FP_MANT_WIDTH-1 downto 0) := x"8888888888888889";
+  constant DIV_1_15_EXPECTED : fp80_t := make_fp80('0', DIV_1_15_EXP, DIV_1_15_MANT);
+  constant DIV_1_7_EXP : unsigned(FP_EXP_WIDTH-1 downto 0) := to_unsigned(16#3FFC#, FP_EXP_WIDTH);
+  constant DIV_1_7_MANT_DOWN : unsigned(FP_MANT_WIDTH-1 downto 0) := x"9249249249249249";
+  constant DIV_1_7_MANT_UP : unsigned(FP_MANT_WIDTH-1 downto 0) := x"924924924924924A";
+  constant DIV_1_7_RZ_EXPECTED : fp80_t := make_fp80('0', DIV_1_7_EXP, DIV_1_7_MANT_DOWN);
+  constant DIV_1_7_RP_EXPECTED : fp80_t := make_fp80('0', DIV_1_7_EXP, DIV_1_7_MANT_UP);
+  constant DIV_1_10_EXP : unsigned(FP_EXP_WIDTH-1 downto 0) := to_unsigned(16#3FFB#, FP_EXP_WIDTH);
+  constant DIV_1_10_MANT_SINGLE : unsigned(FP_MANT_WIDTH-1 downto 0) := x"CCCCCD0000000000";
+  constant DIV_1_10_MANT_DOUBLE : unsigned(FP_MANT_WIDTH-1 downto 0) := x"CCCCCCCCCCCCD000";
+  constant DIV_1_10_SINGLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_SINGLE);
+  constant DIV_1_10_DOUBLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_DOUBLE);
 
   procedure bus_write(
     signal a_in_s  : out std_logic_vector(4 downto 0);
@@ -124,17 +160,17 @@ architecture sim of tb_mc68881_top is
     signal ds_n_s    : out std_logic;
     signal dsack0_n_s: in  std_logic;
     signal dsack1_n_s: in  std_logic;
-    signal d_out_s   : in  std_logic_vector(31 downto 0)
+    signal d_out_s   : in  std_logic_vector(31 downto 0);
+    signal status_word_s : inout std_logic_vector(31 downto 0)
   ) is
-    variable status_word : std_logic_vector(31 downto 0) := (others => '0');
   begin
     loop
-      bus_read(a_in_s, rw_s, cs_n_s, as_n_s, ds_n_s, dsack0_n_s, dsack1_n_s, d_out_s, status_word, ADDR_STATUS);
-      report "STATUS poll: valid=" & std_logic'image(status_word(0)) &
-             " busy=" & std_logic'image(status_word(1)) &
+      bus_read(a_in_s, rw_s, cs_n_s, as_n_s, ds_n_s, dsack0_n_s, dsack1_n_s, d_out_s, status_word_s, ADDR_STATUS);
+      report "STATUS poll: valid=" & std_logic'image(status_word_s(0)) &
+             " busy=" & std_logic'image(status_word_s(1)) &
              " cycle=" & integer'image(cycle_cnt)
         severity note;
-      exit when status_word(0) = '1';
+      exit when status_word_s(0) = '1';
     end loop;
   end procedure;
 
@@ -179,7 +215,7 @@ begin
     size_n <= "11";
     op_a := fp80_from_int(10);
     op_b := fp80_from_int(5);
-    exp_r := add_sub_fp80(op_a, op_b, false);
+    exp_r := add_sub_fp80(op_a, op_b, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
     report "ADD operands: op_a=" & to_hstring(op_a) & " op_b=" & to_hstring(op_b)
       severity note;
     report "ADD expected: " & to_hstring(exp_r)
@@ -194,7 +230,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000001");
-    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
 
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
@@ -213,7 +249,7 @@ begin
     -- MUL
     op_a := fp80_from_int(7);
     op_b := fp80_from_int(9);
-    exp_r := mul_fp80(op_a, op_b);
+    exp_r := mul_fp80(op_a, op_b, FP_RND_NEAREST, FP_PREC_EXTENDED);
     report "MUL operands: op_a=" & to_hstring(op_a) & " op_b=" & to_hstring(op_b)
       severity note;
     report "MUL expected: " & to_hstring(exp_r)
@@ -229,7 +265,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000003");
 
-    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
 
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
@@ -248,7 +284,7 @@ begin
     -- DIV
     op_a := fp80_from_int(40);
     op_b := fp80_from_int(5);
-    exp_r := div_fp80(op_a, op_b);
+    exp_r := div_fp80(op_a, op_b, FP_RND_NEAREST, FP_PREC_EXTENDED);
     report "DIV operands: op_a=" & to_hstring(op_a) & " op_b=" & to_hstring(op_b)
       severity note;
     report "DIV expected: " & to_hstring(exp_r)
@@ -264,7 +300,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000004");
 
-    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
 
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
@@ -279,6 +315,153 @@ begin
     report "DIV cycle end: " & integer'image(cycle_cnt)
       severity note;
     check_fp80(rd_full, exp_r, "DIV result");
+
+    -- DIV fractional rounding (1/15)
+    op_a := fp80_from_int(1);
+    op_b := fp80_from_int(15);
+    exp_r := DIV_1_15_EXPECTED;
+    report "DIV 1/15 operands: op_a=" & to_hstring(op_a) & " op_b=" & to_hstring(op_b)
+      severity note;
+    report "DIV 1/15 expected: " & to_hstring(exp_r)
+      severity note;
+    report "DIV 1/15 cycle start: " & integer'image(cycle_cnt)
+      severity note;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000004");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    rd_res  <= rd_full;
+    report "DIV 1/15 readback: ex=" & to_hstring(rd_ex) & " hi=" & to_hstring(rd_hi) & " lo=" & to_hstring(rd_lo)
+      severity note;
+    report "DIV 1/15 result:  " & to_hstring(rd_full)
+      severity note;
+    report "DIV 1/15 cycle end: " & integer'image(cycle_cnt)
+      severity note;
+    check_fp80(rd_full, exp_r, "DIV 1/15 result");
+
+    -- FPCR rounding mode: round toward zero (1/7)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, FPCR_RND_ZERO);
+    op_a := fp80_from_int(1);
+    op_b := fp80_from_int(7);
+    exp_r := DIV_1_7_RZ_EXPECTED;
+    report "DIV 1/7 RZ expected: " & to_hstring(exp_r)
+      severity note;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000004");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    rd_res  <= rd_full;
+    report "DIV 1/7 RZ result:  " & to_hstring(rd_full)
+      severity note;
+    check_fp80(rd_full, exp_r, "DIV 1/7 RZ result");
+
+    -- FPCR rounding mode: round toward +infinity (1/7)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, FPCR_RND_PLUS);
+    op_a := fp80_from_int(1);
+    op_b := fp80_from_int(7);
+    exp_r := DIV_1_7_RP_EXPECTED;
+    report "DIV 1/7 RP expected: " & to_hstring(exp_r)
+      severity note;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000004");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    rd_res  <= rd_full;
+    report "DIV 1/7 RP result:  " & to_hstring(rd_full)
+      severity note;
+    check_fp80(rd_full, exp_r, "DIV 1/7 RP result");
+
+    -- FPCR precision: single (1/10)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, FPCR_PREC_SINGLE);
+    op_a := fp80_from_int(1);
+    op_b := fp80_from_int(10);
+    exp_r := DIV_1_10_SINGLE_EXPECTED;
+    report "DIV 1/10 single expected: " & to_hstring(exp_r)
+      severity note;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000004");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    rd_res  <= rd_full;
+    report "DIV 1/10 single result:  " & to_hstring(rd_full)
+      severity note;
+    check_fp80(rd_full, exp_r, "DIV 1/10 single result");
+
+    -- FPCR precision: double (1/10)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, FPCR_PREC_DOUBLE);
+    op_a := fp80_from_int(1);
+    op_b := fp80_from_int(10);
+    exp_r := DIV_1_10_DOUBLE_EXPECTED;
+    report "DIV 1/10 double expected: " & to_hstring(exp_r)
+      severity note;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000004");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    rd_res  <= rd_full;
+    report "DIV 1/10 double result:  " & to_hstring(rd_full)
+      severity note;
+    check_fp80(rd_full, exp_r, "DIV 1/10 double result");
 
     -- DSACK behavior coverage
     size_n <= "11";
@@ -342,6 +525,7 @@ begin
 
     report "TB SUCCESS: all checks passed"
       severity note;
+    std.env.stop;
     wait;
   end process;
 end architecture sim;

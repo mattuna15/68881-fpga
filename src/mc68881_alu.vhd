@@ -10,6 +10,8 @@ entity mc68881_alu is
     reset_n : in  std_logic;
     start   : in  std_logic;
     op_sel  : in  fpu_op_t;
+    round_mode : in fp_round_mode_t;
+    round_prec : in fp_round_prec_t;
     a_in    : in  fp80_t;
     b_in    : in  fp80_t;
     result  : out fp80_t;
@@ -29,9 +31,9 @@ architecture rtl of mc68881_alu is
   constant MUL_LATENCY : natural := 4;
   constant DIV_LATENCY : natural := 8;
 
-  function op_latency(op_sel : fpu_op_t) return natural is
+  function op_latency(op_kind : fpu_op_t) return natural is
   begin
-    case op_sel is
+    case op_kind is
       when FPU_OP_ADD => return ADD_LATENCY;
       when FPU_OP_SUB => return SUB_LATENCY;
       when FPU_OP_MUL => return MUL_LATENCY;
@@ -55,13 +57,13 @@ begin
         latency := op_latency(op_sel);
         case op_sel is
           when FPU_OP_ADD =>
-            result_reg <= add_sub_fp80(a_in, b_in, false);
+            result_reg <= add_sub_fp80(a_in, b_in, false, round_mode, round_prec);
           when FPU_OP_SUB =>
-            result_reg <= add_sub_fp80(a_in, b_in, true);
+            result_reg <= add_sub_fp80(a_in, b_in, true, round_mode, round_prec);
           when FPU_OP_MUL =>
-            result_reg <= mul_fp80(a_in, b_in);
+            result_reg <= mul_fp80(a_in, b_in, round_mode, round_prec);
           when FPU_OP_DIV =>
-            result_reg <= div_fp80(a_in, b_in);
+            result_reg <= div_fp80(a_in, b_in, round_mode, round_prec);
           when others =>
             result_reg <= (others => '0');
         end case;

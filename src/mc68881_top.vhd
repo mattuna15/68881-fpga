@@ -37,6 +37,9 @@ architecture rtl of mc68881_top is
   signal op_start  : std_logic := '0';
   signal status_valid : std_logic := '0';
   signal status_busy  : std_logic := '0';
+  signal fpcr_reg  : std_logic_vector(31 downto 0) := (others => '0');
+  signal round_mode : fp_round_mode_t := FP_RND_NEAREST;
+  signal round_prec : fp_round_prec_t := FP_PREC_EXTENDED;
 
   signal dsack0_i  : std_logic := '1';
   signal dsack1_i  : std_logic := '1';
@@ -56,11 +59,15 @@ architecture rtl of mc68881_top is
   constant ADDR_RES_H  : unsigned(4 downto 0) := to_unsigned(8, 5);
   constant ADDR_RES_E  : unsigned(4 downto 0) := to_unsigned(9, 5);
   constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
+  constant ADDR_FPCR   : unsigned(4 downto 0) := to_unsigned(11, 5);
 
 begin
   addr      <= unsigned(a_in);
   bus_write <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '0') else '0';
   bus_read  <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '1') else '0';
+  -- FPCR mode control: bits 7-6 precision, 5-4 rounding mode.
+  round_mode <= decode_round_mode(fpcr_reg(5 downto 4));
+  round_prec <= decode_round_prec(fpcr_reg(7 downto 6));
 
   alu_inst : entity work.mc68881_alu
     port map (
@@ -68,6 +75,8 @@ begin
       reset_n => reset_n,
       start  => op_start,
       op_sel => op_sel,
+      round_mode => round_mode,
+      round_prec => round_prec,
       a_in   => operand(0),
       b_in   => operand(1),
       result => result,
@@ -86,6 +95,7 @@ begin
       op_start    <= '0';
       status_valid <= '0';
       status_busy  <= '0';
+      fpcr_reg   <= (others => '0');
     elsif rising_edge(clk) then
       op_start <= '0';
 
@@ -109,6 +119,9 @@ begin
           when ADDR_OPB_L => operand(1)(31 downto 0)  <= d_in;
           when ADDR_OPB_H => operand(1)(63 downto 32) <= d_in;
           when ADDR_OPB_E => operand(1)(79 downto 64) <= d_in(15 downto 0);
+          when ADDR_FPCR =>
+            fpcr_reg(15 downto 0) <= d_in(15 downto 0);
+            fpcr_reg(31 downto 16) <= (others => '0');
           when others => null;
         end case;
       end if;
@@ -138,6 +151,8 @@ begin
         when ADDR_STATUS =>
           d_out(0) <= status_valid;
           d_out(1) <= status_busy;
+        when ADDR_FPCR =>
+          d_out <= fpcr_reg;
         when others => d_out <= (others => '0');
       end case;
     end if;

@@ -19,20 +19,43 @@ package mc68881_pkg is
     FPU_OP_DIV
   );
 
+  type fp_round_mode_t is (
+    FP_RND_NEAREST,
+    FP_RND_ZERO,
+    FP_RND_MINUS_INF,
+    FP_RND_PLUS_INF
+  );
+
+  type fp_round_prec_t is (
+    FP_PREC_EXTENDED,
+    FP_PREC_SINGLE,
+    FP_PREC_DOUBLE,
+    FP_PREC_RESERVED
+  );
+
+  function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t;
+  function decode_round_prec(bits : std_logic_vector(1 downto 0)) return fp_round_prec_t;
+
   function to_fp80(value : unsigned) return fp80_t;
   function fp80_from_int(value : integer) return fp80_t;
   function add_sub_fp80(
     a        : fp80_t;
     b        : fp80_t;
-    subtract : boolean
+    subtract : boolean;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
   ) return fp80_t;
   function mul_fp80(
     a : fp80_t;
-    b : fp80_t
+    b : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
   ) return fp80_t;
   function div_fp80(
     a : fp80_t;
-    b : fp80_t
+    b : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
   ) return fp80_t;
 end package mc68881_pkg;
 
@@ -47,6 +70,110 @@ package body mc68881_pkg is
     exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
     mant : unsigned(FP_MANT_WIDTH-1 downto 0);
   end record;
+
+  function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t is
+  begin
+    case bits is
+      when "00" => return FP_RND_NEAREST;
+      when "01" => return FP_RND_ZERO;
+      when "10" => return FP_RND_MINUS_INF;
+      when others => return FP_RND_PLUS_INF;
+    end case;
+  end function;
+
+  function decode_round_prec(bits : std_logic_vector(1 downto 0)) return fp_round_prec_t is
+  begin
+    case bits is
+      when "00" => return FP_PREC_EXTENDED;
+      when "01" => return FP_PREC_SINGLE;
+      when "10" => return FP_PREC_DOUBLE;
+      when others => return FP_PREC_RESERVED;
+    end case;
+  end function;
+
+  function prec_bits(prec : fp_round_prec_t) return natural is
+  begin
+    case prec is
+      when FP_PREC_SINGLE => return 24;
+      when FP_PREC_DOUBLE => return 53;
+      when others => return FP_MANT_WIDTH;
+    end case;
+  end function;
+
+  function shift_right_with_sticky(
+    value : unsigned;
+    shift : natural
+  ) return unsigned;
+
+  procedure apply_rounding(
+    sign       : in  std_logic;
+    mant_ext   : in  unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
+    exp_in     : in  integer;
+    round_mode : in  fp_round_mode_t;
+    round_prec : in  fp_round_prec_t;
+    mant_out   : out unsigned(FP_MANT_WIDTH-1 downto 0);
+    exp_out    : out integer
+  ) is
+    variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable mant_round : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
+    variable guard      : std_logic := '0';
+    variable round_bit  : std_logic := '0';
+    variable sticky     : std_logic := '0';
+    variable increment  : std_logic := '0';
+    variable any_disc   : std_logic := '0';
+    variable prec_w     : natural := FP_MANT_WIDTH;
+    variable drop_bits  : natural := 0;
+    variable lsb_keep   : integer := FP_GRS_BITS;
+  begin
+    mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
+    prec_w := prec_bits(round_prec);
+    drop_bits := FP_MANT_WIDTH - prec_w;
+    lsb_keep := FP_GRS_BITS + drop_bits;
+
+
+    guard := mant_ext(lsb_keep-1);
+    round_bit := mant_ext(lsb_keep-2);
+    if lsb_keep > 2 then
+      if mant_ext(lsb_keep-3 downto 0) /= 0 then
+        sticky := '1';
+      end if;
+    end if;
+
+    any_disc := guard or round_bit or sticky;
+    case round_mode is
+      when FP_RND_NEAREST =>
+        if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(drop_bits) = '1') then
+          increment := '1';
+        end if;
+      when FP_RND_ZERO =>
+        increment := '0';
+      when FP_RND_MINUS_INF =>
+        if sign = '1' and any_disc = '1' then
+          increment := '1';
+        end if;
+      when FP_RND_PLUS_INF =>
+        if sign = '0' and any_disc = '1' then
+          increment := '1';
+        end if;
+    end case;
+
+    exp_out := exp_in;
+    if increment = '1' then
+      mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll drop_bits);
+      if mant_round(mant_round'left) = '1' then
+        mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
+        exp_out := exp_out + 1;
+      else
+        mant_main := mant_round(mant_round'left-1 downto 0);
+      end if;
+    end if;
+
+    if drop_bits > 0 then
+      mant_main(drop_bits-1 downto 0) := (others => '0');
+    end if;
+
+    mant_out := mant_main;
+  end procedure;
 
   function unpack_fp80(value : fp80_t) return fp_unpacked_t is
     variable result : fp_unpacked_t;
@@ -89,10 +216,9 @@ package body mc68881_pkg is
       sticky := '1';
     end if;
 
-    if shift = 1 then
-      result := value(value'length-1 downto 1) & sticky;
-    else
-      result := value(value'length-1 downto shift) & (shift-1 downto 1 => '0') & sticky;
+    result := shift_right(value, shift);
+    if sticky = '1' then
+      result(0) := '1';
     end if;
     return result;
   end function;
@@ -168,7 +294,9 @@ package body mc68881_pkg is
   function add_sub_fp80(
     a        : fp80_t;
     b        : fp80_t;
-    subtract : boolean
+    subtract : boolean;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
   ) return fp80_t is
     variable a_u : fp_unpacked_t := unpack_fp80(a);
     variable b_u : fp_unpacked_t := unpack_fp80(b);
@@ -177,14 +305,11 @@ package body mc68881_pkg is
     variable mant_b_ext : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
     variable mant_sum   : unsigned(FP_MANT_EXT_WIDTH downto 0) := (others => '0');
     variable mant_main  : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable mant_ext   : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
     variable exp_diff   : natural := 0;
     variable exp_res    : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable exp_res_i  : integer := 0;
     variable sign_b     : std_logic := '0';
-    variable guard      : std_logic := '0';
-    variable round_bit  : std_logic := '0';
-    variable sticky     : std_logic := '0';
-    variable increment  : std_logic := '0';
-    variable mant_round : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
   begin
     res_u.sign := '0';
     res_u.exp  := (others => '0');
@@ -249,26 +374,9 @@ package body mc68881_pkg is
       );
     end if;
 
-    guard := mant_sum(2);
-    round_bit := mant_sum(1);
-    sticky := mant_sum(0);
-    mant_main := mant_sum(mant_sum'left-1 downto FP_GRS_BITS);
-
-    if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(0) = '1') then
-      increment := '1';
-    end if;
-
-    if increment = '1' then
-      mant_round := ('0' & mant_main) + 1;
-      if mant_round(mant_round'left) = '1' then
-        mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
-        if exp_res /= FP_EXP_ALL_ONES then
-          exp_res := exp_res + 1;
-        end if;
-      else
-        mant_main := mant_round(mant_round'left-1 downto 0);
-      end if;
-    end if;
+    mant_ext := mant_sum(mant_sum'left-1 downto 0);
+    exp_res_i := to_integer(exp_res);
+    apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);
 
     if mant_main = 0 then
       res_u.sign := '0';
@@ -277,12 +385,20 @@ package body mc68881_pkg is
       return pack_fp80(res_u);
     end if;
 
-    if exp_res = FP_EXP_ALL_ONES then
-      res_u.exp := exp_res;
+    if exp_res_i >= FP_EXP_MAX then
+      res_u.exp := FP_EXP_ALL_ONES;
       res_u.mant := (others => '0');
       return pack_fp80(res_u);
     end if;
 
+    if exp_res_i <= 0 then
+      res_u.sign := '0';
+      res_u.exp := (others => '0');
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    exp_res := to_unsigned(exp_res_i, FP_EXP_WIDTH);
     res_u.exp := exp_res;
     res_u.mant := mant_main;
     return pack_fp80(res_u);
@@ -290,7 +406,9 @@ package body mc68881_pkg is
 
   function mul_fp80(
     a : fp80_t;
-    b : fp80_t
+    b : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
   ) return fp80_t is
     variable a_u : fp_unpacked_t := unpack_fp80(a);
     variable b_u : fp_unpacked_t := unpack_fp80(b);
@@ -300,12 +418,6 @@ package body mc68881_pkg is
     variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable exp_res_i : integer := 0;
     variable exp_res   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
-    variable shift     : integer := 0;
-    variable sticky    : std_logic := '0';
-    variable guard     : std_logic := '0';
-    variable round_bit : std_logic := '0';
-    variable increment : std_logic := '0';
-    variable mant_round : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
     variable low_or : std_logic := '0';
   begin
     res_u.sign := a_u.sign xor b_u.sign;
@@ -327,15 +439,12 @@ package body mc68881_pkg is
     mant_prod := a_u.mant * b_u.mant;
 
     if mant_prod(mant_prod'left) = '1' then
-      shift := 1;
       exp_res_i := exp_res_i + 1;
-    else
-      shift := 0;
     end if;
 
-    mant_ext := mant_prod(mant_prod'left-shift downto mant_prod'left-shift-(FP_MANT_EXT_WIDTH-1));
-    if (mant_prod'left-shift-(FP_MANT_EXT_WIDTH) >= 0) then
-      for idx in 0 to mant_prod'left-shift-FP_MANT_EXT_WIDTH loop
+    mant_ext := mant_prod(mant_prod'left-1 downto mant_prod'left-1-(FP_MANT_EXT_WIDTH-1));
+    if (mant_prod'left-1-(FP_MANT_EXT_WIDTH) >= 0) then
+      for idx in 0 to mant_prod'left-1-FP_MANT_EXT_WIDTH loop
         if mant_prod(idx) = '1' then
           low_or := '1';
         end if;
@@ -346,24 +455,7 @@ package body mc68881_pkg is
       mant_ext(0) := mant_ext(0) or low_or;
     end if;
 
-    guard := mant_ext(2);
-    round_bit := mant_ext(1);
-    sticky := mant_ext(0);
-    mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
-
-    if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(0) = '1') then
-      increment := '1';
-    end if;
-
-    if increment = '1' then
-      mant_round := ('0' & mant_main) + 1;
-      if mant_round(mant_round'left) = '1' then
-        mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
-        exp_res_i := exp_res_i + 1;
-      else
-        mant_main := mant_round(mant_round'left-1 downto 0);
-      end if;
-    end if;
+    apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);
 
     if exp_res_i <= 0 then
       res_u.sign := '0';
@@ -386,23 +478,21 @@ package body mc68881_pkg is
 
   function div_fp80(
     a : fp80_t;
-    b : fp80_t
+    b : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
   ) return fp80_t is
     variable a_u : fp_unpacked_t := unpack_fp80(a);
     variable b_u : fp_unpacked_t := unpack_fp80(b);
     variable res_u : fp_unpacked_t;
     variable num : unsigned((FP_MANT_WIDTH*2)+FP_GRS_BITS-1 downto 0) := (others => '0');
     variable quot : unsigned((FP_MANT_WIDTH*2)+FP_GRS_BITS-1 downto 0) := (others => '0');
+    variable rem_val  : unsigned((FP_MANT_WIDTH*2)+FP_GRS_BITS-1 downto 0) := (others => '0');
     variable mant_ext : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
     variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable exp_res_i : integer := 0;
     variable exp_res   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
     variable shift     : integer := 0;
-    variable guard     : std_logic := '0';
-    variable round_bit : std_logic := '0';
-    variable sticky    : std_logic := '0';
-    variable increment : std_logic := '0';
-    variable mant_round : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
     variable low_or : std_logic := '0';
     variable top_index : integer := FP_MANT_WIDTH + FP_GRS_BITS;
   begin
@@ -431,6 +521,7 @@ package body mc68881_pkg is
 
     num := a_u.mant & (FP_MANT_WIDTH+FP_GRS_BITS-1 downto 0 => '0');
     quot := num / b_u.mant;
+    rem_val  := num mod resize(b_u.mant, num'length);
 
     if quot(top_index+1) = '1' then
       shift := 1;
@@ -471,28 +562,15 @@ package body mc68881_pkg is
       end if;
     end if;
 
+    if rem_val /= 0 then
+      low_or := '1';
+    end if;
+
     if low_or = '1' then
       mant_ext(0) := mant_ext(0) or low_or;
     end if;
 
-    guard := mant_ext(2);
-    round_bit := mant_ext(1);
-    sticky := mant_ext(0);
-    mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
-
-    if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(0) = '1') then
-      increment := '1';
-    end if;
-
-    if increment = '1' then
-      mant_round := ('0' & mant_main) + 1;
-      if mant_round(mant_round'left) = '1' then
-        mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
-        exp_res_i := exp_res_i + 1;
-      else
-        mant_main := mant_round(mant_round'left-1 downto 0);
-      end if;
-    end if;
+    apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);
 
     if exp_res_i <= 0 then
       res_u.sign := '0';

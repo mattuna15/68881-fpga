@@ -1,0 +1,23 @@
+#!/bin/sh
+set -eu
+
+GHDL_EXE="${GHDL_EXE:-ghdl}"
+if [ "$GHDL_EXE" = "ghdl" ]; then
+  if [ -x "C:/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe" ]; then
+    GHDL_EXE="C:/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe"
+  elif [ -x "/c/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe" ]; then
+    GHDL_EXE="/c/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe"
+  fi
+fi
+
+echo "Running GHDL tests before push..."
+
+"$GHDL_EXE" -a --std=08 src/mc68881_pkg.vhd src/mc68881_alu.vhd src/mc68881_top.vhd tb/tb_mc68881_alu.vhd tb/tb_mc68881_top.vhd
+
+"$GHDL_EXE" -e --std=08 tb_mc68881_alu
+"$GHDL_EXE" -r --std=08 tb_mc68881_alu --assert-level=error
+
+"$GHDL_EXE" -e --std=08 tb_mc68881_top
+"$GHDL_EXE" -r --std=08 tb_mc68881_top --assert-level=error
+
+echo "GHDL tests passed."

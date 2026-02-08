@@ -363,7 +363,8 @@ begin
         if frame_remaining = 0 then
           frame_busy <= '0';
           if frame_restore_pending = '1' then
-            fpcr_reg <= frame_mem(0);
+            fpcr_reg(15 downto 0) <= frame_mem(0)(15 downto 0);
+            fpcr_reg(31 downto 16) <= (others => '0');
             fpsr_reg <= frame_mem(1);
             frame_restore_pending <= '0';
             frame_valid <= '0';

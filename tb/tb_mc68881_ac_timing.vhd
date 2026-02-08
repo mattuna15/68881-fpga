@@ -190,7 +190,7 @@ begin
       dsack0_n,
       dsack1_n,
       true,
-      "11",
+      "01",
       "10000",
       1,
       "read 32-bit A4=1"
@@ -206,7 +206,7 @@ begin
       dsack0_n,
       dsack1_n,
       false,
-      "11",
+      "01",
       "10000",
       1,
       "write 32-bit A4=1"

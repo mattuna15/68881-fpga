@@ -4,81 +4,90 @@ MC68881 VHDL-2008 Implementation Plan (Checklist)
 Scope: Full 80-bit extended-precision MC68881-compatible FPU for M68000 bus.
 Target: Xilinx Artix-7 (100T/200T), DSP-pipelined datapath, cycle counts per datasheet.
 
-Sources (Codex Export Bundle):
-- Table 11 (Signal Summary): table11_signal_summary.csv
-- Table 10 (DSACK assertions): table10_dsack_assertions.csv
-- AC Timing Read/Write: ac_timing_read_write_cycles.csv + ac_timing_notes.json
-- Instruction cycle counts: table4_arithmetic.csv + table4_notes.json
-- Effective address cycles: table3_effective_address.csv
-- FMOVE/FMOVEM timing: table5_fmove_fmovem.csv + table5_notes.json
-- Conditional timing: table6_conditional.csv + table6_notes.json
-- FSAVE/FRESTORE timing: table7_fsave_frestore.csv + table7_notes.json
-
 Legend:
 [ ] Not started
 [~] In progress
 [x] Done
 
-A) External Interface (Signals + Bus Timing)
--------------------------------------------
-[x] A1. Implement MC68881 external signal set:
-    - A0-A4, D0-D31, SIZE, AS, CS, R/W, DS, DSACK0/DSACK1, RESET, CLK, SENSE.
-    - Direction/active state per Table 11.
+A) Design Quality Improvements (from review)
+--------------------------------------------
+[ ] A1. Replace magic numbers in mc68881_top with package constants for field widths.
+    - Define widths in mc68881_pkg.vhd and use for result_lo/result_hi/result_ex.
 
-[x] A2. Implement DSACK behavior per Table 10:
-    - 32-bit A4=1 => DSACK1=0, DSACK0=0 (D31-D0)
-    - 32-bit A4=0 => DSACK1=0, DSACK0=1 (D31-D16)
-    - 16-bit => DSACK1=0, DSACK0=1
-    - 8-bit => DSACK1=1, DSACK0=0
-    - Wait states => DSACK1=1, DSACK0=1
+[ ] A2. Decompose the top-level state machine into focused processes.
+    - Split bus handling, ALU control, and status management.
+    - Keep cycle-count timing behavior intact.
 
-[x] A3. Apply AC timing constraints for read/write cycles:
-    - Address to AS/DS, CS to DS, DS width, data valid, DSACK timing.
-    - Implement synchronous read cycles only for save/response CIR reads.
-    - START = CS + AS + (R/W · DS).
+[ ] A3. Normalize signal naming conventions.
+    - Choose a consistent convention for registered signals (e.g., _r or _reg).
+    - Apply across top-level and ALU interface signals.
 
-B) Instruction Cycle Accounting
--------------------------------
-[x] B1. Base arithmetic cycles (Table 4):
-    - FADD/FSUB: 51 (FPM reg), 72-80 (mem single/integer), 76-78 (mem ext/dbl), 888 (packed)
-    - FMUL: 71 (FPM reg), 92-100 (mem single/int), 96-98 (mem ext/dbl), 908 (packed)
-    - FDIV: 103 (FPM reg), 124-132 (mem single/int), 128-130 (mem ext/dbl), 940 (packed)
+B) Functional Completeness (Core Missing Ops)
+---------------------------------------------
+[ ] B1. Implement FSQRT (square root).
+    - Target cycle count ~120 (per datasheet guidance).
 
-[x] B2. Add EA cycles per Table 3:
-    - Example: (An) +0..2, (An)+ +3..6, (d16,An) +0..3, (xxx).L +1..5, etc.
+[ ] B2. Implement FMOVE/FMOVEM.
+    - Register transfer (FPR<->FPR).
+    - Move to/from memory for single/double/extended precisions.
+    - Move to/from control registers (FPCR/FPSR/FPIAR).
 
-[x] B3. Apply Table 4 notes:
-    - Add EA time.
-    - Adjust for MC68020 data register source/dest.
-    - Packed decimal K-factor +14 when dynamic.
+[ ] B3. Implement comparison operations.
+    - FCMP (compare).
+    - FTST (test).
 
-C) Core Microarchitecture
--------------------------
-[x] C1. Top-level entity (mc68881_top) with bus and internal core.
-[x] C2. Bus interface: decode access class (CIR/operand/FPCR/FPSR/etc), manage DSACK.
-    - FPCR register implemented with rounding mode/precision decode.
-[x] C3. Microsequencer: enforce total cycle count = base op + EA (+ adjustments).
-[x] C4. State frames: FSAVE/FRESTORE behavior and timing.
+[ ] B4. Implement basic unary arithmetic.
+    - FABS (absolute value).
+    - FNEG (negate).
+    - FREM (remainder).
 
-D) Arithmetic Datapath (Start: ADD/SUB/MUL/DIV)
------------------------------------------------
-[x] D1. 80-bit internal operand format + pack/unpack scaffolding.
-[x] D2. ADD/SUB pipeline (alignment, add/sub, normalize, round) using DSP slices.
-    - FPCR rounding/precision modes wired through datapath.
-[x] D3. MUL pipeline using DSP cascade partial products.
-    - FPCR rounding/precision modes wired through datapath.
-[x] D4. DIV pipeline (restoring/SRT) with cycle-count gating.
-    - Remainder-aware sticky + FPCR rounding/precision modes wired through datapath.
-[x] D5. IEEE exception flags and FPSR update.
+[ ] B5. Implement system operations.
+    - FSAVE (save state).
+    - FRESTORE (restore state).
+    - FNOP (no operation).
 
-E) Verification / Testbench Coverage
+[ ] B6. Implement transcendental functions.
+    - FSINCOS, FTAN, FLOG, FEXP, FTENT, FTWOTOX.
+
+[ ] B7. Implement packed decimal operations.
+    - FBADD, FBSUB, FBMUL, FBDIV.
+    - Packed conversion operations.
+
+C) Exception Handling & Edge Cases
+----------------------------------
+[ ] C1. Add denormal handling coverage.
+    - Define flush/denormal rules per MC68881 behavior.
+
+[ ] C2. Improve NaN propagation details.
+    - Ensure quiet/signaling NaN behavior is correct for each op.
+
+[ ] C3. Expand exception detection tests.
+    - Invalid, divzero, overflow, underflow, inexact for new ops.
+
+D) Verification / Testbench Coverage
 ------------------------------------
-[x] E1. Unit tests for add/sub/mul/div datapath (behavioral reference vs DUT).
-[x] E2. Bus interface tests: DSACK sequencing, wait-states, START logic.
-[x] E3. Cycle-count checks for FADD/FSUB/FMUL/FDIV + EA additions.
-[x] E4. AC timing conformance assertions where simulatable.
+[ ] D1. Add self-checking testbenches for each newly implemented opcode.
+    - Wait on DUT valid signals before checking.
+    - Avoid reserved identifiers in signal/procedure arguments.
+
+[ ] D2. Log key transactions in testbenches using report (severity note).
+    - Include expected vs observed values.
+
+[ ] D3. FP80 value checks must compare encoding fields.
+    - Deconstruct sign/exponent/mantissa or recomposition from bus words.
+    - Do not compare raw integer literals to FP80 results.
+
+[ ] D4. Cycle-count verification for all newly implemented ops.
+    - Include EA timing adjustments where applicable.
+
+E) Bus Interface & Timing (Confirmations)
+-----------------------------------------
+[x] E1. DSACK behavior per Table 10.
+[x] E2. Address decoding for all register spaces.
+[x] E3. Access size handling for 8/16/32-bit.
+[x] E4. Microsequencer for cycle-accurate timing.
 
 Notes:
-- This plan intentionally prioritizes cycle-accurate external behavior with DSP-optimized
-  internal pipelines, using DSACK wait-states to match datasheet cycle counts.
-- Additional opcodes (FSQRT, transcendental, FMOVE/FMOVEM, FSAVE/FRESTORE) are next phases.
+- Priorities from the review: FSQRT, FMOVE/FMOVEM, FCMP/FTST first; refactor top state machine next.
+- Maintain VHDL-2008 compatibility and avoid vendor-specific primitives.
+- Use scripts/run_tests.ps1 for local verification (set GHDL_EXE if needed).

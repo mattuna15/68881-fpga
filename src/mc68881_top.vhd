@@ -314,13 +314,7 @@ begin
       if bus_write = '1' then
         case addr is
           when ADDR_OPSEL =>
-            case d_in(2 downto 0) is
-              when "001" => op_sel_next := FPU_OP_ADD;
-              when "010" => op_sel_next := FPU_OP_SUB;
-              when "011" => op_sel_next := FPU_OP_MUL;
-              when "100" => op_sel_next := FPU_OP_DIV;
-              when others => op_sel_next := FPU_OP_NOP;
-            end case;
+            op_sel_next := decode_op_sel(d_in(2 downto 0));
             op_sel <= op_sel_next;
             if micro_active = '0' and frame_busy = '0' and busy = '0' then
               if op_sel_next /= FPU_OP_NOP then
@@ -329,7 +323,7 @@ begin
                 result_ready <= '0';
                 last_op_sel <= op_sel_next;
                 micro_active <= '1';
-                total_cycles := total_arith_cycles(
+                total_cycles := op_cycle_count(
                   op_sel_next,
                   src_kind_reg,
                   ea_mode_reg,

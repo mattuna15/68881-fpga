@@ -26,20 +26,20 @@ end entity mc68881_top;
 architecture rtl of mc68881_top is
   type reg_array_t is array (0 to 1) of fp80_t;
 
-  signal op_sel    : fpu_op_t := FPU_OP_NOP;
-  signal operand   : reg_array_t := (others => (others => '0'));
+  signal op_sel_reg    : fpu_op_t := FPU_OP_NOP;
+  signal operand_reg   : reg_array_t := (others => (others => '0'));
   signal result    : fp80_t := (others => '0');
-  signal result_lo : std_logic_vector(31 downto 0) := (others => '0');
-  signal result_hi : std_logic_vector(31 downto 0) := (others => '0');
-  signal result_ex : std_logic_vector(15 downto 0) := (others => '0');
+  signal result_lo_reg : std_logic_vector(FP80_RESULT_LO_WIDTH-1 downto 0) := (others => '0');
+  signal result_hi_reg : std_logic_vector(FP80_RESULT_HI_WIDTH-1 downto 0) := (others => '0');
+  signal result_ex_reg : std_logic_vector(FP80_RESULT_EX_WIDTH-1 downto 0) := (others => '0');
   signal valid     : std_logic := '0';
   signal busy      : std_logic := '0';
-  signal op_start  : std_logic := '0';
-  signal status_valid : std_logic := '0';
-  signal status_busy  : std_logic := '0';
-  signal status_frame_valid : std_logic := '0';
-  signal status_frame_busy  : std_logic := '0';
   signal sense_drive : std_logic := '1';
+  signal op_start_reg  : std_logic := '0';
+  signal status_valid_reg : std_logic := '0';
+  signal status_busy_reg  : std_logic := '0';
+  signal status_frame_valid_reg : std_logic := '0';
+  signal status_frame_busy_reg  : std_logic := '0';
   signal fpcr_reg  : std_logic_vector(31 downto 0) := (others => '0');
   signal fpsr_reg  : std_logic_vector(31 downto 0) := (others => '0');
   signal round_mode : fp_round_mode_t := FP_RND_NEAREST;
@@ -92,24 +92,26 @@ architecture rtl of mc68881_top is
   signal sync_read    : std_logic := '0';
   signal d_out_reg    : std_logic_vector(31 downto 0) := (others => '0');
   signal d_out_comb   : std_logic_vector(31 downto 0) := (others => '0');
-
   constant DSACK_ASSERT_CYCLES_READ  : natural := 1;
   constant DSACK_ASSERT_CYCLES_WRITE : natural := 1;
 
-  signal micro_active    : std_logic := '0';
-  signal micro_remaining : natural := 0;
+  signal micro_active_reg    : std_logic := '0';
+  signal micro_remaining_reg : natural := 0;
   signal micro_total_reg : std_logic_vector(31 downto 0) := (others => '0');
-  signal result_ready    : std_logic := '0';
-  signal last_op_sel     : fpu_op_t := FPU_OP_NOP;
+  signal result_ready_reg    : std_logic := '0';
+  signal last_op_sel_reg     : fpu_op_t := FPU_OP_NOP;
 
   type frame_mem_t is array (0 to 3) of std_logic_vector(31 downto 0);
-  signal frame_mem : frame_mem_t := (others => (others => '0'));
-  signal frame_busy : std_logic := '0';
-  signal frame_remaining : natural := 0;
-  signal frame_valid : std_logic := '0';
-  signal frame_restore_pending : std_logic := '0';
-  signal frame_start_save : std_logic := '0';
-  signal frame_start_restore : std_logic := '0';
+  signal frame_mem_reg : frame_mem_t := (others => (others => '0'));
+  signal frame_busy_reg : std_logic := '0';
+  signal frame_remaining_reg : natural := 0;
+  signal frame_valid_reg : std_logic := '0';
+  signal frame_restore_pending_reg : std_logic := '0';
+  signal frame_start_save_reg : std_logic := '0';
+  signal frame_start_restore_reg : std_logic := '0';
+
+  signal op_sel_write_decoded : fpu_op_t := FPU_OP_NOP;
+  signal op_issue_pulse       : std_logic := '0';
 
   constant FRAME_LATENCY : natural := 6;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
@@ -245,25 +247,32 @@ begin
   -- FPCR mode control: bits 7-6 precision, 5-4 rounding mode.
   round_mode <= decode_round_mode(fpcr_reg(5 downto 4));
   round_prec <= decode_round_prec(fpcr_reg(7 downto 6));
+  op_sel_write_decoded <= decode_op_sel(d_in(2 downto 0));
+  op_issue_pulse <= '1' when (
+    bus_write = '1' and
+    addr = ADDR_OPSEL and
+    op_sel_write_decoded /= FPU_OP_NOP and
+    micro_active_reg = '0' and
+    frame_busy_reg = '0' and
+    busy = '0'
+  ) else '0';
 
   alu_inst : entity work.mc68881_alu
     port map (
       clk    => clk,
       reset_n => reset_n,
-      start  => op_start,
-      op_sel => op_sel,
+      start  => op_start_reg,
+      op_sel => op_sel_reg,
       round_mode => round_mode,
       round_prec => round_prec,
-      a_in   => operand(0),
-      b_in   => operand(1),
+      a_in   => operand_reg(0),
+      b_in   => operand_reg(1),
       result => result,
       valid  => valid,
       busy   => busy
     );
 
-  process(clk, reset_n)
-    variable op_sel_next : fpu_op_t := FPU_OP_NOP;
-    variable total_cycles : natural := 0;
+  bus_frame_proc : process(clk, reset_n)
     variable status_frame_word : std_logic_vector(31 downto 0);
     variable exc_flags : std_logic_vector(4 downto 0);
     variable a_zero : boolean;
@@ -277,76 +286,43 @@ begin
     variable res_nan  : boolean;
   begin
     if reset_n = '0' then
-      op_sel      <= FPU_OP_NOP;
-      operand     <= (others => (others => '0'));
-      result_lo   <= (others => '0');
-      result_hi   <= (others => '0');
-      result_ex   <= (others => '0');
-      op_start    <= '0';
-      status_valid <= '0';
-      status_busy  <= '0';
-      status_frame_valid <= '0';
-      status_frame_busy  <= '0';
-      fpcr_reg   <= (others => '0');
-      fpsr_reg   <= (others => '0');
+      op_sel_reg <= FPU_OP_NOP;
+      operand_reg <= (others => (others => '0'));
+      fpcr_reg <= (others => '0');
+      fpsr_reg <= (others => '0');
       src_kind_reg <= FPU_SRC_FPM;
-      ea_mode_reg  <= EA_MODE_DN_AN;
+      ea_mode_reg <= EA_MODE_DN_AN;
       cycle_case_reg <= EA_CYCLE_BEST;
       mc68020_src_reg <= '0';
       mc68020_dst_reg <= '0';
       packed_dynamic_k_reg <= '0';
-      micro_active <= '0';
-      micro_remaining <= 0;
-      micro_total_reg <= (others => '0');
-      result_ready <= '0';
-      last_op_sel <= FPU_OP_NOP;
-      frame_mem <= (others => (others => '0'));
-      frame_busy <= '0';
-      frame_remaining <= 0;
-      frame_valid <= '0';
-      frame_restore_pending <= '0';
-      frame_start_save <= '0';
-      frame_start_restore <= '0';
+      frame_mem_reg <= (others => (others => '0'));
+      frame_busy_reg <= '0';
+      frame_remaining_reg <= 0;
+      frame_valid_reg <= '0';
+      frame_restore_pending_reg <= '0';
+      frame_start_save_reg <= '0';
+      frame_start_restore_reg <= '0';
     elsif rising_edge(clk) then
-      op_start <= '0';
-      frame_start_save <= '0';
-      frame_start_restore <= '0';
+      frame_start_save_reg <= '0';
+      frame_start_restore_reg <= '0';
 
       if bus_write = '1' then
         case addr is
           when ADDR_OPSEL =>
-            op_sel_next := decode_op_sel(d_in(2 downto 0));
-            op_sel <= op_sel_next;
-            if micro_active = '0' and frame_busy = '0' and busy = '0' then
-              if op_sel_next /= FPU_OP_NOP then
-                op_start <= '1';
-                status_valid <= '0';
-                result_ready <= '0';
-                last_op_sel <= op_sel_next;
-                micro_active <= '1';
-                total_cycles := op_cycle_count(
-                  op_sel_next,
-                  src_kind_reg,
-                  ea_mode_reg,
-                  cycle_case_reg,
-                  mc68020_src_reg = '1',
-                  mc68020_dst_reg = '1',
-                  packed_dynamic_k_reg = '1'
-                );
-                micro_total_reg <= std_logic_vector(to_unsigned(total_cycles, 32));
-                if total_cycles = 0 then
-                  micro_remaining <= 0;
-                else
-                  micro_remaining <= total_cycles - 1;
-                end if;
-              end if;
-            end if;
-          when ADDR_OPA_L => operand(0)(31 downto 0)  <= d_in;
-          when ADDR_OPA_H => operand(0)(63 downto 32) <= d_in;
-          when ADDR_OPA_E => operand(0)(79 downto 64) <= d_in(15 downto 0);
-          when ADDR_OPB_L => operand(1)(31 downto 0)  <= d_in;
-          when ADDR_OPB_H => operand(1)(63 downto 32) <= d_in;
-          when ADDR_OPB_E => operand(1)(79 downto 64) <= d_in(15 downto 0);
+            op_sel_reg <= op_sel_write_decoded;
+          when ADDR_OPA_L =>
+            operand_reg(0)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in;
+          when ADDR_OPA_H =>
+            operand_reg(0)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in;
+          when ADDR_OPA_E =>
+            operand_reg(0)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH) <= d_in(FP80_RESULT_EX_WIDTH-1 downto 0);
+          when ADDR_OPB_L =>
+            operand_reg(1)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in;
+          when ADDR_OPB_H =>
+            operand_reg(1)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in;
+          when ADDR_OPB_E =>
+            operand_reg(1)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH) <= d_in(FP80_RESULT_EX_WIDTH-1 downto 0);
           when ADDR_FPCR =>
             fpcr_reg(15 downto 0) <= d_in(15 downto 0);
             fpcr_reg(31 downto 16) <= (others => '0');
@@ -362,39 +338,36 @@ begin
             packed_dynamic_k_reg <= d_in(4);
           when ADDR_FRAME_CMD =>
             if d_in(0) = '1' then
-              frame_start_save <= '1';
+              frame_start_save_reg <= '1';
             end if;
             if d_in(1) = '1' then
-              frame_start_restore <= '1';
+              frame_start_restore_reg <= '1';
             end if;
           when ADDR_FRAME_W0 =>
-            frame_mem(0) <= d_in;
-            frame_valid <= '1';
+            frame_mem_reg(0) <= d_in;
+            frame_valid_reg <= '1';
           when ADDR_FRAME_W1 =>
-            frame_mem(1) <= d_in;
-            frame_valid <= '1';
+            frame_mem_reg(1) <= d_in;
+            frame_valid_reg <= '1';
           when ADDR_FRAME_W2 =>
-            frame_mem(2) <= d_in;
-            frame_valid <= '1';
+            frame_mem_reg(2) <= d_in;
+            frame_valid_reg <= '1';
           when ADDR_FRAME_W3 =>
-            frame_mem(3) <= d_in;
-            frame_valid <= '1';
-          when others => null;
+            frame_mem_reg(3) <= d_in;
+            frame_valid_reg <= '1';
+          when others =>
+            null;
         end case;
       end if;
 
       if valid = '1' then
-        result_lo <= result(31 downto 0);
-        result_hi <= result(63 downto 32);
-        result_ex <= result(79 downto 64);
-        result_ready <= '1';
         exc_flags := (others => '0');
-        a_zero := fp80_is_zero(operand(0));
-        b_zero := fp80_is_zero(operand(1));
-        a_inf := fp80_is_inf(operand(0));
-        b_inf := fp80_is_inf(operand(1));
-        a_nan := fp80_is_nan(operand(0));
-        b_nan := fp80_is_nan(operand(1));
+        a_zero := fp80_is_zero(operand_reg(0));
+        b_zero := fp80_is_zero(operand_reg(1));
+        a_inf := fp80_is_inf(operand_reg(0));
+        b_inf := fp80_is_inf(operand_reg(1));
+        a_nan := fp80_is_nan(operand_reg(0));
+        b_nan := fp80_is_nan(operand_reg(1));
         res_zero := fp80_is_zero(result);
         res_inf := fp80_is_inf(result);
         res_nan := fp80_is_nan(result);
@@ -403,7 +376,7 @@ begin
           exc_flags(FPSR_EXC_INVALID) := '1';
         end if;
 
-        if last_op_sel = FPU_OP_DIV then
+        if last_op_sel_reg = FPU_OP_DIV then
           if b_zero and not a_zero then
             exc_flags(FPSR_EXC_DIVZERO) := '1';
           end if;
@@ -429,69 +402,131 @@ begin
           fpsr_reg(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) or exc_flags;
       end if;
 
-      if micro_active = '1' then
-        if micro_remaining = 0 then
-          if result_ready = '1' then
-            status_valid <= '1';
-            micro_active <= '0';
-          end if;
-        else
-          micro_remaining <= micro_remaining - 1;
-        end if;
-      end if;
-
-      if frame_busy = '1' then
-        if frame_remaining = 0 then
-          frame_busy <= '0';
-          if frame_restore_pending = '1' then
-            fpcr_reg <= frame_mem(0);
-            fpsr_reg <= frame_mem(1);
-            frame_restore_pending <= '0';
-            frame_valid <= '0';
+      if frame_busy_reg = '1' then
+        if frame_remaining_reg = 0 then
+          frame_busy_reg <= '0';
+          if frame_restore_pending_reg = '1' then
+            fpcr_reg <= frame_mem_reg(0);
+            fpsr_reg <= frame_mem_reg(1);
+            frame_restore_pending_reg <= '0';
+            frame_valid_reg <= '0';
           else
-            frame_valid <= '1';
+            frame_valid_reg <= '1';
           end if;
         else
-          frame_remaining <= frame_remaining - 1;
+          frame_remaining_reg <= frame_remaining_reg - 1;
         end if;
       end if;
 
-      if frame_start_save = '1' and frame_busy = '0' and micro_active = '0' then
+      if frame_start_save_reg = '1' and frame_busy_reg = '0' and micro_active_reg = '0' then
         status_frame_word := (others => '0');
-        status_frame_word(0) := status_valid;
-        status_frame_word(1) := status_busy;
-        status_frame_word(2) := frame_valid;
-        status_frame_word(3) := frame_busy;
-        frame_mem(0) <= fpcr_reg;
-        frame_mem(1) <= fpsr_reg;
-        frame_mem(2) <= status_frame_word;
-        frame_mem(3) <= (others => '0');
-        frame_busy <= '1';
-        frame_remaining <= FRAME_LATENCY - 1;
-        frame_valid <= '0';
-        frame_restore_pending <= '0';
-      elsif frame_start_restore = '1' and frame_busy = '0' and micro_active = '0' then
-        frame_busy <= '1';
-        frame_remaining <= FRAME_LATENCY - 1;
-        frame_restore_pending <= '1';
+        status_frame_word(0) := status_valid_reg;
+        status_frame_word(1) := status_busy_reg;
+        status_frame_word(2) := frame_valid_reg;
+        status_frame_word(3) := frame_busy_reg;
+        frame_mem_reg(0) <= fpcr_reg;
+        frame_mem_reg(1) <= fpsr_reg;
+        frame_mem_reg(2) <= status_frame_word;
+        frame_mem_reg(3) <= (others => '0');
+        frame_busy_reg <= '1';
+        frame_remaining_reg <= FRAME_LATENCY - 1;
+        frame_valid_reg <= '0';
+        frame_restore_pending_reg <= '0';
+      elsif frame_start_restore_reg = '1' and frame_busy_reg = '0' and micro_active_reg = '0' then
+        frame_busy_reg <= '1';
+        frame_remaining_reg <= FRAME_LATENCY - 1;
+        frame_restore_pending_reg <= '1';
+      end if;
+    end if;
+  end process;
+
+  alu_control_proc : process(clk, reset_n)
+    variable total_cycles : natural := 0;
+  begin
+    if reset_n = '0' then
+      result_lo_reg <= (others => '0');
+      result_hi_reg <= (others => '0');
+      result_ex_reg <= (others => '0');
+      op_start_reg <= '0';
+      micro_active_reg <= '0';
+      micro_remaining_reg <= 0;
+      micro_total_reg <= (others => '0');
+      result_ready_reg <= '0';
+      last_op_sel_reg <= FPU_OP_NOP;
+    elsif rising_edge(clk) then
+      op_start_reg <= '0';
+
+      if op_issue_pulse = '1' then
+        op_start_reg <= '1';
+        result_ready_reg <= '0';
+        last_op_sel_reg <= op_sel_write_decoded;
+        micro_active_reg <= '1';
+        total_cycles := op_cycle_count(
+          op_sel_write_decoded,
+          src_kind_reg,
+          ea_mode_reg,
+          cycle_case_reg,
+          mc68020_src_reg = '1',
+          mc68020_dst_reg = '1',
+          packed_dynamic_k_reg = '1'
+        );
+        micro_total_reg <= std_logic_vector(to_unsigned(total_cycles, 32));
+        if total_cycles = 0 then
+          micro_remaining_reg <= 0;
+        else
+          micro_remaining_reg <= total_cycles - 1;
+        end if;
       end if;
 
-      status_busy <= micro_active or frame_busy;
-      status_frame_valid <= frame_valid;
-      status_frame_busy <= frame_busy;
+      if valid = '1' then
+        result_lo_reg <= result(FP80_RESULT_LO_WIDTH-1 downto 0);
+        result_hi_reg <= result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
+        result_ex_reg <= result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+        result_ready_reg <= '1';
+      end if;
+
+      if micro_active_reg = '1' then
+        if micro_remaining_reg = 0 then
+          if result_ready_reg = '1' then
+            micro_active_reg <= '0';
+          end if;
+        else
+          micro_remaining_reg <= micro_remaining_reg - 1;
+        end if;
+      end if;
+    end if;
+  end process;
+
+  status_proc : process(clk, reset_n)
+  begin
+    if reset_n = '0' then
+      status_valid_reg <= '0';
+      status_busy_reg <= '0';
+      status_frame_valid_reg <= '0';
+      status_frame_busy_reg <= '0';
+    elsif rising_edge(clk) then
+      if op_issue_pulse = '1' then
+        status_valid_reg <= '0';
+      elsif micro_active_reg = '1' and micro_remaining_reg = 0 and result_ready_reg = '1' then
+        status_valid_reg <= '1';
+      end if;
+
+      status_busy_reg <= micro_active_reg or frame_busy_reg;
+      status_frame_valid_reg <= frame_valid_reg;
+      status_frame_busy_reg <= frame_busy_reg;
     end if;
   end process;
 
   process(
     addr,
     bus_read,
-    result_lo,
-    result_hi,
-    result_ex,
-    status_valid,
-    status_busy,
-    status_frame_valid,
-    status_frame_busy,
+    result_lo_reg,
+    result_hi_reg,
+    result_ex_reg,
+    status_valid_reg,
+    status_busy_reg,
+    status_frame_valid_reg,
+    status_frame_busy_reg,
     fpcr_reg,
     fpsr_reg,
     src_kind_reg,
@@ -500,7 +535,7 @@ begin
     mc68020_src_reg,
     mc68020_dst_reg,
     packed_dynamic_k_reg,
-    frame_mem,
+    frame_mem_reg,
     micro_total_reg
   )
     variable cfg0 : std_logic_vector(31 downto 0);
@@ -518,14 +553,14 @@ begin
     d_out_comb <= (others => '0');
     if bus_read = '1' then
       case addr is
-        when ADDR_RES_L => d_out_comb <= result_lo;
-        when ADDR_RES_H => d_out_comb <= result_hi;
-        when ADDR_RES_E => d_out_comb(15 downto 0) <= result_ex;
+        when ADDR_RES_L => d_out_comb <= result_lo_reg;
+        when ADDR_RES_H => d_out_comb <= result_hi_reg;
+        when ADDR_RES_E => d_out_comb(FP80_RESULT_EX_WIDTH-1 downto 0) <= result_ex_reg;
         when ADDR_STATUS =>
-          d_out_comb(0) <= status_valid;
-          d_out_comb(1) <= status_busy;
-          d_out_comb(2) <= status_frame_valid;
-          d_out_comb(3) <= status_frame_busy;
+          d_out_comb(0) <= status_valid_reg;
+          d_out_comb(1) <= status_busy_reg;
+          d_out_comb(2) <= status_frame_valid_reg;
+          d_out_comb(3) <= status_frame_busy_reg;
         when ADDR_FPCR =>
           d_out_comb <= fpcr_reg;
         when ADDR_FPSR =>
@@ -537,13 +572,13 @@ begin
         when ADDR_CYCLE_TOTAL =>
           d_out_comb <= micro_total_reg;
         when ADDR_FRAME_W0 =>
-          d_out_comb <= frame_mem(0);
+          d_out_comb <= frame_mem_reg(0);
         when ADDR_FRAME_W1 =>
-          d_out_comb <= frame_mem(1);
+          d_out_comb <= frame_mem_reg(1);
         when ADDR_FRAME_W2 =>
-          d_out_comb <= frame_mem(2);
+          d_out_comb <= frame_mem_reg(2);
         when ADDR_FRAME_W3 =>
-          d_out_comb <= frame_mem(3);
+          d_out_comb <= frame_mem_reg(3);
         when others => d_out_comb <= (others => '0');
       end case;
     end if;
@@ -639,6 +674,6 @@ begin
   d_out <= d_out_reg when sync_read = '1' else d_out_comb;
   dsack0_n <= dsack0_i;
   dsack1_n <= dsack1_i;
-  sense_drive <= '0' when status_busy = '1' else '1';
+  sense_drive <= '0' when status_busy_reg = '1' else '1';
   sense_n  <= sense_drive;
 end architecture rtl;

@@ -11,14 +11,14 @@ Legend:
 
 A) Design Quality Improvements (from review)
 --------------------------------------------
-[ ] A1. Replace magic numbers in mc68881_top with package constants for field widths.
+[x] A1. Replace magic numbers in mc68881_top with package constants for field widths.
     - Define widths in mc68881_pkg.vhd and use for result_lo/result_hi/result_ex.
 
-[ ] A2. Decompose the top-level state machine into focused processes.
+[x] A2. Decompose the top-level state machine into focused processes.
     - Split bus handling, ALU control, and status management.
     - Keep cycle-count timing behavior intact.
 
-[ ] A3. Normalize signal naming conventions.
+[x] A3. Normalize signal naming conventions.
     - Choose a consistent convention for registered signals (e.g., _r or _reg).
     - Apply across top-level and ALU interface signals.
 

@@ -21,7 +21,7 @@ Legend:
 
 A) External Interface (Signals + Bus Timing)
 -------------------------------------------
-[~] A1. Implement MC68881 external signal set:
+[x] A1. Implement MC68881 external signal set:
     - A0-A4, D0-D31, SIZE, AS, CS, R/W, DS, DSACK0/DSACK1, RESET, CLK, SENSE.
     - Direction/active state per Table 11.
 

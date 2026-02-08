@@ -5,12 +5,12 @@ on:
 
 jobs:
   ghdl:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
       - uses: ghdl/setup-ghdl@v1
         with:
-          version: 4.1.0
+          version: 5.1.1
           backend: mcode
       - name: Analyze
         run: |

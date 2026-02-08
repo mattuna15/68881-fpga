@@ -75,8 +75,8 @@ E) Verification / Testbench Coverage
 ------------------------------------
 [x] E1. Unit tests for add/sub/mul/div datapath (behavioral reference vs DUT).
 [x] E2. Bus interface tests: DSACK sequencing, wait-states, START logic.
-[ ] E3. Cycle-count checks for FADD/FSUB/FMUL/FDIV + EA additions.
-[ ] E4. AC timing conformance assertions where simulatable.
+[x] E3. Cycle-count checks for FADD/FSUB/FMUL/FDIV + EA additions.
+[x] E4. AC timing conformance assertions where simulatable.
 
 Notes:
 - This plan intentionally prioritizes cycle-accurate external behavior with DSP-optimized

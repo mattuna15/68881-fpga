@@ -176,6 +176,53 @@ architecture sim of tb_mc68881_top is
     end loop;
   end procedure;
 
+  procedure wait_for_sense(
+    signal sense_n_s : in std_logic;
+    constant expected : std_logic;
+    constant test_name : string
+  ) is
+    variable seen : boolean := false;
+  begin
+    for idx in 0 to 200 loop
+      wait for CLK_PERIOD;
+      if sense_n_s = expected then
+        seen := true;
+        exit;
+      end if;
+    end loop;
+    assert seen
+      report "SENSE did not reach expected state for " & test_name &
+             " expected=" & std_logic'image(expected) &
+             " got=" & std_logic'image(sense_n_s)
+      severity failure;
+    report "SENSE state: " & test_name &
+           " value=" & std_logic'image(sense_n_s)
+      severity note;
+  end procedure;
+
+  procedure assert_idle_outputs(
+    signal dsack0_n_s : in std_logic;
+    signal dsack1_n_s : in std_logic;
+    signal sense_n_s  : in std_logic;
+    constant test_name : string
+  ) is
+  begin
+    assert dsack0_n_s = '1' and dsack1_n_s = '1'
+      report "DSACK lines should be deasserted during idle for " & test_name &
+             " dsack1_n=" & std_logic'image(dsack1_n_s) &
+             " dsack0_n=" & std_logic'image(dsack0_n_s)
+      severity failure;
+    assert sense_n_s = '1'
+      report "SENSE should be deasserted during idle for " & test_name &
+             " sense_n=" & std_logic'image(sense_n_s)
+      severity failure;
+    report "Idle output check: " & test_name &
+           " dsack1_n=" & std_logic'image(dsack1_n_s) &
+           " dsack0_n=" & std_logic'image(dsack0_n_s) &
+           " sense_n=" & std_logic'image(sense_n_s)
+      severity note;
+  end procedure;
+
 begin
   clk <= not clk after CLK_PERIOD/2;
   cycle_counter : process(clk)
@@ -212,6 +259,7 @@ begin
     wait for 2 * CLK_PERIOD;
     reset_n <= '1';
     wait for 2 * CLK_PERIOD;
+    assert_idle_outputs(dsack0_n, dsack1_n, sense_n, "post-reset idle");
 
     -- Write operands and op select (ADD)
     size_n <= "11";
@@ -232,7 +280,9 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000001");
+    wait_for_sense(sense_n, '0', "busy assert after ADD start");
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    wait_for_sense(sense_n, '1', "idle deassert after ADD completion");
 
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
@@ -577,6 +627,7 @@ begin
     as_n <= '1';
     ds_n <= '1';
     wait for CLK_PERIOD;
+    assert_idle_outputs(dsack0_n, dsack1_n, sense_n, "post-DSACK tests idle");
 
     report "TB SUCCESS: all checks passed"
       severity note;

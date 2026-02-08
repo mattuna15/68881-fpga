@@ -366,6 +366,7 @@ begin
             fpcr_reg <= frame_mem(0);
             fpsr_reg <= frame_mem(1);
             frame_restore_pending <= '0';
+            frame_valid <= '0';
           else
             frame_valid <= '1';
           end if;

@@ -39,6 +39,7 @@ architecture rtl of mc68881_top is
   signal status_busy  : std_logic := '0';
   signal status_frame_valid : std_logic := '0';
   signal status_frame_busy  : std_logic := '0';
+  signal sense_drive : std_logic := '1';
   signal fpcr_reg  : std_logic_vector(31 downto 0) := (others => '0');
   signal fpsr_reg  : std_logic_vector(31 downto 0) := (others => '0');
   signal round_mode : fp_round_mode_t := FP_RND_NEAREST;
@@ -638,5 +639,6 @@ begin
   d_out <= d_out_reg when sync_read = '1' else d_out_comb;
   dsack0_n <= dsack0_i;
   dsack1_n <= dsack1_i;
-  sense_n  <= 'Z';
+  sense_drive <= '0' when status_busy = '1' else '1';
+  sense_n  <= sense_drive;
 end architecture rtl;

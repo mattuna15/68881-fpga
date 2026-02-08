@@ -39,7 +39,7 @@ A) External Interface (Signals + Bus Timing)
 
 B) Instruction Cycle Accounting
 -------------------------------
-[~] B1. Base arithmetic cycles (Table 4):
+[x] B1. Base arithmetic cycles (Table 4):
     - FADD/FSUB: 51 (FPM reg), 72-80 (mem single/integer), 76-78 (mem ext/dbl), 888 (packed)
     - FMUL: 71 (FPM reg), 92-100 (mem single/int), 96-98 (mem ext/dbl), 908 (packed)
     - FDIV: 103 (FPM reg), 124-132 (mem single/int), 128-130 (mem ext/dbl), 940 (packed)
@@ -47,7 +47,7 @@ B) Instruction Cycle Accounting
 [x] B2. Add EA cycles per Table 3:
     - Example: (An) +0..2, (An)+ +3..6, (d16,An) +0..3, (xxx).L +1..5, etc.
 
-[ ] B3. Apply Table 4 notes:
+[x] B3. Apply Table 4 notes:
     - Add EA time.
     - Adjust for MC68020 data register source/dest.
     - Packed decimal K-factor +14 when dynamic.

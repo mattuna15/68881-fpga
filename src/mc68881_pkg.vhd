@@ -64,9 +64,28 @@ package mc68881_pkg is
     EA_MODE_D32_B_INDIRECT_I_D32
   );
 
+  type fpu_src_kind_t is (
+    FPU_SRC_FPM,
+    FPU_SRC_MEM_INTEGER,
+    FPU_SRC_MEM_SINGLE,
+    FPU_SRC_MEM_DOUBLE,
+    FPU_SRC_MEM_EXTENDED,
+    FPU_SRC_MEM_PACKED
+  );
+
   function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t;
   function decode_round_prec(bits : std_logic_vector(1 downto 0)) return fp_round_prec_t;
   function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural;
+  function base_arith_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural;
+  function total_arith_cycles(
+    op_sel : fpu_op_t;
+    src_kind : fpu_src_kind_t;
+    ea_mode : ea_mode_t;
+    cycle_case : ea_cycle_case_t;
+    mc68020_src : boolean;
+    mc68020_dst : boolean;
+    packed_dynamic_k : boolean
+  ) return natural;
 
   function to_fp80(value : unsigned) return fp80_t;
   function fp80_from_int(value : integer) return fp80_t;
@@ -157,6 +176,92 @@ package body mc68881_pkg is
       when EA_MODE_D32_B_INDIRECT_I_D16 => return pick(16, 19, 21);
       when EA_MODE_D32_B_INDIRECT_I_D32 => return pick(18, 21, 24);
     end case;
+  end function;
+
+  function base_arith_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural is
+    variable fpm_cycles : natural := 0;
+    variable mem_int_cycles : natural := 0;
+    variable mem_single_cycles : natural := 0;
+    variable mem_double_cycles : natural := 0;
+    variable mem_ext_cycles : natural := 0;
+    variable mem_packed_cycles : natural := 0;
+  begin
+    case op_sel is
+      when FPU_OP_ADD =>
+        fpm_cycles := 51;
+        mem_int_cycles := 80;
+        mem_single_cycles := 72;
+        mem_double_cycles := 78;
+        mem_ext_cycles := 76;
+        mem_packed_cycles := 888;
+      when FPU_OP_SUB =>
+        fpm_cycles := 51;
+        mem_int_cycles := 80;
+        mem_single_cycles := 72;
+        mem_double_cycles := 78;
+        mem_ext_cycles := 76;
+        mem_packed_cycles := 888;
+      when FPU_OP_MUL =>
+        fpm_cycles := 71;
+        mem_int_cycles := 100;
+        mem_single_cycles := 92;
+        mem_double_cycles := 98;
+        mem_ext_cycles := 96;
+        mem_packed_cycles := 908;
+      when FPU_OP_DIV =>
+        fpm_cycles := 103;
+        mem_int_cycles := 132;
+        mem_single_cycles := 124;
+        mem_double_cycles := 130;
+        mem_ext_cycles := 128;
+        mem_packed_cycles := 940;
+      when others =>
+        return 0;
+    end case;
+
+    case src_kind is
+      when FPU_SRC_FPM => return fpm_cycles;
+      when FPU_SRC_MEM_INTEGER => return mem_int_cycles;
+      when FPU_SRC_MEM_SINGLE => return mem_single_cycles;
+      when FPU_SRC_MEM_DOUBLE => return mem_double_cycles;
+      when FPU_SRC_MEM_EXTENDED => return mem_ext_cycles;
+      when FPU_SRC_MEM_PACKED => return mem_packed_cycles;
+    end case;
+  end function;
+
+  function total_arith_cycles(
+    op_sel : fpu_op_t;
+    src_kind : fpu_src_kind_t;
+    ea_mode : ea_mode_t;
+    cycle_case : ea_cycle_case_t;
+    mc68020_src : boolean;
+    mc68020_dst : boolean;
+    packed_dynamic_k : boolean
+  ) return natural is
+    variable total_cycles : integer := 0;
+    variable ea_add : natural := 0;
+    variable k_add : natural := 0;
+  begin
+    ea_add := ea_cycles(ea_mode, cycle_case);
+    total_cycles := integer(base_arith_cycles(op_sel, src_kind)) + integer(ea_add);
+
+    if mc68020_src then
+      total_cycles := total_cycles - 5;
+    end if;
+
+    if mc68020_dst then
+      total_cycles := total_cycles - 2;
+    end if;
+
+    if packed_dynamic_k and src_kind = FPU_SRC_MEM_PACKED then
+      k_add := 14;
+      total_cycles := total_cycles + integer(k_add);
+    end if;
+
+    if total_cycles < 0 then
+      total_cycles := 0;
+    end if;
+    return natural(total_cycles);
   end function;
 
   function prec_bits(prec : fp_round_prec_t) return natural is

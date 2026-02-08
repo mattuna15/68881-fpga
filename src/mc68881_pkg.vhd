@@ -19,6 +19,11 @@ package mc68881_pkg is
     FPU_OP_DIV
   );
 
+  type fpu_op_class_t is (
+    OP_CLASS_NONE,
+    OP_CLASS_ARITH
+  );
+
   type fp_round_mode_t is (
     FP_RND_NEAREST,
     FP_RND_ZERO,
@@ -75,9 +80,20 @@ package mc68881_pkg is
 
   function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t;
   function decode_round_prec(bits : std_logic_vector(1 downto 0)) return fp_round_prec_t;
+  function decode_op_sel(bits : std_logic_vector(2 downto 0)) return fpu_op_t;
+  function op_class(op_sel : fpu_op_t) return fpu_op_class_t;
   function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural;
   function base_arith_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural;
   function total_arith_cycles(
+    op_sel : fpu_op_t;
+    src_kind : fpu_src_kind_t;
+    ea_mode : ea_mode_t;
+    cycle_case : ea_cycle_case_t;
+    mc68020_src : boolean;
+    mc68020_dst : boolean;
+    packed_dynamic_k : boolean
+  ) return natural;
+  function op_cycle_count(
     op_sel : fpu_op_t;
     src_kind : fpu_src_kind_t;
     ea_mode : ea_mode_t;
@@ -115,6 +131,15 @@ package body mc68881_pkg is
   constant FP_MANT_EXT_WIDTH : natural := FP_MANT_WIDTH + FP_GRS_BITS;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
   constant FP_EXP_MAX : integer := (2**FP_EXP_WIDTH) - 1;
+  type op_decode_table_t is array (0 to 7) of fpu_op_t;
+  constant OP_DECODE_TABLE : op_decode_table_t := (
+    0 => FPU_OP_NOP,
+    1 => FPU_OP_ADD,
+    2 => FPU_OP_SUB,
+    3 => FPU_OP_MUL,
+    4 => FPU_OP_DIV,
+    others => FPU_OP_NOP
+  );
 
   type fp_unpacked_t is record
     sign : std_logic;
@@ -139,6 +164,26 @@ package body mc68881_pkg is
       when "01" => return FP_PREC_SINGLE;
       when "10" => return FP_PREC_DOUBLE;
       when others => return FP_PREC_RESERVED;
+    end case;
+  end function;
+
+  function decode_op_sel(bits : std_logic_vector(2 downto 0)) return fpu_op_t is
+    variable idx : natural := 0;
+  begin
+    idx := to_integer(unsigned(bits));
+    if idx <= OP_DECODE_TABLE'high then
+      return OP_DECODE_TABLE(idx);
+    end if;
+    return FPU_OP_NOP;
+  end function;
+
+  function op_class(op_sel : fpu_op_t) return fpu_op_class_t is
+  begin
+    case op_sel is
+      when FPU_OP_ADD | FPU_OP_SUB | FPU_OP_MUL | FPU_OP_DIV =>
+        return OP_CLASS_ARITH;
+      when others =>
+        return OP_CLASS_NONE;
     end case;
   end function;
 
@@ -262,6 +307,32 @@ package body mc68881_pkg is
       total_cycles := 0;
     end if;
     return natural(total_cycles);
+  end function;
+
+  function op_cycle_count(
+    op_sel : fpu_op_t;
+    src_kind : fpu_src_kind_t;
+    ea_mode : ea_mode_t;
+    cycle_case : ea_cycle_case_t;
+    mc68020_src : boolean;
+    mc68020_dst : boolean;
+    packed_dynamic_k : boolean
+  ) return natural is
+  begin
+    case op_class(op_sel) is
+      when OP_CLASS_ARITH =>
+        return total_arith_cycles(
+          op_sel,
+          src_kind,
+          ea_mode,
+          cycle_case,
+          mc68020_src,
+          mc68020_dst,
+          packed_dynamic_k
+        );
+      when others =>
+        return 0;
+    end case;
   end function;
 
   function prec_bits(prec : fp_round_prec_t) return natural is

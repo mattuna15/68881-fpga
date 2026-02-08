@@ -62,14 +62,14 @@ C) Core Microarchitecture
 
 D) Arithmetic Datapath (Start: ADD/SUB/MUL/DIV)
 -----------------------------------------------
-[~] D1. 80-bit internal operand format + pack/unpack scaffolding.
-[~] D2. ADD/SUB pipeline (alignment, add/sub, normalize, round) using DSP slices.
+[x] D1. 80-bit internal operand format + pack/unpack scaffolding.
+[x] D2. ADD/SUB pipeline (alignment, add/sub, normalize, round) using DSP slices.
     - FPCR rounding/precision modes wired through datapath.
-[~] D3. MUL pipeline using DSP cascade partial products.
+[x] D3. MUL pipeline using DSP cascade partial products.
     - FPCR rounding/precision modes wired through datapath.
-[~] D4. DIV pipeline (restoring/SRT) with cycle-count gating.
+[x] D4. DIV pipeline (restoring/SRT) with cycle-count gating.
     - Remainder-aware sticky + FPCR rounding/precision modes wired through datapath.
-[ ] D5. IEEE exception flags and FPSR update.
+[x] D5. IEEE exception flags and FPSR update.
 
 E) Verification / Testbench Coverage
 ------------------------------------

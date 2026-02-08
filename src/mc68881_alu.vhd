@@ -83,5 +83,7 @@ begin
 
   result <= pipe_data(0);
   valid  <= pipe_valid(0);
-  busy   <= '1' when pipe_valid /= (pipe_valid'range => '0') else '0';
+  busy   <= '1'
+    when pipe_valid(1 to MAX_LATENCY) /= (pipe_valid(1 to MAX_LATENCY)'range => '0')
+    else '0';
 end architecture rtl;

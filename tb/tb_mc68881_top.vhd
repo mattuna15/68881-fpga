@@ -32,12 +32,14 @@ architecture sim of tb_mc68881_top is
   constant CLK_PERIOD : time := 10 ns;
   constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
   constant ADDR_FPCR   : unsigned(4 downto 0) := to_unsigned(11, 5);
+  constant ADDR_FPSR   : unsigned(4 downto 0) := to_unsigned(14, 5);
 
   constant FPCR_RND_NEAREST : std_logic_vector(31 downto 0) := x"00000000";
   constant FPCR_RND_ZERO    : std_logic_vector(31 downto 0) := x"00000010";
   constant FPCR_RND_PLUS    : std_logic_vector(31 downto 0) := x"00000030";
   constant FPCR_PREC_SINGLE : std_logic_vector(31 downto 0) := x"00000040";
   constant FPCR_PREC_DOUBLE : std_logic_vector(31 downto 0) := x"00000080";
+  constant FPSR_EXC_DIVZERO : natural := 3;
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -462,6 +464,27 @@ begin
     report "DIV 1/10 double result:  " & to_hstring(rd_full)
       severity note;
     check_fp80(rd_full, exp_r, "DIV 1/10 double result");
+
+    -- FPSR exception flags: DIV by zero
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := fp80_from_int(1);
+    op_b := fp80_from_int(0);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000004");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after DIV by zero: " & to_hstring(rd_lo)
+      severity note;
+    assert rd_lo(FPSR_EXC_DIVZERO) = '1'
+      report "FPSR DIV-by-zero flag not set"
+      severity failure;
 
     -- DSACK behavior coverage
     size_n <= "11";

@@ -69,7 +69,7 @@ D) Arithmetic Datapath (Start: ADD/SUB/MUL/DIV)
     - FPCR rounding/precision modes wired through datapath.
 [x] D4. DIV pipeline (restoring/SRT) with cycle-count gating.
     - Remainder-aware sticky + FPCR rounding/precision modes wired through datapath.
-[ ] D5. IEEE exception flags and FPSR update.
+[x] D5. IEEE exception flags and FPSR update.
 
 E) Verification / Testbench Coverage
 ------------------------------------

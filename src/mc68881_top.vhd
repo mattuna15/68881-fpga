@@ -99,6 +99,7 @@ architecture rtl of mc68881_top is
   signal micro_remaining : natural := 0;
   signal micro_total_reg : std_logic_vector(31 downto 0) := (others => '0');
   signal result_ready    : std_logic := '0';
+  signal last_op_sel     : fpu_op_t := FPU_OP_NOP;
 
   type frame_mem_t is array (0 to 3) of std_logic_vector(31 downto 0);
   signal frame_mem : frame_mem_t := (others => (others => '0'));
@@ -110,6 +111,13 @@ architecture rtl of mc68881_top is
   signal frame_start_restore : std_logic := '0';
 
   constant FRAME_LATENCY : natural := 6;
+  constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
+
+  constant FPSR_EXC_INEXACT  : natural := 0;
+  constant FPSR_EXC_UNDERFLOW: natural := 1;
+  constant FPSR_EXC_OVERFLOW : natural := 2;
+  constant FPSR_EXC_DIVZERO  : natural := 3;
+  constant FPSR_EXC_INVALID  : natural := 4;
 
   type access_class_t is (
     ACCESS_NONE,
@@ -173,6 +181,33 @@ architecture rtl of mc68881_top is
     end case;
   end function;
 
+  function fp80_is_zero(value : fp80_t) return boolean is
+    variable exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
+    variable mant : unsigned(FP_MANT_WIDTH-1 downto 0);
+  begin
+    exp := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+    mant := unsigned(value(FP_MANT_WIDTH-1 downto 0));
+    return exp = 0 and mant = 0;
+  end function;
+
+  function fp80_is_inf(value : fp80_t) return boolean is
+    variable exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
+    variable mant : unsigned(FP_MANT_WIDTH-1 downto 0);
+  begin
+    exp := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+    mant := unsigned(value(FP_MANT_WIDTH-1 downto 0));
+    return exp = FP_EXP_ALL_ONES and mant = 0;
+  end function;
+
+  function fp80_is_nan(value : fp80_t) return boolean is
+    variable exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
+    variable mant : unsigned(FP_MANT_WIDTH-1 downto 0);
+  begin
+    exp := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+    mant := unsigned(value(FP_MANT_WIDTH-1 downto 0));
+    return exp = FP_EXP_ALL_ONES and mant /= 0;
+  end function;
+
 begin
   addr      <= unsigned(a_in);
   bus_write <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '0') else '0';
@@ -229,6 +264,16 @@ begin
     variable op_sel_next : fpu_op_t := FPU_OP_NOP;
     variable total_cycles : natural := 0;
     variable status_frame_word : std_logic_vector(31 downto 0);
+    variable exc_flags : std_logic_vector(4 downto 0);
+    variable a_zero : boolean;
+    variable b_zero : boolean;
+    variable a_inf  : boolean;
+    variable b_inf  : boolean;
+    variable a_nan  : boolean;
+    variable b_nan  : boolean;
+    variable res_zero : boolean;
+    variable res_inf  : boolean;
+    variable res_nan  : boolean;
   begin
     if reset_n = '0' then
       op_sel      <= FPU_OP_NOP;
@@ -253,6 +298,7 @@ begin
       micro_remaining <= 0;
       micro_total_reg <= (others => '0');
       result_ready <= '0';
+      last_op_sel <= FPU_OP_NOP;
       frame_mem <= (others => (others => '0'));
       frame_busy <= '0';
       frame_remaining <= 0;
@@ -281,6 +327,7 @@ begin
                 op_start <= '1';
                 status_valid <= '0';
                 result_ready <= '0';
+                last_op_sel <= op_sel_next;
                 micro_active <= '1';
                 total_cycles := total_arith_cycles(
                   op_sel_next,
@@ -346,6 +393,45 @@ begin
         result_hi <= result(63 downto 32);
         result_ex <= result(79 downto 64);
         result_ready <= '1';
+        exc_flags := (others => '0');
+        a_zero := fp80_is_zero(operand(0));
+        b_zero := fp80_is_zero(operand(1));
+        a_inf := fp80_is_inf(operand(0));
+        b_inf := fp80_is_inf(operand(1));
+        a_nan := fp80_is_nan(operand(0));
+        b_nan := fp80_is_nan(operand(1));
+        res_zero := fp80_is_zero(result);
+        res_inf := fp80_is_inf(result);
+        res_nan := fp80_is_nan(result);
+
+        if a_nan or b_nan or res_nan then
+          exc_flags(FPSR_EXC_INVALID) := '1';
+        end if;
+
+        if last_op_sel = FPU_OP_DIV then
+          if b_zero and not a_zero then
+            exc_flags(FPSR_EXC_DIVZERO) := '1';
+          end if;
+          if (a_zero and b_zero) or (a_inf and b_inf) then
+            exc_flags(FPSR_EXC_INVALID) := '1';
+          end if;
+        end if;
+
+        if res_inf and not a_inf and not b_inf and not res_nan and
+           exc_flags(FPSR_EXC_DIVZERO) = '0' then
+          exc_flags(FPSR_EXC_OVERFLOW) := '1';
+        end if;
+
+        if res_zero and not a_zero and not b_zero and not res_nan and not res_inf then
+          exc_flags(FPSR_EXC_UNDERFLOW) := '1';
+        end if;
+
+        if exc_flags(FPSR_EXC_OVERFLOW) = '1' or exc_flags(FPSR_EXC_UNDERFLOW) = '1' then
+          exc_flags(FPSR_EXC_INEXACT) := '1';
+        end if;
+
+        fpsr_reg(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) <=
+          fpsr_reg(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) or exc_flags;
       end if;
 
       if micro_active = '1' then

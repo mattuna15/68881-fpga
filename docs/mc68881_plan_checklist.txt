@@ -54,11 +54,11 @@ B) Instruction Cycle Accounting
 
 C) Core Microarchitecture
 -------------------------
-[~] C1. Top-level entity (mc68881_top) with bus and internal core.
-[~] C2. Bus interface: decode access class (CIR/operand/FPCR/FPSR/etc), manage DSACK.
+[x] C1. Top-level entity (mc68881_top) with bus and internal core.
+[x] C2. Bus interface: decode access class (CIR/operand/FPCR/FPSR/etc), manage DSACK.
     - FPCR register implemented with rounding mode/precision decode.
-[ ] C3. Microsequencer: enforce total cycle count = base op + EA (+ adjustments).
-[ ] C4. State frames: FSAVE/FRESTORE behavior and timing.
+[x] C3. Microsequencer: enforce total cycle count = base op + EA (+ adjustments).
+[x] C4. State frames: FSAVE/FRESTORE behavior and timing.
 
 D) Arithmetic Datapath (Start: ADD/SUB/MUL/DIV)
 -----------------------------------------------

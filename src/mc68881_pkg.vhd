@@ -170,6 +170,9 @@ package body mc68881_pkg is
   function decode_op_sel(bits : std_logic_vector(2 downto 0)) return fpu_op_t is
     variable idx : natural := 0;
   begin
+    if is_x(bits) then
+      return FPU_OP_NOP;
+    end if;
     idx := to_integer(unsigned(bits));
     if idx <= OP_DECODE_TABLE'high then
       return OP_DECODE_TABLE(idx);

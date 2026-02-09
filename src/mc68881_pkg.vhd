@@ -108,12 +108,29 @@ package mc68881_pkg is
     FPU_SRC_MEM_PACKED
   );
 
+  type op_cycle_model_t is (
+    OP_CYCLE_NONE,
+    OP_CYCLE_ARITH,
+    OP_CYCLE_MOVE,
+    OP_CYCLE_ZERO
+  );
+
+  type op_exception_policy_t is record
+    divzero_on_zero_divisor_nonzero_dividend : boolean;
+    invalid_zero_over_zero : boolean;
+    invalid_inf_over_inf : boolean;
+    invalid_divisor_zero : boolean;
+  end record;
+
   function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t;
   function decode_round_prec(bits : std_logic_vector(1 downto 0)) return fp_round_prec_t;
   function decode_op_key(opsel_word : std_logic_vector(31 downto 0)) return op_key_t;
   function decode_op_sel_word(opsel_word : std_logic_vector(31 downto 0)) return fpu_op_t;
   function decode_op_sel(bits : std_logic_vector) return fpu_op_t;
   function op_class(op_sel : fpu_op_t) return fpu_op_class_t;
+  function op_alu_latency(op_sel : fpu_op_t) return natural;
+  function op_cycle_model(op_sel : fpu_op_t) return op_cycle_model_t;
+  function op_exception_policy(op_sel : fpu_op_t) return op_exception_policy_t;
   function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural;
   function base_arith_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural;
   function base_move_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural;
@@ -179,58 +196,217 @@ package body mc68881_pkg is
   constant FP_MANT_EXT_WIDTH : natural := FP_MANT_WIDTH + FP_GRS_BITS;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
   constant FP_EXP_MAX : integer := (2**FP_EXP_WIDTH) - 1;
-  type legacy_op_decode_table_t is array (0 to 15) of fpu_op_t;
-  constant LEGACY_OP_DECODE_TABLE : legacy_op_decode_table_t := (
-    0 => FPU_OP_NOP,
-    1 => FPU_OP_ADD,
-    2 => FPU_OP_SUB,
-    3 => FPU_OP_MUL,
-    4 => FPU_OP_DIV,
-    5 => FPU_OP_MOVE,
-    6 => FPU_OP_MOVEM,
-    7 => FPU_OP_CMP,
-    8 => FPU_OP_MOD,
-    9 => FPU_OP_REM,
-    10 => FPU_OP_SCALE,
-    11 => FPU_OP_SGLDIV,
-    12 => FPU_OP_SGLMUL,
-    others => FPU_OP_NOP
+  type src_cycle_lut_t is array (fpu_src_kind_t) of natural;
+  type op_descriptor_t is record
+    legacy_decode_id_valid : boolean;
+    legacy_decode_id : natural range 0 to 15;
+    core_v1_decode_id_valid : boolean;
+    core_v1_decode_id : op_code_id_t;
+    op_class : fpu_op_class_t;
+    alu_latency : natural;
+    cycle_model : op_cycle_model_t;
+    exception_policy : op_exception_policy_t;
+    arith_cycles : src_cycle_lut_t;
+    move_cycles : src_cycle_lut_t;
+  end record;
+  type op_descriptor_table_t is array (fpu_op_t) of op_descriptor_t;
+
+  constant SRC_CYCLES_ZERO : src_cycle_lut_t := (
+    FPU_SRC_FPM => 0,
+    FPU_SRC_MEM_INTEGER => 0,
+    FPU_SRC_MEM_SINGLE => 0,
+    FPU_SRC_MEM_DOUBLE => 0,
+    FPU_SRC_MEM_EXTENDED => 0,
+    FPU_SRC_MEM_PACKED => 0
   );
 
-  type op_decode_entry_t is record
-    namespace : op_namespace_t;
-    opcode_id : op_code_id_t;
-    op_sel    : fpu_op_t;
-  end record;
-  type op_decode_entry_table_t is array (natural range <>) of op_decode_entry_t;
-  constant OP_NAMESPACE_DECODE_TABLE : op_decode_entry_table_t := (
-    (namespace => OP_NS_LEGACY, opcode_id => x"01", op_sel => FPU_OP_ADD),
-    (namespace => OP_NS_LEGACY, opcode_id => x"02", op_sel => FPU_OP_SUB),
-    (namespace => OP_NS_LEGACY, opcode_id => x"03", op_sel => FPU_OP_MUL),
-    (namespace => OP_NS_LEGACY, opcode_id => x"04", op_sel => FPU_OP_DIV),
-    (namespace => OP_NS_LEGACY, opcode_id => x"05", op_sel => FPU_OP_MOVE),
-    (namespace => OP_NS_LEGACY, opcode_id => x"06", op_sel => FPU_OP_MOVEM),
-    (namespace => OP_NS_LEGACY, opcode_id => x"07", op_sel => FPU_OP_CMP),
-    (namespace => OP_NS_LEGACY, opcode_id => x"08", op_sel => FPU_OP_MOD),
-    (namespace => OP_NS_LEGACY, opcode_id => x"09", op_sel => FPU_OP_REM),
-    (namespace => OP_NS_LEGACY, opcode_id => x"0A", op_sel => FPU_OP_SCALE),
-    (namespace => OP_NS_LEGACY, opcode_id => x"0B", op_sel => FPU_OP_SGLDIV),
-    (namespace => OP_NS_LEGACY, opcode_id => x"0C", op_sel => FPU_OP_SGLMUL),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"01", op_sel => FPU_OP_ADD),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"02", op_sel => FPU_OP_SUB),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"03", op_sel => FPU_OP_MUL),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"04", op_sel => FPU_OP_DIV),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"05", op_sel => FPU_OP_MOVE),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"06", op_sel => FPU_OP_MOVEM),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"07", op_sel => FPU_OP_CMP),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"08", op_sel => FPU_OP_MOD),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"09", op_sel => FPU_OP_REM),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"0A", op_sel => FPU_OP_SCALE),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"0B", op_sel => FPU_OP_SGLDIV),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"0C", op_sel => FPU_OP_SGLMUL),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"20", op_sel => FPU_OP_FNOP),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"30", op_sel => FPU_OP_FSAVE),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"31", op_sel => FPU_OP_FRESTORE)
+  constant EXC_POLICY_NONE : op_exception_policy_t := (
+    divzero_on_zero_divisor_nonzero_dividend => false,
+    invalid_zero_over_zero => false,
+    invalid_inf_over_inf => false,
+    invalid_divisor_zero => false
+  );
+
+  constant EXC_POLICY_DIV : op_exception_policy_t := (
+    divzero_on_zero_divisor_nonzero_dividend => true,
+    invalid_zero_over_zero => true,
+    invalid_inf_over_inf => true,
+    invalid_divisor_zero => false
+  );
+
+  constant EXC_POLICY_MOD_REM : op_exception_policy_t := (
+    divzero_on_zero_divisor_nonzero_dividend => false,
+    invalid_zero_over_zero => false,
+    invalid_inf_over_inf => false,
+    invalid_divisor_zero => true
+  );
+
+  constant OP_DESCRIPTORS : op_descriptor_table_t := (
+    FPU_OP_NOP => (
+      legacy_decode_id_valid => true,
+      legacy_decode_id => 0,
+      core_v1_decode_id_valid => false,
+      core_v1_decode_id => x"00",
+      op_class => OP_CLASS_NONE,
+      alu_latency => 0,
+      cycle_model => OP_CYCLE_NONE,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => SRC_CYCLES_ZERO,
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ADD => (
+      legacy_decode_id_valid => true, legacy_decode_id => 1,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"01",
+      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => (
+        FPU_SRC_FPM => 51, FPU_SRC_MEM_INTEGER => 80, FPU_SRC_MEM_SINGLE => 72,
+        FPU_SRC_MEM_DOUBLE => 78, FPU_SRC_MEM_EXTENDED => 76, FPU_SRC_MEM_PACKED => 888
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_SUB => (
+      legacy_decode_id_valid => true, legacy_decode_id => 2,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"02",
+      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => (
+        FPU_SRC_FPM => 51, FPU_SRC_MEM_INTEGER => 80, FPU_SRC_MEM_SINGLE => 72,
+        FPU_SRC_MEM_DOUBLE => 78, FPU_SRC_MEM_EXTENDED => 76, FPU_SRC_MEM_PACKED => 888
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_MUL => (
+      legacy_decode_id_valid => true, legacy_decode_id => 3,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"03",
+      op_class => OP_CLASS_ARITH, alu_latency => 4, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => (
+        FPU_SRC_FPM => 71, FPU_SRC_MEM_INTEGER => 100, FPU_SRC_MEM_SINGLE => 92,
+        FPU_SRC_MEM_DOUBLE => 98, FPU_SRC_MEM_EXTENDED => 96, FPU_SRC_MEM_PACKED => 908
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_DIV => (
+      legacy_decode_id_valid => true, legacy_decode_id => 4,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"04",
+      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_DIV,
+      arith_cycles => (
+        FPU_SRC_FPM => 103, FPU_SRC_MEM_INTEGER => 132, FPU_SRC_MEM_SINGLE => 124,
+        FPU_SRC_MEM_DOUBLE => 130, FPU_SRC_MEM_EXTENDED => 128, FPU_SRC_MEM_PACKED => 940
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_CMP => (
+      legacy_decode_id_valid => true, legacy_decode_id => 7,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"07",
+      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => (
+        FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
+        FPU_SRC_MEM_DOUBLE => 76, FPU_SRC_MEM_EXTENDED => 74, FPU_SRC_MEM_PACKED => 886
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_MOD => (
+      legacy_decode_id_valid => true, legacy_decode_id => 8,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"08",
+      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_MOD_REM,
+      arith_cycles => (
+        FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,
+        FPU_SRC_MEM_DOUBLE => 136, FPU_SRC_MEM_EXTENDED => 134, FPU_SRC_MEM_PACKED => 946
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_REM => (
+      legacy_decode_id_valid => true, legacy_decode_id => 9,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"09",
+      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_MOD_REM,
+      arith_cycles => (
+        FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,
+        FPU_SRC_MEM_DOUBLE => 136, FPU_SRC_MEM_EXTENDED => 134, FPU_SRC_MEM_PACKED => 946
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_SCALE => (
+      legacy_decode_id_valid => true, legacy_decode_id => 10,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0A",
+      op_class => OP_CLASS_ARITH, alu_latency => 2, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => (
+        FPU_SRC_FPM => 55, FPU_SRC_MEM_INTEGER => 84, FPU_SRC_MEM_SINGLE => 76,
+        FPU_SRC_MEM_DOUBLE => 82, FPU_SRC_MEM_EXTENDED => 80, FPU_SRC_MEM_PACKED => 892
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_SGLDIV => (
+      legacy_decode_id_valid => true, legacy_decode_id => 11,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0B",
+      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_DIV,
+      arith_cycles => (
+        FPU_SRC_FPM => 95, FPU_SRC_MEM_INTEGER => 124, FPU_SRC_MEM_SINGLE => 116,
+        FPU_SRC_MEM_DOUBLE => 122, FPU_SRC_MEM_EXTENDED => 120, FPU_SRC_MEM_PACKED => 932
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_SGLMUL => (
+      legacy_decode_id_valid => true, legacy_decode_id => 12,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0C",
+      op_class => OP_CLASS_ARITH, alu_latency => 4, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => (
+        FPU_SRC_FPM => 63, FPU_SRC_MEM_INTEGER => 92, FPU_SRC_MEM_SINGLE => 84,
+        FPU_SRC_MEM_DOUBLE => 90, FPU_SRC_MEM_EXTENDED => 88, FPU_SRC_MEM_PACKED => 900
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_MOVE => (
+      legacy_decode_id_valid => true, legacy_decode_id => 5,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"05",
+      op_class => OP_CLASS_MOVE, alu_latency => 0, cycle_model => OP_CYCLE_MOVE,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => SRC_CYCLES_ZERO,
+      move_cycles => (
+        FPU_SRC_FPM => 4, FPU_SRC_MEM_INTEGER => 10, FPU_SRC_MEM_SINGLE => 8,
+        FPU_SRC_MEM_DOUBLE => 10, FPU_SRC_MEM_EXTENDED => 12, FPU_SRC_MEM_PACKED => 10
+      )
+    ),
+    FPU_OP_MOVEM => (
+      legacy_decode_id_valid => true, legacy_decode_id => 6,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"06",
+      op_class => OP_CLASS_MOVE, alu_latency => 0, cycle_model => OP_CYCLE_MOVE,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => SRC_CYCLES_ZERO,
+      move_cycles => (
+        FPU_SRC_FPM => 16, FPU_SRC_MEM_INTEGER => 20, FPU_SRC_MEM_SINGLE => 20,
+        FPU_SRC_MEM_DOUBLE => 22, FPU_SRC_MEM_EXTENDED => 24, FPU_SRC_MEM_PACKED => 20
+      )
+    ),
+    FPU_OP_FNOP => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"20",
+      op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_FSAVE => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"30",
+      op_class => OP_CLASS_SYS_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_FRESTORE => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"31",
+      op_class => OP_CLASS_SYS_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
+    )
   );
 
   type fp_unpacked_t is record
@@ -276,19 +452,32 @@ package body mc68881_pkg is
 
   function decode_op_sel_word(opsel_word : std_logic_vector(31 downto 0)) return fpu_op_t is
     variable key : op_key_t;
+    variable idx : natural := 0;
   begin
     key := decode_op_key(opsel_word);
 
-    for idx in OP_NAMESPACE_DECODE_TABLE'range loop
-      if OP_NAMESPACE_DECODE_TABLE(idx).namespace = key.namespace and
-         OP_NAMESPACE_DECODE_TABLE(idx).opcode_id = key.opcode_id then
-        return OP_NAMESPACE_DECODE_TABLE(idx).op_sel;
+    for op_sel in fpu_op_t loop
+      if key.namespace = OP_NS_LEGACY and
+         OP_DESCRIPTORS(op_sel).legacy_decode_id_valid and
+         key.opcode_id = std_logic_vector(to_unsigned(OP_DESCRIPTORS(op_sel).legacy_decode_id, OPSEL_OPCODE_ID_WIDTH)) then
+        return op_sel;
+      end if;
+      if key.namespace = OP_NS_CORE_V1 and
+         OP_DESCRIPTORS(op_sel).core_v1_decode_id_valid and
+         OP_DESCRIPTORS(op_sel).core_v1_decode_id = key.opcode_id then
+        return op_sel;
       end if;
     end loop;
 
     -- Legacy compatibility: preserve historical low-nibble OPSEL values.
     if key.namespace = OP_NS_LEGACY and key.opcode_id(7 downto 4) = "0000" then
-      return decode_op_sel(key.opcode_id(3 downto 0));
+      idx := to_integer(unsigned(key.opcode_id(3 downto 0)));
+      for op_sel in fpu_op_t loop
+        if OP_DESCRIPTORS(op_sel).legacy_decode_id_valid and
+           OP_DESCRIPTORS(op_sel).legacy_decode_id = idx then
+          return op_sel;
+        end if;
+      end loop;
     end if;
 
     return FPU_OP_NOP;
@@ -303,41 +492,42 @@ package body mc68881_pkg is
 
     idx := to_integer(unsigned(bits));
 
-    if bits'length = 3 then
-      -- Legacy 3-bit decode kept for existing tests.
-      case idx is
-        when 1 => return FPU_OP_ADD;
-        when 2 => return FPU_OP_SUB;
-        when 3 => return FPU_OP_MUL;
-        when 4 => return FPU_OP_DIV;
-        when 5 => return FPU_OP_MOVE;
-        when 6 => return FPU_OP_MOVEM;
-        when others => return FPU_OP_NOP;
-      end case;
+    if bits'length = 3 and idx > 6 then
+      return FPU_OP_NOP;
     end if;
 
-    if idx <= LEGACY_OP_DECODE_TABLE'high then
-      return LEGACY_OP_DECODE_TABLE(idx);
+    for op_sel in fpu_op_t loop
+      if OP_DESCRIPTORS(op_sel).legacy_decode_id_valid and
+         OP_DESCRIPTORS(op_sel).legacy_decode_id = idx then
+        return op_sel;
+      end if;
+    end loop;
+    if bits'length = 3 then
+      -- Legacy 3-bit decode kept for existing tests.
+      return FPU_OP_NOP;
     end if;
+
     return FPU_OP_NOP;
   end function;
 
   function op_class(op_sel : fpu_op_t) return fpu_op_class_t is
   begin
-    case op_sel is
-      when FPU_OP_ADD | FPU_OP_SUB | FPU_OP_MUL | FPU_OP_DIV |
-           FPU_OP_CMP | FPU_OP_MOD | FPU_OP_REM | FPU_OP_SCALE |
-           FPU_OP_SGLDIV | FPU_OP_SGLMUL =>
-        return OP_CLASS_ARITH;
-      when FPU_OP_MOVE | FPU_OP_MOVEM =>
-        return OP_CLASS_MOVE;
-      when FPU_OP_FNOP =>
-        return OP_CLASS_PROG_CTRL;
-      when FPU_OP_FSAVE | FPU_OP_FRESTORE =>
-        return OP_CLASS_SYS_CTRL;
-      when others =>
-        return OP_CLASS_NONE;
-    end case;
+    return OP_DESCRIPTORS(op_sel).op_class;
+  end function;
+
+  function op_alu_latency(op_sel : fpu_op_t) return natural is
+  begin
+    return OP_DESCRIPTORS(op_sel).alu_latency;
+  end function;
+
+  function op_cycle_model(op_sel : fpu_op_t) return op_cycle_model_t is
+  begin
+    return OP_DESCRIPTORS(op_sel).cycle_model;
+  end function;
+
+  function op_exception_policy(op_sel : fpu_op_t) return op_exception_policy_t is
+  begin
+    return OP_DESCRIPTORS(op_sel).exception_policy;
   end function;
 
   function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural is
@@ -377,120 +567,13 @@ package body mc68881_pkg is
   end function;
 
   function base_arith_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural is
-    variable fpm_cycles : natural := 0;
-    variable mem_int_cycles : natural := 0;
-    variable mem_single_cycles : natural := 0;
-    variable mem_double_cycles : natural := 0;
-    variable mem_ext_cycles : natural := 0;
-    variable mem_packed_cycles : natural := 0;
   begin
-    case op_sel is
-      when FPU_OP_ADD =>
-        fpm_cycles := 51;
-        mem_int_cycles := 80;
-        mem_single_cycles := 72;
-        mem_double_cycles := 78;
-        mem_ext_cycles := 76;
-        mem_packed_cycles := 888;
-      when FPU_OP_SUB =>
-        fpm_cycles := 51;
-        mem_int_cycles := 80;
-        mem_single_cycles := 72;
-        mem_double_cycles := 78;
-        mem_ext_cycles := 76;
-        mem_packed_cycles := 888;
-      when FPU_OP_MUL =>
-        fpm_cycles := 71;
-        mem_int_cycles := 100;
-        mem_single_cycles := 92;
-        mem_double_cycles := 98;
-        mem_ext_cycles := 96;
-        mem_packed_cycles := 908;
-      when FPU_OP_DIV =>
-        fpm_cycles := 103;
-        mem_int_cycles := 132;
-        mem_single_cycles := 124;
-        mem_double_cycles := 130;
-        mem_ext_cycles := 128;
-        mem_packed_cycles := 940;
-      when FPU_OP_CMP =>
-        fpm_cycles := 49;
-        mem_int_cycles := 78;
-        mem_single_cycles := 70;
-        mem_double_cycles := 76;
-        mem_ext_cycles := 74;
-        mem_packed_cycles := 886;
-      when FPU_OP_MOD =>
-        fpm_cycles := 109;
-        mem_int_cycles := 138;
-        mem_single_cycles := 130;
-        mem_double_cycles := 136;
-        mem_ext_cycles := 134;
-        mem_packed_cycles := 946;
-      when FPU_OP_REM =>
-        fpm_cycles := 109;
-        mem_int_cycles := 138;
-        mem_single_cycles := 130;
-        mem_double_cycles := 136;
-        mem_ext_cycles := 134;
-        mem_packed_cycles := 946;
-      when FPU_OP_SCALE =>
-        fpm_cycles := 55;
-        mem_int_cycles := 84;
-        mem_single_cycles := 76;
-        mem_double_cycles := 82;
-        mem_ext_cycles := 80;
-        mem_packed_cycles := 892;
-      when FPU_OP_SGLDIV =>
-        fpm_cycles := 95;
-        mem_int_cycles := 124;
-        mem_single_cycles := 116;
-        mem_double_cycles := 122;
-        mem_ext_cycles := 120;
-        mem_packed_cycles := 932;
-      when FPU_OP_SGLMUL =>
-        fpm_cycles := 63;
-        mem_int_cycles := 92;
-        mem_single_cycles := 84;
-        mem_double_cycles := 90;
-        mem_ext_cycles := 88;
-        mem_packed_cycles := 900;
-      when others =>
-        return 0;
-    end case;
-
-    case src_kind is
-      when FPU_SRC_FPM => return fpm_cycles;
-      when FPU_SRC_MEM_INTEGER => return mem_int_cycles;
-      when FPU_SRC_MEM_SINGLE => return mem_single_cycles;
-      when FPU_SRC_MEM_DOUBLE => return mem_double_cycles;
-      when FPU_SRC_MEM_EXTENDED => return mem_ext_cycles;
-      when FPU_SRC_MEM_PACKED => return mem_packed_cycles;
-    end case;
+    return OP_DESCRIPTORS(op_sel).arith_cycles(src_kind);
   end function;
 
   function base_move_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural is
   begin
-    case op_sel is
-      when FPU_OP_MOVE =>
-        case src_kind is
-          when FPU_SRC_FPM => return 4;
-          when FPU_SRC_MEM_SINGLE => return 8;
-          when FPU_SRC_MEM_DOUBLE => return 10;
-          when FPU_SRC_MEM_EXTENDED => return 12;
-          when others => return 10;
-        end case;
-      when FPU_OP_MOVEM =>
-        case src_kind is
-          when FPU_SRC_FPM => return 16;
-          when FPU_SRC_MEM_SINGLE => return 20;
-          when FPU_SRC_MEM_DOUBLE => return 22;
-          when FPU_SRC_MEM_EXTENDED => return 24;
-          when others => return 20;
-        end case;
-      when others =>
-        return 0;
-    end case;
+    return OP_DESCRIPTORS(op_sel).move_cycles(src_kind);
   end function;
 
   function total_arith_cycles(
@@ -538,8 +621,8 @@ package body mc68881_pkg is
     packed_dynamic_k : boolean
   ) return natural is
   begin
-    case op_class(op_sel) is
-      when OP_CLASS_ARITH =>
+    case op_cycle_model(op_sel) is
+      when OP_CYCLE_ARITH =>
         return total_arith_cycles(
           op_sel,
           src_kind,
@@ -549,11 +632,9 @@ package body mc68881_pkg is
           mc68020_dst,
           packed_dynamic_k
         );
-      when OP_CLASS_MOVE =>
+      when OP_CYCLE_MOVE =>
         return base_move_cycles(op_sel, src_kind) + ea_cycles(ea_mode, cycle_case);
-      when OP_CLASS_PROG_CTRL | OP_CLASS_SYS_CTRL =>
-        return 0;
-      when others =>
+      when OP_CYCLE_ZERO | OP_CYCLE_NONE =>
         return 0;
     end case;
   end function;

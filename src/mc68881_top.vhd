@@ -527,6 +527,7 @@ begin
   bus_frame_proc : process(clk, reset_n)
     variable status_frame_word : std_logic_vector(31 downto 0);
     variable exc_flags : std_logic_vector(4 downto 0);
+    variable exc_policy : op_exception_policy_t;
     variable a_zero : boolean;
     variable b_zero : boolean;
     variable a_inf  : boolean;
@@ -633,6 +634,7 @@ begin
       -- Exception classification is performed at result-valid boundary.
       if valid = '1' then
         exc_flags := (others => '0');
+        exc_policy := op_exception_policy(last_op_sel_reg);
         a_zero := fp80_is_zero(operand_reg(0));
         b_zero := fp80_is_zero(operand_reg(1));
         a_inf := fp80_is_inf(operand_reg(0));
@@ -647,18 +649,21 @@ begin
           exc_flags(FPSR_EXC_INVALID) := '1';
         end if;
 
-        if last_op_sel_reg = FPU_OP_DIV or
-           last_op_sel_reg = FPU_OP_SGLDIV then
+        if exc_policy.divzero_on_zero_divisor_nonzero_dividend then
           if b_zero and not a_zero then
             exc_flags(FPSR_EXC_DIVZERO) := '1';
           end if;
-          if (a_zero and b_zero) or (a_inf and b_inf) then
-            exc_flags(FPSR_EXC_INVALID) := '1';
-          end if;
         end if;
 
-        if last_op_sel_reg = FPU_OP_MOD or
-           last_op_sel_reg = FPU_OP_REM then
+        if exc_policy.invalid_zero_over_zero and a_zero and b_zero then
+          exc_flags(FPSR_EXC_INVALID) := '1';
+        end if;
+
+        if exc_policy.invalid_inf_over_inf and a_inf and b_inf then
+          exc_flags(FPSR_EXC_INVALID) := '1';
+        end if;
+
+        if exc_policy.invalid_divisor_zero then
           if b_zero then
             exc_flags(FPSR_EXC_INVALID) := '1';
           end if;

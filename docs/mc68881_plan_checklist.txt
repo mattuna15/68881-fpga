@@ -30,7 +30,7 @@ A) Design Quality Improvements (from review)
     - Split execution/control paths for arithmetic, move, program-control, and system-control ops.
     - Avoid adding new opcode behavior through ad-hoc special-cases in top-level processes.
 
-[ ] A6. Centralize opcode metadata in a single descriptor table.
+[x] A6. Centralize opcode metadata in a single descriptor table.
     - Define per-op decode ID, class, ALU latency, cycle model hook, and exception policy.
     - Remove duplicated per-op case logic across pkg/top/ALU/testbench mapping points.
 

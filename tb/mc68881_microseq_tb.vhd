@@ -12,6 +12,7 @@ begin
   process
     variable cycles : natural := 0;
     variable op_key : op_key_t;
+    variable exc_policy : op_exception_policy_t;
   begin
     report "Starting microsequencer package tests." severity note;
 
@@ -58,6 +59,23 @@ begin
       report "op_class FRESTORE mapping failed." severity failure;
     assert op_class(FPU_OP_NOP) = OP_CLASS_NONE
       report "op_class NOP mapping failed." severity failure;
+    assert op_alu_latency(FPU_OP_DIV) = 8
+      report "op_alu_latency DIV mapping failed." severity failure;
+    assert op_alu_latency(FPU_OP_MOVE) = 0
+      report "op_alu_latency MOVE mapping failed." severity failure;
+    assert op_cycle_model(FPU_OP_ADD) = OP_CYCLE_ARITH
+      report "op_cycle_model ADD mapping failed." severity failure;
+    assert op_cycle_model(FPU_OP_FRESTORE) = OP_CYCLE_ZERO
+      report "op_cycle_model FRESTORE mapping failed." severity failure;
+
+    exc_policy := op_exception_policy(FPU_OP_DIV);
+    assert exc_policy.divzero_on_zero_divisor_nonzero_dividend
+      report "DIV exception policy missing divzero behavior." severity failure;
+    assert exc_policy.invalid_zero_over_zero and exc_policy.invalid_inf_over_inf
+      report "DIV exception policy missing invalid behavior." severity failure;
+    exc_policy := op_exception_policy(FPU_OP_MOD);
+    assert exc_policy.invalid_divisor_zero
+      report "MOD exception policy missing divisor-zero invalid behavior." severity failure;
 
     cycles := op_cycle_count(
       FPU_OP_ADD,

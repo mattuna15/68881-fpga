@@ -485,6 +485,8 @@ package body mc68881_pkg is
     mant_out   : out unsigned(FP_MANT_WIDTH-1 downto 0);
     exp_out    : out integer
   ) is
+    -- Keep intermediate exponent state in a local variable: Vivado/VRFC does
+    -- not allow reading from an `out` parameter inside the subprogram body.
     variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable mant_round : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
     variable guard      : std_logic := '0';
@@ -495,6 +497,7 @@ package body mc68881_pkg is
     variable prec_w     : natural := FP_MANT_WIDTH;
     variable drop_bits  : natural := 0;
     variable lsb_keep   : integer := FP_GRS_BITS;
+    variable exp_var    : integer := 0;
   begin
     mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
     prec_w := prec_bits(round_prec);
@@ -528,12 +531,12 @@ package body mc68881_pkg is
         end if;
     end case;
 
-    exp_out := exp_in;
+    exp_var := exp_in;
     if increment = '1' then
       mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll drop_bits);
       if mant_round(mant_round'left) = '1' then
         mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
-        exp_out := exp_out + 1;
+        exp_var := exp_var + 1;
       else
         mant_main := mant_round(mant_round'left-1 downto 0);
       end if;
@@ -544,6 +547,7 @@ package body mc68881_pkg is
     end if;
 
     mant_out := mant_main;
+    exp_out := exp_var;
   end procedure;
 
   function unpack_fp80(value : fp80_t) return fp_unpacked_t is

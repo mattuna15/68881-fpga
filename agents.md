@@ -13,6 +13,9 @@
   `docs/fmovecr_qemu_summary.md` in sync when constants or expectations change.
 - Add or extend testbench coverage in `tb/` for any new RTL behavior.
 - Maintain VHDL-2008 compatibility and avoid vendor-specific primitives.
+- Follow Vivado/VRFC parameter mode rules in VHDL subprograms: never read an `out`
+  parameter and never write to an `in` parameter (use local variables or `buffer`/`inout`
+  only when semantically required).
 - Use `scripts/run_tests.ps1` for local verification; set `GHDL_EXE` if GHDL is not on PATH.
 - The pre-push hook in `.githooks/pre-push` runs tests to block failing pushes (enable via
   `git config core.hooksPath .githooks`).

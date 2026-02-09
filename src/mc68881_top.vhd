@@ -24,6 +24,7 @@ entity mc68881_top is
 end entity mc68881_top;
 
 architecture rtl of mc68881_top is
+  -- Two-slot operand buffer (A/B) used by bus writes before ALU launch.
   type reg_array_t is array (0 to 1) of fp80_t;
 
   signal op_sel_reg    : fpu_op_t := FPU_OP_NOP;
@@ -61,6 +62,7 @@ architecture rtl of mc68881_top is
   signal start_access : std_logic;
   signal addr      : unsigned(4 downto 0);
 
+  -- Memory-mapped register offsets used by host-side command/data protocol.
   constant ADDR_OPSEL  : unsigned(4 downto 0) := to_unsigned(0, 5);
   constant ADDR_OPA_L  : unsigned(4 downto 0) := to_unsigned(1, 5);
   constant ADDR_OPA_H  : unsigned(4 downto 0) := to_unsigned(2, 5);
@@ -456,6 +458,7 @@ begin
   -- START = CS + AS + (R/W · DS) (active low signals except R/W).
   start_access <= '1' when (cs_n = '0' and as_n = '0' and ((rw = '1' and ds_n = '0') or rw = '0')) else '0';
 
+  -- Address classification is reused by bus read timing and decode logic.
   process(addr)
   begin
     access_class <= ACCESS_NONE;
@@ -490,6 +493,7 @@ begin
   round_mode <= decode_round_mode(fpcr_reg(5 downto 4));
   round_prec <= decode_round_prec(fpcr_reg(7 downto 6));
   op_sel_write_decoded <= decode_op_sel(d_in(3 downto 0));
+  -- One-cycle launch pulse when OPSEL write is legal and engines are idle.
   op_issue_pulse <= '1' when (
     bus_write = '1' and
     addr = ADDR_OPSEL and
@@ -514,6 +518,10 @@ begin
       busy   => busy
     );
 
+  -- Bus/register process:
+  -- 1) latches operand/control writes
+  -- 2) updates FPSR exception bits from completed results
+  -- 3) services frame save/restore state.
   bus_frame_proc : process(clk, reset_n)
     variable status_frame_word : std_logic_vector(31 downto 0);
     variable exc_flags : std_logic_vector(4 downto 0);
@@ -620,6 +628,7 @@ begin
         end case;
       end if;
 
+      -- Exception classification is performed at result-valid boundary.
       if valid = '1' then
         exc_flags := (others => '0');
         a_zero := fp80_is_zero(operand_reg(0));
@@ -708,6 +717,8 @@ begin
     end if;
   end process;
 
+  -- Operation scheduler and MOVE/MOVEM datapath handling.
+  -- For ALU ops it starts the ALU and tracks modeled microcycle latency.
   alu_control_proc : process(clk, reset_n)
     variable total_cycles : natural := 0;
     variable src_idx : natural range 0 to 7 := 0;
@@ -764,6 +775,7 @@ begin
           micro_remaining_reg <= total_cycles - 1;
         end if;
 
+        -- MOVE/MOVEM are handled locally; arithmetic routes through ALU.
         if op_sel_write_decoded = FPU_OP_MOVE then
           src_idx := to_integer(unsigned(move_cfg_reg(2 downto 0)));
           mem_fmt := move_cfg_reg(5 downto 4);
@@ -918,6 +930,7 @@ begin
     end if;
   end process;
 
+  -- STATUS register mirrors completion/busy state for host polling.
   status_proc : process(clk, reset_n)
   begin
     if reset_n = '0' then
@@ -938,6 +951,7 @@ begin
     end if;
   end process;
 
+  -- Read-data mux for memory-mapped register space.
   process(
     addr,
     bus_read,
@@ -1011,6 +1025,7 @@ begin
     end if;
   end process;
 
+  -- DSACK timing/handshake state machine.
   process(clk, reset_n)
     variable size_code : std_logic_vector(1 downto 0);
     variable dsack_wait : boolean;
@@ -1071,6 +1086,7 @@ begin
     end if;
   end process;
 
+  -- DSACK line encoding from transfer size (and A4 for longword lane select).
   process(latched_size, latched_a4, dsack_active)
   begin
     dsack0_i <= '1';
@@ -1098,6 +1114,7 @@ begin
     end if;
   end process;
 
+  -- CIR reads use a registered data path; other reads are combinational.
   d_out <= d_out_reg when sync_read = '1' else d_out_comb;
   dsack0_n <= dsack0_i;
   dsack1_n <= dsack1_i;

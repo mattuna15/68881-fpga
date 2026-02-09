@@ -9,6 +9,7 @@ entity tb_mc68881_top is
 end entity tb_mc68881_top;
 
 architecture sim of tb_mc68881_top is
+  -- Bus stimulus and capture signals mirror the top-level external interface.
   signal a_in     : std_logic_vector(4 downto 0) := (others => '0');
   signal d_in     : std_logic_vector(31 downto 0) := (others => '0');
   signal d_out    : std_logic_vector(31 downto 0);
@@ -42,6 +43,7 @@ architecture sim of tb_mc68881_top is
   constant FPSR_EXC_DIVZERO : natural := 3;
   constant FPSR_EXC_INVALID : natural := 4;
 
+  -- Extract sign/exponent/mantissa fields for FP80-aware assertions.
   procedure split_fp80(
     constant value : fp80_t;
     variable sign  : out std_logic;
@@ -54,6 +56,7 @@ architecture sim of tb_mc68881_top is
     mant := unsigned(value(FP_MANT_WIDTH-1 downto 0));
   end procedure;
 
+  -- Field-wise FP80 comparator used by self-checking operation tests.
   procedure check_fp80(
     constant got      : fp80_t;
     constant expected : fp80_t;
@@ -102,6 +105,7 @@ architecture sim of tb_mc68881_top is
   constant DIV_1_10_SINGLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_SINGLE);
   constant DIV_1_10_DOUBLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_DOUBLE);
 
+  -- Single bus write beat (address, data, strobe assert/deassert timing).
   procedure bus_write(
     signal a_in_s  : out std_logic_vector(4 downto 0);
     signal d_in_s  : out std_logic_vector(31 downto 0);
@@ -127,6 +131,7 @@ architecture sim of tb_mc68881_top is
     wait for CLK_PERIOD;
   end procedure;
 
+  -- Single bus read beat that waits for either DSACK line to assert.
   procedure bus_read(
     signal a_in_s    : out std_logic_vector(4 downto 0);
     signal rw_s      : out std_logic;
@@ -155,6 +160,7 @@ architecture sim of tb_mc68881_top is
     wait for CLK_PERIOD;
   end procedure;
 
+  -- Poll STATUS until result-valid is set by the DUT.
   procedure wait_for_valid(
     signal a_in_s    : out std_logic_vector(4 downto 0);
     signal rw_s      : out std_logic;
@@ -177,6 +183,7 @@ architecture sim of tb_mc68881_top is
     end loop;
   end procedure;
 
+  -- Verify `sense_n` transitions to the expected busy/idle state.
   procedure wait_for_sense(
     signal sense_n_s : in std_logic;
     constant expected : std_logic;
@@ -201,6 +208,7 @@ architecture sim of tb_mc68881_top is
       severity note;
   end procedure;
 
+  -- Sanity-check idle outputs before/after major stimulus sequences.
   procedure assert_idle_outputs(
     signal dsack0_n_s : in std_logic;
     signal dsack1_n_s : in std_logic;
@@ -226,6 +234,7 @@ architecture sim of tb_mc68881_top is
 
 begin
   clk <= not clk after CLK_PERIOD/2;
+  -- Free-running cycle counter for debug report context.
   cycle_counter : process(clk)
   begin
     if rising_edge(clk) then
@@ -250,6 +259,9 @@ begin
       sense_n  => sense_n
     );
 
+  -- End-to-end host-style stimulus:
+  -- drive operands/opcodes through bus writes, poll STATUS, read back result,
+  -- and assert expected FP80 and exception behavior.
   process
     variable op_a : fp80_t := (others => '0');
     variable op_b : fp80_t := (others => '0');

@@ -22,7 +22,7 @@ A) Design Quality Improvements (from review)
     - Choose a consistent convention for registered signals (e.g., _r or _reg).
     - Apply across top-level and ALU interface signals.
 
-[ ] A4. Expand opcode encoding space beyond 4-bit OPSEL.
+[x] A4. Expand opcode encoding space beyond 4-bit OPSEL.
     - Replace fixed 4-bit decode path with an extensible opcode namespace.
     - Keep backward compatibility for existing OPSEL values used by testbenches.
 

@@ -12,8 +12,20 @@ package mc68881_pkg is
   constant FP80_RESULT_LO_WIDTH : natural := FP_BUS_WORD_WIDTH;
   constant FP80_RESULT_HI_WIDTH : natural := FP_BUS_WORD_WIDTH;
   constant FP80_RESULT_EX_WIDTH : natural := FP_WIDTH - FP80_RESULT_LO_WIDTH - FP80_RESULT_HI_WIDTH;
+  constant OPSEL_NAMESPACE_WIDTH : natural := 8;
+  constant OPSEL_OPCODE_ID_WIDTH : natural := 8;
 
   subtype fp80_t is std_logic_vector(FP_WIDTH-1 downto 0);
+  subtype op_namespace_t is std_logic_vector(OPSEL_NAMESPACE_WIDTH-1 downto 0);
+  subtype op_code_id_t is std_logic_vector(OPSEL_OPCODE_ID_WIDTH-1 downto 0);
+
+  type op_key_t is record
+    namespace : op_namespace_t;
+    opcode_id : op_code_id_t;
+  end record;
+
+  constant OP_NS_LEGACY : op_namespace_t := x"00";
+  constant OP_NS_CORE_V1 : op_namespace_t := x"01";
 
   type fpu_op_t is (
     FPU_OP_NOP,
@@ -93,6 +105,8 @@ package mc68881_pkg is
 
   function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t;
   function decode_round_prec(bits : std_logic_vector(1 downto 0)) return fp_round_prec_t;
+  function decode_op_key(opsel_word : std_logic_vector(31 downto 0)) return op_key_t;
+  function decode_op_sel_word(opsel_word : std_logic_vector(31 downto 0)) return fpu_op_t;
   function decode_op_sel(bits : std_logic_vector) return fpu_op_t;
   function op_class(op_sel : fpu_op_t) return fpu_op_class_t;
   function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural;
@@ -160,8 +174,8 @@ package body mc68881_pkg is
   constant FP_MANT_EXT_WIDTH : natural := FP_MANT_WIDTH + FP_GRS_BITS;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
   constant FP_EXP_MAX : integer := (2**FP_EXP_WIDTH) - 1;
-  type op_decode_table_t is array (0 to 15) of fpu_op_t;
-  constant OP_DECODE_TABLE : op_decode_table_t := (
+  type legacy_op_decode_table_t is array (0 to 15) of fpu_op_t;
+  constant LEGACY_OP_DECODE_TABLE : legacy_op_decode_table_t := (
     0 => FPU_OP_NOP,
     1 => FPU_OP_ADD,
     2 => FPU_OP_SUB,
@@ -176,6 +190,39 @@ package body mc68881_pkg is
     11 => FPU_OP_SGLDIV,
     12 => FPU_OP_SGLMUL,
     others => FPU_OP_NOP
+  );
+
+  type op_decode_entry_t is record
+    namespace : op_namespace_t;
+    opcode_id : op_code_id_t;
+    op_sel    : fpu_op_t;
+  end record;
+  type op_decode_entry_table_t is array (natural range <>) of op_decode_entry_t;
+  constant OP_NAMESPACE_DECODE_TABLE : op_decode_entry_table_t := (
+    (namespace => OP_NS_LEGACY, opcode_id => x"01", op_sel => FPU_OP_ADD),
+    (namespace => OP_NS_LEGACY, opcode_id => x"02", op_sel => FPU_OP_SUB),
+    (namespace => OP_NS_LEGACY, opcode_id => x"03", op_sel => FPU_OP_MUL),
+    (namespace => OP_NS_LEGACY, opcode_id => x"04", op_sel => FPU_OP_DIV),
+    (namespace => OP_NS_LEGACY, opcode_id => x"05", op_sel => FPU_OP_MOVE),
+    (namespace => OP_NS_LEGACY, opcode_id => x"06", op_sel => FPU_OP_MOVEM),
+    (namespace => OP_NS_LEGACY, opcode_id => x"07", op_sel => FPU_OP_CMP),
+    (namespace => OP_NS_LEGACY, opcode_id => x"08", op_sel => FPU_OP_MOD),
+    (namespace => OP_NS_LEGACY, opcode_id => x"09", op_sel => FPU_OP_REM),
+    (namespace => OP_NS_LEGACY, opcode_id => x"0A", op_sel => FPU_OP_SCALE),
+    (namespace => OP_NS_LEGACY, opcode_id => x"0B", op_sel => FPU_OP_SGLDIV),
+    (namespace => OP_NS_LEGACY, opcode_id => x"0C", op_sel => FPU_OP_SGLMUL),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"01", op_sel => FPU_OP_ADD),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"02", op_sel => FPU_OP_SUB),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"03", op_sel => FPU_OP_MUL),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"04", op_sel => FPU_OP_DIV),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"05", op_sel => FPU_OP_MOVE),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"06", op_sel => FPU_OP_MOVEM),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"07", op_sel => FPU_OP_CMP),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"08", op_sel => FPU_OP_MOD),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"09", op_sel => FPU_OP_REM),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"0A", op_sel => FPU_OP_SCALE),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"0B", op_sel => FPU_OP_SGLDIV),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"0C", op_sel => FPU_OP_SGLMUL)
   );
 
   type fp_unpacked_t is record
@@ -204,6 +251,41 @@ package body mc68881_pkg is
     end case;
   end function;
 
+  function decode_op_key(opsel_word : std_logic_vector(31 downto 0)) return op_key_t is
+    variable key : op_key_t;
+  begin
+    key.namespace := (others => '0');
+    key.opcode_id := (others => '0');
+
+    if is_x(opsel_word) then
+      return key;
+    end if;
+
+    key.namespace := opsel_word(31 downto 24);
+    key.opcode_id := opsel_word(7 downto 0);
+    return key;
+  end function;
+
+  function decode_op_sel_word(opsel_word : std_logic_vector(31 downto 0)) return fpu_op_t is
+    variable key : op_key_t;
+  begin
+    key := decode_op_key(opsel_word);
+
+    for idx in OP_NAMESPACE_DECODE_TABLE'range loop
+      if OP_NAMESPACE_DECODE_TABLE(idx).namespace = key.namespace and
+         OP_NAMESPACE_DECODE_TABLE(idx).opcode_id = key.opcode_id then
+        return OP_NAMESPACE_DECODE_TABLE(idx).op_sel;
+      end if;
+    end loop;
+
+    -- Legacy compatibility: preserve historical low-nibble OPSEL values.
+    if key.namespace = OP_NS_LEGACY and key.opcode_id(7 downto 4) = "0000" then
+      return decode_op_sel(key.opcode_id(3 downto 0));
+    end if;
+
+    return FPU_OP_NOP;
+  end function;
+
   function decode_op_sel(bits : std_logic_vector) return fpu_op_t is
     variable idx : natural := 0;
   begin
@@ -226,8 +308,8 @@ package body mc68881_pkg is
       end case;
     end if;
 
-    if idx <= OP_DECODE_TABLE'high then
-      return OP_DECODE_TABLE(idx);
+    if idx <= LEGACY_OP_DECODE_TABLE'high then
+      return LEGACY_OP_DECODE_TABLE(idx);
     end if;
     return FPU_OP_NOP;
   end function;

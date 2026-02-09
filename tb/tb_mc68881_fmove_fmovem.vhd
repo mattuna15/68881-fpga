@@ -41,6 +41,16 @@ architecture sim of tb_mc68881_fmove_fmovem is
   constant OP_FMOVE : std_logic_vector(31 downto 0) := x"00000005";
   constant OP_FMOVEM : std_logic_vector(31 downto 0) := x"00000006";
   constant FMOVECR_PI : fp80_t := x"4000C90FDAA22168C235";
+  constant FMOVE_SINGLE_SUBMIN_NEG : std_logic_vector(31 downto 0) := x"80000001";
+  constant FMOVE_SINGLE_SUBMAX_POS : std_logic_vector(31 downto 0) := x"007FFFFF";
+  constant FMOVE_DOUBLE_SUBMIN_POS_LO : std_logic_vector(31 downto 0) := x"00000001";
+  constant FMOVE_DOUBLE_SUBMIN_POS_HI : std_logic_vector(31 downto 0) := x"00000000";
+  constant FMOVE_DOUBLE_SUBMAX_POS_LO : std_logic_vector(31 downto 0) := x"FFFFFFFF";
+  constant FMOVE_DOUBLE_SUBMAX_POS_HI : std_logic_vector(31 downto 0) := x"000FFFFF";
+  constant FMOVE_SINGLE_SUBMIN_NEG_FP80 : fp80_t := x"BF6A8000000000000000";
+  constant FMOVE_SINGLE_SUBMAX_POS_FP80 : fp80_t := x"3F80FFFFFE0000000000";
+  constant FMOVE_DOUBLE_SUBMIN_POS_FP80 : fp80_t := x"3BCD8000000000000000";
+  constant FMOVE_DOUBLE_SUBMAX_POS_FP80 : fp80_t := x"3C00FFFFFFFFFFFFF000";
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -251,6 +261,72 @@ begin
     assert rd_lo = x"42280000"
       report "FMOVE single conversion mismatch expected=42280000 got=" & to_hstring(rd_lo)
       severity failure;
+
+    report "FMOVE subnormal single/double source checks" severity note;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FMOVE_SINGLE_SUBMIN_NEG);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, x"00000000");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"00000000");
+    cfg_word := make_move_cfg("01", 0, 4, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE mem(single submin neg)->reg observed=" & to_hstring(rd_full) &
+           " expected=" & to_hstring(FMOVE_SINGLE_SUBMIN_NEG_FP80)
+      severity note;
+    check_fp80(rd_full, FMOVE_SINGLE_SUBMIN_NEG_FP80, "FMOVE mem(single submin neg)->reg");
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FMOVE_SINGLE_SUBMAX_POS);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, x"00000000");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"00000000");
+    cfg_word := make_move_cfg("01", 0, 4, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE mem(single submax pos)->reg observed=" & to_hstring(rd_full) &
+           " expected=" & to_hstring(FMOVE_SINGLE_SUBMAX_POS_FP80)
+      severity note;
+    check_fp80(rd_full, FMOVE_SINGLE_SUBMAX_POS_FP80, "FMOVE mem(single submax pos)->reg");
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FMOVE_DOUBLE_SUBMIN_POS_LO);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, FMOVE_DOUBLE_SUBMIN_POS_HI);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"00000000");
+    cfg_word := make_move_cfg("01", 0, 4, "10", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE mem(double submin pos)->reg observed=" & to_hstring(rd_full) &
+           " expected=" & to_hstring(FMOVE_DOUBLE_SUBMIN_POS_FP80)
+      severity note;
+    check_fp80(rd_full, FMOVE_DOUBLE_SUBMIN_POS_FP80, "FMOVE mem(double submin pos)->reg");
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FMOVE_DOUBLE_SUBMAX_POS_LO);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, FMOVE_DOUBLE_SUBMAX_POS_HI);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"00000000");
+    cfg_word := make_move_cfg("01", 0, 4, "10", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE mem(double submax pos)->reg observed=" & to_hstring(rd_full) &
+           " expected=" & to_hstring(FMOVE_DOUBLE_SUBMAX_POS_FP80)
+      severity note;
+    check_fp80(rd_full, FMOVE_DOUBLE_SUBMAX_POS_FP80, "FMOVE mem(double submax pos)->reg");
 
     fpcr_word := x"12345678";
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, fpcr_word);

@@ -239,13 +239,26 @@ architecture rtl of mc68881_top is
     variable fp_value : fp80_t := (others => '0');
     variable exp_s : unsigned(7 downto 0) := unsigned(bits(30 downto 23));
     variable frac_s : unsigned(22 downto 0) := unsigned(bits(22 downto 0));
+    variable frac_norm_s : unsigned(22 downto 0) := (others => '0');
     variable exp80 : integer := 0;
+    variable lz_s : integer range 0 to 22 := 0;
   begin
     fp_value(FP_WIDTH-1) := bits(31);
     if exp_s = 0 then
       if frac_s = 0 then
         return fp_value;
       end if;
+      for idx in 22 downto 0 loop
+        if frac_s(idx) = '1' then
+          lz_s := 22 - idx;
+          exit;
+        end if;
+      end loop;
+      exp80 := FP_EXP_BIAS - 127 - lz_s;
+      fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := std_logic_vector(to_unsigned(exp80, FP_EXP_WIDTH));
+      frac_norm_s := shift_left(frac_s, lz_s);
+      fp_value(FP_MANT_WIDTH-1) := '1';
+      fp_value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-23) := std_logic_vector(frac_norm_s(21 downto 0));
       return fp_value;
     elsif exp_s = to_unsigned(255, 8) then
       fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
@@ -266,13 +279,26 @@ architecture rtl of mc68881_top is
     variable fp_value : fp80_t := (others => '0');
     variable exp_d : unsigned(10 downto 0) := unsigned(bits(62 downto 52));
     variable frac_d : unsigned(51 downto 0) := unsigned(bits(51 downto 0));
+    variable frac_norm_d : unsigned(51 downto 0) := (others => '0');
     variable exp80 : integer := 0;
+    variable lz_d : integer range 0 to 51 := 0;
   begin
     fp_value(FP_WIDTH-1) := bits(63);
     if exp_d = 0 then
       if frac_d = 0 then
         return fp_value;
       end if;
+      for idx in 51 downto 0 loop
+        if frac_d(idx) = '1' then
+          lz_d := 51 - idx;
+          exit;
+        end if;
+      end loop;
+      exp80 := FP_EXP_BIAS - 1023 - lz_d;
+      fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := std_logic_vector(to_unsigned(exp80, FP_EXP_WIDTH));
+      frac_norm_d := shift_left(frac_d, lz_d);
+      fp_value(FP_MANT_WIDTH-1) := '1';
+      fp_value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-52) := std_logic_vector(frac_norm_d(50 downto 0));
       return fp_value;
     elsif exp_d = to_unsigned(2047, 11) then
       fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');

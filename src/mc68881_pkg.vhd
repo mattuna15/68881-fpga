@@ -120,7 +120,45 @@ package mc68881_pkg is
     invalid_zero_over_zero : boolean;
     invalid_inf_over_inf : boolean;
     invalid_divisor_zero : boolean;
+    invalid_on_nan_inputs : boolean;
+    invalid_on_nan_result : boolean;
+    update_exc_status : boolean;
+    update_accumulated_exc : boolean;
+    update_cc_from_result : boolean;
+    update_cc_from_compare : boolean;
+    classify_overflow_underflow : boolean;
+    capture_fpiar_on_exception : boolean;
   end record;
+
+  type move_cfg_mode_t is (
+    MOVE_CFG_MODE_REG_TO_REG,
+    MOVE_CFG_MODE_MEM_TO_REG,
+    MOVE_CFG_MODE_REG_TO_MEM,
+    MOVE_CFG_MODE_CONTROL
+  );
+
+  type move_cfg_t is record
+    src_idx : natural range 0 to 7;
+    mem_fmt : std_logic_vector(1 downto 0);
+    mode : move_cfg_mode_t;
+    ctrl_to_reg : std_logic;
+    dst_idx : natural range 0 to 7;
+    ctrl_sel : std_logic_vector(1 downto 0);
+    movem_mask : std_logic_vector(7 downto 0);
+    movem_dir_to_reg : std_logic;
+    packed_k_from_opa : std_logic;
+    mem_to_reg_integer : std_logic;
+    reg_to_mem_packed : std_logic;
+    fmovecr_enable : std_logic;
+    movem_mask_from_dn : std_logic;
+    movem_predec_order : std_logic;
+  end record;
+
+  function move_cfg_default return move_cfg_t;
+  function move_cfg_mode_to_bits(mode : move_cfg_mode_t) return std_logic_vector;
+  function decode_move_cfg_mode(bits : std_logic_vector(1 downto 0)) return move_cfg_mode_t;
+  function decode_move_cfg(word : std_logic_vector(31 downto 0)) return move_cfg_t;
+  function encode_move_cfg(cfg : move_cfg_t) return std_logic_vector;
 
   function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t;
   function decode_round_prec(bits : std_logic_vector(1 downto 0)) return fp_round_prec_t;
@@ -224,21 +262,75 @@ package body mc68881_pkg is
     divzero_on_zero_divisor_nonzero_dividend => false,
     invalid_zero_over_zero => false,
     invalid_inf_over_inf => false,
-    invalid_divisor_zero => false
+    invalid_divisor_zero => false,
+    invalid_on_nan_inputs => false,
+    invalid_on_nan_result => false,
+    update_exc_status => false,
+    update_accumulated_exc => false,
+    update_cc_from_result => false,
+    update_cc_from_compare => false,
+    classify_overflow_underflow => false,
+    capture_fpiar_on_exception => false
+  );
+
+  constant EXC_POLICY_ARITH : op_exception_policy_t := (
+    divzero_on_zero_divisor_nonzero_dividend => false,
+    invalid_zero_over_zero => false,
+    invalid_inf_over_inf => false,
+    invalid_divisor_zero => false,
+    invalid_on_nan_inputs => true,
+    invalid_on_nan_result => true,
+    update_exc_status => true,
+    update_accumulated_exc => true,
+    update_cc_from_result => true,
+    update_cc_from_compare => false,
+    classify_overflow_underflow => true,
+    capture_fpiar_on_exception => true
   );
 
   constant EXC_POLICY_DIV : op_exception_policy_t := (
     divzero_on_zero_divisor_nonzero_dividend => true,
     invalid_zero_over_zero => true,
     invalid_inf_over_inf => true,
-    invalid_divisor_zero => false
+    invalid_divisor_zero => false,
+    invalid_on_nan_inputs => true,
+    invalid_on_nan_result => true,
+    update_exc_status => true,
+    update_accumulated_exc => true,
+    update_cc_from_result => true,
+    update_cc_from_compare => false,
+    classify_overflow_underflow => true,
+    capture_fpiar_on_exception => true
   );
 
   constant EXC_POLICY_MOD_REM : op_exception_policy_t := (
     divzero_on_zero_divisor_nonzero_dividend => false,
     invalid_zero_over_zero => false,
     invalid_inf_over_inf => false,
-    invalid_divisor_zero => true
+    invalid_divisor_zero => true,
+    invalid_on_nan_inputs => true,
+    invalid_on_nan_result => true,
+    update_exc_status => true,
+    update_accumulated_exc => true,
+    update_cc_from_result => true,
+    update_cc_from_compare => false,
+    classify_overflow_underflow => true,
+    capture_fpiar_on_exception => true
+  );
+
+  constant EXC_POLICY_CMP : op_exception_policy_t := (
+    divzero_on_zero_divisor_nonzero_dividend => false,
+    invalid_zero_over_zero => false,
+    invalid_inf_over_inf => false,
+    invalid_divisor_zero => false,
+    invalid_on_nan_inputs => true,
+    invalid_on_nan_result => false,
+    update_exc_status => true,
+    update_accumulated_exc => true,
+    update_cc_from_result => false,
+    update_cc_from_compare => true,
+    classify_overflow_underflow => false,
+    capture_fpiar_on_exception => true
   );
 
   constant OP_DESCRIPTORS : op_descriptor_table_t := (
@@ -258,7 +350,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => true, legacy_decode_id => 1,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"01",
       op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 51, FPU_SRC_MEM_INTEGER => 80, FPU_SRC_MEM_SINGLE => 72,
         FPU_SRC_MEM_DOUBLE => 78, FPU_SRC_MEM_EXTENDED => 76, FPU_SRC_MEM_PACKED => 888
@@ -269,7 +361,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => true, legacy_decode_id => 2,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"02",
       op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 51, FPU_SRC_MEM_INTEGER => 80, FPU_SRC_MEM_SINGLE => 72,
         FPU_SRC_MEM_DOUBLE => 78, FPU_SRC_MEM_EXTENDED => 76, FPU_SRC_MEM_PACKED => 888
@@ -280,7 +372,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => true, legacy_decode_id => 3,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"03",
       op_class => OP_CLASS_ARITH, alu_latency => 4, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 71, FPU_SRC_MEM_INTEGER => 100, FPU_SRC_MEM_SINGLE => 92,
         FPU_SRC_MEM_DOUBLE => 98, FPU_SRC_MEM_EXTENDED => 96, FPU_SRC_MEM_PACKED => 908
@@ -302,7 +394,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => true, legacy_decode_id => 7,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"07",
       op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_CMP,
       arith_cycles => (
         FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
         FPU_SRC_MEM_DOUBLE => 76, FPU_SRC_MEM_EXTENDED => 74, FPU_SRC_MEM_PACKED => 886
@@ -335,7 +427,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => true, legacy_decode_id => 10,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0A",
       op_class => OP_CLASS_ARITH, alu_latency => 2, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 55, FPU_SRC_MEM_INTEGER => 84, FPU_SRC_MEM_SINGLE => 76,
         FPU_SRC_MEM_DOUBLE => 82, FPU_SRC_MEM_EXTENDED => 80, FPU_SRC_MEM_PACKED => 892
@@ -357,7 +449,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => true, legacy_decode_id => 12,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0C",
       op_class => OP_CLASS_ARITH, alu_latency => 4, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 63, FPU_SRC_MEM_INTEGER => 92, FPU_SRC_MEM_SINGLE => 84,
         FPU_SRC_MEM_DOUBLE => 90, FPU_SRC_MEM_EXTENDED => 88, FPU_SRC_MEM_PACKED => 900
@@ -414,6 +506,92 @@ package body mc68881_pkg is
     exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
     mant : unsigned(FP_MANT_WIDTH-1 downto 0);
   end record;
+
+  function move_cfg_default return move_cfg_t is
+    variable cfg : move_cfg_t;
+  begin
+    cfg.src_idx := 0;
+    cfg.mem_fmt := (others => '0');
+    cfg.mode := MOVE_CFG_MODE_REG_TO_REG;
+    cfg.ctrl_to_reg := '0';
+    cfg.dst_idx := 0;
+    cfg.ctrl_sel := (others => '0');
+    cfg.movem_mask := (others => '0');
+    cfg.movem_dir_to_reg := '0';
+    cfg.packed_k_from_opa := '0';
+    cfg.mem_to_reg_integer := '0';
+    cfg.reg_to_mem_packed := '0';
+    cfg.fmovecr_enable := '0';
+    cfg.movem_mask_from_dn := '0';
+    cfg.movem_predec_order := '0';
+    return cfg;
+  end function;
+
+  function move_cfg_mode_to_bits(mode : move_cfg_mode_t) return std_logic_vector is
+    variable bits : std_logic_vector(1 downto 0) := (others => '0');
+  begin
+    case mode is
+      when MOVE_CFG_MODE_REG_TO_REG => bits := "00";
+      when MOVE_CFG_MODE_MEM_TO_REG => bits := "01";
+      when MOVE_CFG_MODE_REG_TO_MEM => bits := "10";
+      when others => bits := "11";
+    end case;
+    return bits;
+  end function;
+
+  function decode_move_cfg_mode(bits : std_logic_vector(1 downto 0)) return move_cfg_mode_t is
+  begin
+    case bits is
+      when "00" => return MOVE_CFG_MODE_REG_TO_REG;
+      when "01" => return MOVE_CFG_MODE_MEM_TO_REG;
+      when "10" => return MOVE_CFG_MODE_REG_TO_MEM;
+      when others => return MOVE_CFG_MODE_CONTROL;
+    end case;
+  end function;
+
+  function decode_move_cfg(word : std_logic_vector(31 downto 0)) return move_cfg_t is
+    variable cfg : move_cfg_t := move_cfg_default;
+  begin
+    if is_x(word) then
+      return cfg;
+    end if;
+
+    cfg.src_idx := to_integer(unsigned(word(2 downto 0)));
+    cfg.mem_fmt := word(5 downto 4);
+    cfg.mode := decode_move_cfg_mode(word(7 downto 6));
+    cfg.ctrl_to_reg := word(8);
+    cfg.dst_idx := to_integer(unsigned(word(11 downto 9)));
+    cfg.ctrl_sel := word(13 downto 12);
+    cfg.movem_mask := word(21 downto 14);
+    cfg.movem_dir_to_reg := word(22);
+    cfg.packed_k_from_opa := word(23);
+    cfg.mem_to_reg_integer := word(24);
+    cfg.reg_to_mem_packed := word(25);
+    cfg.fmovecr_enable := word(26);
+    cfg.movem_mask_from_dn := word(27);
+    cfg.movem_predec_order := word(28);
+    return cfg;
+  end function;
+
+  function encode_move_cfg(cfg : move_cfg_t) return std_logic_vector is
+    variable word : std_logic_vector(31 downto 0) := (others => '0');
+  begin
+    word(2 downto 0) := std_logic_vector(to_unsigned(cfg.src_idx, 3));
+    word(5 downto 4) := cfg.mem_fmt;
+    word(7 downto 6) := move_cfg_mode_to_bits(cfg.mode);
+    word(8) := cfg.ctrl_to_reg;
+    word(11 downto 9) := std_logic_vector(to_unsigned(cfg.dst_idx, 3));
+    word(13 downto 12) := cfg.ctrl_sel;
+    word(21 downto 14) := cfg.movem_mask;
+    word(22) := cfg.movem_dir_to_reg;
+    word(23) := cfg.packed_k_from_opa;
+    word(24) := cfg.mem_to_reg_integer;
+    word(25) := cfg.reg_to_mem_packed;
+    word(26) := cfg.fmovecr_enable;
+    word(27) := cfg.movem_mask_from_dn;
+    word(28) := cfg.movem_predec_order;
+    return word;
+  end function;
 
   function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t is
   begin

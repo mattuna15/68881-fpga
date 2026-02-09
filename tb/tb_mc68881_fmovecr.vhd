@@ -176,13 +176,13 @@ architecture sim of tb_mc68881_fmovecr is
     dst_idx : natural;
     enable_fmovecr : std_logic
   ) return std_logic_vector is
-    variable cfg : std_logic_vector(31 downto 0) := (others => '0');
+    variable cfg : move_cfg_t := move_cfg_default;
   begin
-    cfg(2 downto 0) := std_logic_vector(to_unsigned(src_idx, 3));
-    cfg(7 downto 6) := mode;
-    cfg(11 downto 9) := std_logic_vector(to_unsigned(dst_idx, 3));
-    cfg(26) := enable_fmovecr;
-    return cfg;
+    cfg.src_idx := src_idx;
+    cfg.mode := decode_move_cfg_mode(mode);
+    cfg.dst_idx := dst_idx;
+    cfg.fmovecr_enable := enable_fmovecr;
+    return encode_move_cfg(cfg);
   end function;
 
 begin

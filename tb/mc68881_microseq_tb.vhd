@@ -73,9 +73,18 @@ begin
       report "DIV exception policy missing divzero behavior." severity failure;
     assert exc_policy.invalid_zero_over_zero and exc_policy.invalid_inf_over_inf
       report "DIV exception policy missing invalid behavior." severity failure;
+    assert exc_policy.update_exc_status and exc_policy.update_accumulated_exc
+      report "DIV exception policy should update FPSR status/accrued bytes." severity failure;
+    assert exc_policy.update_cc_from_result and exc_policy.capture_fpiar_on_exception
+      report "DIV exception policy should drive CC and exception-time FPIAR capture." severity failure;
     exc_policy := op_exception_policy(FPU_OP_MOD);
     assert exc_policy.invalid_divisor_zero
       report "MOD exception policy missing divisor-zero invalid behavior." severity failure;
+    assert exc_policy.classify_overflow_underflow
+      report "MOD exception policy should enable overflow/underflow classification." severity failure;
+    exc_policy := op_exception_policy(FPU_OP_CMP);
+    assert exc_policy.update_cc_from_compare and not exc_policy.update_cc_from_result
+      report "CMP exception policy should source CC from compare relation." severity failure;
 
     cycles := op_cycle_count(
       FPU_OP_ADD,

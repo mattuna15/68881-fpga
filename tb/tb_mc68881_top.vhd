@@ -34,12 +34,18 @@ architecture sim of tb_mc68881_top is
   constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
   constant ADDR_FPCR   : unsigned(4 downto 0) := to_unsigned(11, 5);
   constant ADDR_FPSR   : unsigned(4 downto 0) := to_unsigned(14, 5);
+  constant ADDR_FPIAR  : unsigned(4 downto 0) := to_unsigned(24, 5);
 
   constant FPCR_RND_NEAREST : std_logic_vector(31 downto 0) := x"00000000";
   constant FPCR_RND_ZERO    : std_logic_vector(31 downto 0) := x"00000010";
   constant FPCR_RND_PLUS    : std_logic_vector(31 downto 0) := x"00000030";
   constant FPCR_PREC_SINGLE : std_logic_vector(31 downto 0) := x"00000040";
   constant FPCR_PREC_DOUBLE : std_logic_vector(31 downto 0) := x"00000080";
+  constant FPSR_CC_NAN      : natural := 24;
+  constant FPSR_CC_INF      : natural := 25;
+  constant FPSR_CC_ZERO     : natural := 26;
+  constant FPSR_CC_NEG      : natural := 27;
+  constant FPSR_ACCR_BASE   : natural := 8;
   constant FPSR_EXC_DIVZERO : natural := 3;
   constant FPSR_EXC_INVALID : natural := 4;
 
@@ -270,6 +276,7 @@ begin
     variable rd_sign : std_logic := '0';
     variable rd_exp : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
     variable rd_mant : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable fpiar_seed : std_logic_vector(31 downto 0) := (others => '0');
   begin
     reset_n <= '0';
     wait for 2 * CLK_PERIOD;
@@ -675,8 +682,47 @@ begin
       severity note;
     check_fp80(rd_full, exp_r, "DIV 1/10 double result");
 
+    -- FCMP condition-code updates use compare relation.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := fp80_from_int(1);
+    op_b := fp80_from_int(2);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000007");
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after FCMP 1,2: " & to_hstring(rd_lo)
+      severity note;
+    assert rd_lo(FPSR_CC_NEG) = '1' and rd_lo(FPSR_CC_ZERO) = '0' and rd_lo(FPSR_CC_NAN) = '0'
+      report "FCMP 1,2 should set N condition code only"
+      severity failure;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := fp80_from_int(2);
+    op_b := fp80_from_int(2);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000007");
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after FCMP 2,2: " & to_hstring(rd_lo)
+      severity note;
+    assert rd_lo(FPSR_CC_ZERO) = '1' and rd_lo(FPSR_CC_NEG) = '0' and rd_lo(FPSR_CC_NAN) = '0'
+      report "FCMP 2,2 should set Z condition code only"
+      severity failure;
+
     -- FPSR exception flags: DIV by zero
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    fpiar_seed := x"1234ABCD";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
     op_a := fp80_from_int(1);
     op_b := fp80_from_int(0);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
@@ -694,6 +740,18 @@ begin
       severity note;
     assert rd_lo(FPSR_EXC_DIVZERO) = '1'
       report "FPSR DIV-by-zero flag not set"
+      severity failure;
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_DIVZERO) = '1'
+      report "FPSR accrued DIV-by-zero flag not set"
+      severity failure;
+    assert rd_lo(FPSR_CC_INF) = '1' and rd_lo(FPSR_CC_NAN) = '0'
+      report "FPSR CC byte should report infinity result after DIV by zero"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
+    report "FPIAR after DIV by zero: " & to_hstring(rd_hi)
+      severity note;
+    assert rd_hi = fpiar_seed
+      report "FPIAR exception snapshot mismatch"
       severity failure;
 
     -- FPSR exception flags: FMOD by zero should raise invalid and return NaN.
@@ -730,6 +788,12 @@ begin
     assert rd_lo(FPSR_EXC_DIVZERO) = '0'
       report "FPSR DIVZERO should not be set for FMOD divide-by-zero"
       severity failure;
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
+      report "FPSR accrued invalid flag not set for FMOD divide-by-zero"
+      severity failure;
+    assert rd_lo(FPSR_CC_NAN) = '1'
+      report "FPSR CC NAN flag not set for FMOD divide-by-zero result"
+      severity failure;
 
     -- FPSR exception flags: FREM by zero should raise invalid and return NaN.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
@@ -764,6 +828,12 @@ begin
       severity failure;
     assert rd_lo(FPSR_EXC_DIVZERO) = '0'
       report "FPSR DIVZERO should not be set for FREM divide-by-zero"
+      severity failure;
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
+      report "FPSR accrued invalid flag not set for FREM divide-by-zero"
+      severity failure;
+    assert rd_lo(FPSR_CC_NAN) = '1'
+      report "FPSR CC NAN flag not set for FREM divide-by-zero result"
       severity failure;
 
     -- DSACK behavior coverage

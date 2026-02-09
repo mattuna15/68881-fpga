@@ -11,6 +11,7 @@ architecture sim of mc68881_microseq_tb is
 begin
   process
     variable cycles : natural := 0;
+    variable op_key : op_key_t;
   begin
     report "Starting microsequencer package tests." severity note;
 
@@ -28,6 +29,16 @@ begin
       report "decode_op_sel MOVEM mapping failed." severity failure;
     assert decode_op_sel("111") = FPU_OP_NOP
       report "decode_op_sel default mapping failed." severity failure;
+    assert decode_op_sel_word(x"00000005") = FPU_OP_MOVE
+      report "decode_op_sel_word legacy MOVE mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000005") = FPU_OP_MOVE
+      report "decode_op_sel_word core-v1 MOVE mapping failed." severity failure;
+    assert decode_op_sel_word(x"7F000005") = FPU_OP_NOP
+      report "decode_op_sel_word unknown namespace should map to NOP." severity failure;
+
+    op_key := decode_op_key(x"0100000B");
+    assert op_key.namespace = OP_NS_CORE_V1 and op_key.opcode_id = x"0B"
+      report "decode_op_key namespace/opcode extraction failed." severity failure;
 
     assert op_class(FPU_OP_ADD) = OP_CLASS_ARITH
       report "op_class ADD mapping failed." severity failure;

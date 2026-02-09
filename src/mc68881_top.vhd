@@ -492,7 +492,7 @@ begin
   -- FPCR mode control: bits 7-6 precision, 5-4 rounding mode.
   round_mode <= decode_round_mode(fpcr_reg(5 downto 4));
   round_prec <= decode_round_prec(fpcr_reg(7 downto 6));
-  op_sel_write_decoded <= decode_op_sel(d_in(3 downto 0));
+  op_sel_write_decoded <= decode_op_sel_word(d_in);
   -- One-cycle launch pulse when OPSEL write is legal and engines are idle.
   op_issue_pulse <= '1' when (
     bus_write = '1' and

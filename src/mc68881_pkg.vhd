@@ -93,7 +93,7 @@ package mc68881_pkg is
 
   function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t;
   function decode_round_prec(bits : std_logic_vector(1 downto 0)) return fp_round_prec_t;
-  function decode_op_sel(bits : std_logic_vector(3 downto 0)) return fpu_op_t;
+  function decode_op_sel(bits : std_logic_vector) return fpu_op_t;
   function op_class(op_sel : fpu_op_t) return fpu_op_class_t;
   function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural;
   function base_arith_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural;
@@ -204,13 +204,28 @@ package body mc68881_pkg is
     end case;
   end function;
 
-  function decode_op_sel(bits : std_logic_vector(3 downto 0)) return fpu_op_t is
+  function decode_op_sel(bits : std_logic_vector) return fpu_op_t is
     variable idx : natural := 0;
   begin
-    if is_x(bits) then
+    if bits'length = 0 or is_x(bits) then
       return FPU_OP_NOP;
     end if;
+
     idx := to_integer(unsigned(bits));
+
+    if bits'length = 3 then
+      -- Legacy 3-bit decode kept for existing tests.
+      case idx is
+        when 1 => return FPU_OP_ADD;
+        when 2 => return FPU_OP_SUB;
+        when 3 => return FPU_OP_MUL;
+        when 4 => return FPU_OP_DIV;
+        when 5 => return FPU_OP_MOVE;
+        when 6 => return FPU_OP_MOVEM;
+        when others => return FPU_OP_NOP;
+      end case;
+    end if;
+
     if idx <= OP_DECODE_TABLE'high then
       return OP_DECODE_TABLE(idx);
     end if;
@@ -1034,6 +1049,55 @@ package body mc68881_pkg is
     return abs_int;
   end function;
 
+  function fp80_trunc_toward_zero(value : fp80_t) return fp80_t is
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+    variable exp_i : integer := 0;
+    variable frac_bits : integer := 0;
+    variable result_u : fp_unpacked_t := value_u;
+  begin
+    if value_u.exp = 0 or value_u.exp = FP_EXP_ALL_ONES then
+      return value;
+    end if;
+
+    exp_i := to_integer(value_u.exp) - FP_EXP_BIAS;
+    if exp_i < 0 then
+      result_u.exp := (others => '0');
+      result_u.mant := (others => '0');
+      return pack_fp80(result_u);
+    end if;
+
+    if exp_i >= integer(FP_MANT_WIDTH - 1) then
+      return value;
+    end if;
+
+    frac_bits := integer(FP_MANT_WIDTH - 1) - exp_i;
+    result_u.mant(frac_bits-1 downto 0) := (others => '0');
+    return pack_fp80(result_u);
+  end function;
+
+  function fp80_is_odd_integer(value : fp80_t) return boolean is
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+    variable exp_i : integer := 0;
+    variable lsb_idx : integer := 0;
+  begin
+    if value_u.exp = 0 or value_u.exp = FP_EXP_ALL_ONES then
+      return false;
+    end if;
+
+    exp_i := to_integer(value_u.exp) - FP_EXP_BIAS;
+    if exp_i < 0 then
+      return false;
+    end if;
+
+    if exp_i > integer(FP_MANT_WIDTH - 1) then
+      -- ULP > 1, all representable integers at this magnitude are even.
+      return false;
+    end if;
+
+    lsb_idx := integer(FP_MANT_WIDTH - 1) - exp_i;
+    return value_u.mant(lsb_idx) = '1';
+  end function;
+
   function fmod_fp80(
     a : fp80_t;
     b : fp80_t;
@@ -1042,8 +1106,9 @@ package body mc68881_pkg is
   ) return fp80_t is
     variable b_u : fp_unpacked_t := unpack_fp80(b);
     variable quotient : fp80_t := (others => '0');
+    variable quotient_u : fp_unpacked_t;
+    variable quotient_trunc : fp80_t := (others => '0');
     variable quotient_i : integer := 0;
-    variable quotient_fp : fp80_t := (others => '0');
     variable product : fp80_t := (others => '0');
     variable result : fp80_t := (others => '0');
     variable inf_result : fp_unpacked_t;
@@ -1056,9 +1121,15 @@ package body mc68881_pkg is
     end if;
 
     quotient := div_fp80(a, b, FP_RND_ZERO, FP_PREC_EXTENDED);
-    quotient_i := fp80_to_int_trunc(quotient);
-    quotient_fp := fp80_from_int(quotient_i);
-    product := mul_fp80(b, quotient_fp, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    quotient_u := unpack_fp80(quotient);
+    if quotient_u.exp /= 0 and quotient_u.exp /= FP_EXP_ALL_ONES and
+       (to_integer(quotient_u.exp) - FP_EXP_BIAS) <= 30 then
+      quotient_i := fp80_to_int_trunc(quotient);
+      quotient_trunc := fp80_from_int(quotient_i);
+    else
+      quotient_trunc := fp80_trunc_toward_zero(quotient);
+    end if;
+    product := mul_fp80(b, quotient_trunc, FP_RND_NEAREST, FP_PREC_EXTENDED);
     result := add_sub_fp80(a, product, true, round_mode, round_prec);
     return result;
   end function;
@@ -1070,46 +1141,72 @@ package body mc68881_pkg is
     round_prec : fp_round_prec_t
   ) return fp80_t is
     variable quotient : fp80_t := (others => '0');
+    variable quotient_u : fp_unpacked_t;
+    variable quotient_trunc : fp80_t := (others => '0');
+    variable nearest_q : fp80_t := (others => '0');
     variable quotient_i : integer := 0;
     variable nearest_i : integer := 0;
     variable step_i : integer := 0;
-    variable quotient_fp : fp80_t := (others => '0');
+    variable use_integer_path : boolean := false;
     variable frac : fp80_t := (others => '0');
     variable frac_abs : fp80_t := (others => '0');
     variable half_fp : fp80_t := x"3FFE8000000000000000";
-    variable zero_fp : fp80_t := (others => '0');
+    variable one_fp : fp80_t := x"3FFF8000000000000000";
     variable half_cmp : integer := 0;
     variable product : fp80_t := (others => '0');
     variable result : fp80_t := (others => '0');
   begin
     quotient := div_fp80(a, b, FP_RND_NEAREST, FP_PREC_EXTENDED);
-    quotient_i := fp80_to_int_trunc(quotient);
-    nearest_i := quotient_i;
-    quotient_fp := fp80_from_int(quotient_i);
-    frac := add_sub_fp80(quotient, quotient_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-    frac_abs := abs_fp80(frac);
-    half_cmp := compare_fp80(frac_abs, half_fp);
+    quotient_u := unpack_fp80(quotient);
+    use_integer_path := quotient_u.exp /= 0 and quotient_u.exp /= FP_EXP_ALL_ONES and
+      (to_integer(quotient_u.exp) - FP_EXP_BIAS) <= 30;
 
-    if compare_fp80(quotient, zero_fp) < 0 then
-      step_i := -1;
+    if use_integer_path then
+      quotient_i := fp80_to_int_trunc(quotient);
+      nearest_i := quotient_i;
+      quotient_trunc := fp80_from_int(quotient_i);
+      frac := add_sub_fp80(quotient, quotient_trunc, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+      frac_abs := abs_fp80(frac);
+      half_cmp := compare_fp80(frac_abs, half_fp);
+      if quotient(FP_WIDTH-1) = '1' then
+        step_i := -1;
+      else
+        step_i := 1;
+      end if;
+      if half_cmp > 0 then
+        if not ((step_i > 0 and nearest_i = integer'high) or
+                (step_i < 0 and nearest_i = integer'low)) then
+          nearest_i := nearest_i + step_i;
+        end if;
+      elsif half_cmp = 0 and (quotient_i rem 2) /= 0 then
+        if not ((step_i > 0 and nearest_i = integer'high) or
+                (step_i < 0 and nearest_i = integer'low)) then
+          nearest_i := nearest_i + step_i;
+        end if;
+      end if;
+      nearest_q := fp80_from_int(nearest_i);
     else
-      step_i := 1;
+      quotient_trunc := fp80_trunc_toward_zero(quotient);
+      nearest_q := quotient_trunc;
+      frac := add_sub_fp80(quotient, quotient_trunc, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+      frac_abs := abs_fp80(frac);
+      half_cmp := compare_fp80(frac_abs, half_fp);
+      if half_cmp > 0 then
+        if quotient(FP_WIDTH-1) = '1' then
+          nearest_q := add_sub_fp80(nearest_q, one_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        else
+          nearest_q := add_sub_fp80(nearest_q, one_fp, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        end if;
+      elsif half_cmp = 0 and fp80_is_odd_integer(quotient_trunc) then
+        if quotient(FP_WIDTH-1) = '1' then
+          nearest_q := add_sub_fp80(nearest_q, one_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        else
+          nearest_q := add_sub_fp80(nearest_q, one_fp, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        end if;
+      end if;
     end if;
 
-    if half_cmp > 0 then
-      if not ((step_i > 0 and nearest_i = integer'high) or
-              (step_i < 0 and nearest_i = integer'low)) then
-        nearest_i := nearest_i + step_i;
-      end if;
-    elsif half_cmp = 0 and (quotient_i rem 2) /= 0 then
-      if not ((step_i > 0 and nearest_i = integer'high) or
-              (step_i < 0 and nearest_i = integer'low)) then
-        nearest_i := nearest_i + step_i;
-      end if;
-    end if;
-
-    quotient_fp := fp80_from_int(nearest_i);
-    product := mul_fp80(b, quotient_fp, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    product := mul_fp80(b, nearest_q, FP_RND_NEAREST, FP_PREC_EXTENDED);
     result := add_sub_fp80(a, product, true, round_mode, round_prec);
     return result;
   end function;

@@ -97,6 +97,8 @@ architecture sim of tb_mc68881_alu is
   constant DIV_1_10_MANT_DOUBLE : unsigned(FP_MANT_WIDTH-1 downto 0) := x"CCCCCCCCCCCCD000";
   constant DIV_1_10_SINGLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_SINGLE);
   constant DIV_1_10_DOUBLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_DOUBLE);
+  constant LARGE_MOD_A : fp80_t := x"40278000000001800000"; -- 2^40 + 3
+  constant LARGE_MOD_B : fp80_t := x"40008000000000000000"; -- 2
 
 begin
   clk <= not clk after CLK_PERIOD/2;
@@ -362,6 +364,23 @@ begin
       severity failure;
     check_result(fp80_from_int(2), "MOD 17 mod 5");
 
+    -- MOD large quotient regression (|a/b| >= 2^31)
+    op_sel <= FPU_OP_MOD;
+    a_in   <= LARGE_MOD_A;
+    b_in   <= LARGE_MOD_B;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "MOD large-quotient latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = MOD_LATENCY
+      report "MOD large-quotient latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(1), "MOD (2^40+3) mod 2");
+
     -- REM (nearest integer quotient)
     op_sel <= FPU_OP_REM;
     a_in   <= fp80_from_int(7);
@@ -378,6 +397,23 @@ begin
       report "REM latency mismatch"
       severity failure;
     check_result(fp80_from_int(-1), "REM 7 rem 4");
+
+    -- REM large quotient regression (ties-to-even path at large magnitude)
+    op_sel <= FPU_OP_REM;
+    a_in   <= LARGE_MOD_A;
+    b_in   <= LARGE_MOD_B;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "REM large-quotient latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = REM_LATENCY
+      report "REM large-quotient latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(-1), "REM (2^40+3) rem 2");
 
     -- SCALE
     op_sel <= FPU_OP_SCALE;

@@ -8,6 +8,9 @@
 - Keep updates aligned with `docs/mc68881_plan_checklist.txt`.
 - Use `docs/68881-programming.txt` as the instruction-set reference for opcode groups,
   data formats, and control/system operation behavior when planning or implementing features.
+- For `FMOVECR` constant values, use the upstream QEMU m68k constant ROM table as a
+  cross-reference (`target/m68k/fpu_helper.c`, `fpu_rom[128]`) and keep
+  `docs/fmovecr_qemu_summary.md` in sync when constants or expectations change.
 - Add or extend testbench coverage in `tb/` for any new RTL behavior.
 - Maintain VHDL-2008 compatibility and avoid vendor-specific primitives.
 - Use `scripts/run_tests.ps1` for local verification; set `GHDL_EXE` if GHDL is not on PATH.

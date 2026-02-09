@@ -180,21 +180,38 @@ architecture rtl of mc68881_top is
     end if;
   end function;
 
+  type fmovecr_rom_t is array (0 to 127) of fp80_t;
+  constant FMOVECR_ROM : fmovecr_rom_t := (
+    16#00# => x"4000C90FDAA22168C235", -- pi
+    16#0B# => x"3FFD9A209A84FBCFF798", -- log10(2)
+    16#0C# => x"4000ADF85458A2BB4A9A", -- e
+    16#0D# => x"3FFFB8AA3B295C17F0BC", -- log2(e)
+    16#0E# => x"3FFDDE5BD8A937287195", -- log10(e)
+    16#0F# => x"00000000000000000000", -- 0.0
+    16#30# => x"3FFEB17217F7D1CF79AC", -- ln(2)
+    16#31# => x"4000935D8DDDAAA8AC17", -- ln(10)
+    16#32# => x"3FFF8000000000000000", -- 10^0
+    16#33# => x"4002A000000000000000", -- 10^1
+    16#34# => x"4005C800000000000000", -- 10^2
+    16#35# => x"400C9C40000000000000", -- 10^4
+    16#36# => x"4019BEBC200000000000", -- 10^8
+    16#37# => x"40348E1BC9BF04000000", -- 10^16
+    16#38# => x"40699DC5ADA82B70B59E", -- 10^32
+    16#39# => x"40D3C2781F49FFCFA6D5", -- 10^64
+    16#3A# => x"41A893BA47C980E98CE0", -- 10^128
+    16#3B# => x"4351AA7EEBFB9DF9DE8E", -- 10^256
+    16#3C# => x"46A3E319A0AEA60E91C7", -- 10^512
+    16#3D# => x"4D48C976758681750C17", -- 10^1024
+    16#3E# => x"5A929E8B3B5DC53D5DE5", -- 10^2048
+    16#3F# => x"7525C46052028A20979B", -- 10^4096
+    others => (others => '0')
+  );
+
   function fmovecr_constant(ccc : std_logic_vector(6 downto 0)) return fp80_t is
-    variable constant_value : fp80_t := (others => '0');
+    variable ccc_index : natural range 0 to 127 := 0;
   begin
-    case ccc is
-      when "0000000" => constant_value := x"4000C90FDAA22168C235"; -- pi
-      when "0001111" => constant_value := x"00000000000000000000"; -- 0.0
-      when "0110000" => constant_value := x"3FFEB17217F7D1CF79AC"; -- ln(2)
-      when "0110001" => constant_value := x"40009A209A84FBCFF799"; -- ln(10)
-      when "0110010" => constant_value := x"3FFF8000000000000000"; -- 10^0
-      when "0110011" => constant_value := fp80_from_int(10); -- 10^1
-      when "0110100" => constant_value := fp80_from_int(100); -- 10^2
-      when "0110101" => constant_value := fp80_from_int(10000); -- 10^4
-      when others => constant_value := (others => '0');
-    end case;
-    return constant_value;
+    ccc_index := to_integer(unsigned(ccc));
+    return FMOVECR_ROM(ccc_index);
   end function;
 
   function apply_packed_k_factor(value : fp80_t; k_factor : integer) return fp80_t is

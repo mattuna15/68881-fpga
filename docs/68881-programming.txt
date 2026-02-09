@@ -729,6 +729,59 @@ about the interface, but briefly sum up the main mechanisms.
 
   $3f        10^4096
 
+  Detailed FMOVECR constant encodings (extended 80-bit, 20 hex digits):
+
+  Offset     Constant    FP80 Encoding
+
+  ==============================================================
+
+  $00        Pi          4000C90FDAA22168C235
+
+  $0b        Log10(2)    3FFD9A209A84FBCFF798
+
+  $0c        e           4000ADF85458A2BB4A9A
+
+  $0d        Log2(e)     3FFFB8AA3B295C17F0BC
+
+  $0e        Log10(e)    3FFDDE5BD8A937287195
+
+  $0f        0.0         00000000000000000000
+
+  $30        ln(2)       3FFEB17217F7D1CF79AC
+
+  $31        ln(10)      4000935D8DDDAAA8AC17
+
+  $32        10^0        3FFF8000000000000000
+
+  $33        10^1        4002A000000000000000
+
+  $34        10^2        4005C800000000000000
+
+  $35        10^4        400C9C40000000000000
+
+  $36        10^8        4019BEBC200000000000
+
+  $37        10^16       40348E1BC9BF04000000
+
+  $38        10^32       40699DC5ADA82B70B59E
+
+  $39        10^64       40D3C2781F49FFCFA6D5
+
+  $3a        10^128      41A893BA47C980E98CE0
+
+  $3b        10^256      4351AA7EEBFB9DF9DE8E
+
+  $3c        10^512      46A3E319A0AEA60E91C7
+
+  $3d        10^1024     4D48C976758681750C17
+
+  $3e        10^2048     5A929E8B3B5DC53D5DE5
+
+  $3f        10^4096     7525C46052028A20979B
+
+  Reference for the detailed table above:
+  QEMU upstream m68k FPU ROM table (fpu_rom[128]):
+  https://raw.githubusercontent.com/qemu/qemu/master/target/m68k/fpu_helper.c
 
 
 3.3  Floating Point Instructions

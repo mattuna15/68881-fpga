@@ -5,7 +5,7 @@ This repository contains a VHDL-2008 implementation of an MC68881-compatible
 floating-point unit targeting Xilinx Artix-7 devices. The focus is on cycle-accurate
 external behavior (bus timing, DSACK sequencing) while using DSP-friendly pipelines
 for the core arithmetic datapath. The current plan and progress tracking live in
-`docs/mc68881_plan_checklist.txt`. 
+`docs/mc68881_plan_checklist.txt`.
 
 ## Repository layout
 - `src/`: RTL sources for the MC68881-compatible core.
@@ -15,6 +15,18 @@ for the core arithmetic datapath. The current plan and progress tracking live in
 - `AN-0947_MC68881_Floating-Point_Coprocessor_as_a_Peripheral_in_a_M68000_System_[Motorola_1987_37p].pdf`
   and `MC68881.PDF`: Reference documentation.
 
+## Progress snapshot
+Based on `docs/mc68881_plan_checklist.txt`:
+- Completed checklist items: 11
+- In-progress checklist items: 0
+- Not-started checklist items: 22
+- Completed highlights:
+  - Top-level cleanup items A1-A3.
+  - FMOVE/FMOVEM family implementation (including packed-decimal `.P` and `FMOVECR`).
+  - Dyadic arithmetic set: `FADD`, `FSUB`, `FMUL`, `FDIV`, `FCMP`, `FMOD`, `FREM`,
+    `FSCALE`, `FSGLDIV`, `FSGLMUL`.
+  - Bus/timing confirmations E1-E4.
+
 ## Plan and milestones
 The implementation plan is tracked as a checklist in `docs/mc68881_plan_checklist.txt`,
 covering:
@@ -22,6 +34,15 @@ covering:
 - Instruction cycle accounting and effective address additions.
 - Core microarchitecture and datapath pipelines for ADD/SUB/MUL/DIV.
 - Verification goals for arithmetic, bus behavior, and cycle counts.
+
+## Key documentation
+- Master checklist: `docs/mc68881_plan_checklist.txt`
+- Programming reference: `docs/68881-programming.txt`
+- FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`
+- Technical summary: `docs/68881-tech-summary.pdf`
+- Motorola references:
+  - `docs/MC68881.PDF`
+  - `docs/AN-0947_MC68881_Floating-Point_Coprocessor_as_a_Peripheral_in_a_M68000_System_[Motorola_1987_37p].pdf`
 
 ## Running simulations
 Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). The repo includes a test

@@ -17,11 +17,13 @@ for the core arithmetic datapath. The current plan and progress tracking live in
 
 ## Progress snapshot
 Based on `docs/mc68881_plan_checklist.txt`:
-- Completed checklist items: 12
+- Completed checklist items: 14
 - In-progress checklist items: 0
-- Not-started checklist items: 21
+- Not-started checklist items: 17
 - Completed highlights:
-  - Top-level cleanup/refactor items A1-A5, including explicit operation-class dispatch.
+  - Top-level cleanup/refactor items A1-A8, including explicit operation-class
+    dispatch, centralized opcode descriptors, typed MOVE decode records, and
+    per-op FPSR/FPCR exception-policy handling.
   - FMOVE/FMOVEM family implementation (including packed-decimal `.P` and `FMOVECR`).
   - Dyadic arithmetic set: `FADD`, `FSUB`, `FMUL`, `FDIV`, `FCMP`, `FMOD`, `FREM`,
     `FSCALE`, `FSGLDIV`, `FSGLMUL`.
@@ -34,6 +36,7 @@ covering:
 - Instruction cycle accounting and effective address additions.
 - Core microarchitecture and datapath pipelines for ADD/SUB/MUL/DIV.
 - Verification goals for arithmetic, bus behavior, and cycle counts.
+- Exception-path behavior for FPSR condition codes/accrued flags and FPIAR capture hooks.
 
 ## Key documentation
 - Master checklist: `docs/mc68881_plan_checklist.txt`

@@ -49,6 +49,49 @@ architecture tb of tb_mc68881_cycle_counts is
     assert got = expected
       report "Total cycle mismatch for " & label_text severity error;
   end procedure;
+
+  procedure assert_move_cycles(
+    op_sel : fpu_op_t;
+    src_kind : fpu_src_kind_t;
+    expected : natural;
+    label_text : string
+  ) is
+    variable got : natural := 0;
+  begin
+    got := base_move_cycles(op_sel, src_kind);
+    report "Move cycles " & label_text & " expected=" & integer'image(expected) &
+      " got=" & integer'image(got) severity note;
+    assert got = expected
+      report "Move cycle mismatch for " & label_text severity error;
+  end procedure;
+
+  procedure assert_op_cycles(
+    op_sel : fpu_op_t;
+    src_kind : fpu_src_kind_t;
+    ea_mode : ea_mode_t;
+    cycle_case : ea_cycle_case_t;
+    mc68020_src : boolean;
+    mc68020_dst : boolean;
+    packed_dynamic_k : boolean;
+    expected : natural;
+    label_text : string
+  ) is
+    variable got : natural := 0;
+  begin
+    got := op_cycle_count(
+      op_sel,
+      src_kind,
+      ea_mode,
+      cycle_case,
+      mc68020_src,
+      mc68020_dst,
+      packed_dynamic_k
+    );
+    report "Op cycles " & label_text & " expected=" & integer'image(expected) &
+      " got=" & integer'image(got) severity note;
+    assert got = expected
+      report "Op cycle mismatch for " & label_text severity error;
+  end procedure;
 begin
   process
   begin
@@ -123,6 +166,22 @@ begin
       false,
       98,
       "FMUL mem extended + EA cache (An)"
+    );
+
+    assert_move_cycles(FPU_OP_MOVE, FPU_SRC_FPM, 4, "FMOVE FPR<->FPR");
+    assert_move_cycles(FPU_OP_MOVE, FPU_SRC_MEM_EXTENDED, 12, "FMOVE mem extended");
+    assert_move_cycles(FPU_OP_MOVEM, FPU_SRC_FPM, 16, "FMOVEM register list");
+
+    assert_op_cycles(
+      FPU_OP_MOVE,
+      FPU_SRC_MEM_DOUBLE,
+      EA_MODE_ABS_W,
+      EA_CYCLE_CACHE,
+      false,
+      false,
+      false,
+      12,
+      "FMOVE mem double + EA cache (xxx).W"
     );
 
     report "Arithmetic cycle table checks complete." severity note;

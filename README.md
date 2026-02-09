@@ -17,11 +17,11 @@ for the core arithmetic datapath. The current plan and progress tracking live in
 
 ## Progress snapshot
 Based on `docs/mc68881_plan_checklist.txt`:
-- Completed checklist items: 11
+- Completed checklist items: 12
 - In-progress checklist items: 0
-- Not-started checklist items: 22
+- Not-started checklist items: 21
 - Completed highlights:
-  - Top-level cleanup items A1-A3.
+  - Top-level cleanup/refactor items A1-A5, including explicit operation-class dispatch.
   - FMOVE/FMOVEM family implementation (including packed-decimal `.P` and `FMOVECR`).
   - Dyadic arithmetic set: `FADD`, `FSUB`, `FMUL`, `FDIV`, `FCMP`, `FMOD`, `FREM`,
     `FSCALE`, `FSGLDIV`, `FSGLMUL`.
@@ -46,7 +46,8 @@ covering:
 
 ## Running simulations
 Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). The repo includes a test
-script that runs both testbenches:
+script that runs the regression suite (ALU/top/cycle-count/FPCR-FPSR/FMOVE-FMOVEM/FMOVECR/
+timing plus opcode decode/class and class-dispatch benches):
 
 ```powershell
 scripts/run_tests.ps1

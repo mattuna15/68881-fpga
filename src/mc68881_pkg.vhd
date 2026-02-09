@@ -40,13 +40,18 @@ package mc68881_pkg is
     FPU_OP_SGLDIV,
     FPU_OP_SGLMUL,
     FPU_OP_MOVE,
-    FPU_OP_MOVEM
+    FPU_OP_MOVEM,
+    FPU_OP_FNOP,
+    FPU_OP_FSAVE,
+    FPU_OP_FRESTORE
   );
 
   type fpu_op_class_t is (
     OP_CLASS_NONE,
     OP_CLASS_ARITH,
-    OP_CLASS_MOVE
+    OP_CLASS_MOVE,
+    OP_CLASS_PROG_CTRL,
+    OP_CLASS_SYS_CTRL
   );
 
   type fp_round_mode_t is (
@@ -222,7 +227,10 @@ package body mc68881_pkg is
     (namespace => OP_NS_CORE_V1, opcode_id => x"09", op_sel => FPU_OP_REM),
     (namespace => OP_NS_CORE_V1, opcode_id => x"0A", op_sel => FPU_OP_SCALE),
     (namespace => OP_NS_CORE_V1, opcode_id => x"0B", op_sel => FPU_OP_SGLDIV),
-    (namespace => OP_NS_CORE_V1, opcode_id => x"0C", op_sel => FPU_OP_SGLMUL)
+    (namespace => OP_NS_CORE_V1, opcode_id => x"0C", op_sel => FPU_OP_SGLMUL),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"20", op_sel => FPU_OP_FNOP),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"30", op_sel => FPU_OP_FSAVE),
+    (namespace => OP_NS_CORE_V1, opcode_id => x"31", op_sel => FPU_OP_FRESTORE)
   );
 
   type fp_unpacked_t is record
@@ -323,6 +331,10 @@ package body mc68881_pkg is
         return OP_CLASS_ARITH;
       when FPU_OP_MOVE | FPU_OP_MOVEM =>
         return OP_CLASS_MOVE;
+      when FPU_OP_FNOP =>
+        return OP_CLASS_PROG_CTRL;
+      when FPU_OP_FSAVE | FPU_OP_FRESTORE =>
+        return OP_CLASS_SYS_CTRL;
       when others =>
         return OP_CLASS_NONE;
     end case;
@@ -539,6 +551,8 @@ package body mc68881_pkg is
         );
       when OP_CLASS_MOVE =>
         return base_move_cycles(op_sel, src_kind) + ea_cycles(ea_mode, cycle_case);
+      when OP_CLASS_PROG_CTRL | OP_CLASS_SYS_CTRL =>
+        return 0;
       when others =>
         return 0;
     end case;

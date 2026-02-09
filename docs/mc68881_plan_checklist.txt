@@ -26,7 +26,7 @@ A) Design Quality Improvements (from review)
     - Replace fixed 4-bit decode path with an extensible opcode namespace.
     - Keep backward compatibility for existing OPSEL values used by testbenches.
 
-[ ] A5. Introduce explicit operation classes for scalability.
+[x] A5. Introduce explicit operation classes for scalability.
     - Split execution/control paths for arithmetic, move, program-control, and system-control ops.
     - Avoid adding new opcode behavior through ad-hoc special-cases in top-level processes.
 

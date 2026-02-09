@@ -27,6 +27,12 @@ architecture sim of tb_mc68881_alu is
   constant SUB_LATENCY : natural := 1;
   constant MUL_LATENCY : natural := 4;
   constant DIV_LATENCY : natural := 8;
+  constant CMP_LATENCY : natural := 1;
+  constant MOD_LATENCY : natural := 8;
+  constant REM_LATENCY : natural := 8;
+  constant SCALE_LATENCY : natural := 2;
+  constant SGLDIV_LATENCY : natural := 8;
+  constant SGLMUL_LATENCY : natural := 4;
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -321,6 +327,108 @@ begin
     report "DIV 1/10 double result: " & to_hstring(result)
       severity note;
     check_result(DIV_1_10_DOUBLE_EXPECTED, "DIV 1/10 double");
+
+    -- CMP
+    op_sel <= FPU_OP_CMP;
+    a_in   <= fp80_from_int(9);
+    b_in   <= fp80_from_int(4);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "CMP latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = CMP_LATENCY
+      report "CMP latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(5), "CMP 9-4");
+
+    -- MOD
+    op_sel <= FPU_OP_MOD;
+    a_in   <= fp80_from_int(17);
+    b_in   <= fp80_from_int(5);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "MOD latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = MOD_LATENCY
+      report "MOD latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(2), "MOD 17 mod 5");
+
+    -- REM (nearest integer quotient)
+    op_sel <= FPU_OP_REM;
+    a_in   <= fp80_from_int(7);
+    b_in   <= fp80_from_int(4);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "REM latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = REM_LATENCY
+      report "REM latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(-1), "REM 7 rem 4");
+
+    -- SCALE
+    op_sel <= FPU_OP_SCALE;
+    a_in   <= fp80_from_int(2);
+    b_in   <= fp80_from_int(3);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SCALE latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = SCALE_LATENCY
+      report "SCALE latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(12), "SCALE 3 by +2");
+
+    -- SGLDIV
+    op_sel <= FPU_OP_SGLDIV;
+    a_in   <= fp80_from_int(1);
+    b_in   <= fp80_from_int(10);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SGLDIV latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = SGLDIV_LATENCY
+      report "SGLDIV latency mismatch"
+      severity failure;
+    check_result(DIV_1_10_SINGLE_EXPECTED, "SGLDIV 1/10 single");
+
+    -- SGLMUL
+    op_sel <= FPU_OP_SGLMUL;
+    a_in   <= fp80_from_int(7);
+    b_in   <= fp80_from_int(9);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SGLMUL latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = SGLMUL_LATENCY
+      report "SGLMUL latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(63), "SGLMUL 7*9");
 
     std.env.stop;
     wait;

@@ -27,6 +27,12 @@ architecture rtl of mc68881_alu is
   constant SUB_LATENCY : natural := 1;
   constant MUL_LATENCY : natural := 4;
   constant DIV_LATENCY : natural := 8;
+  constant CMP_LATENCY : natural := 1;
+  constant MOD_LATENCY : natural := 8;
+  constant REM_LATENCY : natural := 8;
+  constant SCALE_LATENCY : natural := 2;
+  constant SGLDIV_LATENCY : natural := 8;
+  constant SGLMUL_LATENCY : natural := 4;
 
   type fp80_pipe_t is array (natural range <>) of fp80_t;
   signal pipe_data  : fp80_pipe_t(0 to MAX_LATENCY) := (others => (others => '0'));
@@ -39,6 +45,12 @@ architecture rtl of mc68881_alu is
       when FPU_OP_SUB => return SUB_LATENCY;
       when FPU_OP_MUL => return MUL_LATENCY;
       when FPU_OP_DIV => return DIV_LATENCY;
+      when FPU_OP_CMP => return CMP_LATENCY;
+      when FPU_OP_MOD => return MOD_LATENCY;
+      when FPU_OP_REM => return REM_LATENCY;
+      when FPU_OP_SCALE => return SCALE_LATENCY;
+      when FPU_OP_SGLDIV => return SGLDIV_LATENCY;
+      when FPU_OP_SGLMUL => return SGLMUL_LATENCY;
       when others     => return 0;
     end case;
   end function;
@@ -69,6 +81,18 @@ begin
             result_next := mul_fp80(a_in, b_in, round_mode, round_prec);
           when FPU_OP_DIV =>
             result_next := div_fp80(a_in, b_in, round_mode, round_prec);
+          when FPU_OP_CMP =>
+            result_next := add_sub_fp80(a_in, b_in, true, round_mode, round_prec);
+          when FPU_OP_MOD =>
+            result_next := fmod_fp80(a_in, b_in, round_mode, round_prec);
+          when FPU_OP_REM =>
+            result_next := frem_fp80(a_in, b_in, round_mode, round_prec);
+          when FPU_OP_SCALE =>
+            result_next := fscale_fp80(a_in, b_in);
+          when FPU_OP_SGLDIV =>
+            result_next := sgldiv_fp80(a_in, b_in, round_mode);
+          when FPU_OP_SGLMUL =>
+            result_next := sglmul_fp80(a_in, b_in, round_mode);
           when others =>
             result_next := (others => '0');
         end case;

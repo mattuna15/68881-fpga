@@ -123,6 +123,30 @@ begin
     assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_EXTENDED, 128, "FDIV mem extended");
     assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_PACKED, 940, "FDIV mem packed");
 
+    assert_base_cycles(FPU_OP_CMP, FPU_SRC_FPM, 49, "FCMP FPM");
+    assert_base_cycles(FPU_OP_CMP, FPU_SRC_MEM_INTEGER, 78, "FCMP mem integer (B/W/L)");
+    assert_base_cycles(FPU_OP_CMP, FPU_SRC_MEM_PACKED, 886, "FCMP mem packed (.P)");
+
+    assert_base_cycles(FPU_OP_MOD, FPU_SRC_FPM, 109, "FMOD FPM");
+    assert_base_cycles(FPU_OP_MOD, FPU_SRC_MEM_INTEGER, 138, "FMOD mem integer (B/W/L)");
+    assert_base_cycles(FPU_OP_MOD, FPU_SRC_MEM_PACKED, 946, "FMOD mem packed (.P)");
+
+    assert_base_cycles(FPU_OP_REM, FPU_SRC_FPM, 109, "FREM FPM");
+    assert_base_cycles(FPU_OP_REM, FPU_SRC_MEM_INTEGER, 138, "FREM mem integer (B/W/L)");
+    assert_base_cycles(FPU_OP_REM, FPU_SRC_MEM_PACKED, 946, "FREM mem packed (.P)");
+
+    assert_base_cycles(FPU_OP_SCALE, FPU_SRC_FPM, 55, "FSCALE FPM");
+    assert_base_cycles(FPU_OP_SCALE, FPU_SRC_MEM_INTEGER, 84, "FSCALE mem integer (B/W/L)");
+    assert_base_cycles(FPU_OP_SCALE, FPU_SRC_MEM_PACKED, 892, "FSCALE mem packed (.P)");
+
+    assert_base_cycles(FPU_OP_SGLDIV, FPU_SRC_FPM, 95, "FSGLDIV FPM");
+    assert_base_cycles(FPU_OP_SGLDIV, FPU_SRC_MEM_INTEGER, 124, "FSGLDIV mem integer (B/W/L)");
+    assert_base_cycles(FPU_OP_SGLDIV, FPU_SRC_MEM_PACKED, 932, "FSGLDIV mem packed (.P)");
+
+    assert_base_cycles(FPU_OP_SGLMUL, FPU_SRC_FPM, 63, "FSGLMUL FPM");
+    assert_base_cycles(FPU_OP_SGLMUL, FPU_SRC_MEM_INTEGER, 92, "FSGLMUL mem integer (B/W/L)");
+    assert_base_cycles(FPU_OP_SGLMUL, FPU_SRC_MEM_PACKED, 900, "FSGLMUL mem packed (.P)");
+
     assert_total_cycles(
       FPU_OP_ADD,
       FPU_SRC_MEM_SINGLE,
@@ -166,6 +190,17 @@ begin
       false,
       98,
       "FMUL mem extended + EA cache (An)"
+    );
+    assert_total_cycles(
+      FPU_OP_MOD,
+      FPU_SRC_MEM_PACKED,
+      EA_MODE_ABS_L,
+      EA_CYCLE_WORST,
+      false,
+      false,
+      true,
+      965,
+      "FMOD packed + dynamic K + EA worst (xxx).L"
     );
 
     assert_move_cycles(FPU_OP_MOVE, FPU_SRC_FPM, 4, "FMOVE FPR<->FPR");

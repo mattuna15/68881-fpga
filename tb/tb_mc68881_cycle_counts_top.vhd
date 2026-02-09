@@ -40,11 +40,19 @@ architecture sim of tb_mc68881_cycle_counts_top is
   function op_sel_bits(op_sel : fpu_op_t) return std_logic_vector is
   begin
     case op_sel is
-      when FPU_OP_ADD => return "001";
-      when FPU_OP_SUB => return "010";
-      when FPU_OP_MUL => return "011";
-      when FPU_OP_DIV => return "100";
-      when others     => return "111";
+      when FPU_OP_ADD => return "0001";
+      when FPU_OP_SUB => return "0010";
+      when FPU_OP_MUL => return "0011";
+      when FPU_OP_DIV => return "0100";
+      when FPU_OP_MOVE => return "0101";
+      when FPU_OP_MOVEM => return "0110";
+      when FPU_OP_CMP => return "0111";
+      when FPU_OP_MOD => return "1000";
+      when FPU_OP_REM => return "1001";
+      when FPU_OP_SCALE => return "1010";
+      when FPU_OP_SGLDIV => return "1011";
+      when FPU_OP_SGLMUL => return "1100";
+      when others     => return "0000";
     end case;
   end function;
 
@@ -244,7 +252,7 @@ architecture sim of tb_mc68881_cycle_counts_top is
       as_n_s,
       ds_n_s,
       ADDR_OPSEL,
-      (31 downto 3 => '0') & op_sel_bits(op_sel),
+      (31 downto 4 => '0') & op_sel_bits(op_sel),
       start_cycle
     );
     wait_for_valid(a_in_s, rw_s, cs_n_s, as_n_s, ds_n_s, dsack0_n_s, dsack1_n_s, d_out_s, status_word);
@@ -380,6 +388,26 @@ begin
       false,
       true,
       "FDIV mem packed + EA worst (d32,B) dynamic K"
+    );
+
+    run_case(
+      a_in,
+      d_in,
+      rw,
+      cs_n,
+      as_n,
+      ds_n,
+      dsack0_n,
+      dsack1_n,
+      d_out,
+      FPU_OP_MOD,
+      FPU_SRC_MEM_PACKED,
+      EA_MODE_ABS_L,
+      EA_CYCLE_WORST,
+      false,
+      false,
+      true,
+      "FMOD mem packed (.P) + EA worst (xxx).L dynamic K"
     );
 
     report "TB SUCCESS: cycle count integration checks complete."

@@ -21,6 +21,12 @@ package mc68881_pkg is
     FPU_OP_SUB,
     FPU_OP_MUL,
     FPU_OP_DIV,
+    FPU_OP_CMP,
+    FPU_OP_MOD,
+    FPU_OP_REM,
+    FPU_OP_SCALE,
+    FPU_OP_SGLDIV,
+    FPU_OP_SGLMUL,
     FPU_OP_MOVE,
     FPU_OP_MOVEM
   );
@@ -87,7 +93,7 @@ package mc68881_pkg is
 
   function decode_round_mode(bits : std_logic_vector(1 downto 0)) return fp_round_mode_t;
   function decode_round_prec(bits : std_logic_vector(1 downto 0)) return fp_round_prec_t;
-  function decode_op_sel(bits : std_logic_vector(2 downto 0)) return fpu_op_t;
+  function decode_op_sel(bits : std_logic_vector(3 downto 0)) return fpu_op_t;
   function op_class(op_sel : fpu_op_t) return fpu_op_class_t;
   function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural;
   function base_arith_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural;
@@ -132,6 +138,21 @@ package mc68881_pkg is
     round_mode : fp_round_mode_t;
     round_prec : fp_round_prec_t
   ) return fp80_t;
+  function fmod_fp80(
+    a : fp80_t;
+    b : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t;
+  function frem_fp80(
+    a : fp80_t;
+    b : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t;
+  function fscale_fp80(a : fp80_t; b : fp80_t) return fp80_t;
+  function sgldiv_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
+  function sglmul_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
 end package mc68881_pkg;
 
 package body mc68881_pkg is
@@ -139,7 +160,7 @@ package body mc68881_pkg is
   constant FP_MANT_EXT_WIDTH : natural := FP_MANT_WIDTH + FP_GRS_BITS;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
   constant FP_EXP_MAX : integer := (2**FP_EXP_WIDTH) - 1;
-  type op_decode_table_t is array (0 to 7) of fpu_op_t;
+  type op_decode_table_t is array (0 to 15) of fpu_op_t;
   constant OP_DECODE_TABLE : op_decode_table_t := (
     0 => FPU_OP_NOP,
     1 => FPU_OP_ADD,
@@ -148,6 +169,12 @@ package body mc68881_pkg is
     4 => FPU_OP_DIV,
     5 => FPU_OP_MOVE,
     6 => FPU_OP_MOVEM,
+    7 => FPU_OP_CMP,
+    8 => FPU_OP_MOD,
+    9 => FPU_OP_REM,
+    10 => FPU_OP_SCALE,
+    11 => FPU_OP_SGLDIV,
+    12 => FPU_OP_SGLMUL,
     others => FPU_OP_NOP
   );
 
@@ -177,7 +204,7 @@ package body mc68881_pkg is
     end case;
   end function;
 
-  function decode_op_sel(bits : std_logic_vector(2 downto 0)) return fpu_op_t is
+  function decode_op_sel(bits : std_logic_vector(3 downto 0)) return fpu_op_t is
     variable idx : natural := 0;
   begin
     if is_x(bits) then
@@ -193,7 +220,9 @@ package body mc68881_pkg is
   function op_class(op_sel : fpu_op_t) return fpu_op_class_t is
   begin
     case op_sel is
-      when FPU_OP_ADD | FPU_OP_SUB | FPU_OP_MUL | FPU_OP_DIV =>
+      when FPU_OP_ADD | FPU_OP_SUB | FPU_OP_MUL | FPU_OP_DIV |
+           FPU_OP_CMP | FPU_OP_MOD | FPU_OP_REM | FPU_OP_SCALE |
+           FPU_OP_SGLDIV | FPU_OP_SGLMUL =>
         return OP_CLASS_ARITH;
       when FPU_OP_MOVE | FPU_OP_MOVEM =>
         return OP_CLASS_MOVE;
@@ -275,6 +304,48 @@ package body mc68881_pkg is
         mem_double_cycles := 130;
         mem_ext_cycles := 128;
         mem_packed_cycles := 940;
+      when FPU_OP_CMP =>
+        fpm_cycles := 49;
+        mem_int_cycles := 78;
+        mem_single_cycles := 70;
+        mem_double_cycles := 76;
+        mem_ext_cycles := 74;
+        mem_packed_cycles := 886;
+      when FPU_OP_MOD =>
+        fpm_cycles := 109;
+        mem_int_cycles := 138;
+        mem_single_cycles := 130;
+        mem_double_cycles := 136;
+        mem_ext_cycles := 134;
+        mem_packed_cycles := 946;
+      when FPU_OP_REM =>
+        fpm_cycles := 109;
+        mem_int_cycles := 138;
+        mem_single_cycles := 130;
+        mem_double_cycles := 136;
+        mem_ext_cycles := 134;
+        mem_packed_cycles := 946;
+      when FPU_OP_SCALE =>
+        fpm_cycles := 55;
+        mem_int_cycles := 84;
+        mem_single_cycles := 76;
+        mem_double_cycles := 82;
+        mem_ext_cycles := 80;
+        mem_packed_cycles := 892;
+      when FPU_OP_SGLDIV =>
+        fpm_cycles := 95;
+        mem_int_cycles := 124;
+        mem_single_cycles := 116;
+        mem_double_cycles := 122;
+        mem_ext_cycles := 120;
+        mem_packed_cycles := 932;
+      when FPU_OP_SGLMUL =>
+        fpm_cycles := 63;
+        mem_int_cycles := 92;
+        mem_single_cycles := 84;
+        mem_double_cycles := 90;
+        mem_ext_cycles := 88;
+        mem_packed_cycles := 900;
       when others =>
         return 0;
     end case;
@@ -874,5 +945,209 @@ package body mc68881_pkg is
     res_u.exp := exp_res;
     res_u.mant := mant_main;
     return pack_fp80(res_u);
+  end function;
+
+  function abs_fp80(value : fp80_t) return fp80_t is
+    variable result : fp80_t := value;
+  begin
+    result(FP_WIDTH-1) := '0';
+    return result;
+  end function;
+
+  function compare_magnitude(a : fp80_t; b : fp80_t) return integer is
+    variable a_u : fp_unpacked_t := unpack_fp80(a);
+    variable b_u : fp_unpacked_t := unpack_fp80(b);
+  begin
+    if a_u.exp > b_u.exp then
+      return 1;
+    elsif a_u.exp < b_u.exp then
+      return -1;
+    elsif a_u.mant > b_u.mant then
+      return 1;
+    elsif a_u.mant < b_u.mant then
+      return -1;
+    else
+      return 0;
+    end if;
+  end function;
+
+  function compare_fp80(a : fp80_t; b : fp80_t) return integer is
+    variable cmp_mag : integer := 0;
+    variable a_abs : fp80_t := abs_fp80(a);
+    variable b_abs : fp80_t := abs_fp80(b);
+  begin
+    if a_abs = (a_abs'range => '0') and b_abs = (b_abs'range => '0') then
+      return 0;
+    end if;
+
+    if a(FP_WIDTH-1) /= b(FP_WIDTH-1) then
+      if a(FP_WIDTH-1) = '1' then
+        return -1;
+      end if;
+      return 1;
+    end if;
+
+    cmp_mag := compare_magnitude(a_abs, b_abs);
+    if a(FP_WIDTH-1) = '1' then
+      return -cmp_mag;
+    end if;
+    return cmp_mag;
+  end function;
+
+  function fp80_to_int_trunc(value : fp80_t) return integer is
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+    variable exp_i : integer := 0;
+    variable shift : integer := 0;
+    variable magnitude_u : unsigned(63 downto 0) := (others => '0');
+    constant INT_HIGH_U64 : unsigned(63 downto 0) := to_unsigned(integer'high, 64);
+    variable abs_int : integer := 0;
+  begin
+    if value_u.exp = 0 or value_u.exp = FP_EXP_ALL_ONES then
+      return 0;
+    end if;
+
+    exp_i := to_integer(value_u.exp);
+    shift := exp_i - FP_EXP_BIAS;
+    if shift < 0 then
+      return 0;
+    end if;
+
+    if shift > 30 then
+      if value_u.sign = '1' then
+        return integer'low;
+      end if;
+      return integer'high;
+    end if;
+
+    magnitude_u := resize(shift_right(value_u.mant, FP_MANT_WIDTH-1-shift), 64);
+    if magnitude_u > INT_HIGH_U64 then
+      if value_u.sign = '1' then
+        return integer'low;
+      end if;
+      return integer'high;
+    end if;
+
+    abs_int := to_integer(magnitude_u);
+    if value_u.sign = '1' then
+      return -abs_int;
+    end if;
+    return abs_int;
+  end function;
+
+  function fmod_fp80(
+    a : fp80_t;
+    b : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t is
+    variable b_u : fp_unpacked_t := unpack_fp80(b);
+    variable quotient : fp80_t := (others => '0');
+    variable quotient_i : integer := 0;
+    variable quotient_fp : fp80_t := (others => '0');
+    variable product : fp80_t := (others => '0');
+    variable result : fp80_t := (others => '0');
+    variable inf_result : fp_unpacked_t;
+  begin
+    if b_u.exp = 0 and b_u.mant = 0 then
+      inf_result.sign := a(FP_WIDTH-1);
+      inf_result.exp := FP_EXP_ALL_ONES;
+      inf_result.mant := (others => '0');
+      return pack_fp80(inf_result);
+    end if;
+
+    quotient := div_fp80(a, b, FP_RND_ZERO, FP_PREC_EXTENDED);
+    quotient_i := fp80_to_int_trunc(quotient);
+    quotient_fp := fp80_from_int(quotient_i);
+    product := mul_fp80(b, quotient_fp, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    result := add_sub_fp80(a, product, true, round_mode, round_prec);
+    return result;
+  end function;
+
+  function frem_fp80(
+    a : fp80_t;
+    b : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t is
+    variable quotient : fp80_t := (others => '0');
+    variable quotient_i : integer := 0;
+    variable nearest_i : integer := 0;
+    variable step_i : integer := 0;
+    variable quotient_fp : fp80_t := (others => '0');
+    variable frac : fp80_t := (others => '0');
+    variable frac_abs : fp80_t := (others => '0');
+    variable half_fp : fp80_t := x"3FFE8000000000000000";
+    variable zero_fp : fp80_t := (others => '0');
+    variable half_cmp : integer := 0;
+    variable product : fp80_t := (others => '0');
+    variable result : fp80_t := (others => '0');
+  begin
+    quotient := div_fp80(a, b, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    quotient_i := fp80_to_int_trunc(quotient);
+    nearest_i := quotient_i;
+    quotient_fp := fp80_from_int(quotient_i);
+    frac := add_sub_fp80(quotient, quotient_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    frac_abs := abs_fp80(frac);
+    half_cmp := compare_fp80(frac_abs, half_fp);
+
+    if compare_fp80(quotient, zero_fp) < 0 then
+      step_i := -1;
+    else
+      step_i := 1;
+    end if;
+
+    if half_cmp > 0 then
+      if not ((step_i > 0 and nearest_i = integer'high) or
+              (step_i < 0 and nearest_i = integer'low)) then
+        nearest_i := nearest_i + step_i;
+      end if;
+    elsif half_cmp = 0 and (quotient_i rem 2) /= 0 then
+      if not ((step_i > 0 and nearest_i = integer'high) or
+              (step_i < 0 and nearest_i = integer'low)) then
+        nearest_i := nearest_i + step_i;
+      end if;
+    end if;
+
+    quotient_fp := fp80_from_int(nearest_i);
+    product := mul_fp80(b, quotient_fp, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    result := add_sub_fp80(a, product, true, round_mode, round_prec);
+    return result;
+  end function;
+
+  function fscale_fp80(a : fp80_t; b : fp80_t) return fp80_t is
+    variable b_u : fp_unpacked_t := unpack_fp80(b);
+    variable scale_i : integer := fp80_to_int_trunc(a);
+    variable exp_i : integer := 0;
+    variable result_u : fp_unpacked_t := b_u;
+  begin
+    if b_u.exp = 0 or b_u.exp = FP_EXP_ALL_ONES then
+      return b;
+    end if;
+
+    exp_i := to_integer(b_u.exp) + scale_i;
+    if exp_i <= 0 then
+      result_u.exp := (others => '0');
+      result_u.mant := (others => '0');
+      return pack_fp80(result_u);
+    end if;
+
+    if exp_i >= FP_EXP_MAX then
+      result_u.exp := FP_EXP_ALL_ONES;
+      result_u.mant := (others => '0');
+      return pack_fp80(result_u);
+    end if;
+
+    result_u.exp := to_unsigned(exp_i, FP_EXP_WIDTH);
+    return pack_fp80(result_u);
+  end function;
+
+  function sgldiv_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t is
+  begin
+    return div_fp80(a, b, round_mode, FP_PREC_SINGLE);
+  end function;
+
+  function sglmul_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t is
+  begin
+    return mul_fp80(a, b, round_mode, FP_PREC_SINGLE);
   end function;
 end package body mc68881_pkg;

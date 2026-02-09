@@ -22,6 +22,26 @@ A) Design Quality Improvements (from review)
     - Choose a consistent convention for registered signals (e.g., _r or _reg).
     - Apply across top-level and ALU interface signals.
 
+[ ] A4. Expand opcode encoding space beyond 4-bit OPSEL.
+    - Replace fixed 4-bit decode path with an extensible opcode namespace.
+    - Keep backward compatibility for existing OPSEL values used by testbenches.
+
+[ ] A5. Introduce explicit operation classes for scalability.
+    - Split execution/control paths for arithmetic, move, program-control, and system-control ops.
+    - Avoid adding new opcode behavior through ad-hoc special-cases in top-level processes.
+
+[ ] A6. Centralize opcode metadata in a single descriptor table.
+    - Define per-op decode ID, class, ALU latency, cycle model hook, and exception policy.
+    - Remove duplicated per-op case logic across pkg/top/ALU/testbench mapping points.
+
+[ ] A7. Replace raw move_cfg bitfield usage with typed decode records.
+    - Decode move mode/format/control selector/mask/order into named fields once.
+    - Keep FMOVE/FMOVEM semantics unchanged while reducing bit-index coupling.
+
+[ ] A8. Refactor FPSR/FPCR exception handling to per-op policy.
+    - Move exception classification from result heuristics to opcode-aware rules.
+    - Prepare for full C4/C5 behavior (condition codes, accrued flags, restart/FPIAR interactions).
+
 B) Functional Completeness (Core Missing Ops)
 ---------------------------------------------
 [ ] B1. Implement FSQRT (square root).
@@ -36,9 +56,9 @@ B) Functional Completeness (Core Missing Ops)
     - Done: FMOVECR constant ROM fetch (#ccc,FPn).
     - Done: FMOVEM Dn bitmask mode and -(An) bit-order rules.
 
-[~] B3. Complete dyadic operations set (guide section 3.3.2).
+[x] B3. Complete dyadic operations set (guide section 3.3.2).
     - Done: FADD, FSUB, FMUL, FDIV.
-    - Remaining: FCMP, FMOD, FREM, FSCALE, FSGLDIV, FSGLMUL.
+    - Done: FCMP, FMOD, FREM, FSCALE, FSGLDIV, FSGLMUL.
 
 [ ] B4. Implement monadic arithmetic/data ops (guide section 3.3.3).
     - FABS, FNEG, FINT, FINTRZ, FGETEXP, FGETMAN, FTST.

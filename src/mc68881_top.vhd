@@ -489,7 +489,7 @@ begin
   -- FPCR mode control: bits 7-6 precision, 5-4 rounding mode.
   round_mode <= decode_round_mode(fpcr_reg(5 downto 4));
   round_prec <= decode_round_prec(fpcr_reg(7 downto 6));
-  op_sel_write_decoded <= decode_op_sel(d_in(2 downto 0));
+  op_sel_write_decoded <= decode_op_sel(d_in(3 downto 0));
   op_issue_pulse <= '1' when (
     bus_write = '1' and
     addr = ADDR_OPSEL and
@@ -636,11 +636,19 @@ begin
           exc_flags(FPSR_EXC_INVALID) := '1';
         end if;
 
-        if last_op_sel_reg = FPU_OP_DIV then
+        if last_op_sel_reg = FPU_OP_DIV or
+           last_op_sel_reg = FPU_OP_SGLDIV then
           if b_zero and not a_zero then
             exc_flags(FPSR_EXC_DIVZERO) := '1';
           end if;
           if (a_zero and b_zero) or (a_inf and b_inf) then
+            exc_flags(FPSR_EXC_INVALID) := '1';
+          end if;
+        end if;
+
+        if last_op_sel_reg = FPU_OP_MOD or
+           last_op_sel_reg = FPU_OP_REM then
+          if b_zero then
             exc_flags(FPSR_EXC_INVALID) := '1';
           end if;
         end if;

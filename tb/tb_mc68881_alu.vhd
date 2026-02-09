@@ -27,6 +27,12 @@ architecture sim of tb_mc68881_alu is
   constant SUB_LATENCY : natural := 1;
   constant MUL_LATENCY : natural := 4;
   constant DIV_LATENCY : natural := 8;
+  constant CMP_LATENCY : natural := 1;
+  constant MOD_LATENCY : natural := 8;
+  constant REM_LATENCY : natural := 8;
+  constant SCALE_LATENCY : natural := 2;
+  constant SGLDIV_LATENCY : natural := 8;
+  constant SGLMUL_LATENCY : natural := 4;
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -57,6 +63,19 @@ architecture sim of tb_mc68881_alu is
       report "Mismatch: " & test_name &
              " expected=" & to_hstring(expected) &
              " got=" & to_hstring(result)
+      severity failure;
+  end procedure;
+
+  procedure check_result_nan(
+    constant test_name : string
+  ) is
+    variable got_sign  : std_logic := '0';
+    variable got_exp   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable got_mant  : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+  begin
+    split_fp80(result, got_sign, got_exp, got_mant);
+    assert got_exp = (got_exp'range => '1') and got_mant /= 0
+      report "Expected NaN: " & test_name & " got=" & to_hstring(result)
       severity failure;
   end procedure;
 
@@ -91,6 +110,8 @@ architecture sim of tb_mc68881_alu is
   constant DIV_1_10_MANT_DOUBLE : unsigned(FP_MANT_WIDTH-1 downto 0) := x"CCCCCCCCCCCCD000";
   constant DIV_1_10_SINGLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_SINGLE);
   constant DIV_1_10_DOUBLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_DOUBLE);
+  constant LARGE_MOD_A : fp80_t := x"40278000000001800000"; -- 2^40 + 3
+  constant LARGE_MOD_B : fp80_t := x"40008000000000000000"; -- 2
 
 begin
   clk <= not clk after CLK_PERIOD/2;
@@ -321,6 +342,176 @@ begin
     report "DIV 1/10 double result: " & to_hstring(result)
       severity note;
     check_result(DIV_1_10_DOUBLE_EXPECTED, "DIV 1/10 double");
+
+    -- CMP
+    op_sel <= FPU_OP_CMP;
+    a_in   <= fp80_from_int(9);
+    b_in   <= fp80_from_int(4);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "CMP latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = CMP_LATENCY
+      report "CMP latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(5), "CMP 9-4");
+
+    -- MOD
+    op_sel <= FPU_OP_MOD;
+    a_in   <= fp80_from_int(17);
+    b_in   <= fp80_from_int(5);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "MOD latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = MOD_LATENCY
+      report "MOD latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(2), "MOD 17 mod 5");
+
+    -- MOD zero divisor should return NaN.
+    op_sel <= FPU_OP_MOD;
+    a_in   <= fp80_from_int(5);
+    b_in   <= fp80_from_int(0);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "MOD divide-by-zero latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = MOD_LATENCY
+      report "MOD divide-by-zero latency mismatch"
+      severity failure;
+    check_result_nan("MOD 5 mod 0");
+
+    -- MOD large quotient regression (|a/b| >= 2^31)
+    op_sel <= FPU_OP_MOD;
+    a_in   <= LARGE_MOD_A;
+    b_in   <= LARGE_MOD_B;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "MOD large-quotient latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = MOD_LATENCY
+      report "MOD large-quotient latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(1), "MOD (2^40+3) mod 2");
+
+    -- REM (nearest integer quotient)
+    op_sel <= FPU_OP_REM;
+    a_in   <= fp80_from_int(7);
+    b_in   <= fp80_from_int(4);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "REM latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = REM_LATENCY
+      report "REM latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(-1), "REM 7 rem 4");
+
+    -- REM zero divisor should return NaN.
+    op_sel <= FPU_OP_REM;
+    a_in   <= fp80_from_int(7);
+    b_in   <= fp80_from_int(0);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "REM divide-by-zero latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = REM_LATENCY
+      report "REM divide-by-zero latency mismatch"
+      severity failure;
+    check_result_nan("REM 7 rem 0");
+
+    -- REM large quotient regression (ties-to-even path at large magnitude)
+    op_sel <= FPU_OP_REM;
+    a_in   <= LARGE_MOD_A;
+    b_in   <= LARGE_MOD_B;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "REM large-quotient latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = REM_LATENCY
+      report "REM large-quotient latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(-1), "REM (2^40+3) rem 2");
+
+    -- SCALE
+    op_sel <= FPU_OP_SCALE;
+    a_in   <= fp80_from_int(2);
+    b_in   <= fp80_from_int(3);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SCALE latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = SCALE_LATENCY
+      report "SCALE latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(12), "SCALE 3 by +2");
+
+    -- SGLDIV
+    op_sel <= FPU_OP_SGLDIV;
+    a_in   <= fp80_from_int(1);
+    b_in   <= fp80_from_int(10);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SGLDIV latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = SGLDIV_LATENCY
+      report "SGLDIV latency mismatch"
+      severity failure;
+    check_result(DIV_1_10_SINGLE_EXPECTED, "SGLDIV 1/10 single");
+
+    -- SGLMUL
+    op_sel <= FPU_OP_SGLMUL;
+    a_in   <= fp80_from_int(7);
+    b_in   <= fp80_from_int(9);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SGLMUL latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = SGLMUL_LATENCY
+      report "SGLMUL latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(63), "SGLMUL 7*9");
 
     std.env.stop;
     wait;

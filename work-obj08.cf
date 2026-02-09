@@ -1,16 +1,31 @@
 v 4
-file . "src/mc68881_pkg.vhd" "00a1a8ffacf2e661d8fe8792d878518cdbdaa743" "20260207151433.287":
-  package mc68881_pkg at 1( 0) + 0 on 21 body;
-  package body mc68881_pkg at 62( 1499) + 0 on 22;
-file . "src/mc68881_alu.vhd" "60c9c20b368a752e991a0b3def1b88298a2f6e06" "20260207151433.287":
-  entity mc68881_alu at 1( 0) + 0 on 23;
-  architecture rtl of mc68881_alu at 23( 497) + 0 on 24;
-file . "src/mc68881_top.vhd" "9c6f19ce411e3f03dabee264b3f07d04905c81a6" "20260207151433.288":
-  entity mc68881_top at 1( 0) + 0 on 25;
-  architecture rtl of mc68881_top at 26( 740) + 0 on 26;
-file . "tb/tb_mc68881_alu.vhd" "f0b368f97bcc5642e283b7c91853cd58a55f74dd" "20260207151433.289":
-  entity tb_mc68881_alu at 1( 0) + 0 on 27;
-  architecture sim of tb_mc68881_alu at 11( 173) + 0 on 28;
-file . "tb/tb_mc68881_top.vhd" "0eb1fbfab08b42ded44522d5f8eee859d47a6a75" "20260207151433.292":
-  entity tb_mc68881_top at 1( 0) + 0 on 29;
-  architecture sim of tb_mc68881_top at 11( 173) + 0 on 30;
+file . "tb/tb_mc68881_ac_timing.vhd" "43145f5a3d757a1441d03c05b0a1860954c7f962" "20260208210331.432":
+  entity tb_mc68881_ac_timing at 1( 0) + 0 on 365;
+  architecture sim of tb_mc68881_ac_timing at 9( 152) + 0 on 366;
+file . "tb/tb_mc68881_cycle_counts_top.vhd" "c1b7c2620fb16cc170602b41bf7443b0bb18e6e9" "20260208210331.431":
+  entity tb_mc68881_cycle_counts_top at 1( 0) + 0 on 363;
+  architecture sim of tb_mc68881_cycle_counts_top at 11( 193) + 0 on 364;
+file . "src/mc68881_pkg.vhd" "fb38ac8271835d7cb78c79d688c8977e09de8175" "20260208210340.783":
+  package mc68881_pkg at 1( 0) + 0 on 367 body;
+  package body mc68881_pkg at 133( 3626) + 0 on 368;
+file . "src/mc68881_alu.vhd" "477386b7092e84f1b8c20c0ade4a9696ebf085bf" "20260208210340.784":
+  entity mc68881_alu at 1( 0) + 0 on 369;
+  architecture rtl of mc68881_alu at 23( 504) + 0 on 370;
+file . "src/mc68881_top.vhd" "ca6a17cb41ba2124d172389e787978503599763d" "20260208210340.787":
+  entity mc68881_top at 1( 0) + 0 on 371;
+  architecture rtl of mc68881_top at 26( 740) + 0 on 372;
+file . "tb/tb_mc68881_alu.vhd" "f0b368f97bcc5642e283b7c91853cd58a55f74dd" "20260208210340.789":
+  entity tb_mc68881_alu at 1( 0) + 0 on 373;
+  architecture sim of tb_mc68881_alu at 11( 173) + 0 on 374;
+file . "tb/tb_mc68881_top.vhd" "e214b6d98f3e8fb5db5d27841cbd72c622d6c37b" "20260208210340.794":
+  entity tb_mc68881_top at 1( 0) + 0 on 375;
+  architecture sim of tb_mc68881_top at 11( 177) + 0 on 376;
+file . "tb/tb_mc68881_fpcr_fpsr.vhd" "74db8ffb6c8a5aab80c768a993f7ff88dbb5a5c8" "20260208210331.427":
+  entity tb_mc68881_fpcr_fpsr at 1( 0) + 0 on 357;
+  architecture sim of tb_mc68881_fpcr_fpsr at 9( 160) + 0 on 358;
+file . "tb/tb_mc68881_ea_cycles.vhd" "deb793caab79d02430c16e1e2e25eaf9b06c12ae" "20260208210331.428":
+  entity tb_mc68881_ea_cycles at 1( 0) + 0 on 359;
+  architecture tb of tb_mc68881_ea_cycles at 10( 171) + 0 on 360;
+file . "tb/tb_mc68881_cycle_counts.vhd" "576e196f6b9450015de77b411f51cc6ddbe399ac" "20260208210331.429":
+  entity tb_mc68881_cycle_counts at 1( 0) + 0 on 361;
+  architecture tb of tb_mc68881_cycle_counts at 9( 150) + 0 on 362;

@@ -8,6 +8,10 @@ package mc68881_pkg is
   constant FP_FRAC_WIDTH : natural := 63;
   constant FP_MANT_WIDTH : natural := 1 + FP_FRAC_WIDTH;
   constant FP_EXP_BIAS : natural := 16383;
+  constant FP_BUS_WORD_WIDTH : natural := 32;
+  constant FP80_RESULT_LO_WIDTH : natural := FP_BUS_WORD_WIDTH;
+  constant FP80_RESULT_HI_WIDTH : natural := FP_BUS_WORD_WIDTH;
+  constant FP80_RESULT_EX_WIDTH : natural := FP_WIDTH - FP80_RESULT_LO_WIDTH - FP80_RESULT_HI_WIDTH;
 
   subtype fp80_t is std_logic_vector(FP_WIDTH-1 downto 0);
 

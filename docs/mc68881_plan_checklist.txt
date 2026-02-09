@@ -27,31 +27,40 @@ B) Functional Completeness (Core Missing Ops)
 [ ] B1. Implement FSQRT (square root).
     - Target cycle count ~120 (per datasheet guidance).
 
-[ ] B2. Implement FMOVE/FMOVEM.
+[x] B2. Implement FMOVE/FMOVEM family per programming guide section 3.3.1.
     - Register transfer (FPR<->FPR).
     - Move to/from memory for single/double/extended precisions.
     - Move to/from control registers (FPCR/FPSR/FPIAR).
+    - Done: FMOVE for integer B/W/L source formats.
+    - Done: FMOVE packed-decimal (.P) with static/dynamic k-factor.
+    - Done: FMOVECR constant ROM fetch (#ccc,FPn).
+    - Done: FMOVEM Dn bitmask mode and -(An) bit-order rules.
 
-[ ] B3. Implement comparison operations.
-    - FCMP (compare).
-    - FTST (test).
+[~] B3. Complete dyadic operations set (guide section 3.3.2).
+    - Done: FADD, FSUB, FMUL, FDIV.
+    - Remaining: FCMP, FMOD, FREM, FSCALE, FSGLDIV, FSGLMUL.
 
-[ ] B4. Implement basic unary arithmetic.
-    - FABS (absolute value).
-    - FNEG (negate).
-    - FREM (remainder).
+[ ] B4. Implement monadic arithmetic/data ops (guide section 3.3.3).
+    - FABS, FNEG, FINT, FINTRZ, FGETEXP, FGETMAN, FTST.
+    - Keep IEEE-class behavior aligned for zero/inf/nan inputs.
 
-[ ] B5. Implement system operations.
-    - FSAVE (save state).
-    - FRESTORE (restore state).
-    - FNOP (no operation).
+[ ] B5. Implement transcendental operations (guide section 3.3.3).
+    - FACOS, FASIN, FATAN, FATANH, FCOS, FCOSH.
+    - FETOX, FETOXM1, FLOGN, FLOGNP1, FLOG10, FLOG2.
+    - FSIN, FSINCOS, FSINH, FTAN, FTANH, FTENTOX, FTWOTOX.
 
-[ ] B6. Implement transcendental functions.
-    - FSINCOS, FTAN, FLOG, FEXP, FTENT, FTWOTOX.
+[ ] B6. Implement program-control instruction set (guide section 3.3.4).
+    - FBcc, FDBcc, FScc, FNOP.
+    - Ordered/unordered condition-code variants and NaN behavior.
+    - FPU condition-code generation from FCMP/FTST results.
 
-[ ] B7. Implement packed decimal operations.
-    - FBADD, FBSUB, FBMUL, FBDIV.
-    - Packed conversion operations.
+[ ] B7. Implement system-control instruction set (guide section 3.3.5).
+    - FSAVE, FRESTORE.
+    - FTRAPcc (#<data>.W/.L and no-immediate forms).
+
+[ ] B8. Implement packed-decimal and decimal conversion path.
+    - Packed-decimal encode/decode and edge cases.
+    - Rounding and k-factor handling per FMOVE .P behavior.
 
 C) Exception Handling & Edge Cases
 ----------------------------------
@@ -63,6 +72,13 @@ C) Exception Handling & Edge Cases
 
 [ ] C3. Expand exception detection tests.
     - Invalid, divzero, overflow, underflow, inexact for new ops.
+
+[ ] C4. Complete FPCR/FPSR architectural fields.
+    - FPCR exception-enable byte semantics.
+    - FPSR condition code, quotient, exception status, accrued exception bytes.
+
+[ ] C5. Track FPIAR behavior across exceptions and restart points.
+    - Verify faulting instruction address capture and restore interactions.
 
 D) Verification / Testbench Coverage
 ------------------------------------
@@ -80,6 +96,13 @@ D) Verification / Testbench Coverage
 [ ] D4. Cycle-count verification for all newly implemented ops.
     - Include EA timing adjustments where applicable.
 
+[ ] D5. Add opcode matrix coverage from programming guide sections 3.3.1-3.3.5.
+    - Explicit per-op test status list to prevent silent gaps.
+
+[ ] D6. Add format-specific FMOVE/FMOVEM tests.
+    - B/W/L/S/D/X/P data formats.
+    - FMOVEM list encoding rules and Dn mask behavior.
+
 E) Bus Interface & Timing (Confirmations)
 -----------------------------------------
 [x] E1. DSACK behavior per Table 10.
@@ -89,5 +112,6 @@ E) Bus Interface & Timing (Confirmations)
 
 Notes:
 - Priorities from the review: FSQRT, FMOVE/FMOVEM, FCMP/FTST first; refactor top state machine next.
+- Checklist expanded using docs/68881-programming.txt (instruction groups + format/control details).
 - Maintain VHDL-2008 compatibility and avoid vendor-specific primitives.
 - Use scripts/run_tests.ps1 for local verification (set GHDL_EXE if needed).

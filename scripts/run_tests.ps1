@@ -13,20 +13,34 @@ if (-not $GhdlExe -or $GhdlExe.Trim().Length -eq 0) {
 
 Write-Host "Using GHDL: $GhdlExe"
 
-& $GhdlExe -a --std=08 src/mc68881_pkg.vhd src/mc68881_alu.vhd src/mc68881_top.vhd tb/tb_mc68881_alu.vhd tb/tb_mc68881_top.vhd tb/tb_mc68881_fpcr_fpsr.vhd tb/tb_mc68881_ea_cycles.vhd tb/tb_mc68881_cycle_counts.vhd tb/tb_mc68881_cycle_counts_top.vhd tb/tb_mc68881_ac_timing.vhd
-& $GhdlExe -e --std=08 tb_mc68881_alu
-& $GhdlExe -r --std=08 tb_mc68881_alu --assert-level=error
-& $GhdlExe -e --std=08 tb_mc68881_top
-& $GhdlExe -r --std=08 tb_mc68881_top --assert-level=error
-& $GhdlExe -e --std=08 tb_mc68881_fpcr_fpsr
-& $GhdlExe -r --std=08 tb_mc68881_fpcr_fpsr --assert-level=error
-& $GhdlExe -e --std=08 tb_mc68881_ea_cycles
-& $GhdlExe -r --std=08 tb_mc68881_ea_cycles --assert-level=error
-& $GhdlExe -e --std=08 tb_mc68881_cycle_counts
-& $GhdlExe -r --std=08 tb_mc68881_cycle_counts --assert-level=error
-& $GhdlExe -e --std=08 tb_mc68881_cycle_counts_top
-& $GhdlExe -r --std=08 tb_mc68881_cycle_counts_top --assert-level=error
-& $GhdlExe -e --std=08 tb_mc68881_ac_timing
-& $GhdlExe -r --std=08 tb_mc68881_ac_timing --assert-level=error
+function Invoke-Ghdl {
+  param(
+    [Parameter(Mandatory = $true)]
+    [string[]]$Args
+  )
+
+  & $GhdlExe @Args
+  if ($LASTEXITCODE -ne 0) {
+    throw "GHDL command failed (exit $LASTEXITCODE): $GhdlExe $($Args -join ' ')"
+  }
+}
+
+Invoke-Ghdl @('-a', '--std=08', 'src/mc68881_pkg.vhd', 'src/mc68881_alu.vhd', 'src/mc68881_top.vhd', 'tb/tb_mc68881_alu.vhd', 'tb/tb_mc68881_top.vhd', 'tb/tb_mc68881_fpcr_fpsr.vhd', 'tb/tb_mc68881_ea_cycles.vhd', 'tb/tb_mc68881_cycle_counts.vhd', 'tb/tb_mc68881_cycle_counts_top.vhd', 'tb/tb_mc68881_fmove_fmovem.vhd', 'tb/tb_mc68881_ac_timing.vhd')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_alu')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_alu', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_top')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_top', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_fpcr_fpsr')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_fpcr_fpsr', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_ea_cycles')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_ea_cycles', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_cycle_counts')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_cycle_counts', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_cycle_counts_top')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_cycle_counts_top', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_fmove_fmovem')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_fmove_fmovem', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_ac_timing')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_ac_timing', '--assert-level=error')
 
 Write-Host 'GHDL tests passed.'

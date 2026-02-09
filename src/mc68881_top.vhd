@@ -42,6 +42,8 @@ architecture rtl of mc68881_top is
   signal status_frame_busy_reg  : std_logic := '0';
   signal fpcr_reg  : std_logic_vector(31 downto 0) := (others => '0');
   signal fpsr_reg  : std_logic_vector(31 downto 0) := (others => '0');
+  signal fpiar_reg : std_logic_vector(31 downto 0) := (others => '0');
+  signal move_cfg_reg : std_logic_vector(31 downto 0) := (others => '0');
   signal round_mode : fp_round_mode_t := FP_RND_NEAREST;
   signal round_prec : fp_round_prec_t := FP_PREC_EXTENDED;
   signal src_kind_reg : fpu_src_kind_t := FPU_SRC_FPM;
@@ -82,6 +84,8 @@ architecture rtl of mc68881_top is
   constant ADDR_FRAME_W2   : unsigned(4 downto 0) := to_unsigned(20, 5);
   constant ADDR_FRAME_W3   : unsigned(4 downto 0) := to_unsigned(21, 5);
   constant ADDR_CYCLE_TOTAL: unsigned(4 downto 0) := to_unsigned(22, 5);
+  constant ADDR_MOVE_CFG   : unsigned(4 downto 0) := to_unsigned(23, 5);
+  constant ADDR_FPIAR      : unsigned(4 downto 0) := to_unsigned(24, 5);
 
   type dsack_state_t is (DSACK_IDLE, DSACK_WAIT_ASSERT, DSACK_ASSERTED);
   signal dsack_state  : dsack_state_t := DSACK_IDLE;
@@ -100,6 +104,9 @@ architecture rtl of mc68881_top is
   signal micro_total_reg : std_logic_vector(31 downto 0) := (others => '0');
   signal result_ready_reg    : std_logic := '0';
   signal last_op_sel_reg     : fpu_op_t := FPU_OP_NOP;
+  type fp_reg_file_t is array (0 to 7) of fp80_t;
+  signal fp_reg_file_reg : fp_reg_file_t := (others => (others => '0'));
+  signal fp_movem_shadow_reg : fp_reg_file_t := (others => (others => '0'));
 
   type frame_mem_t is array (0 to 3) of std_logic_vector(31 downto 0);
   signal frame_mem_reg : frame_mem_t := (others => (others => '0'));
@@ -112,6 +119,9 @@ architecture rtl of mc68881_top is
 
   signal op_sel_write_decoded : fpu_op_t := FPU_OP_NOP;
   signal op_issue_pulse       : std_logic := '0';
+  signal ctrl_move_write_req_reg : std_logic := '0';
+  signal ctrl_move_sel_reg : std_logic_vector(1 downto 0) := (others => '0');
+  signal ctrl_move_data_reg : std_logic_vector(31 downto 0) := (others => '0');
 
   constant FRAME_LATENCY : natural := 6;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
@@ -129,11 +139,196 @@ architecture rtl of mc68881_top is
     ACCESS_STATUS,
     ACCESS_FPCR,
     ACCESS_FPSR,
+    ACCESS_FPIAR,
     ACCESS_CIR,
     ACCESS_FRAME,
+    ACCESS_MOVE,
     ACCESS_CFG
   );
   signal access_class : access_class_t := ACCESS_NONE;
+
+  type move_mode_t is (
+    MOVE_MODE_REG_TO_REG,
+    MOVE_MODE_MEM_TO_REG,
+    MOVE_MODE_REG_TO_MEM,
+    MOVE_MODE_CONTROL
+  );
+
+  function decode_move_mode(bits : std_logic_vector(1 downto 0)) return move_mode_t is
+  begin
+    case bits is
+      when "00" => return MOVE_MODE_REG_TO_REG;
+      when "01" => return MOVE_MODE_MEM_TO_REG;
+      when "10" => return MOVE_MODE_REG_TO_MEM;
+      when others => return MOVE_MODE_CONTROL;
+    end case;
+  end function;
+
+  function signed8_to_integer(bits : std_logic_vector(7 downto 0)) return integer is
+  begin
+    return to_integer(signed(bits));
+  end function;
+
+  function clamp_integer(value : integer; min_value : integer; max_value : integer) return integer is
+  begin
+    if value < min_value then
+      return min_value;
+    elsif value > max_value then
+      return max_value;
+    else
+      return value;
+    end if;
+  end function;
+
+  function fmovecr_constant(ccc : std_logic_vector(6 downto 0)) return fp80_t is
+    variable constant_value : fp80_t := (others => '0');
+  begin
+    case ccc is
+      when "0000000" => constant_value := x"4000C90FDAA22168C235"; -- pi
+      when "0001111" => constant_value := x"00000000000000000000"; -- 0.0
+      when "0110000" => constant_value := x"3FFEB17217F7D1CF79AC"; -- ln(2)
+      when "0110001" => constant_value := x"40009A209A84FBCFF799"; -- ln(10)
+      when "0110010" => constant_value := x"3FFF8000000000000000"; -- 10^0
+      when "0110011" => constant_value := fp80_from_int(10); -- 10^1
+      when "0110100" => constant_value := fp80_from_int(100); -- 10^2
+      when "0110101" => constant_value := fp80_from_int(10000); -- 10^4
+      when others => constant_value := (others => '0');
+    end case;
+    return constant_value;
+  end function;
+
+  function apply_packed_k_factor(value : fp80_t; k_factor : integer) return fp80_t is
+    variable adjusted : fp80_t := value;
+    variable k_clamped : integer := 0;
+    variable fractional_bits : integer := 0;
+    variable bit_count : natural := 0;
+  begin
+    -- Placeholder packed-decimal shaping using k-factor; full decimal encode/decode is tracked by B8.
+    k_clamped := clamp_integer(k_factor, -64, 17);
+    if k_clamped <= 0 then
+      fractional_bits := 63 - (-k_clamped / 2);
+    else
+      fractional_bits := (k_clamped * 3) + 6;
+    end if;
+    fractional_bits := clamp_integer(fractional_bits, 0, 63);
+    bit_count := natural(63 - fractional_bits);
+    if bit_count > 0 then
+      adjusted(bit_count-1 downto 0) := (others => '0');
+    end if;
+    return adjusted;
+  end function;
+
+  function fp80_from_single(bits : std_logic_vector(31 downto 0)) return fp80_t is
+    variable fp_value : fp80_t := (others => '0');
+    variable exp_s : unsigned(7 downto 0) := unsigned(bits(30 downto 23));
+    variable frac_s : unsigned(22 downto 0) := unsigned(bits(22 downto 0));
+    variable exp80 : integer := 0;
+  begin
+    fp_value(FP_WIDTH-1) := bits(31);
+    if exp_s = 0 then
+      if frac_s = 0 then
+        return fp_value;
+      end if;
+      return fp_value;
+    elsif exp_s = to_unsigned(255, 8) then
+      fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
+      if frac_s /= 0 then
+        fp_value(FP_MANT_WIDTH-1) := '1';
+      end if;
+      return fp_value;
+    else
+      exp80 := to_integer(exp_s) - 127 + FP_EXP_BIAS;
+      fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := std_logic_vector(to_unsigned(exp80, FP_EXP_WIDTH));
+      fp_value(FP_MANT_WIDTH-1) := '1';
+      fp_value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-24) := std_logic_vector(frac_s);
+      return fp_value;
+    end if;
+  end function;
+
+  function fp80_from_double(bits : std_logic_vector(63 downto 0)) return fp80_t is
+    variable fp_value : fp80_t := (others => '0');
+    variable exp_d : unsigned(10 downto 0) := unsigned(bits(62 downto 52));
+    variable frac_d : unsigned(51 downto 0) := unsigned(bits(51 downto 0));
+    variable exp80 : integer := 0;
+  begin
+    fp_value(FP_WIDTH-1) := bits(63);
+    if exp_d = 0 then
+      if frac_d = 0 then
+        return fp_value;
+      end if;
+      return fp_value;
+    elsif exp_d = to_unsigned(2047, 11) then
+      fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
+      if frac_d /= 0 then
+        fp_value(FP_MANT_WIDTH-1) := '1';
+      end if;
+      return fp_value;
+    else
+      exp80 := to_integer(exp_d) - 1023 + FP_EXP_BIAS;
+      fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := std_logic_vector(to_unsigned(exp80, FP_EXP_WIDTH));
+      fp_value(FP_MANT_WIDTH-1) := '1';
+      fp_value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-53) := std_logic_vector(frac_d);
+      return fp_value;
+    end if;
+  end function;
+
+  function fp80_to_single(value : fp80_t) return std_logic_vector is
+    variable bits32 : std_logic_vector(31 downto 0) := (others => '0');
+    variable exp80 : unsigned(FP_EXP_WIDTH-1 downto 0) := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+    variable frac80 : unsigned(FP_MANT_WIDTH-2 downto 0) := unsigned(value(FP_MANT_WIDTH-2 downto 0));
+    variable exp32 : integer := 0;
+  begin
+    bits32(31) := value(FP_WIDTH-1);
+    if exp80 = 0 then
+      return bits32;
+    elsif exp80 = FP_EXP_ALL_ONES then
+      bits32(30 downto 23) := (others => '1');
+      if frac80 /= 0 then
+        bits32(22) := '1';
+      end if;
+      return bits32;
+    else
+      exp32 := to_integer(exp80) - FP_EXP_BIAS + 127;
+      if exp32 <= 0 then
+        return bits32;
+      elsif exp32 >= 255 then
+        bits32(30 downto 23) := (others => '1');
+        return bits32;
+      end if;
+      bits32(30 downto 23) := std_logic_vector(to_unsigned(exp32, 8));
+      bits32(22 downto 0) := value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-24);
+      return bits32;
+    end if;
+  end function;
+
+  function fp80_to_double(value : fp80_t) return std_logic_vector is
+    variable bits64 : std_logic_vector(63 downto 0) := (others => '0');
+    variable exp80 : unsigned(FP_EXP_WIDTH-1 downto 0) := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+    variable frac80 : unsigned(FP_MANT_WIDTH-2 downto 0) := unsigned(value(FP_MANT_WIDTH-2 downto 0));
+    variable exp64 : integer := 0;
+  begin
+    bits64(63) := value(FP_WIDTH-1);
+    if exp80 = 0 then
+      return bits64;
+    elsif exp80 = FP_EXP_ALL_ONES then
+      bits64(62 downto 52) := (others => '1');
+      if frac80 /= 0 then
+        bits64(51) := '1';
+      end if;
+      return bits64;
+    else
+      exp64 := to_integer(exp80) - FP_EXP_BIAS + 1023;
+      if exp64 <= 0 then
+        return bits64;
+      elsif exp64 >= 2047 then
+        bits64(62 downto 52) := (others => '1');
+        return bits64;
+      end if;
+      bits64(62 downto 52) := std_logic_vector(to_unsigned(exp64, 11));
+      bits64(51 downto 0) := value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-53);
+      return bits64;
+    end if;
+  end function;
 
   function decode_src_kind(bits : std_logic_vector(2 downto 0)) return fpu_src_kind_t is
   begin
@@ -232,10 +427,14 @@ begin
         access_class <= ACCESS_FPCR;
       when ADDR_FPSR =>
         access_class <= ACCESS_FPSR;
+      when ADDR_FPIAR =>
+        access_class <= ACCESS_FPIAR;
       when ADDR_CIR_SAVE | ADDR_CIR_RESPONSE =>
         access_class <= ACCESS_CIR;
       when ADDR_FRAME_CMD | ADDR_FRAME_W0 | ADDR_FRAME_W1 | ADDR_FRAME_W2 | ADDR_FRAME_W3 =>
         access_class <= ACCESS_FRAME;
+      when ADDR_MOVE_CFG =>
+        access_class <= ACCESS_MOVE;
       when ADDR_CYCLE_CFG0 | ADDR_CYCLE_CFG1 | ADDR_CYCLE_TOTAL =>
         access_class <= ACCESS_CFG;
       when others =>
@@ -290,6 +489,8 @@ begin
       operand_reg <= (others => (others => '0'));
       fpcr_reg <= (others => '0');
       fpsr_reg <= (others => '0');
+      fpiar_reg <= (others => '0');
+      move_cfg_reg <= (others => '0');
       src_kind_reg <= FPU_SRC_FPM;
       ea_mode_reg <= EA_MODE_DN_AN;
       cycle_case_reg <= EA_CYCLE_BEST;
@@ -328,6 +529,10 @@ begin
             fpcr_reg(31 downto 16) <= (others => '0');
           when ADDR_FPSR =>
             fpsr_reg <= d_in;
+          when ADDR_FPIAR =>
+            fpiar_reg <= d_in;
+          when ADDR_MOVE_CFG =>
+            move_cfg_reg <= d_in;
           when ADDR_CYCLE_CFG0 =>
             src_kind_reg <= decode_src_kind(d_in(2 downto 0));
             ea_mode_reg <= decode_ea_mode(d_in(7 downto 3));
@@ -357,6 +562,18 @@ begin
             frame_valid_reg <= '1';
           when others =>
             null;
+        end case;
+      end if;
+
+      if ctrl_move_write_req_reg = '1' then
+        case ctrl_move_sel_reg is
+          when "00" =>
+            fpcr_reg(15 downto 0) <= ctrl_move_data_reg(15 downto 0);
+            fpcr_reg(31 downto 16) <= (others => '0');
+          when "01" =>
+            fpsr_reg <= ctrl_move_data_reg;
+          when others =>
+            fpiar_reg <= ctrl_move_data_reg;
         end case;
       end if;
 
@@ -442,6 +659,20 @@ begin
 
   alu_control_proc : process(clk, reset_n)
     variable total_cycles : natural := 0;
+    variable src_idx : natural range 0 to 7 := 0;
+    variable dst_idx : natural range 0 to 7 := 0;
+    variable move_result : fp80_t := (others => '0');
+    variable mode : move_mode_t := MOVE_MODE_REG_TO_REG;
+    variable mem_fmt : std_logic_vector(1 downto 0) := (others => '0');
+    variable ctrl_sel : std_logic_vector(1 downto 0) := (others => '0');
+    variable mask : std_logic_vector(7 downto 0) := (others => '0');
+    variable first_idx : integer := -1;
+    variable mask_bit_idx : integer range 0 to 7 := 0;
+    variable single_bits : std_logic_vector(31 downto 0) := (others => '0');
+    variable double_bits : std_logic_vector(63 downto 0) := (others => '0');
+    variable ctrl_value : std_logic_vector(31 downto 0) := (others => '0');
+    variable int_value : integer := 0;
+    variable packed_k : integer := 0;
   begin
     if reset_n = '0' then
       result_lo_reg <= (others => '0');
@@ -453,11 +684,16 @@ begin
       micro_total_reg <= (others => '0');
       result_ready_reg <= '0';
       last_op_sel_reg <= FPU_OP_NOP;
+      fp_reg_file_reg <= (others => (others => '0'));
+      fp_movem_shadow_reg <= (others => (others => '0'));
+      ctrl_move_write_req_reg <= '0';
+      ctrl_move_sel_reg <= (others => '0');
+      ctrl_move_data_reg <= (others => '0');
     elsif rising_edge(clk) then
       op_start_reg <= '0';
+      ctrl_move_write_req_reg <= '0';
 
       if op_issue_pulse = '1' then
-        op_start_reg <= '1';
         result_ready_reg <= '0';
         last_op_sel_reg <= op_sel_write_decoded;
         micro_active_reg <= '1';
@@ -475,6 +711,140 @@ begin
           micro_remaining_reg <= 0;
         else
           micro_remaining_reg <= total_cycles - 1;
+        end if;
+
+        if op_sel_write_decoded = FPU_OP_MOVE then
+          src_idx := to_integer(unsigned(move_cfg_reg(2 downto 0)));
+          mem_fmt := move_cfg_reg(5 downto 4);
+          mode := decode_move_mode(move_cfg_reg(7 downto 6));
+          dst_idx := to_integer(unsigned(move_cfg_reg(11 downto 9)));
+          ctrl_sel := move_cfg_reg(13 downto 12);
+          move_result := (others => '0');
+
+          if move_cfg_reg(26) = '1' then
+            move_result := fmovecr_constant(operand_reg(0)(6 downto 0));
+            fp_reg_file_reg(dst_idx) <= move_result;
+          else
+            case mode is
+              when MOVE_MODE_REG_TO_REG =>
+                move_result := fp_reg_file_reg(src_idx);
+                fp_reg_file_reg(dst_idx) <= move_result;
+              when MOVE_MODE_MEM_TO_REG =>
+                if move_cfg_reg(24) = '1' then
+                  case mem_fmt is
+                    when "00" =>
+                      int_value := to_integer(resize(signed(operand_reg(0)(7 downto 0)), 32));
+                    when "01" =>
+                      int_value := to_integer(resize(signed(operand_reg(0)(15 downto 0)), 32));
+                    when others =>
+                      int_value := to_integer(signed(operand_reg(0)(31 downto 0)));
+                  end case;
+                  move_result := fp80_from_int(int_value);
+                else
+                  case mem_fmt is
+                    when "01" =>
+                      move_result := fp80_from_single(operand_reg(0)(31 downto 0));
+                    when "10" =>
+                      move_result := fp80_from_double(operand_reg(0)(63 downto 0));
+                    when others =>
+                      move_result := operand_reg(0);
+                  end case;
+                end if;
+                fp_reg_file_reg(dst_idx) <= move_result;
+              when MOVE_MODE_REG_TO_MEM =>
+                move_result := fp_reg_file_reg(src_idx);
+                if move_cfg_reg(25) = '1' then
+                  if move_cfg_reg(23) = '1' then
+                    packed_k := signed8_to_integer(operand_reg(0)(7 downto 0));
+                  else
+                    packed_k := signed8_to_integer(operand_reg(1)(7 downto 0));
+                  end if;
+                  move_result := apply_packed_k_factor(move_result, packed_k);
+                  result_lo_reg <= move_result(FP80_RESULT_LO_WIDTH-1 downto 0);
+                  result_hi_reg <= move_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
+                  result_ex_reg <= move_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+                else
+                  case mem_fmt is
+                    when "01" =>
+                      single_bits := fp80_to_single(move_result);
+                      result_lo_reg <= single_bits;
+                      result_hi_reg <= (others => '0');
+                      result_ex_reg <= (others => '0');
+                    when "10" =>
+                      double_bits := fp80_to_double(move_result);
+                      result_lo_reg <= double_bits(31 downto 0);
+                      result_hi_reg <= double_bits(63 downto 32);
+                      result_ex_reg <= (others => '0');
+                    when others =>
+                      result_lo_reg <= move_result(FP80_RESULT_LO_WIDTH-1 downto 0);
+                      result_hi_reg <= move_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
+                      result_ex_reg <= move_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+                  end case;
+                end if;
+              when MOVE_MODE_CONTROL =>
+                if move_cfg_reg(8) = '1' then
+                  case ctrl_sel is
+                    when "00" => ctrl_value := fpcr_reg;
+                    when "01" => ctrl_value := fpsr_reg;
+                    when others => ctrl_value := fpiar_reg;
+                  end case;
+                  move_result := (others => '0');
+                  move_result(31 downto 0) := ctrl_value;
+                  fp_reg_file_reg(dst_idx) <= move_result;
+                else
+                  ctrl_move_write_req_reg <= '1';
+                  ctrl_move_sel_reg <= ctrl_sel;
+                  ctrl_move_data_reg <= fp_reg_file_reg(src_idx)(31 downto 0);
+                  move_result := fp_reg_file_reg(src_idx);
+                end if;
+            end case;
+          end if;
+
+          if mode /= MOVE_MODE_REG_TO_MEM then
+            result_lo_reg <= move_result(FP80_RESULT_LO_WIDTH-1 downto 0);
+            result_hi_reg <= move_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
+            result_ex_reg <= move_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+          end if;
+          result_ready_reg <= '1';
+        elsif op_sel_write_decoded = FPU_OP_MOVEM then
+          if move_cfg_reg(27) = '1' then
+            mask := operand_reg(0)(7 downto 0);
+          else
+            mask := move_cfg_reg(21 downto 14);
+          end if;
+          first_idx := -1;
+          for idx in 0 to 7 loop
+            if move_cfg_reg(28) = '1' then
+              mask_bit_idx := idx;
+            else
+              mask_bit_idx := 7 - idx;
+            end if;
+            if mask(mask_bit_idx) = '1' then
+              if first_idx = -1 then
+                first_idx := idx;
+              end if;
+              if move_cfg_reg(22) = '1' then
+                fp_reg_file_reg(idx) <= fp_movem_shadow_reg(idx);
+              else
+                fp_movem_shadow_reg(idx) <= fp_reg_file_reg(idx);
+              end if;
+            end if;
+          end loop;
+
+          move_result := (others => '0');
+          if first_idx >= 0 then
+            if move_cfg_reg(22) = '1' then
+              move_result := fp_movem_shadow_reg(first_idx);
+            else
+              move_result := fp_reg_file_reg(first_idx);
+            end if;
+          end if;
+          result_lo_reg <= move_result(FP80_RESULT_LO_WIDTH-1 downto 0);
+          result_hi_reg <= move_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
+          result_ex_reg <= move_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+          result_ready_reg <= '1';
+        else
+          op_start_reg <= '1';
         end if;
       end if;
 
@@ -529,6 +899,8 @@ begin
     status_frame_busy_reg,
     fpcr_reg,
     fpsr_reg,
+    fpiar_reg,
+    move_cfg_reg,
     src_kind_reg,
     ea_mode_reg,
     cycle_case_reg,
@@ -565,6 +937,10 @@ begin
           d_out_comb <= fpcr_reg;
         when ADDR_FPSR =>
           d_out_comb <= fpsr_reg;
+        when ADDR_FPIAR =>
+          d_out_comb <= fpiar_reg;
+        when ADDR_MOVE_CFG =>
+          d_out_comb <= move_cfg_reg;
         when ADDR_CYCLE_CFG0 =>
           d_out_comb <= cfg0;
         when ADDR_CYCLE_CFG1 =>

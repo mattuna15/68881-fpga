@@ -20,12 +20,15 @@ package mc68881_pkg is
     FPU_OP_ADD,
     FPU_OP_SUB,
     FPU_OP_MUL,
-    FPU_OP_DIV
+    FPU_OP_DIV,
+    FPU_OP_MOVE,
+    FPU_OP_MOVEM
   );
 
   type fpu_op_class_t is (
     OP_CLASS_NONE,
-    OP_CLASS_ARITH
+    OP_CLASS_ARITH,
+    OP_CLASS_MOVE
   );
 
   type fp_round_mode_t is (
@@ -88,6 +91,7 @@ package mc68881_pkg is
   function op_class(op_sel : fpu_op_t) return fpu_op_class_t;
   function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural;
   function base_arith_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural;
+  function base_move_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural;
   function total_arith_cycles(
     op_sel : fpu_op_t;
     src_kind : fpu_src_kind_t;
@@ -142,6 +146,8 @@ package body mc68881_pkg is
     2 => FPU_OP_SUB,
     3 => FPU_OP_MUL,
     4 => FPU_OP_DIV,
+    5 => FPU_OP_MOVE,
+    6 => FPU_OP_MOVEM,
     others => FPU_OP_NOP
   );
 
@@ -189,6 +195,8 @@ package body mc68881_pkg is
     case op_sel is
       when FPU_OP_ADD | FPU_OP_SUB | FPU_OP_MUL | FPU_OP_DIV =>
         return OP_CLASS_ARITH;
+      when FPU_OP_MOVE | FPU_OP_MOVEM =>
+        return OP_CLASS_MOVE;
       when others =>
         return OP_CLASS_NONE;
     end case;
@@ -281,6 +289,30 @@ package body mc68881_pkg is
     end case;
   end function;
 
+  function base_move_cycles(op_sel : fpu_op_t; src_kind : fpu_src_kind_t) return natural is
+  begin
+    case op_sel is
+      when FPU_OP_MOVE =>
+        case src_kind is
+          when FPU_SRC_FPM => return 4;
+          when FPU_SRC_MEM_SINGLE => return 8;
+          when FPU_SRC_MEM_DOUBLE => return 10;
+          when FPU_SRC_MEM_EXTENDED => return 12;
+          when others => return 10;
+        end case;
+      when FPU_OP_MOVEM =>
+        case src_kind is
+          when FPU_SRC_FPM => return 16;
+          when FPU_SRC_MEM_SINGLE => return 20;
+          when FPU_SRC_MEM_DOUBLE => return 22;
+          when FPU_SRC_MEM_EXTENDED => return 24;
+          when others => return 20;
+        end case;
+      when others =>
+        return 0;
+    end case;
+  end function;
+
   function total_arith_cycles(
     op_sel : fpu_op_t;
     src_kind : fpu_src_kind_t;
@@ -337,6 +369,8 @@ package body mc68881_pkg is
           mc68020_dst,
           packed_dynamic_k
         );
+      when OP_CLASS_MOVE =>
+        return base_move_cycles(op_sel, src_kind) + ea_cycles(ea_mode, cycle_case);
       when others =>
         return 0;
     end case;

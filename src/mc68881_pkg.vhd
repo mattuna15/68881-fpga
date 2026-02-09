@@ -1111,13 +1111,14 @@ package body mc68881_pkg is
     variable quotient_i : integer := 0;
     variable product : fp80_t := (others => '0');
     variable result : fp80_t := (others => '0');
-    variable inf_result : fp_unpacked_t;
+    variable nan_result : fp_unpacked_t;
   begin
     if b_u.exp = 0 and b_u.mant = 0 then
-      inf_result.sign := a(FP_WIDTH-1);
-      inf_result.exp := FP_EXP_ALL_ONES;
-      inf_result.mant := (others => '0');
-      return pack_fp80(inf_result);
+      nan_result.sign := '0';
+      nan_result.exp := FP_EXP_ALL_ONES;
+      nan_result.mant := (others => '0');
+      nan_result.mant(FP_MANT_WIDTH-1) := '1';
+      return pack_fp80(nan_result);
     end if;
 
     quotient := div_fp80(a, b, FP_RND_ZERO, FP_PREC_EXTENDED);
@@ -1140,6 +1141,7 @@ package body mc68881_pkg is
     round_mode : fp_round_mode_t;
     round_prec : fp_round_prec_t
   ) return fp80_t is
+    variable b_u : fp_unpacked_t := unpack_fp80(b);
     variable quotient : fp80_t := (others => '0');
     variable quotient_u : fp_unpacked_t;
     variable quotient_trunc : fp80_t := (others => '0');
@@ -1155,7 +1157,16 @@ package body mc68881_pkg is
     variable half_cmp : integer := 0;
     variable product : fp80_t := (others => '0');
     variable result : fp80_t := (others => '0');
+    variable nan_result : fp_unpacked_t;
   begin
+    if b_u.exp = 0 and b_u.mant = 0 then
+      nan_result.sign := '0';
+      nan_result.exp := FP_EXP_ALL_ONES;
+      nan_result.mant := (others => '0');
+      nan_result.mant(FP_MANT_WIDTH-1) := '1';
+      return pack_fp80(nan_result);
+    end if;
+
     quotient := div_fp80(a, b, FP_RND_NEAREST, FP_PREC_EXTENDED);
     quotient_u := unpack_fp80(quotient);
     use_integer_path := quotient_u.exp /= 0 and quotient_u.exp /= FP_EXP_ALL_ONES and

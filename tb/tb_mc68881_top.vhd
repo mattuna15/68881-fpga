@@ -40,6 +40,7 @@ architecture sim of tb_mc68881_top is
   constant FPCR_PREC_SINGLE : std_logic_vector(31 downto 0) := x"00000040";
   constant FPCR_PREC_DOUBLE : std_logic_vector(31 downto 0) := x"00000080";
   constant FPSR_EXC_DIVZERO : natural := 3;
+  constant FPSR_EXC_INVALID : natural := 4;
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -254,6 +255,9 @@ begin
     variable op_b : fp80_t := (others => '0');
     variable exp_r: fp80_t := (others => '0');
     variable rd_full : fp80_t := (others => '0');
+    variable rd_sign : std_logic := '0';
+    variable rd_exp : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable rd_mant : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
     reset_n <= '0';
     wait for 2 * CLK_PERIOD;
@@ -678,6 +682,76 @@ begin
       severity note;
     assert rd_lo(FPSR_EXC_DIVZERO) = '1'
       report "FPSR DIV-by-zero flag not set"
+      severity failure;
+
+    -- FPSR exception flags: FMOD by zero should raise invalid and return NaN.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := fp80_from_int(5);
+    op_b := fp80_from_int(0);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000008");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOD 5,0 result: " & to_hstring(rd_full)
+      severity note;
+    split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
+    assert rd_exp = (rd_exp'range => '1') and rd_mant /= 0
+      report "FMOD divide-by-zero should return NaN"
+      severity failure;
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after FMOD by zero: " & to_hstring(rd_lo)
+      severity note;
+    assert rd_lo(FPSR_EXC_INVALID) = '1'
+      report "FPSR invalid flag not set for FMOD divide-by-zero"
+      severity failure;
+    assert rd_lo(FPSR_EXC_DIVZERO) = '0'
+      report "FPSR DIVZERO should not be set for FMOD divide-by-zero"
+      severity failure;
+
+    -- FPSR exception flags: FREM by zero should raise invalid and return NaN.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := fp80_from_int(7);
+    op_b := fp80_from_int(0);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000009");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FREM 7,0 result: " & to_hstring(rd_full)
+      severity note;
+    split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
+    assert rd_exp = (rd_exp'range => '1') and rd_mant /= 0
+      report "FREM divide-by-zero should return NaN"
+      severity failure;
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after FREM by zero: " & to_hstring(rd_lo)
+      severity note;
+    assert rd_lo(FPSR_EXC_INVALID) = '1'
+      report "FPSR invalid flag not set for FREM divide-by-zero"
+      severity failure;
+    assert rd_lo(FPSR_EXC_DIVZERO) = '0'
+      report "FPSR DIVZERO should not be set for FREM divide-by-zero"
       severity failure;
 
     -- DSACK behavior coverage

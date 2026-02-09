@@ -66,6 +66,19 @@ architecture sim of tb_mc68881_alu is
       severity failure;
   end procedure;
 
+  procedure check_result_nan(
+    constant test_name : string
+  ) is
+    variable got_sign  : std_logic := '0';
+    variable got_exp   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable got_mant  : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+  begin
+    split_fp80(result, got_sign, got_exp, got_mant);
+    assert got_exp = (got_exp'range => '1') and got_mant /= 0
+      report "Expected NaN: " & test_name & " got=" & to_hstring(result)
+      severity failure;
+  end procedure;
+
   function fp80_from_int(value : integer) return fp80_t is
   begin
     return work.mc68881_pkg.fp80_from_int(value);
@@ -364,6 +377,23 @@ begin
       severity failure;
     check_result(fp80_from_int(2), "MOD 17 mod 5");
 
+    -- MOD zero divisor should return NaN.
+    op_sel <= FPU_OP_MOD;
+    a_in   <= fp80_from_int(5);
+    b_in   <= fp80_from_int(0);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "MOD divide-by-zero latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = MOD_LATENCY
+      report "MOD divide-by-zero latency mismatch"
+      severity failure;
+    check_result_nan("MOD 5 mod 0");
+
     -- MOD large quotient regression (|a/b| >= 2^31)
     op_sel <= FPU_OP_MOD;
     a_in   <= LARGE_MOD_A;
@@ -397,6 +427,23 @@ begin
       report "REM latency mismatch"
       severity failure;
     check_result(fp80_from_int(-1), "REM 7 rem 4");
+
+    -- REM zero divisor should return NaN.
+    op_sel <= FPU_OP_REM;
+    a_in   <= fp80_from_int(7);
+    b_in   <= fp80_from_int(0);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "REM divide-by-zero latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = REM_LATENCY
+      report "REM divide-by-zero latency mismatch"
+      severity failure;
+    check_result_nan("REM 7 rem 0");
 
     -- REM large quotient regression (ties-to-even path at large magnitude)
     op_sel <= FPU_OP_REM;

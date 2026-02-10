@@ -6,6 +6,13 @@
 
 ## Development notes
 - Keep updates aligned with `docs/mc68881_plan_checklist.txt`.
+- A5 is implemented: route execution through explicit opcode classes
+  (`ARITH`, `MOVE`, `PROG_CTRL`, `SYS_CTRL`) instead of adding ad-hoc
+  top-level opcode special-cases.
+- A8 is implemented: FPSR/FPCR exception handling is driven by per-op
+  policy metadata (not shared heuristics), including condition-code
+  updates, accrued exception-byte updates, and exception-time FPIAR
+  capture hooks.
 - Use `docs/68881-programming.txt` as the instruction-set reference for opcode groups,
   data formats, and control/system operation behavior when planning or implementing features.
 - For `FMOVECR` constant values, use the upstream QEMU m68k constant ROM table as a
@@ -17,6 +24,10 @@
   parameter and never write to an `in` parameter (use local variables or `buffer`/`inout`
   only when semantically required).
 - Use `scripts/run_tests.ps1` for local verification; set `GHDL_EXE` if GHDL is not on PATH.
+- Keep opcode decode/class coverage updated in `tb/mc68881_microseq_tb.vhd`.
+- Keep class-dispatch integration coverage updated in `tb/tb_mc68881_op_class_dispatch.vhd`.
+- Keep exception-policy coverage updated in `tb/mc68881_microseq_tb.vhd`
+  and end-to-end FPSR/FPIAR behavior checks in `tb/tb_mc68881_top.vhd`.
 - The pre-push hook in `.githooks/pre-push` runs tests to block failing pushes (enable via
   `git config core.hooksPath .githooks`).
 - Testbenches in `tb/` must be self-checking (assertions with descriptive names), wait on

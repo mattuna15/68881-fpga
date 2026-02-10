@@ -12,6 +12,7 @@ begin
   process
     variable cycles : natural := 0;
     variable op_key : op_key_t;
+    variable exc_policy : op_exception_policy_t;
   begin
     report "Starting microsequencer package tests." severity note;
 
@@ -33,6 +34,12 @@ begin
       report "decode_op_sel_word legacy MOVE mapping failed." severity failure;
     assert decode_op_sel_word(x"01000005") = FPU_OP_MOVE
       report "decode_op_sel_word core-v1 MOVE mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000020") = FPU_OP_FNOP
+      report "decode_op_sel_word core-v1 FNOP mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000030") = FPU_OP_FSAVE
+      report "decode_op_sel_word core-v1 FSAVE mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000031") = FPU_OP_FRESTORE
+      report "decode_op_sel_word core-v1 FRESTORE mapping failed." severity failure;
     assert decode_op_sel_word(x"7F000005") = FPU_OP_NOP
       report "decode_op_sel_word unknown namespace should map to NOP." severity failure;
 
@@ -44,8 +51,40 @@ begin
       report "op_class ADD mapping failed." severity failure;
     assert op_class(FPU_OP_MOVE) = OP_CLASS_MOVE
       report "op_class MOVE mapping failed." severity failure;
+    assert op_class(FPU_OP_FNOP) = OP_CLASS_PROG_CTRL
+      report "op_class FNOP mapping failed." severity failure;
+    assert op_class(FPU_OP_FSAVE) = OP_CLASS_SYS_CTRL
+      report "op_class FSAVE mapping failed." severity failure;
+    assert op_class(FPU_OP_FRESTORE) = OP_CLASS_SYS_CTRL
+      report "op_class FRESTORE mapping failed." severity failure;
     assert op_class(FPU_OP_NOP) = OP_CLASS_NONE
       report "op_class NOP mapping failed." severity failure;
+    assert op_alu_latency(FPU_OP_DIV) = 8
+      report "op_alu_latency DIV mapping failed." severity failure;
+    assert op_alu_latency(FPU_OP_MOVE) = 0
+      report "op_alu_latency MOVE mapping failed." severity failure;
+    assert op_cycle_model(FPU_OP_ADD) = OP_CYCLE_ARITH
+      report "op_cycle_model ADD mapping failed." severity failure;
+    assert op_cycle_model(FPU_OP_FRESTORE) = OP_CYCLE_ZERO
+      report "op_cycle_model FRESTORE mapping failed." severity failure;
+
+    exc_policy := op_exception_policy(FPU_OP_DIV);
+    assert exc_policy.divzero_on_zero_divisor_nonzero_dividend
+      report "DIV exception policy missing divzero behavior." severity failure;
+    assert exc_policy.invalid_zero_over_zero and exc_policy.invalid_inf_over_inf
+      report "DIV exception policy missing invalid behavior." severity failure;
+    assert exc_policy.update_exc_status and exc_policy.update_accumulated_exc
+      report "DIV exception policy should update FPSR status/accrued bytes." severity failure;
+    assert exc_policy.update_cc_from_result and exc_policy.capture_fpiar_on_exception
+      report "DIV exception policy should drive CC and exception-time FPIAR capture." severity failure;
+    exc_policy := op_exception_policy(FPU_OP_MOD);
+    assert exc_policy.invalid_divisor_zero
+      report "MOD exception policy missing divisor-zero invalid behavior." severity failure;
+    assert exc_policy.classify_overflow_underflow
+      report "MOD exception policy should enable overflow/underflow classification." severity failure;
+    exc_policy := op_exception_policy(FPU_OP_CMP);
+    assert exc_policy.update_cc_from_compare and not exc_policy.update_cc_from_result
+      report "CMP exception policy should source CC from compare relation." severity failure;
 
     cycles := op_cycle_count(
       FPU_OP_ADD,
@@ -70,6 +109,30 @@ begin
     );
     assert cycles = 953
       report "op_cycle_count DIV packed mismatch." severity failure;
+
+    cycles := op_cycle_count(
+      FPU_OP_FNOP,
+      FPU_SRC_FPM,
+      EA_MODE_DN_AN,
+      EA_CYCLE_BEST,
+      false,
+      false,
+      false
+    );
+    assert cycles = 0
+      report "op_cycle_count FNOP should be zero." severity failure;
+
+    cycles := op_cycle_count(
+      FPU_OP_FSAVE,
+      FPU_SRC_FPM,
+      EA_MODE_DN_AN,
+      EA_CYCLE_BEST,
+      false,
+      false,
+      false
+    );
+    assert cycles = 0
+      report "op_cycle_count FSAVE should be zero." severity failure;
 
     report "Microsequencer package tests completed." severity note;
     wait;

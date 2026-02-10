@@ -26,19 +26,19 @@ A) Design Quality Improvements (from review)
     - Replace fixed 4-bit decode path with an extensible opcode namespace.
     - Keep backward compatibility for existing OPSEL values used by testbenches.
 
-[ ] A5. Introduce explicit operation classes for scalability.
+[x] A5. Introduce explicit operation classes for scalability.
     - Split execution/control paths for arithmetic, move, program-control, and system-control ops.
     - Avoid adding new opcode behavior through ad-hoc special-cases in top-level processes.
 
-[ ] A6. Centralize opcode metadata in a single descriptor table.
+[x] A6. Centralize opcode metadata in a single descriptor table.
     - Define per-op decode ID, class, ALU latency, cycle model hook, and exception policy.
     - Remove duplicated per-op case logic across pkg/top/ALU/testbench mapping points.
 
-[ ] A7. Replace raw move_cfg bitfield usage with typed decode records.
+[x] A7. Replace raw move_cfg bitfield usage with typed decode records.
     - Decode move mode/format/control selector/mask/order into named fields once.
     - Keep FMOVE/FMOVEM semantics unchanged while reducing bit-index coupling.
 
-[ ] A8. Refactor FPSR/FPCR exception handling to per-op policy.
+[x] A8. Refactor FPSR/FPCR exception handling to per-op policy.
     - Move exception classification from result heuristics to opcode-aware rules.
     - Prepare for full C4/C5 behavior (condition codes, accrued flags, restart/FPIAR interactions).
 

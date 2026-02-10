@@ -167,19 +167,31 @@ architecture sim of tb_mc68881_fmove_fmovem is
     ctrl_to_reg : std_logic;
     ctrl_sel : std_logic_vector(1 downto 0);
     movem_mask : std_logic_vector(7 downto 0);
-    movem_dir : std_logic
+    movem_dir : std_logic;
+    packed_k_from_opa : std_logic := '0';
+    mem_to_reg_integer : std_logic := '0';
+    reg_to_mem_packed : std_logic := '0';
+    fmovecr_enable : std_logic := '0';
+    movem_mask_from_dn : std_logic := '0';
+    movem_predec_order : std_logic := '0'
   ) return std_logic_vector is
-    variable cfg : std_logic_vector(31 downto 0) := (others => '0');
+    variable cfg : move_cfg_t := move_cfg_default;
   begin
-    cfg(2 downto 0) := std_logic_vector(to_unsigned(src_idx, 3));
-    cfg(5 downto 4) := mem_fmt;
-    cfg(7 downto 6) := mode;
-    cfg(8) := ctrl_to_reg;
-    cfg(11 downto 9) := std_logic_vector(to_unsigned(dst_idx, 3));
-    cfg(13 downto 12) := ctrl_sel;
-    cfg(21 downto 14) := movem_mask;
-    cfg(22) := movem_dir;
-    return cfg;
+    cfg.src_idx := src_idx;
+    cfg.mem_fmt := mem_fmt;
+    cfg.mode := decode_move_cfg_mode(mode);
+    cfg.ctrl_to_reg := ctrl_to_reg;
+    cfg.dst_idx := dst_idx;
+    cfg.ctrl_sel := ctrl_sel;
+    cfg.movem_mask := movem_mask;
+    cfg.movem_dir_to_reg := movem_dir;
+    cfg.packed_k_from_opa := packed_k_from_opa;
+    cfg.mem_to_reg_integer := mem_to_reg_integer;
+    cfg.reg_to_mem_packed := reg_to_mem_packed;
+    cfg.fmovecr_enable := fmovecr_enable;
+    cfg.movem_mask_from_dn := movem_mask_from_dn;
+    cfg.movem_predec_order := movem_predec_order;
+    return encode_move_cfg(cfg);
   end function;
 
 begin
@@ -363,8 +375,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
 
-    cfg_word := make_move_cfg("00", 0, 0, "00", '0', "00", "00010000", '0');
-    cfg_word(28) := '1'; -- -(An) bit order keeps bit4 -> FP4.
+    cfg_word := make_move_cfg("00", 0, 0, "00", '0', "00", "00010000", '0', movem_predec_order => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVEM);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -377,8 +388,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
 
-    cfg_word := make_move_cfg("00", 0, 0, "00", '0', "00", "00010000", '1');
-    cfg_word(28) := '1'; -- -(An) bit order keeps bit4 -> FP4.
+    cfg_word := make_move_cfg("00", 0, 0, "00", '0', "00", "00010000", '1', movem_predec_order => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVEM);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -399,8 +409,7 @@ begin
 
     report "FMOVE integer-source B/W/L checks" severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"000000FE");
-    cfg_word := make_move_cfg("01", 0, 0, "00", '0', "00", (others => '0'), '0');
-    cfg_word(24) := '1';
+    cfg_word := make_move_cfg("01", 0, 0, "00", '0', "00", (others => '0'), '0', mem_to_reg_integer => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -412,8 +421,7 @@ begin
     check_fp80(rd_full, fp80_from_int(-2), "FMOVE.B source");
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"0000FF9C");
-    cfg_word := make_move_cfg("01", 0, 1, "01", '0', "00", (others => '0'), '0');
-    cfg_word(24) := '1';
+    cfg_word := make_move_cfg("01", 0, 1, "01", '0', "00", (others => '0'), '0', mem_to_reg_integer => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -425,8 +433,7 @@ begin
     check_fp80(rd_full, fp80_from_int(-100), "FMOVE.W source");
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00003039");
-    cfg_word := make_move_cfg("01", 0, 2, "10", '0', "00", (others => '0'), '0');
-    cfg_word(24) := '1';
+    cfg_word := make_move_cfg("01", 0, 2, "10", '0', "00", (others => '0'), '0', mem_to_reg_integer => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -448,9 +455,11 @@ begin
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000002");
-    cfg_word := make_move_cfg("10", 5, 0, "00", '0', "00", (others => '0'), '0');
-    cfg_word(25) := '1';
-    cfg_word(23) := '0';
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -461,9 +470,11 @@ begin
     report "FMOVE.P static k observed=" & to_hstring(static_packed) severity note;
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"0000000A");
-    cfg_word := make_move_cfg("10", 5, 0, "00", '0', "00", (others => '0'), '0');
-    cfg_word(25) := '1';
-    cfg_word(23) := '1';
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '1',
+      reg_to_mem_packed => '1'
+    );
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -478,8 +489,7 @@ begin
 
     report "FMOVECR constant ROM checks" severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"0000000F");
-    cfg_word := make_move_cfg("00", 0, 6, "00", '0', "00", (others => '0'), '0');
-    cfg_word(26) := '1';
+    cfg_word := make_move_cfg("00", 0, 6, "00", '0', "00", (others => '0'), '0', fmovecr_enable => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -495,8 +505,7 @@ begin
     check_fp80(rd_full, (others => '0'), "FMOVECR #0F");
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000000");
-    cfg_word := make_move_cfg("00", 0, 6, "00", '0', "00", (others => '0'), '0');
-    cfg_word(26) := '1';
+    cfg_word := make_move_cfg("00", 0, 6, "00", '0', "00", (others => '0'), '0', fmovecr_enable => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -522,9 +531,7 @@ begin
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000080");
-    cfg_word := make_move_cfg("00", 0, 0, "00", '0', "00", (others => '0'), '0');
-    cfg_word(27) := '1';
-    cfg_word(28) := '0';
+    cfg_word := make_move_cfg("00", 0, 0, "00", '0', "00", (others => '0'), '0', movem_mask_from_dn => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVEM);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -538,9 +545,7 @@ begin
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000080");
-    cfg_word := make_move_cfg("00", 0, 0, "00", '0', "00", (others => '0'), '1');
-    cfg_word(27) := '1';
-    cfg_word(28) := '0';
+    cfg_word := make_move_cfg("00", 0, 0, "00", '0', "00", (others => '0'), '1', movem_mask_from_dn => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVEM);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -557,9 +562,11 @@ begin
     check_fp80(rd_full, fp80_from_int(11), "FMOVEM Dn mask other-mode");
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000001");
-    cfg_word := make_move_cfg("00", 0, 0, "00", '0', "00", (others => '0'), '0');
-    cfg_word(27) := '1';
-    cfg_word(28) := '1';
+    cfg_word := make_move_cfg(
+      "00", 0, 0, "00", '0', "00", (others => '0'), '0',
+      movem_mask_from_dn => '1',
+      movem_predec_order => '1'
+    );
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVEM);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
@@ -573,9 +580,11 @@ begin
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000001");
-    cfg_word := make_move_cfg("00", 0, 0, "00", '0', "00", (others => '0'), '1');
-    cfg_word(27) := '1';
-    cfg_word(28) := '1';
+    cfg_word := make_move_cfg(
+      "00", 0, 0, "00", '0', "00", (others => '0'), '1',
+      movem_mask_from_dn => '1',
+      movem_predec_order => '1'
+    );
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVEM);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);

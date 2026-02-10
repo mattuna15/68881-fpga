@@ -110,6 +110,7 @@ architecture sim of tb_mc68881_top is
   constant DIV_1_10_MANT_DOUBLE : unsigned(FP_MANT_WIDTH-1 downto 0) := x"CCCCCCCCCCCCD000";
   constant DIV_1_10_SINGLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_SINGLE);
   constant DIV_1_10_DOUBLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_DOUBLE);
+  constant FP80_POS_INF : fp80_t := make_fp80('0', (FP_EXP_WIDTH-1 downto 0 => '1'), (others => '0'));
 
   -- Single bus write beat (address, data, strobe assert/deassert timing).
   procedure bus_write(
@@ -752,6 +753,44 @@ begin
       severity note;
     assert rd_hi = fpiar_seed
       report "FPIAR exception snapshot mismatch"
+      severity failure;
+
+    -- FPSR exception flags: DIV inf/inf should raise invalid and force CC NAN.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := FP80_POS_INF;
+    op_b := FP80_POS_INF;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000004");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "DIV inf,inf result: " & to_hstring(rd_full)
+      severity note;
+    split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
+    assert rd_sign = '0' and rd_exp = (rd_exp'range => '1') and rd_mant = 0
+      report "DIV inf/inf raw result should encode as +infinity in current ALU behavior"
+      severity failure;
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after DIV inf/inf: " & to_hstring(rd_lo)
+      severity note;
+    assert rd_lo(FPSR_EXC_INVALID) = '1'
+      report "FPSR invalid flag not set for DIV inf/inf"
+      severity failure;
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
+      report "FPSR accrued invalid flag not set for DIV inf/inf"
+      severity failure;
+    assert rd_lo(FPSR_CC_NAN) = '1' and rd_lo(FPSR_CC_INF) = '0'
+      report "FPSR CC should report NAN for DIV inf/inf invalid exception"
       severity failure;
 
     -- FPSR exception flags: FMOD by zero should raise invalid and return NaN.

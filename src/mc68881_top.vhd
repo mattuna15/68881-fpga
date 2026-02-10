@@ -782,7 +782,12 @@ begin
           cc_bits := fpsr_cc_from_compare(operand_reg(0), operand_reg(1));
           fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN) <= cc_bits;
         elsif exc_policy.update_cc_from_result then
-          cc_bits := fpsr_cc_from_result(result);
+          if exc_flags(FPSR_EXC_INVALID) = '1' then
+            cc_bits := (others => '0');
+            cc_bits(0) := '1';
+          else
+            cc_bits := fpsr_cc_from_result(result);
+          end if;
           fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN) <= cc_bits;
         end if;
 

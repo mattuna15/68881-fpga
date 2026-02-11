@@ -30,6 +30,8 @@ begin
       report "decode_op_sel MOVEM mapping failed." severity failure;
     assert decode_op_sel("111") = FPU_OP_NOP
       report "decode_op_sel default mapping failed." severity failure;
+    assert decode_op_sel("1101") = FPU_OP_SQRT
+      report "decode_op_sel FSQRT mapping failed." severity failure;
     assert decode_op_sel_word(x"00000005") = FPU_OP_MOVE
       report "decode_op_sel_word legacy MOVE mapping failed." severity failure;
     assert decode_op_sel_word(x"01000005") = FPU_OP_MOVE
@@ -51,6 +53,8 @@ begin
       report "op_class ADD mapping failed." severity failure;
     assert op_class(FPU_OP_MOVE) = OP_CLASS_MOVE
       report "op_class MOVE mapping failed." severity failure;
+    assert op_class(FPU_OP_SQRT) = OP_CLASS_ARITH
+      report "op_class SQRT mapping failed." severity failure;
     assert op_class(FPU_OP_FNOP) = OP_CLASS_PROG_CTRL
       report "op_class FNOP mapping failed." severity failure;
     assert op_class(FPU_OP_FSAVE) = OP_CLASS_SYS_CTRL
@@ -63,8 +67,12 @@ begin
       report "op_alu_latency DIV mapping failed." severity failure;
     assert op_alu_latency(FPU_OP_MOVE) = 0
       report "op_alu_latency MOVE mapping failed." severity failure;
+    assert op_alu_latency(FPU_OP_SQRT) = 8
+      report "op_alu_latency SQRT mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_ADD) = OP_CYCLE_ARITH
       report "op_cycle_model ADD mapping failed." severity failure;
+    assert op_cycle_model(FPU_OP_SQRT) = OP_CYCLE_ARITH
+      report "op_cycle_model SQRT mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_FRESTORE) = OP_CYCLE_ZERO
       report "op_cycle_model FRESTORE mapping failed." severity failure;
 
@@ -97,6 +105,18 @@ begin
     );
     assert cycles = 51
       report "op_cycle_count ADD baseline mismatch." severity failure;
+
+    cycles := op_cycle_count(
+      FPU_OP_SQRT,
+      FPU_SRC_FPM,
+      EA_MODE_DN_AN,
+      EA_CYCLE_BEST,
+      false,
+      false,
+      false
+    );
+    assert cycles = 120
+      report "op_cycle_count SQRT baseline mismatch." severity failure;
 
     cycles := op_cycle_count(
       FPU_OP_DIV,

@@ -33,6 +33,7 @@ architecture sim of tb_mc68881_alu is
   constant SCALE_LATENCY : natural := 2;
   constant SGLDIV_LATENCY : natural := 8;
   constant SGLMUL_LATENCY : natural := 4;
+  constant SQRT_LATENCY : natural := 8;
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -512,6 +513,40 @@ begin
       report "SGLMUL latency mismatch"
       severity failure;
     check_result(fp80_from_int(63), "SGLMUL 7*9");
+
+    -- SQRT
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= fp80_from_int(144);
+    b_in   <= (others => '0');
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SQRT latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = SQRT_LATENCY
+      report "SQRT latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(12), "SQRT 144");
+
+    -- SQRT negative input should return NaN.
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= fp80_from_int(-4);
+    b_in   <= (others => '0');
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SQRT negative latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = SQRT_LATENCY
+      report "SQRT negative latency mismatch"
+      severity failure;
+    check_result_nan("SQRT -4");
 
     std.env.stop;
     wait;

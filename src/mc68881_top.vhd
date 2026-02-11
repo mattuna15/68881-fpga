@@ -165,6 +165,22 @@ architecture rtl of mc68881_top is
     return to_integer(signed(bits));
   end function;
 
+  function signed_to_integer_safely(value : signed) return integer is
+    variable value32 : signed(31 downto 0) := resize(value, 32);
+    variable negated : signed(31 downto 0) := (others => '0');
+  begin
+    if value32(31) = '0' then
+      return to_integer(unsigned(value32(30 downto 0)));
+    end if;
+
+    if value32 = to_signed(integer'low, value32'length) then
+      return integer'low;
+    end if;
+
+    negated := -value32;
+    return -to_integer(unsigned(negated(30 downto 0)));
+  end function;
+
   function clamp_integer(value : integer; min_value : integer; max_value : integer) return integer is
   begin
     if value < min_value then
@@ -921,11 +937,11 @@ begin
                     if move_cfg.mem_to_reg_integer = '1' then
                       case mem_fmt is
                         when "00" =>
-                          int_value := to_integer(resize(signed(operand_reg(0)(7 downto 0)), 32));
+                          int_value := signed_to_integer_safely(signed(operand_reg(0)(7 downto 0)));
                         when "01" =>
-                          int_value := to_integer(resize(signed(operand_reg(0)(15 downto 0)), 32));
+                          int_value := signed_to_integer_safely(signed(operand_reg(0)(15 downto 0)));
                         when others =>
-                          int_value := to_integer(signed(operand_reg(0)(31 downto 0)));
+                          int_value := signed_to_integer_safely(signed(operand_reg(0)(31 downto 0)));
                       end case;
                       move_result := fp80_from_int(int_value);
                     else

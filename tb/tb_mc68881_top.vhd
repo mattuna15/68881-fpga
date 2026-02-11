@@ -392,6 +392,35 @@ begin
       severity note;
     check_fp80(rd_full, exp_r, "DIV result");
 
+    -- SQRT
+    op_a := fp80_from_int(144);
+    op_b := (others => '0');
+    exp_r := sqrt_fp80(op_a, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    report "SQRT operand: op_a=" & to_hstring(op_a)
+      severity note;
+    report "SQRT expected: " & to_hstring(exp_r)
+      severity note;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"0000000D");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    rd_res  <= rd_full;
+    report "SQRT result: " & to_hstring(rd_full)
+      severity note;
+    check_fp80(rd_full, exp_r, "SQRT result");
+
     -- CMP
     op_a := fp80_from_int(9);
     op_b := fp80_from_int(4);

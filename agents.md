@@ -23,6 +23,9 @@
 - Follow Vivado/VRFC parameter mode rules in VHDL subprograms: never read an `out`
   parameter and never write to an `in` parameter (use local variables or `buffer`/`inout`
   only when semantically required).
+- Keep loops in synthesizable RTL/package math helpers statically bounded (`for` with finite
+  range and `exit` conditions); avoid data-dependent `while` loops that can fail Vivado
+  convergence checks (e.g., Synth 8-3380).
 - Use `scripts/run_tests.ps1` for local verification; set `GHDL_EXE` if GHDL is not on PATH.
 - Keep opcode decode/class coverage updated in `tb/mc68881_microseq_tb.vhd`.
 - Keep class-dispatch integration coverage updated in `tb/tb_mc68881_op_class_dispatch.vhd`.

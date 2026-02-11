@@ -65,6 +65,8 @@ begin
             result_next := sgldiv_fp80(a_in, b_in, round_mode);
           when FPU_OP_SGLMUL =>
             result_next := sglmul_fp80(a_in, b_in, round_mode);
+          when FPU_OP_SQRT =>
+            result_next := sqrt_fp80(a_in, round_mode, round_prec);
           when others =>
             result_next := (others => '0');
         end case;

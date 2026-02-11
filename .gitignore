@@ -1,1 +1,11 @@
 work-obj*.cf
+/.Xil
+/logs
+/project/fpga68881/fpga68881.runs
+/project/fpga68881/fpga68881.sim
+/src/pico/blink/.vscode
+vivado.jou
+vivado.log
+vivado_18056.backup.jou
+vivado_18056.backup.log
+ubuntu.requirements

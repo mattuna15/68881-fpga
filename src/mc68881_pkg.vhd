@@ -39,6 +39,7 @@ package mc68881_pkg is
     FPU_OP_SCALE,
     FPU_OP_SGLDIV,
     FPU_OP_SGLMUL,
+    FPU_OP_SQRT,
     FPU_OP_MOVE,
     FPU_OP_MOVEM,
     FPU_OP_FNOP,
@@ -227,6 +228,11 @@ package mc68881_pkg is
   function fscale_fp80(a : fp80_t; b : fp80_t) return fp80_t;
   function sgldiv_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
   function sglmul_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
+  function sqrt_fp80(
+    a : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t;
 end package mc68881_pkg;
 
 package body mc68881_pkg is
@@ -453,6 +459,17 @@ package body mc68881_pkg is
       arith_cycles => (
         FPU_SRC_FPM => 63, FPU_SRC_MEM_INTEGER => 92, FPU_SRC_MEM_SINGLE => 84,
         FPU_SRC_MEM_DOUBLE => 90, FPU_SRC_MEM_EXTENDED => 88, FPU_SRC_MEM_PACKED => 900
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_SQRT => (
+      legacy_decode_id_valid => true, legacy_decode_id => 13,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0D",
+      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
+        FPU_SRC_MEM_DOUBLE => 147, FPU_SRC_MEM_EXTENDED => 145, FPU_SRC_MEM_PACKED => 957
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
@@ -962,7 +979,9 @@ package body mc68881_pkg is
     variable result : unsigned(value'range) := value;
     variable exp_var : unsigned(exp_in'range) := exp_in;
   begin
-    while result(result'left) = '0' and exp_var /= 0 and result /= 0 loop
+    -- Keep iteration count statically bounded for Vivado synthesis convergence.
+    for iter in 0 to value'length-1 loop
+      exit when result(result'left) = '1' or exp_var = 0 or result = 0;
       result := result(result'left-1 downto 0) & '0';
       exp_var := exp_var - 1;
     end loop;
@@ -992,7 +1011,7 @@ package body mc68881_pkg is
     variable exp     : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
     variable mant    : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable msb_pos : integer := 0;
-    variable tmp     : natural := 0;
+    variable abs_u32 : unsigned(31 downto 0) := (others => '0');
   begin
     if value = 0 then
       return result;
@@ -1005,11 +1024,13 @@ package body mc68881_pkg is
       abs_val := natural(value);
     end if;
 
-    tmp := abs_val;
+    abs_u32 := to_unsigned(abs_val, abs_u32'length);
     msb_pos := 0;
-    while tmp > 1 loop
-      tmp := tmp / 2;
-      msb_pos := msb_pos + 1;
+    for idx in abs_u32'left downto 0 loop
+      if abs_u32(idx) = '1' then
+        msb_pos := idx;
+        exit;
+      end if;
     end loop;
 
     exp := to_unsigned(FP_EXP_BIAS + msb_pos, FP_EXP_WIDTH);
@@ -1401,7 +1422,7 @@ package body mc68881_pkg is
       return integer'high;
     end if;
 
-    abs_int := to_integer(magnitude_u);
+    abs_int := to_integer(resize(magnitude_u, 31));
     if value_u.sign = '1' then
       return -abs_int;
     end if;
@@ -1506,6 +1527,7 @@ package body mc68881_pkg is
     variable quotient_trunc : fp80_t := (others => '0');
     variable nearest_q : fp80_t := (others => '0');
     variable quotient_i : integer := 0;
+    variable quotient_i_signed : signed(31 downto 0) := (others => '0');
     variable nearest_i : integer := 0;
     variable step_i : integer := 0;
     variable use_integer_path : boolean := false;
@@ -1538,6 +1560,7 @@ package body mc68881_pkg is
       frac := add_sub_fp80(quotient, quotient_trunc, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
       frac_abs := abs_fp80(frac);
       half_cmp := compare_fp80(frac_abs, half_fp);
+      quotient_i_signed := to_signed(quotient_i, quotient_i_signed'length);
       if quotient(FP_WIDTH-1) = '1' then
         step_i := -1;
       else
@@ -1548,7 +1571,7 @@ package body mc68881_pkg is
                 (step_i < 0 and nearest_i = integer'low)) then
           nearest_i := nearest_i + step_i;
         end if;
-      elsif half_cmp = 0 and (quotient_i rem 2) /= 0 then
+      elsif half_cmp = 0 and quotient_i_signed(0) = '1' then
         if not ((step_i > 0 and nearest_i = integer'high) or
                 (step_i < 0 and nearest_i = integer'low)) then
           nearest_i := nearest_i + step_i;
@@ -1616,5 +1639,108 @@ package body mc68881_pkg is
   function sglmul_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t is
   begin
     return mul_fp80(a, b, round_mode, FP_PREC_SINGLE);
+  end function;
+
+  function sqrt_fp80(
+    a : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t is
+    variable a_u : fp_unpacked_t := unpack_fp80(a);
+    variable nan_u : fp_unpacked_t;
+    variable res_u : fp_unpacked_t;
+    variable zero_val : fp80_t := (others => '0');
+    variable radicand : unsigned(127 downto 0) := (others => '0');
+    variable root : unsigned(63 downto 0) := (others => '0');
+    variable e_unbiased : integer := 0;
+    variable e_half : integer := 0;
+    variable exp_out_i : integer := 0;
+
+    function isqrt_u128(n : unsigned(127 downto 0)) return unsigned is
+      variable rem_val : unsigned(129 downto 0) := (others => '0');
+      variable trial : unsigned(129 downto 0) := (others => '0');
+      variable root_val : unsigned(63 downto 0) := (others => '0');
+      variable bit_pair : unsigned(1 downto 0) := (others => '0');
+    begin
+      for idx in 63 downto 0 loop
+        bit_pair := n((2 * idx) + 1 downto (2 * idx));
+        rem_val := shift_left(rem_val, 2);
+        rem_val(1 downto 0) := bit_pair;
+        trial := shift_left(resize(root_val, rem_val'length), 2) + 1;
+        if rem_val >= trial then
+          rem_val := rem_val - trial;
+          root_val := shift_left(root_val, 1);
+          root_val(0) := '1';
+        else
+          root_val := shift_left(root_val, 1);
+        end if;
+      end loop;
+      return root_val;
+    end function;
+  begin
+    -- round_mode/round_prec are reserved for future refinement of FSQRT rounding modes.
+    if round_mode = FP_RND_NEAREST and round_prec = FP_PREC_EXTENDED then
+      null;
+    end if;
+
+    nan_u.sign := '0';
+    nan_u.exp := FP_EXP_ALL_ONES;
+    nan_u.mant := (others => '0');
+    nan_u.mant(FP_MANT_WIDTH-1) := '1';
+
+    if a_u.exp = 0 and a_u.mant = 0 then
+      return zero_val;
+    end if;
+
+    if a_u.exp = FP_EXP_ALL_ONES then
+      if a_u.mant = 0 then
+        if a_u.sign = '1' then
+          return pack_fp80(nan_u);
+        end if;
+        return a;
+      end if;
+      return a;
+    end if;
+
+    if a_u.sign = '1' then
+      return pack_fp80(nan_u);
+    end if;
+
+    e_unbiased := to_integer(a_u.exp) - FP_EXP_BIAS;
+    if (e_unbiased rem 2) = 0 then
+      e_half := e_unbiased / 2;
+      radicand := shift_left(resize(a_u.mant, radicand'length), 63);
+    else
+      e_half := (e_unbiased - 1) / 2;
+      radicand := shift_left(resize(a_u.mant, radicand'length), 64);
+    end if;
+
+    root := isqrt_u128(radicand);
+    exp_out_i := e_half + FP_EXP_BIAS;
+
+    if exp_out_i <= 0 then
+      return zero_val;
+    end if;
+
+    if exp_out_i >= FP_EXP_MAX then
+      res_u.sign := '0';
+      res_u.exp := FP_EXP_ALL_ONES;
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    res_u.sign := '0';
+    res_u.exp := to_unsigned(exp_out_i, FP_EXP_WIDTH);
+    res_u.mant := root;
+    if res_u.mant = 0 then
+      return zero_val;
+    end if;
+    if res_u.mant(FP_MANT_WIDTH-1) = '0' then
+      res_u.mant := shift_left(res_u.mant, 1);
+      if res_u.exp > 0 then
+        res_u.exp := res_u.exp - 1;
+      end if;
+    end if;
+    return pack_fp80(res_u);
   end function;
 end package body mc68881_pkg;

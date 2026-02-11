@@ -52,6 +52,7 @@ architecture sim of tb_mc68881_cycle_counts_top is
       when FPU_OP_SCALE => return "1010";
       when FPU_OP_SGLDIV => return "1011";
       when FPU_OP_SGLMUL => return "1100";
+      when FPU_OP_SQRT => return "1101";
       when others     => return "0000";
     end case;
   end function;
@@ -408,6 +409,26 @@ begin
       false,
       true,
       "FMOD mem packed (.P) + EA worst (xxx).L dynamic K"
+    );
+
+    run_case(
+      a_in,
+      d_in,
+      rw,
+      cs_n,
+      as_n,
+      ds_n,
+      dsack0_n,
+      dsack1_n,
+      d_out,
+      FPU_OP_SQRT,
+      FPU_SRC_MEM_SINGLE,
+      EA_MODE_ABS_L,
+      EA_CYCLE_BEST,
+      false,
+      false,
+      false,
+      "FSQRT mem single + EA best (xxx).L"
     );
 
     report "TB SUCCESS: cycle count integration checks complete."

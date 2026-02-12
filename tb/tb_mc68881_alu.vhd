@@ -539,7 +539,7 @@ begin
     assert cycle_cnt - start_cycle = SIN_LATENCY report "SIN latency mismatch" severity failure;
     check_result(FP80_ZERO, "SIN 0");
 
-    -- SIN small-angle fast path must honor FPCR precision control
+    -- SIN small-angle fast path must honor FPCR precision control (single)
     round_mode <= FP_RND_NEAREST;
     round_prec <= FP_PREC_SINGLE;
     expected_small := add_sub_fp80(SMALL_FASTPATH_ARG, FP80_ZERO, false, FP_RND_NEAREST, FP_PREC_SINGLE);
@@ -551,6 +551,18 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     check_result(expected_small, "SIN small-angle FP_PREC_SINGLE");
+
+    -- SIN small-angle fast path must honor FPCR precision control (double)
+    round_prec <= FP_PREC_DOUBLE;
+    expected_small := add_sub_fp80(SMALL_FASTPATH_ARG, FP80_ZERO, false, FP_RND_NEAREST, FP_PREC_DOUBLE);
+    op_sel <= FPU_OP_SIN;
+    a_in   <= SMALL_FASTPATH_ARG;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(expected_small, "SIN small-angle FP_PREC_DOUBLE");
     round_prec <= FP_PREC_EXTENDED;
 
     -- COS(0) = 1
@@ -585,6 +597,26 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     check_result_nan("COS QNaN -> NaN");
+
+    -- FSIN(+INF) -> NaN
+    op_sel <= FPU_OP_SIN;
+    a_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("SIN +INF -> NaN");
+
+    -- FSIN(QNaN) propagates NaN class
+    op_sel <= FPU_OP_SIN;
+    a_in   <= FP80_QNAN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("SIN QNaN -> NaN");
 
     -- FTAN(+INF) -> NaN
     op_sel <= FPU_OP_TAN;

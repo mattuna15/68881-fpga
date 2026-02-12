@@ -586,6 +586,26 @@ begin
     wait until valid = '1';
     check_result_nan("COS QNaN -> NaN");
 
+    -- FTAN(+INF) -> NaN
+    op_sel <= FPU_OP_TAN;
+    a_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("TAN +INF -> NaN");
+
+    -- FTAN(QNaN) propagates NaN class
+    op_sel <= FPU_OP_TAN;
+    a_in   <= FP80_QNAN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("TAN QNaN -> NaN");
+
     -- TAN(0) = 0
     op_sel <= FPU_OP_TAN;
     a_in   <= FP80_ZERO;

@@ -1851,9 +1851,23 @@ package body mc68881_pkg is
     round_mode : fp_round_mode_t;
     round_prec : fp_round_prec_t
   ) return fp80_t is
-    variable s : fp80_t := fsin_fp80(a, FP_RND_NEAREST, FP_PREC_EXTENDED);
-    variable c : fp80_t := fcos_fp80(a, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable a_u : fp_unpacked_t := unpack_fp80(a);
+    variable s : fp80_t := FP80_ZERO;
+    variable c : fp80_t := FP80_ZERO;
+    variable res : fp80_t := FP80_ZERO;
   begin
+    if a_u.exp = FP_EXP_ALL_ONES then
+      res := a;
+      res(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
+      res(FP_MANT_WIDTH-1) := '1';
+      if res(FP_MANT_WIDTH-2 downto 0) = (res(FP_MANT_WIDTH-2 downto 0)'range => '0') then
+        res(FP_MANT_WIDTH-2) := '1';
+      end if;
+      return res;
+    end if;
+
+    s := fsin_fp80(a, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    c := fcos_fp80(a, FP_RND_NEAREST, FP_PREC_EXTENDED);
     return div_fp80(s, c, round_mode, round_prec);
   end function;
 

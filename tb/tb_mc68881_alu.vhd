@@ -120,6 +120,7 @@ architecture sim of tb_mc68881_alu is
   constant FP80_ONE : fp80_t := x"3FFF8000000000000000";
   constant FP80_HALF_PI : fp80_t := x"3FFFC90FDAA22168C235";
   constant FP80_PI : fp80_t := x"4000C90FDAA22168C235";
+  constant SMALL_FASTPATH_ARG : fp80_t := x"3FD78000000000000001";
 
 begin
   clk <= not clk after CLK_PERIOD/2;
@@ -147,6 +148,7 @@ begin
 
   process
     variable start_cycle : natural := 0;
+    variable expected_small : fp80_t := (others => '0');
   begin
     reset_n <= '0';
     wait for 2 * CLK_PERIOD;
@@ -534,6 +536,20 @@ begin
     report "SIN latency cycles: " & integer'image(cycle_cnt - start_cycle) severity note;
     assert cycle_cnt - start_cycle = SIN_LATENCY report "SIN latency mismatch" severity failure;
     check_result(FP80_ZERO, "SIN 0");
+
+    -- SIN small-angle fast path must honor FPCR precision control
+    round_mode <= FP_RND_NEAREST;
+    round_prec <= FP_PREC_SINGLE;
+    expected_small := add_sub_fp80(SMALL_FASTPATH_ARG, FP80_ZERO, false, FP_RND_NEAREST, FP_PREC_SINGLE);
+    op_sel <= FPU_OP_SIN;
+    a_in   <= SMALL_FASTPATH_ARG;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(expected_small, "SIN small-angle FP_PREC_SINGLE");
+    round_prec <= FP_PREC_EXTENDED;
 
     -- COS(0) = 1
     op_sel <= FPU_OP_COS;

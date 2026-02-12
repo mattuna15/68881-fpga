@@ -1765,7 +1765,7 @@ package body mc68881_pkg is
       return res;
     end if;
     if a_u.exp /= 0 and to_integer(a_u.exp) < FP_EXP_BIAS - 32 then
-      return a;
+      return add_sub_fp80(a, FP80_ZERO, false, round_mode, round_prec);
     end if;
     if a = FP80_ZERO then
       return FP80_ZERO;

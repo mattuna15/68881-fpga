@@ -121,6 +121,8 @@ architecture sim of tb_mc68881_alu is
   constant FP80_HALF_PI : fp80_t := x"3FFFC90FDAA22168C235";
   constant FP80_PI : fp80_t := x"4000C90FDAA22168C235";
   constant SMALL_FASTPATH_ARG : fp80_t := x"3FD78000000000000001";
+  constant FP80_POS_INF : fp80_t := x"7FFF8000000000000000";
+  constant FP80_QNAN : fp80_t := x"7FFFC000000000000001";
 
 begin
   clk <= not clk after CLK_PERIOD/2;
@@ -563,6 +565,26 @@ begin
     report "COS latency cycles: " & integer'image(cycle_cnt - start_cycle) severity note;
     assert cycle_cnt - start_cycle = COS_LATENCY report "COS latency mismatch" severity failure;
     check_result(FP80_ONE, "COS 0");
+
+    -- FCOS(+INF) -> NaN
+    op_sel <= FPU_OP_COS;
+    a_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("COS +INF -> NaN");
+
+    -- FCOS(QNaN) propagates NaN class
+    op_sel <= FPU_OP_COS;
+    a_in   <= FP80_QNAN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("COS QNaN -> NaN");
 
     -- TAN(0) = 0
     op_sel <= FPU_OP_TAN;

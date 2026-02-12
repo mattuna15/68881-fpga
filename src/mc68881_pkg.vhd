@@ -1746,11 +1746,11 @@ package body mc68881_pkg is
     round_prec : fp_round_prec_t
   ) return fp80_t is
     variable a_u : fp_unpacked_t := unpack_fp80(a);
-    variable x : fp80_t := trig_reduce_input(a);
-    variable q : integer := trig_quadrant(x);
-    variable q_mod : integer := ((q mod 4) + 4) mod 4;
+    variable x : fp80_t := FP80_ZERO;
+    variable q : integer := 0;
+    variable q_mod : integer := 0;
     variable eps : fp80_t := div_fp80(FP80_ONE, fp80_from_int(1048576), FP_RND_NEAREST, FP_PREC_EXTENDED);
-    variable r : fp80_t := add_sub_fp80(x, mul_fp80(fp80_from_int(q), FP80_HALF_PI, FP_RND_NEAREST, FP_PREC_EXTENDED), true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable r : fp80_t := FP80_ZERO;
     variable s : fp80_t := FP80_ZERO;
     variable c : fp80_t := FP80_ZERO;
     variable res : fp80_t := FP80_ZERO;
@@ -1776,6 +1776,10 @@ package body mc68881_pkg is
     elsif a = add_sub_fp80(FP80_ZERO, FP80_HALF_PI, true, FP_RND_NEAREST, FP_PREC_EXTENDED) then
       return x"BFFF8000000000000000";
     end if;
+    x := trig_reduce_input(a);
+    q := trig_quadrant(x);
+    q_mod := ((q mod 4) + 4) mod 4;
+    r := add_sub_fp80(x, mul_fp80(fp80_from_int(q), FP80_HALF_PI, FP_RND_NEAREST, FP_PREC_EXTENDED), true, FP_RND_NEAREST, FP_PREC_EXTENDED);
     if compare_fp80(abs_fp80(r), eps) <= 0 then
       r := FP80_ZERO;
     end if;
@@ -1796,11 +1800,11 @@ package body mc68881_pkg is
     round_prec : fp_round_prec_t
   ) return fp80_t is
     variable a_u : fp_unpacked_t := unpack_fp80(a);
-    variable x : fp80_t := trig_reduce_input(a);
-    variable q : integer := trig_quadrant(x);
-    variable q_mod : integer := ((q mod 4) + 4) mod 4;
+    variable x : fp80_t := FP80_ZERO;
+    variable q : integer := 0;
+    variable q_mod : integer := 0;
     variable eps : fp80_t := div_fp80(FP80_ONE, fp80_from_int(1048576), FP_RND_NEAREST, FP_PREC_EXTENDED);
-    variable r : fp80_t := add_sub_fp80(x, mul_fp80(fp80_from_int(q), FP80_HALF_PI, FP_RND_NEAREST, FP_PREC_EXTENDED), true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable r : fp80_t := FP80_ZERO;
     variable s : fp80_t := FP80_ZERO;
     variable c : fp80_t := FP80_ZERO;
     variable res : fp80_t := FP80_ZERO;
@@ -1824,6 +1828,10 @@ package body mc68881_pkg is
     elsif a = FP80_PI then
       return x"BFFF8000000000000000";
     end if;
+    x := trig_reduce_input(a);
+    q := trig_quadrant(x);
+    q_mod := ((q mod 4) + 4) mod 4;
+    r := add_sub_fp80(x, mul_fp80(fp80_from_int(q), FP80_HALF_PI, FP_RND_NEAREST, FP_PREC_EXTENDED), true, FP_RND_NEAREST, FP_PREC_EXTENDED);
     if compare_fp80(abs_fp80(r), eps) <= 0 then
       r := FP80_ZERO;
     end if;

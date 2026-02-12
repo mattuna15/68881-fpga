@@ -33,6 +33,10 @@ architecture sim of tb_mc68881_alu is
   constant SCALE_LATENCY : natural := 2;
   constant SGLDIV_LATENCY : natural := 8;
   constant SGLMUL_LATENCY : natural := 4;
+  constant SIN_LATENCY : natural := 8;
+  constant COS_LATENCY : natural := 8;
+  constant TAN_LATENCY : natural := 8;
+  constant SINCOS_LATENCY : natural := 8;
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -112,6 +116,13 @@ architecture sim of tb_mc68881_alu is
   constant DIV_1_10_DOUBLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_DOUBLE);
   constant LARGE_MOD_A : fp80_t := x"40278000000001800000"; -- 2^40 + 3
   constant LARGE_MOD_B : fp80_t := x"40008000000000000000"; -- 2
+  constant FP80_ZERO : fp80_t := x"00000000000000000000";
+  constant FP80_ONE : fp80_t := x"3FFF8000000000000000";
+  constant FP80_HALF_PI : fp80_t := x"3FFFC90FDAA22168C235";
+  constant FP80_PI : fp80_t := x"4000C90FDAA22168C235";
+  constant SMALL_FASTPATH_ARG : fp80_t := x"3FD78000000000000001";
+  constant FP80_POS_INF : fp80_t := x"7FFF8000000000000000";
+  constant FP80_QNAN : fp80_t := x"7FFFC000000000000001";
 
 begin
   clk <= not clk after CLK_PERIOD/2;
@@ -139,6 +150,7 @@ begin
 
   process
     variable start_cycle : natural := 0;
+    variable expected_small : fp80_t := (others => '0');
   begin
     reset_n <= '0';
     wait for 2 * CLK_PERIOD;
@@ -512,6 +524,165 @@ begin
       report "SGLMUL latency mismatch"
       severity failure;
     check_result(fp80_from_int(63), "SGLMUL 7*9");
+
+    -- SIN(0) = +0
+    op_sel <= FPU_OP_SIN;
+    a_in   <= FP80_ZERO;
+    b_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SIN latency cycles: " & integer'image(cycle_cnt - start_cycle) severity note;
+    assert cycle_cnt - start_cycle = SIN_LATENCY report "SIN latency mismatch" severity failure;
+    check_result(FP80_ZERO, "SIN 0");
+
+    -- SIN small-angle fast path must honor FPCR precision control (single)
+    round_mode <= FP_RND_NEAREST;
+    round_prec <= FP_PREC_SINGLE;
+    expected_small := add_sub_fp80(SMALL_FASTPATH_ARG, FP80_ZERO, false, FP_RND_NEAREST, FP_PREC_SINGLE);
+    op_sel <= FPU_OP_SIN;
+    a_in   <= SMALL_FASTPATH_ARG;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(expected_small, "SIN small-angle FP_PREC_SINGLE");
+
+    -- SIN small-angle fast path must honor FPCR precision control (double)
+    round_prec <= FP_PREC_DOUBLE;
+    expected_small := add_sub_fp80(SMALL_FASTPATH_ARG, FP80_ZERO, false, FP_RND_NEAREST, FP_PREC_DOUBLE);
+    op_sel <= FPU_OP_SIN;
+    a_in   <= SMALL_FASTPATH_ARG;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(expected_small, "SIN small-angle FP_PREC_DOUBLE");
+    round_prec <= FP_PREC_EXTENDED;
+
+    -- COS(0) = 1
+    op_sel <= FPU_OP_COS;
+    a_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "COS latency cycles: " & integer'image(cycle_cnt - start_cycle) severity note;
+    assert cycle_cnt - start_cycle = COS_LATENCY report "COS latency mismatch" severity failure;
+    check_result(FP80_ONE, "COS 0");
+
+    -- FCOS(+INF) -> NaN
+    op_sel <= FPU_OP_COS;
+    a_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("COS +INF -> NaN");
+
+    -- FCOS(QNaN) propagates NaN class
+    op_sel <= FPU_OP_COS;
+    a_in   <= FP80_QNAN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("COS QNaN -> NaN");
+
+    -- FSIN(+INF) -> NaN
+    op_sel <= FPU_OP_SIN;
+    a_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("SIN +INF -> NaN");
+
+    -- FSIN(QNaN) propagates NaN class
+    op_sel <= FPU_OP_SIN;
+    a_in   <= FP80_QNAN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("SIN QNaN -> NaN");
+
+    -- FTAN(+INF) -> NaN
+    op_sel <= FPU_OP_TAN;
+    a_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("TAN +INF -> NaN");
+
+    -- FTAN(QNaN) propagates NaN class
+    op_sel <= FPU_OP_TAN;
+    a_in   <= FP80_QNAN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("TAN QNaN -> NaN");
+
+    -- TAN(0) = 0
+    op_sel <= FPU_OP_TAN;
+    a_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "TAN latency cycles: " & integer'image(cycle_cnt - start_cycle) severity note;
+    assert cycle_cnt - start_cycle = TAN_LATENCY report "TAN latency mismatch" severity failure;
+    check_result(FP80_ZERO, "TAN 0");
+
+    -- SIN(PI/2) = 1
+    op_sel <= FPU_OP_SIN;
+    a_in   <= FP80_HALF_PI;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(FP80_ONE, "SIN PI/2");
+
+    -- COS(PI) = -1
+    op_sel <= FPU_OP_COS;
+    a_in   <= FP80_PI;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(x"BFFF8000000000000000", "COS PI");
+
+    -- SINCOS returns sine path result in ALU datapath model
+    op_sel <= FPU_OP_SINCOS;
+    a_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SINCOS latency cycles: " & integer'image(cycle_cnt - start_cycle) severity note;
+    assert cycle_cnt - start_cycle = SINCOS_LATENCY report "SINCOS latency mismatch" severity failure;
+    check_result(FP80_ZERO, "SINCOS sine lane");
 
     std.env.stop;
     wait;

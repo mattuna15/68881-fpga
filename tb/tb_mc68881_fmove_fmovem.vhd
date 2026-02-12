@@ -420,6 +420,18 @@ begin
     report "FMOVE.B source observed=" & to_hstring(rd_full) severity note;
     check_fp80(rd_full, fp80_from_int(-2), "FMOVE.B source");
 
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000080");
+    cfg_word := make_move_cfg("01", 0, 0, "00", '0', "00", (others => '0'), '0', mem_to_reg_integer => '1');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.B min source observed=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, fp80_from_int(-128), "FMOVE.B min source");
+
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"0000FF9C");
     cfg_word := make_move_cfg("01", 0, 1, "01", '0', "00", (others => '0'), '0', mem_to_reg_integer => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
@@ -432,6 +444,18 @@ begin
     report "FMOVE.W source observed=" & to_hstring(rd_full) severity note;
     check_fp80(rd_full, fp80_from_int(-100), "FMOVE.W source");
 
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00008000");
+    cfg_word := make_move_cfg("01", 0, 1, "01", '0', "00", (others => '0'), '0', mem_to_reg_integer => '1');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.W min source observed=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, fp80_from_int(-32768), "FMOVE.W min source");
+
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00003039");
     cfg_word := make_move_cfg("01", 0, 2, "10", '0', "00", (others => '0'), '0', mem_to_reg_integer => '1');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
@@ -443,6 +467,18 @@ begin
     rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
     report "FMOVE.L source observed=" & to_hstring(rd_full) severity note;
     check_fp80(rd_full, fp80_from_int(12345), "FMOVE.L source");
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"80000001");
+    cfg_word := make_move_cfg("01", 0, 2, "10", '0', "00", (others => '0'), '0', mem_to_reg_integer => '1');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.L min source observed=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, fp80_from_int(-2147483647), "FMOVE.L min source");
 
     report "FMOVE .P static/dynamic k-factor checks" severity note;
     fp_val_a := fp80_from_int(1234567);

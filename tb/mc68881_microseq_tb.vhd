@@ -40,6 +40,14 @@ begin
       report "decode_op_sel_word core-v1 FSAVE mapping failed." severity failure;
     assert decode_op_sel_word(x"01000031") = FPU_OP_FRESTORE
       report "decode_op_sel_word core-v1 FRESTORE mapping failed." severity failure;
+    assert decode_op_sel_word(x"0000000D") = FPU_OP_SIN
+      report "decode_op_sel_word legacy SIN mapping failed." severity failure;
+    assert decode_op_sel_word(x"0100000E") = FPU_OP_COS
+      report "decode_op_sel_word core-v1 COS mapping failed." severity failure;
+    assert decode_op_sel_word(x"0100000F") = FPU_OP_TAN
+      report "decode_op_sel_word core-v1 TAN mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000010") = FPU_OP_SINCOS
+      report "decode_op_sel_word core-v1 SINCOS mapping failed." severity failure;
     assert decode_op_sel_word(x"7F000005") = FPU_OP_NOP
       report "decode_op_sel_word unknown namespace should map to NOP." severity failure;
 
@@ -51,6 +59,8 @@ begin
       report "op_class ADD mapping failed." severity failure;
     assert op_class(FPU_OP_MOVE) = OP_CLASS_MOVE
       report "op_class MOVE mapping failed." severity failure;
+    assert op_class(FPU_OP_SIN) = OP_CLASS_ARITH
+      report "op_class SIN mapping failed." severity failure;
     assert op_class(FPU_OP_FNOP) = OP_CLASS_PROG_CTRL
       report "op_class FNOP mapping failed." severity failure;
     assert op_class(FPU_OP_FSAVE) = OP_CLASS_SYS_CTRL
@@ -63,6 +73,8 @@ begin
       report "op_alu_latency DIV mapping failed." severity failure;
     assert op_alu_latency(FPU_OP_MOVE) = 0
       report "op_alu_latency MOVE mapping failed." severity failure;
+    assert op_alu_latency(FPU_OP_TAN) = 8
+      report "op_alu_latency TAN mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_ADD) = OP_CYCLE_ARITH
       report "op_cycle_model ADD mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_FRESTORE) = OP_CYCLE_ZERO
@@ -109,6 +121,18 @@ begin
     );
     assert cycles = 953
       report "op_cycle_count DIV packed mismatch." severity failure;
+
+    cycles := op_cycle_count(
+      FPU_OP_SIN,
+      FPU_SRC_FPM,
+      EA_MODE_DN_AN,
+      EA_CYCLE_BEST,
+      false,
+      false,
+      false
+    );
+    assert cycles = 120
+      report "op_cycle_count SIN baseline mismatch." severity failure;
 
     cycles := op_cycle_count(
       FPU_OP_FNOP,

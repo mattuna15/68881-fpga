@@ -39,6 +39,10 @@ package mc68881_pkg is
     FPU_OP_SCALE,
     FPU_OP_SGLDIV,
     FPU_OP_SGLMUL,
+    FPU_OP_SIN,
+    FPU_OP_COS,
+    FPU_OP_TAN,
+    FPU_OP_SINCOS,
     FPU_OP_MOVE,
     FPU_OP_MOVEM,
     FPU_OP_FNOP,
@@ -227,12 +231,34 @@ package mc68881_pkg is
   function fscale_fp80(a : fp80_t; b : fp80_t) return fp80_t;
   function sgldiv_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
   function sglmul_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
+  function fsin_fp80(
+    a : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t;
+  function fcos_fp80(
+    a : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t;
+  function ftan_fp80(
+    a : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t;
 end package mc68881_pkg;
 
 package body mc68881_pkg is
   constant FP_GRS_BITS : natural := 3;
   constant FP_MANT_EXT_WIDTH : natural := FP_MANT_WIDTH + FP_GRS_BITS;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
+  constant FP80_ZERO : fp80_t := x"00000000000000000000";
+  constant FP80_ONE : fp80_t := x"3FFF8000000000000000";
+  constant FP80_HALF : fp80_t := x"3FFE8000000000000000";
+  constant FP80_PI : fp80_t := x"4000C90FDAA22168C235";
+  constant FP80_HALF_PI : fp80_t := x"3FFFC90FDAA22168C235";
+  constant FP80_TWO_PI : fp80_t := x"4001C90FDAA22168C235";
+  constant FP80_TWO_OVER_PI : fp80_t := x"3FFEA2F9836E4E44152A";
   constant FP_EXP_MAX : integer := (2**FP_EXP_WIDTH) - 1;
   type src_cycle_lut_t is array (fpu_src_kind_t) of natural;
   type op_descriptor_t is record
@@ -453,6 +479,50 @@ package body mc68881_pkg is
       arith_cycles => (
         FPU_SRC_FPM => 63, FPU_SRC_MEM_INTEGER => 92, FPU_SRC_MEM_SINGLE => 84,
         FPU_SRC_MEM_DOUBLE => 90, FPU_SRC_MEM_EXTENDED => 88, FPU_SRC_MEM_PACKED => 900
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_SIN => (
+      legacy_decode_id_valid => true, legacy_decode_id => 13,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0D",
+      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
+        FPU_SRC_MEM_DOUBLE => 147, FPU_SRC_MEM_EXTENDED => 145, FPU_SRC_MEM_PACKED => 960
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_COS => (
+      legacy_decode_id_valid => true, legacy_decode_id => 14,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0E",
+      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
+        FPU_SRC_MEM_DOUBLE => 147, FPU_SRC_MEM_EXTENDED => 145, FPU_SRC_MEM_PACKED => 960
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_TAN => (
+      legacy_decode_id_valid => true, legacy_decode_id => 15,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0F",
+      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_DIV,
+      arith_cycles => (
+        FPU_SRC_FPM => 156, FPU_SRC_MEM_INTEGER => 185, FPU_SRC_MEM_SINGLE => 177,
+        FPU_SRC_MEM_DOUBLE => 183, FPU_SRC_MEM_EXTENDED => 181, FPU_SRC_MEM_PACKED => 996
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_SINCOS => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"10",
+      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 124, FPU_SRC_MEM_INTEGER => 153, FPU_SRC_MEM_SINGLE => 145,
+        FPU_SRC_MEM_DOUBLE => 151, FPU_SRC_MEM_EXTENDED => 149, FPU_SRC_MEM_PACKED => 964
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
@@ -1606,6 +1676,130 @@ package body mc68881_pkg is
 
     result_u.exp := to_unsigned(exp_i, FP_EXP_WIDTH);
     return pack_fp80(result_u);
+  end function;
+
+  function trig_kernel_sin(
+    r : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t is
+    variable r2 : fp80_t := mul_fp80(r, r, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable r3 : fp80_t := mul_fp80(r2, r, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable c3 : fp80_t := div_fp80(fp80_from_int(1), fp80_from_int(6), FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable c5 : fp80_t := div_fp80(fp80_from_int(1), fp80_from_int(120), FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable c7 : fp80_t := div_fp80(fp80_from_int(1), fp80_from_int(5040), FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable p : fp80_t := c7;
+  begin
+    c3(FP_WIDTH-1) := '1';
+    c7(FP_WIDTH-1) := '1';
+    p := add_sub_fp80(c5, mul_fp80(r2, p, FP_RND_NEAREST, FP_PREC_EXTENDED), false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    p := add_sub_fp80(c3, mul_fp80(r2, p, FP_RND_NEAREST, FP_PREC_EXTENDED), false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    return add_sub_fp80(r, mul_fp80(r3, p, FP_RND_NEAREST, FP_PREC_EXTENDED), false, round_mode, round_prec);
+  end function;
+
+  function trig_kernel_cos(
+    r : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t is
+    variable r2 : fp80_t := mul_fp80(r, r, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable d2 : fp80_t := FP80_HALF;
+    variable d4 : fp80_t := div_fp80(fp80_from_int(1), fp80_from_int(24), FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable d6 : fp80_t := div_fp80(fp80_from_int(1), fp80_from_int(720), FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable p : fp80_t := d6;
+  begin
+    d2(FP_WIDTH-1) := '1';
+    d6(FP_WIDTH-1) := '1';
+    p := add_sub_fp80(d4, mul_fp80(r2, p, FP_RND_NEAREST, FP_PREC_EXTENDED), false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    p := add_sub_fp80(d2, mul_fp80(r2, p, FP_RND_NEAREST, FP_PREC_EXTENDED), false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    return add_sub_fp80(FP80_ONE, mul_fp80(r2, p, FP_RND_NEAREST, FP_PREC_EXTENDED), false, round_mode, round_prec);
+  end function;
+
+  function trig_reduce_primary(a : fp80_t) return fp80_t is
+    variable reduced : fp80_t := fmod_fp80(a, FP80_TWO_PI, FP_RND_NEAREST, FP_PREC_EXTENDED);
+  begin
+    return reduced;
+  end function;
+
+  function trig_quadrant(a : fp80_t) return integer is
+    variable scaled : fp80_t := mul_fp80(a, FP80_TWO_OVER_PI, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable k : integer := fp80_to_int_trunc(scaled);
+    variable frac : fp80_t := add_sub_fp80(scaled, fp80_from_int(k), true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+  begin
+    if frac(FP_WIDTH-1) = '0' and compare_fp80(frac, FP80_HALF) >= 0 then
+      k := k + 1;
+    elsif frac(FP_WIDTH-1) = '1' and compare_fp80(abs_fp80(frac), FP80_HALF) > 0 then
+      k := k - 1;
+    end if;
+    return k;
+  end function;
+
+  function fsin_fp80(
+    a : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t is
+    variable a_u : fp_unpacked_t := unpack_fp80(a);
+    variable x : fp80_t := trig_reduce_primary(a);
+    variable q : integer := trig_quadrant(x);
+    variable q_mod : integer := ((q mod 4) + 4) mod 4;
+    variable r : fp80_t := add_sub_fp80(x, mul_fp80(fp80_from_int(q), FP80_HALF_PI, FP_RND_NEAREST, FP_PREC_EXTENDED), true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable s : fp80_t := trig_kernel_sin(r, round_mode, round_prec);
+    variable c : fp80_t := trig_kernel_cos(r, round_mode, round_prec);
+    variable res : fp80_t := FP80_ZERO;
+  begin
+    if a_u.exp = FP_EXP_ALL_ONES then
+      res := a;
+      res(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
+      res(FP_MANT_WIDTH-1) := '1';
+      if res(FP_MANT_WIDTH-2 downto 0) = (res(FP_MANT_WIDTH-2 downto 0)'range => '0') then
+        res(FP_MANT_WIDTH-2) := '1';
+      end if;
+      return res;
+    end if;
+    if a_u.exp /= 0 and to_integer(a_u.exp) < FP_EXP_BIAS - 32 then
+      return a;
+    end if;
+    case q_mod is
+      when 0 => res := s;
+      when 1 => res := c;
+      when 2 => res := s; res(FP_WIDTH-1) := not s(FP_WIDTH-1);
+      when others => res := c; res(FP_WIDTH-1) := not c(FP_WIDTH-1);
+    end case;
+    return res;
+  end function;
+
+  function fcos_fp80(
+    a : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t is
+    variable x : fp80_t := trig_reduce_primary(a);
+    variable q : integer := trig_quadrant(x);
+    variable q_mod : integer := ((q mod 4) + 4) mod 4;
+    variable r : fp80_t := add_sub_fp80(x, mul_fp80(fp80_from_int(q), FP80_HALF_PI, FP_RND_NEAREST, FP_PREC_EXTENDED), true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable s : fp80_t := trig_kernel_sin(r, round_mode, round_prec);
+    variable c : fp80_t := trig_kernel_cos(r, round_mode, round_prec);
+    variable res : fp80_t := FP80_ZERO;
+  begin
+    case q_mod is
+      when 0 => res := c;
+      when 1 => res := s; res(FP_WIDTH-1) := not s(FP_WIDTH-1);
+      when 2 => res := c; res(FP_WIDTH-1) := not c(FP_WIDTH-1);
+      when others => res := s;
+    end case;
+    return res;
+  end function;
+
+  function ftan_fp80(
+    a : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t is
+    variable s : fp80_t := fsin_fp80(a, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    variable c : fp80_t := fcos_fp80(a, FP_RND_NEAREST, FP_PREC_EXTENDED);
+  begin
+    return div_fp80(s, c, round_mode, round_prec);
   end function;
 
   function sgldiv_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t is

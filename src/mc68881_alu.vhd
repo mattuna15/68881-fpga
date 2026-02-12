@@ -65,6 +65,14 @@ begin
             result_next := sgldiv_fp80(a_in, b_in, round_mode);
           when FPU_OP_SGLMUL =>
             result_next := sglmul_fp80(a_in, b_in, round_mode);
+          when FPU_OP_SIN =>
+            result_next := fsin_fp80(a_in, round_mode, round_prec);
+          when FPU_OP_COS =>
+            result_next := fcos_fp80(a_in, round_mode, round_prec);
+          when FPU_OP_TAN =>
+            result_next := ftan_fp80(a_in, round_mode, round_prec);
+          when FPU_OP_SINCOS =>
+            result_next := fsin_fp80(a_in, round_mode, round_prec);
           when others =>
             result_next := (others => '0');
         end case;

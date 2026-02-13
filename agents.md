@@ -35,6 +35,9 @@
   and end-to-end FPSR/FPIAR behavior checks in `tb/tb_mc68881_top.vhd`.
 - The pre-push hook in `.githooks/pre-push` runs tests to block failing pushes (enable via
   `git config core.hooksPath .githooks`).
+- Keep `.githooks/pre-push` GHDL analyze lists in sync with `src/` dependencies.
+  When adding/splitting RTL units (e.g., new entities instantiated by ALU/top), update the
+  hook compile order so dependent files are analyzed first.
 - Testbenches in `tb/` must be self-checking (assertions with descriptive names), wait on
    DUT-valid signals before checking results, and avoid reserved identifiers (e.g., `label`)
    in procedure/function arguments or signal names.

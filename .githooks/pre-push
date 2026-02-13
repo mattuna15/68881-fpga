@@ -12,7 +12,15 @@ fi
 
 echo "Running GHDL tests before push..."
 
-"$GHDL_EXE" -a --std=08 src/mc68881_pkg.vhd src/mc68881_alu.vhd src/mc68881_top.vhd tb/tb_mc68881_alu.vhd tb/tb_mc68881_top.vhd
+"$GHDL_EXE" -a --std=08 \
+  src/mc68881_pkg.vhd \
+  src/mc68881_trig_unit.vhd \
+  src/mc68881_divrem_unit.vhd \
+  src/mc68881_sgl_ops_unit.vhd \
+  src/mc68881_alu.vhd \
+  src/mc68881_top.vhd \
+  tb/tb_mc68881_alu.vhd \
+  tb/tb_mc68881_top.vhd
 
 "$GHDL_EXE" -e --std=08 tb_mc68881_alu
 "$GHDL_EXE" -r --std=08 tb_mc68881_alu --assert-level=error

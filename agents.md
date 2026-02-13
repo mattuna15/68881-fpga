@@ -24,6 +24,11 @@
   parameter and never write to an `in` parameter (use local variables or `buffer`/`inout`
   only when semantically required).
 - Use `scripts/run_tests.ps1` for local verification; set `GHDL_EXE` if GHDL is not on PATH.
+- For LUT/area checks, do not use incremental synthesis results.
+  Disable run-level incremental reuse on `synth_1` (`AUTO_INCREMENTAL_CHECKPOINT=0`,
+  `INCREMENTAL_CHECKPOINT=""`) before collecting utilization numbers.
+- For area triage, generate hierarchical utilization reports from the synthesized checkpoint
+  (`report_utilization -hierarchical`) and prioritize the largest LUT consumers.
 - Keep opcode decode/class coverage updated in `tb/mc68881_microseq_tb.vhd`.
 - Keep class-dispatch integration coverage updated in `tb/tb_mc68881_op_class_dispatch.vhd`.
 - Keep exception-policy coverage updated in `tb/mc68881_microseq_tb.vhd`

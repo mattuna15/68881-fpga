@@ -64,10 +64,11 @@ B) Functional Completeness (Core Missing Ops)
     - FABS, FNEG, FINT, FINTRZ, FGETEXP, FGETMAN, FTST.
     - Keep IEEE-class behavior aligned for zero/inf/nan inputs.
 
-[ ] B5. Implement transcendental operations (guide section 3.3.3).
+[~] B5. Implement transcendental operations (guide section 3.3.3).
     - FACOS, FASIN, FATAN, FATANH, FCOS, FCOSH.
     - FETOX, FETOXM1, FLOGN, FLOGNP1, FLOG10, FLOG2.
     - FSIN, FSINCOS, FSINH, FTAN, FTANH, FTENTOX, FTWOTOX.
+    - Done subset: FSIN, FCOS, FTAN, FSINCOS.
 
 [ ] B6. Implement program-control instruction set (guide section 3.3.4).
     - FBcc, FDBcc, FScc, FNOP.
@@ -135,3 +136,8 @@ Notes:
 - Checklist expanded using docs/68881-programming.txt (instruction groups + format/control details).
 - Maintain VHDL-2008 compatibility and avoid vendor-specific primitives.
 - Use scripts/run_tests.ps1 for local verification (set GHDL_EXE if needed).
+- For LUT/area regression checks, use non-incremental synthesis only.
+- Before comparing utilization between commits, disable run-level incremental reuse:
+  AUTO_INCREMENTAL_CHECKPOINT=0 and INCREMENTAL_CHECKPOINT="" on run synth_1.
+- Record LUT signoff numbers from report_utilization on a clean run, and use
+  report_utilization -hierarchical for hotspot ranking.

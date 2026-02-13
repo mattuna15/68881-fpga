@@ -74,3 +74,25 @@ ghdl -r --std=08 tb_mc68881_alu
 ```
 
 Adjust the compilation list as new RTL/testbench files are added.
+
+## Synthesis And LUT Reporting
+Use non-incremental synthesis for area/LUT comparisons. Incremental reuse can mask RTL
+changes and produce stale utilization numbers.
+
+- In Vivado Tcl console, disable incremental synthesis for `synth_1`:
+
+```tcl
+set_property AUTO_INCREMENTAL_CHECKPOINT 0 [get_runs synth_1]
+set_property INCREMENTAL_CHECKPOINT "" [get_runs synth_1]
+reset_run synth_1
+launch_runs synth_1
+```
+
+- Confirm in Project Summary that `Incremental synthesis` is `None`.
+- Treat LUT regression numbers as valid only when derived from a non-incremental run.
+- For hotspot analysis, generate hierarchical utilization from the synthesized checkpoint:
+
+```tcl
+open_checkpoint mc68881_top.dcp
+report_utilization -hierarchical -hierarchical_depth 10 -file mc68881_top_util_hier.rpt
+```

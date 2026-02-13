@@ -73,7 +73,7 @@ begin
       report "op_alu_latency DIV mapping failed." severity failure;
     assert op_alu_latency(FPU_OP_MOVE) = 0
       report "op_alu_latency MOVE mapping failed." severity failure;
-    assert op_alu_latency(FPU_OP_TAN) = 8
+    assert op_alu_latency(FPU_OP_TAN) = 15
       report "op_alu_latency TAN mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_ADD) = OP_CYCLE_ARITH
       report "op_cycle_model ADD mapping failed." severity failure;

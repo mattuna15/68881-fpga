@@ -396,7 +396,7 @@ package body mc68881_pkg is
     FPU_OP_DIV => (
       legacy_decode_id_valid => true, legacy_decode_id => 4,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"04",
-      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 73, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_DIV,
       arith_cycles => (
         FPU_SRC_FPM => 103, FPU_SRC_MEM_INTEGER => 132, FPU_SRC_MEM_SINGLE => 124,
@@ -418,7 +418,7 @@ package body mc68881_pkg is
     FPU_OP_MOD => (
       legacy_decode_id_valid => true, legacy_decode_id => 8,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"08",
-      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 84, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
         FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,
@@ -429,7 +429,7 @@ package body mc68881_pkg is
     FPU_OP_REM => (
       legacy_decode_id_valid => true, legacy_decode_id => 9,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"09",
-      op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 84, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
         FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,
@@ -473,7 +473,7 @@ package body mc68881_pkg is
     FPU_OP_SIN => (
       legacy_decode_id_valid => true, legacy_decode_id => 13,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0D",
-      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
@@ -484,7 +484,7 @@ package body mc68881_pkg is
     FPU_OP_COS => (
       legacy_decode_id_valid => true, legacy_decode_id => 14,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0E",
-      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
@@ -495,7 +495,7 @@ package body mc68881_pkg is
     FPU_OP_TAN => (
       legacy_decode_id_valid => true, legacy_decode_id => 15,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0F",
-      op_class => OP_CLASS_ARITH, alu_latency => 15, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 13, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_DIV,
       arith_cycles => (
         FPU_SRC_FPM => 156, FPU_SRC_MEM_INTEGER => 185, FPU_SRC_MEM_SINGLE => 177,
@@ -506,7 +506,7 @@ package body mc68881_pkg is
     FPU_OP_SINCOS => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"10",
-      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 124, FPU_SRC_MEM_INTEGER => 153, FPU_SRC_MEM_SINGLE => 145,
@@ -1020,7 +1020,9 @@ package body mc68881_pkg is
     variable result : unsigned(value'range) := value;
     variable exp_var : unsigned(exp_in'range) := exp_in;
   begin
-    while result(result'left) = '0' and exp_var /= 0 and result /= 0 loop
+    -- Bound the iteration count for synthesis convergence.
+    for i in 0 to value'length-1 loop
+      exit when not (result(result'left) = '0' and exp_var /= 0 and result /= 0);
       result := result(result'left-1 downto 0) & '0';
       exp_var := exp_var - 1;
     end loop;
@@ -1065,7 +1067,9 @@ package body mc68881_pkg is
 
     tmp := abs_val;
     msb_pos := 0;
-    while tmp > 1 loop
+    -- Keep bounded iteration for synthesis: integer input magnitude is <= 31 bits.
+    for i in 0 to 30 loop
+      exit when tmp <= 1;
       tmp := tmp / 2;
       msb_pos := msb_pos + 1;
     end loop;
@@ -1459,7 +1463,8 @@ package body mc68881_pkg is
       return integer'high;
     end if;
 
-    abs_int := to_integer(magnitude_u);
+    -- `shift > 30` is already saturated above, so only 31 magnitude bits are valid.
+    abs_int := to_integer(magnitude_u(30 downto 0));
     if value_u.sign = '1' then
       return -abs_int;
     end if;
@@ -1488,7 +1493,12 @@ package body mc68881_pkg is
     end if;
 
     frac_bits := integer(FP_MANT_WIDTH - 1) - exp_i;
-    result_u.mant(frac_bits-1 downto 0) := (others => '0');
+    -- Avoid dynamic-width slices for synthesis; clear fractional bits with a fixed loop.
+    for bit_idx in 0 to FP_MANT_WIDTH-1 loop
+      if bit_idx < frac_bits then
+        result_u.mant(bit_idx) := '0';
+      end if;
+    end loop;
     return pack_fp80(result_u);
   end function;
 

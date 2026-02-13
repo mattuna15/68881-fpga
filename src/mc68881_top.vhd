@@ -30,10 +30,15 @@ architecture rtl of mc68881_top is
   signal op_sel_reg    : fpu_op_t := FPU_OP_NOP;
   signal operand_reg   : reg_array_t := (others => (others => '0'));
   signal result    : fp80_t := (others => '0');
+  signal aux_result : fp80_t := (others => '0');
   signal result_lo_reg : std_logic_vector(FP80_RESULT_LO_WIDTH-1 downto 0) := (others => '0');
   signal result_hi_reg : std_logic_vector(FP80_RESULT_HI_WIDTH-1 downto 0) := (others => '0');
   signal result_ex_reg : std_logic_vector(FP80_RESULT_EX_WIDTH-1 downto 0) := (others => '0');
+  signal aux_result_lo_reg : std_logic_vector(FP80_RESULT_LO_WIDTH-1 downto 0) := (others => '0');
+  signal aux_result_hi_reg : std_logic_vector(FP80_RESULT_HI_WIDTH-1 downto 0) := (others => '0');
+  signal aux_result_ex_reg : std_logic_vector(FP80_RESULT_EX_WIDTH-1 downto 0) := (others => '0');
   signal valid     : std_logic := '0';
+  signal aux_valid : std_logic := '0';
   signal busy      : std_logic := '0';
   signal sense_drive : std_logic := '1';
   signal op_start_reg  : std_logic := '0';
@@ -89,6 +94,9 @@ architecture rtl of mc68881_top is
   constant ADDR_CYCLE_TOTAL: unsigned(4 downto 0) := to_unsigned(22, 5);
   constant ADDR_MOVE_CFG   : unsigned(4 downto 0) := to_unsigned(23, 5);
   constant ADDR_FPIAR      : unsigned(4 downto 0) := to_unsigned(24, 5);
+  constant ADDR_AUX_RES_L  : unsigned(4 downto 0) := to_unsigned(25, 5);
+  constant ADDR_AUX_RES_H  : unsigned(4 downto 0) := to_unsigned(26, 5);
+  constant ADDR_AUX_RES_E  : unsigned(4 downto 0) := to_unsigned(27, 5);
 
   type dsack_state_t is (DSACK_IDLE, DSACK_WAIT_ASSERT, DSACK_ASSERTED);
   signal dsack_state  : dsack_state_t := DSACK_IDLE;
@@ -535,7 +543,7 @@ begin
     case addr is
       when ADDR_OPSEL | ADDR_OPA_L | ADDR_OPA_H | ADDR_OPA_E | ADDR_OPB_L | ADDR_OPB_H | ADDR_OPB_E =>
         access_class <= ACCESS_OPERAND;
-      when ADDR_RES_L | ADDR_RES_H | ADDR_RES_E =>
+      when ADDR_RES_L | ADDR_RES_H | ADDR_RES_E | ADDR_AUX_RES_L | ADDR_AUX_RES_H | ADDR_AUX_RES_E =>
         access_class <= ACCESS_RESULT;
       when ADDR_STATUS =>
         access_class <= ACCESS_STATUS;
@@ -586,7 +594,9 @@ begin
       b_in   => operand_reg(1),
       result => result,
       valid  => valid,
-      busy   => busy
+      busy   => busy,
+      aux_result => aux_result,
+      aux_valid  => aux_valid
     );
 
   -- Bus/register process:
@@ -858,6 +868,9 @@ begin
       result_lo_reg <= (others => '0');
       result_hi_reg <= (others => '0');
       result_ex_reg <= (others => '0');
+      aux_result_lo_reg <= (others => '0');
+      aux_result_hi_reg <= (others => '0');
+      aux_result_ex_reg <= (others => '0');
       op_start_reg <= '0';
       micro_active_reg <= '0';
       micro_remaining_reg <= 0;
@@ -1050,6 +1063,11 @@ begin
         result_lo_reg <= result(FP80_RESULT_LO_WIDTH-1 downto 0);
         result_hi_reg <= result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
         result_ex_reg <= result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+        if aux_valid = '1' then
+          aux_result_lo_reg <= aux_result(FP80_RESULT_LO_WIDTH-1 downto 0);
+          aux_result_hi_reg <= aux_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
+          aux_result_ex_reg <= aux_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+        end if;
         result_ready_reg <= '1';
       end if;
 
@@ -1128,6 +1146,9 @@ begin
         when ADDR_RES_L => d_out_comb <= result_lo_reg;
         when ADDR_RES_H => d_out_comb <= result_hi_reg;
         when ADDR_RES_E => d_out_comb(FP80_RESULT_EX_WIDTH-1 downto 0) <= result_ex_reg;
+        when ADDR_AUX_RES_L => d_out_comb <= aux_result_lo_reg;
+        when ADDR_AUX_RES_H => d_out_comb <= aux_result_hi_reg;
+        when ADDR_AUX_RES_E => d_out_comb(FP80_RESULT_EX_WIDTH-1 downto 0) <= aux_result_ex_reg;
         when ADDR_STATUS =>
           d_out_comb(0) <= status_valid_reg;
           d_out_comb(1) <= status_busy_reg;

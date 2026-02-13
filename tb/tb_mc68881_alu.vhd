@@ -18,7 +18,9 @@ architecture sim of tb_mc68881_alu is
   signal a_in   : fp80_t := (others => '0');
   signal b_in   : fp80_t := (others => '0');
   signal result : fp80_t;
+  signal aux_result : fp80_t;
   signal valid  : std_logic;
+  signal aux_valid : std_logic;
   signal busy   : std_logic;
   signal cycle_cnt : natural := 0;
 
@@ -33,10 +35,10 @@ architecture sim of tb_mc68881_alu is
   constant SCALE_LATENCY : natural := 2;
   constant SGLDIV_LATENCY : natural := 8;
   constant SGLMUL_LATENCY : natural := 4;
-  constant SIN_LATENCY : natural := 8;
-  constant COS_LATENCY : natural := 8;
-  constant TAN_LATENCY : natural := 8;
-  constant SINCOS_LATENCY : natural := 8;
+  constant SIN_LATENCY : natural := 14;
+  constant COS_LATENCY : natural := 14;
+  constant TAN_LATENCY : natural := 15;
+  constant SINCOS_LATENCY : natural := 14;
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -145,12 +147,15 @@ begin
       b_in   => b_in,
       result => result,
       valid  => valid,
-      busy   => busy
+      busy   => busy,
+      aux_result => aux_result,
+      aux_valid => aux_valid
     );
 
   process
     variable start_cycle : natural := 0;
     variable expected_small : fp80_t := (others => '0');
+    variable busy_cycles : natural := 0;
   begin
     reset_n <= '0';
     wait for 2 * CLK_PERIOD;
@@ -534,9 +539,18 @@ begin
     start <= '0';
     wait for 0 ns;
     start_cycle := cycle_cnt;
+    busy_cycles := 0;
+    while valid = '0' loop
+      if busy = '1' then
+        busy_cycles := busy_cycles + 1;
+      end if;
+      wait until rising_edge(clk);
+      wait for 0 ns;
+    end loop;
     wait until valid = '1';
     report "SIN latency cycles: " & integer'image(cycle_cnt - start_cycle) severity note;
     assert cycle_cnt - start_cycle = SIN_LATENCY report "SIN latency mismatch" severity failure;
+    assert busy_cycles > 1 report "SIN must be multi-cycle busy" severity failure;
     check_result(FP80_ZERO, "SIN 0");
 
     -- SIN small-angle fast path must honor FPCR precision control (single)
@@ -679,10 +693,21 @@ begin
     start <= '0';
     wait for 0 ns;
     start_cycle := cycle_cnt;
+    busy_cycles := 0;
+    while valid = '0' loop
+      if busy = '1' then
+        busy_cycles := busy_cycles + 1;
+      end if;
+      wait until rising_edge(clk);
+      wait for 0 ns;
+    end loop;
     wait until valid = '1';
     report "SINCOS latency cycles: " & integer'image(cycle_cnt - start_cycle) severity note;
     assert cycle_cnt - start_cycle = SINCOS_LATENCY report "SINCOS latency mismatch" severity failure;
+    assert busy_cycles > 1 report "SINCOS must be multi-cycle busy" severity failure;
     check_result(FP80_ZERO, "SINCOS sine lane");
+    assert aux_valid = '1' report "SINCOS aux lane missing" severity failure;
+    assert aux_result = FP80_ONE report "SINCOS cosine lane mismatch" severity failure;
 
     std.env.stop;
     wait;

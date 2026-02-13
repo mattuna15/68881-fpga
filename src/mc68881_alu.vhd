@@ -16,78 +16,118 @@ entity mc68881_alu is
     b_in    : in  fp80_t;
     result  : out fp80_t;
     valid   : out std_logic;
-    busy    : out std_logic
+    busy    : out std_logic;
+    aux_result : out fp80_t;
+    aux_valid  : out std_logic
   );
 end entity mc68881_alu;
 
 architecture rtl of mc68881_alu is
-  constant MAX_LATENCY : natural := 8;
+  signal result_reg : fp80_t := (others => '0');
+  signal valid_reg : std_logic := '0';
+  signal busy_reg : std_logic := '0';
 
-  type fp80_pipe_t is array (natural range <>) of fp80_t;
-  signal pipe_data  : fp80_pipe_t(0 to MAX_LATENCY) := (others => (others => '0'));
-  signal pipe_valid : std_logic_vector(0 to MAX_LATENCY) := (others => '0');
+  signal trig_start_reg : std_logic := '0';
+  signal trig_busy : std_logic := '0';
+  signal trig_done : std_logic := '0';
+  signal trig_result : fp80_t := (others => '0');
+  signal trig_aux_result : fp80_t := (others => '0');
+  signal trig_aux_valid : std_logic := '0';
+
+  signal op_pending_reg : fpu_op_t := FPU_OP_NOP;
+  signal aux_result_reg : fp80_t := (others => '0');
+  signal aux_valid_reg : std_logic := '0';
+
+  attribute keep_hierarchy : string;
+  attribute keep_hierarchy of trig_inst : label is "yes";
 begin
+  trig_inst : entity work.mc68881_trig_unit
+    port map (
+      clk        => clk,
+      reset_n    => reset_n,
+      start      => trig_start_reg,
+      op_sel     => op_pending_reg,
+      a_in       => a_in,
+      round_mode => round_mode,
+      round_prec => round_prec,
+      busy       => trig_busy,
+      done       => trig_done,
+      result     => trig_result,
+      aux_valid  => trig_aux_valid,
+      aux_result => trig_aux_result
+    );
+
   process(clk, reset_n)
-    variable latency : natural := 0;
-    variable result_next : fp80_t := (others => '0');
   begin
     if reset_n = '0' then
-      pipe_data  <= (others => (others => '0'));
-      pipe_valid <= (others => '0');
+      result_reg <= (others => '0');
+      aux_result_reg <= (others => '0');
+      valid_reg <= '0';
+      aux_valid_reg <= '0';
+      busy_reg <= '0';
+      trig_start_reg <= '0';
+      op_pending_reg <= FPU_OP_NOP;
     elsif rising_edge(clk) then
-      for idx in 0 to MAX_LATENCY-1 loop
-        pipe_data(idx) <= pipe_data(idx + 1);
-        pipe_valid(idx) <= pipe_valid(idx + 1);
-      end loop;
-      pipe_data(MAX_LATENCY) <= (others => '0');
-      pipe_valid(MAX_LATENCY) <= '0';
+      valid_reg <= '0';
+      aux_valid_reg <= '0';
+      trig_start_reg <= '0';
 
-      if start = '1' then
-        latency := op_alu_latency(op_sel);
-        case op_sel is
-          when FPU_OP_ADD =>
-            result_next := add_sub_fp80(a_in, b_in, false, round_mode, round_prec);
-          when FPU_OP_SUB =>
-            result_next := add_sub_fp80(a_in, b_in, true, round_mode, round_prec);
-          when FPU_OP_MUL =>
-            result_next := mul_fp80(a_in, b_in, round_mode, round_prec);
-          when FPU_OP_DIV =>
-            result_next := div_fp80(a_in, b_in, round_mode, round_prec);
-          when FPU_OP_CMP =>
-            result_next := add_sub_fp80(a_in, b_in, true, round_mode, round_prec);
-          when FPU_OP_MOD =>
-            result_next := fmod_fp80(a_in, b_in, round_mode, round_prec);
-          when FPU_OP_REM =>
-            result_next := frem_fp80(a_in, b_in, round_mode, round_prec);
-          when FPU_OP_SCALE =>
-            result_next := fscale_fp80(a_in, b_in);
-          when FPU_OP_SGLDIV =>
-            result_next := sgldiv_fp80(a_in, b_in, round_mode);
-          when FPU_OP_SGLMUL =>
-            result_next := sglmul_fp80(a_in, b_in, round_mode);
-          when FPU_OP_SIN =>
-            result_next := fsin_fp80(a_in, round_mode, round_prec);
-          when FPU_OP_COS =>
-            result_next := fcos_fp80(a_in, round_mode, round_prec);
-          when FPU_OP_TAN =>
-            result_next := ftan_fp80(a_in, round_mode, round_prec);
-          when FPU_OP_SINCOS =>
-            result_next := fsin_fp80(a_in, round_mode, round_prec);
-          when others =>
-            result_next := (others => '0');
-        end case;
-
-        if latency <= MAX_LATENCY then
-          pipe_data(latency) <= result_next;
-          pipe_valid(latency) <= '1';
+      if busy_reg = '1' then
+        if trig_done = '1' then
+          result_reg <= trig_result;
+          aux_result_reg <= trig_aux_result;
+          valid_reg <= '1';
+          aux_valid_reg <= trig_aux_valid;
+          busy_reg <= '0';
+          op_pending_reg <= FPU_OP_NOP;
         end if;
+      elsif start = '1' then
+        case op_sel is
+          when FPU_OP_SIN | FPU_OP_COS | FPU_OP_TAN | FPU_OP_SINCOS =>
+            op_pending_reg <= op_sel;
+            trig_start_reg <= '1';
+            busy_reg <= '1';
+          when FPU_OP_ADD =>
+            result_reg <= add_sub_fp80(a_in, b_in, false, round_mode, round_prec);
+            valid_reg <= '1';
+          when FPU_OP_SUB =>
+            result_reg <= add_sub_fp80(a_in, b_in, true, round_mode, round_prec);
+            valid_reg <= '1';
+          when FPU_OP_MUL =>
+            result_reg <= mul_fp80(a_in, b_in, round_mode, round_prec);
+            valid_reg <= '1';
+          when FPU_OP_DIV =>
+            result_reg <= div_fp80(a_in, b_in, round_mode, round_prec);
+            valid_reg <= '1';
+          when FPU_OP_CMP =>
+            result_reg <= add_sub_fp80(a_in, b_in, true, round_mode, round_prec);
+            valid_reg <= '1';
+          when FPU_OP_MOD =>
+            result_reg <= fmod_fp80(a_in, b_in, round_mode, round_prec);
+            valid_reg <= '1';
+          when FPU_OP_REM =>
+            result_reg <= frem_fp80(a_in, b_in, round_mode, round_prec);
+            valid_reg <= '1';
+          when FPU_OP_SCALE =>
+            result_reg <= fscale_fp80(a_in, b_in);
+            valid_reg <= '1';
+          when FPU_OP_SGLDIV =>
+            result_reg <= sgldiv_fp80(a_in, b_in, round_mode);
+            valid_reg <= '1';
+          when FPU_OP_SGLMUL =>
+            result_reg <= sglmul_fp80(a_in, b_in, round_mode);
+            valid_reg <= '1';
+          when others =>
+            result_reg <= (others => '0');
+            valid_reg <= '1';
+        end case;
       end if;
     end if;
   end process;
 
-  result <= pipe_data(0);
-  valid  <= pipe_valid(0);
-  busy   <= '1'
-    when pipe_valid(1 to MAX_LATENCY) /= (pipe_valid(1 to MAX_LATENCY)'range => '0')
-    else '0';
+  result <= result_reg;
+  valid <= valid_reg;
+  busy <= busy_reg or trig_busy;
+  aux_result <= aux_result_reg;
+  aux_valid <= aux_valid_reg;
 end architecture rtl;

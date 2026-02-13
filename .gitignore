@@ -1,1 +1,17 @@
 work-obj*.cf
+/.Xil
+/logs
+/project/fpga68881/fpga68881.runs
+/project/fpga68881/fpga68881.sim
+/tmp
+vivado.jou
+vivado.log
+/project/fpga68881/fpga68881.cache
+/project/fpga68881/fpga68881.hw
+/project/fpga68881/fpga68881.srcs/utils_1/imports
+dfx_runtime.txt
+__synthesis_is_complete__
+*.rpt
+*.pb
+*.dcp
+*.jou

@@ -39,6 +39,8 @@ architecture rtl of mc68881_top is
   signal aux_result_ex_reg : std_logic_vector(FP80_RESULT_EX_WIDTH-1 downto 0) := (others => '0');
   signal valid     : std_logic := '0';
   signal aux_valid : std_logic := '0';
+  signal quotient_valid : std_logic := '0';
+  signal quotient_byte : std_logic_vector(7 downto 0) := (others => '0');
   signal busy      : std_logic := '0';
   signal sense_drive : std_logic := '1';
   signal op_start_reg  : std_logic := '0';
@@ -143,6 +145,8 @@ architecture rtl of mc68881_top is
   constant FPSR_CC_INF      : natural := 25;
   constant FPSR_CC_ZERO     : natural := 26;
   constant FPSR_CC_NEG      : natural := 27;
+  constant FPSR_QUOT_LSB    : natural := 16;
+  constant FPSR_QUOT_MSB    : natural := 23;
   constant FPSR_AEXC_LSB    : natural := 8;
   constant FPSR_AEXC_MSB    : natural := 15;
   constant FPSR_EXC_LSB     : natural := 0;
@@ -595,6 +599,8 @@ begin
       result => result,
       valid  => valid,
       busy   => busy,
+      quotient_byte  => quotient_byte,
+      quotient_valid => quotient_valid,
       aux_result => aux_result,
       aux_valid  => aux_valid
     );
@@ -803,6 +809,10 @@ begin
 
         if exc_policy.capture_fpiar_on_exception and exc_flags /= "00000" then
           fpiar_reg <= fpiar_issue_snapshot_reg;
+        end if;
+
+        if quotient_valid = '1' then
+          fpsr_reg(FPSR_QUOT_MSB downto FPSR_QUOT_LSB) <= quotient_byte;
         end if;
       end if;
 

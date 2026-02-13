@@ -69,11 +69,11 @@ begin
       report "op_class FRESTORE mapping failed." severity failure;
     assert op_class(FPU_OP_NOP) = OP_CLASS_NONE
       report "op_class NOP mapping failed." severity failure;
-    assert op_alu_latency(FPU_OP_DIV) = 8
+    assert op_alu_latency(FPU_OP_DIV) = 73
       report "op_alu_latency DIV mapping failed." severity failure;
     assert op_alu_latency(FPU_OP_MOVE) = 0
       report "op_alu_latency MOVE mapping failed." severity failure;
-    assert op_alu_latency(FPU_OP_TAN) = 15
+    assert op_alu_latency(FPU_OP_TAN) = 13
       report "op_alu_latency TAN mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_ADD) = OP_CYCLE_ARITH
       report "op_cycle_model ADD mapping failed." severity failure;

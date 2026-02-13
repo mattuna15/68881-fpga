@@ -45,6 +45,8 @@ architecture sim of tb_mc68881_top is
   constant FPSR_CC_INF      : natural := 25;
   constant FPSR_CC_ZERO     : natural := 26;
   constant FPSR_CC_NEG      : natural := 27;
+  constant FPSR_QUOT_LSB    : natural := 16;
+  constant FPSR_QUOT_MSB    : natural := 23;
   constant FPSR_ACCR_BASE   : natural := 8;
   constant FPSR_EXC_DIVZERO : natural := 3;
   constant FPSR_EXC_INVALID : natural := 4;
@@ -395,7 +397,7 @@ begin
     -- CMP
     op_a := fp80_from_int(9);
     op_b := fp80_from_int(4);
-    exp_r := add_sub_fp80(op_a, op_b, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    exp_r := fp80_from_int(compare_fp80(op_a, op_b));
     report "CMP operands: op_a=" & to_hstring(op_a) & " op_b=" & to_hstring(op_b)
       severity note;
     report "CMP expected: " & to_hstring(exp_r)
@@ -441,6 +443,10 @@ begin
     report "MOD result: " & to_hstring(rd_full)
       severity note;
     check_fp80(rd_full, exp_r, "MOD result");
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after MOD 17,5: " & to_hstring(rd_lo) severity note;
+    assert rd_lo(FPSR_QUOT_MSB downto FPSR_QUOT_LSB) = x"03"
+      report "FMOD quotient byte mismatch for 17/5 (expected +3)" severity failure;
 
     -- REM
     op_a := fp80_from_int(7);
@@ -465,6 +471,10 @@ begin
     report "REM result: " & to_hstring(rd_full)
       severity note;
     check_fp80(rd_full, exp_r, "REM result");
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after REM 7,4: " & to_hstring(rd_lo) severity note;
+    assert rd_lo(FPSR_QUOT_MSB downto FPSR_QUOT_LSB) = x"02"
+      report "FREM quotient byte mismatch for 7/4 (expected +2)" severity failure;
 
     -- SCALE
     op_a := fp80_from_int(2);

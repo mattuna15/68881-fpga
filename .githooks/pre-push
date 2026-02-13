@@ -1,6 +1,14 @@
 #!/bin/sh
 set -eu
 
+if [ -z "${GHDL_EXE:-}" ]; then
+  if [ -x "/c/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe" ]; then
+    GHDL_EXE="/c/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe"
+  else
+    GHDL_EXE="ghdl"
+  fi
+fi
+
 echo "Running GHDL tests before push..."
 
 "$GHDL_EXE" -a --std=08 \

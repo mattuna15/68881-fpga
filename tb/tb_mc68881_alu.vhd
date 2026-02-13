@@ -133,6 +133,8 @@ architecture sim of tb_mc68881_alu is
   constant SMALL_FASTPATH_ARG : fp80_t := x"3FD78000000000000001";
   constant FP80_POS_INF : fp80_t := x"7FFF8000000000000000";
   constant FP80_QNAN : fp80_t := x"7FFFC000000000000001";
+  constant SUBNORMAL_POS : fp80_t := make_fp80('0', (others => '0'), to_unsigned(1, FP_MANT_WIDTH));
+  constant SUBNORMAL_NEG : fp80_t := make_fp80('1', (others => '0'), to_unsigned(1, FP_MANT_WIDTH));
 
 begin
   clk <= not clk after CLK_PERIOD/2;
@@ -166,6 +168,9 @@ begin
     variable start_cycle : natural := 0;
     variable expected_small : fp80_t := (others => '0');
     variable busy_cycles : natural := 0;
+    variable got_sign  : std_logic := '0';
+    variable got_exp   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable got_mant  : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
     reset_n <= '0';
     wait for 2 * CLK_PERIOD;
@@ -405,6 +410,35 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     check_result_nan("SQRT -9");
+
+    -- SQRT positive subnormal should not flush to zero
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= SUBNORMAL_POS;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    split_fp80(result, got_sign, got_exp, got_mant);
+    assert got_sign = '0'
+      report "SQRT subnormal should produce positive result"
+      severity failure;
+    assert not (got_exp = (got_exp'range => '1') and got_mant /= 0)
+      report "SQRT subnormal should not produce NaN"
+      severity failure;
+    assert not (got_exp = 0 and got_mant = 0)
+      report "SQRT subnormal should not flush to zero"
+      severity failure;
+
+    -- SQRT negative subnormal returns NaN
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= SUBNORMAL_NEG;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("SQRT subnormal negative");
 
     -- CMP
     op_sel <= FPU_OP_CMP;

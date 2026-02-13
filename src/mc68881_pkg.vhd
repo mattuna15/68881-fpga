@@ -1458,11 +1458,6 @@ package body mc68881_pkg is
     res_u.exp := (others => '0');
     res_u.mant := (others => '0');
 
-    if a_u.exp = 0 then
-      res_u.sign := a_u.sign;
-      return pack_fp80(res_u);
-    end if;
-
     if a_u.exp = FP_EXP_ALL_ONES then
       if a_u.mant = 0 and a_u.sign = '0' then
         return a;
@@ -1475,21 +1470,45 @@ package body mc68881_pkg is
       return pack_fp80(nan_result);
     end if;
 
-    if a_u.sign = '1' then
-      nan_result.sign := '0';
-      nan_result.exp := FP_EXP_ALL_ONES;
-      nan_result.mant := (others => '0');
-      nan_result.mant(FP_MANT_WIDTH-1) := '1';
-      nan_result.mant(FP_MANT_WIDTH-2) := '1';
-      return pack_fp80(nan_result);
-    end if;
+    if a_u.exp = 0 then
+      if a_u.mant = 0 then
+        res_u.sign := a_u.sign;
+        return pack_fp80(res_u);
+      end if;
+      if a_u.sign = '1' then
+        nan_result.sign := '0';
+        nan_result.exp := FP_EXP_ALL_ONES;
+        nan_result.mant := (others => '0');
+        nan_result.mant(FP_MANT_WIDTH-1) := '1';
+        nan_result.mant(FP_MANT_WIDTH-2) := '1';
+        return pack_fp80(nan_result);
+      end if;
 
-    exp_unbiased := to_integer(a_u.exp) - FP_EXP_BIAS;
+      exp_unbiased := 1 - FP_EXP_BIAS;
+      mantissa_even := resize(a_u.mant, mantissa_even'length);
+      for idx in 0 to FP_MANT_WIDTH-1 loop
+        exit when mantissa_even(mantissa_even'left) = '1';
+        mantissa_even := shift_left(mantissa_even, 1);
+        exp_unbiased := exp_unbiased - 1;
+      end loop;
+    else
+      if a_u.sign = '1' then
+        nan_result.sign := '0';
+        nan_result.exp := FP_EXP_ALL_ONES;
+        nan_result.mant := (others => '0');
+        nan_result.mant(FP_MANT_WIDTH-1) := '1';
+        nan_result.mant(FP_MANT_WIDTH-2) := '1';
+        return pack_fp80(nan_result);
+      end if;
+
+      exp_unbiased := to_integer(a_u.exp) - FP_EXP_BIAS;
+      mantissa_even := resize(a_u.mant, mantissa_even'length);
+    end if;
     if (exp_unbiased mod 2) /= 0 then
       exp_unbiased := exp_unbiased - 1;
-      mantissa_even := shift_left(resize(a_u.mant, mantissa_even'length), 2);
+      mantissa_even := shift_left(mantissa_even, 2);
     else
-      mantissa_even := shift_left(resize(a_u.mant, mantissa_even'length), 1);
+      mantissa_even := shift_left(mantissa_even, 1);
     end if;
 
     exp_out_i := exp_unbiased / 2 + FP_EXP_BIAS;

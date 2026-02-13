@@ -311,7 +311,8 @@ architecture rtl of mc68881_divrem_unit is
       if shift_amt >= 7 then
         bits := (others => '0');
       else
-        bits := resize(shift_left(u.mant(6-shift_amt downto 0), shift_amt), 7);
+        -- Avoid variable-range slicing that can create null-range warnings.
+        bits := resize(shift_left(u.mant, shift_amt), 7);
       end if;
     else
       shift_amt := integer(FP_MANT_WIDTH - 1) - exp_i;

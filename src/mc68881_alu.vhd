@@ -55,7 +55,6 @@ architecture rtl of mc68881_alu is
   signal trig_done_seen_reg : std_logic := '0';
   signal trig_result_latched_reg : fp80_t := (others => '0');
   signal trig_aux_result_latched_reg : fp80_t := (others => '0');
-  signal trig_aux_valid_latched_reg : std_logic := '0';
   signal aux_result_reg : fp80_t := (others => '0');
   signal quotient_byte_reg : std_logic_vector(7 downto 0) := (others => '0');
   signal quotient_valid_reg : std_logic := '0';
@@ -191,7 +190,6 @@ begin
       trig_done_seen_reg <= '0';
       trig_result_latched_reg <= (others => '0');
       trig_aux_result_latched_reg <= (others => '0');
-      trig_aux_valid_latched_reg <= '0';
       quotient_byte_reg <= (others => '0');
       quotient_valid_reg <= '0';
     elsif rising_edge(clk) then
@@ -221,13 +219,11 @@ begin
             trig_done_seen_reg <= '1';
             trig_result_latched_reg <= trig_result;
             trig_aux_result_latched_reg <= trig_aux_result;
-            trig_aux_valid_latched_reg <= trig_aux_valid;
             result_reg <= trig_result;
             aux_result_reg <= trig_aux_result;
           end if;
 
           if trig_aux_valid = '1' then
-            trig_aux_valid_latched_reg <= '1';
             trig_aux_result_latched_reg <= trig_aux_result;
             aux_result_reg <= trig_aux_result;
           end if;
@@ -320,7 +316,6 @@ begin
           trig_start_reg <= '1';
           busy_reg <= '1';
           trig_done_seen_reg <= '0';
-          trig_aux_valid_latched_reg <= '0';
           if op_alu_latency(op_sel) <= 1 then
             latency_count_reg <= 0;
           else

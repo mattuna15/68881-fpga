@@ -31,6 +31,7 @@ architecture sim of tb_mc68881_alu is
   constant SUB_LATENCY : natural := 1;
   constant MUL_LATENCY : natural := 4;
   constant DIV_LATENCY : natural := op_alu_latency(FPU_OP_DIV);
+  constant SQRT_LATENCY : natural := op_alu_latency(FPU_OP_SQRT);
   constant CMP_LATENCY : natural := 1;
   constant MOD_LATENCY : natural := op_alu_latency(FPU_OP_MOD);
   constant REM_LATENCY : natural := op_alu_latency(FPU_OP_REM);
@@ -120,8 +121,13 @@ architecture sim of tb_mc68881_alu is
   constant DIV_1_10_DOUBLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_DOUBLE);
   constant LARGE_MOD_A : fp80_t := x"40278000000001800000"; -- 2^40 + 3
   constant LARGE_MOD_B : fp80_t := x"40008000000000000000"; -- 2
+  constant FREM_BOUNDARY_A : fp80_t := x"401DFFFFFFFF80000000"; -- (integer'high + 0.75) for 32-bit integer
+  constant FREM_BOUNDARY_B : fp80_t := x"3FFF8000000000000000"; -- 1
+  constant FREM_BOUNDARY_EXPECTED : fp80_t := x"BFFD8000000000000000"; -- -0.25 (round-to-nearest-even quotient)
   constant FP80_ZERO : fp80_t := x"00000000000000000000";
   constant FP80_ONE : fp80_t := x"3FFF8000000000000000";
+  constant FP80_HALF : fp80_t := x"3FFE8000000000000000";
+  constant FP80_QUARTER : fp80_t := x"3FFD8000000000000000";
   constant FP80_HALF_PI : fp80_t := x"3FFFC90FDAA22168C235";
   constant FP80_PI : fp80_t := x"4000C90FDAA22168C235";
   constant SMALL_FASTPATH_ARG : fp80_t := x"3FD78000000000000001";
@@ -364,6 +370,42 @@ begin
       severity note;
     check_result(DIV_1_10_DOUBLE_EXPECTED, "DIV 1/10 double");
 
+    -- SQRT
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= fp80_from_int(4);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    report "SQRT latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    assert cycle_cnt - start_cycle = SQRT_LATENCY
+      report "SQRT latency mismatch"
+      severity failure;
+    check_result(fp80_from_int(2), "SQRT 4");
+
+    -- SQRT fractional exact (0.25 -> 0.5)
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= FP80_QUARTER;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(FP80_HALF, "SQRT 0.25");
+
+    -- SQRT negative returns NaN
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= fp80_from_int(-9);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result_nan("SQRT -9");
+
     -- CMP
     op_sel <= FPU_OP_CMP;
     a_in   <= fp80_from_int(9);
@@ -397,6 +439,22 @@ begin
       report "MOD latency mismatch"
       severity failure;
     check_result(fp80_from_int(2), "MOD 17 mod 5");
+
+    -- MOD quotient selection must ignore FPCR rounding mode/precision.
+    -- 7/4 = 1.75, FMOD must pick n = trunc(1.75) = 1 => remainder 3.
+    round_mode <= FP_RND_PLUS_INF;
+    round_prec <= FP_PREC_SINGLE;
+    op_sel <= FPU_OP_MOD;
+    a_in   <= fp80_from_int(7);
+    b_in   <= fp80_from_int(4);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(3), "MOD 7 mod 4 ignores FPCR mode");
+    round_mode <= FP_RND_NEAREST;
+    round_prec <= FP_PREC_EXTENDED;
 
     -- MOD zero divisor should return NaN.
     op_sel <= FPU_OP_MOD;
@@ -448,6 +506,38 @@ begin
       report "REM latency mismatch"
       severity failure;
     check_result(fp80_from_int(-1), "REM 7 rem 4");
+
+    -- REM integer fast-path boundary: this quotient needs +1 rounding at
+    -- integer'high and must not overflow VHDL integer arithmetic.
+    op_sel <= FPU_OP_REM;
+    a_in   <= FREM_BOUNDARY_A;
+    b_in   <= FREM_BOUNDARY_B;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    assert unsigned(result(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) /=
+           to_unsigned((2**FP_EXP_WIDTH)-1, FP_EXP_WIDTH)
+      report "REM boundary produced non-finite result"
+      severity failure;
+    check_result(FREM_BOUNDARY_EXPECTED, "REM boundary rounds quotient without integer overflow");
+
+    -- REM quotient selection must ignore FPCR rounding mode/precision.
+    -- 7/4 = 1.75, FREM must pick nearest-even n = 2 => remainder -1.
+    round_mode <= FP_RND_ZERO;
+    round_prec <= FP_PREC_SINGLE;
+    op_sel <= FPU_OP_REM;
+    a_in   <= fp80_from_int(7);
+    b_in   <= fp80_from_int(4);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(-1), "REM 7 rem 4 ignores FPCR mode");
+    round_mode <= FP_RND_NEAREST;
+    round_prec <= FP_PREC_EXTENDED;
 
     -- REM zero divisor should return NaN.
     op_sel <= FPU_OP_REM;

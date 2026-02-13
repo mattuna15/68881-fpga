@@ -17,9 +17,9 @@ for the core arithmetic datapath. The current plan and progress tracking live in
 
 ## Progress snapshot
 Based on `docs/mc68881_plan_checklist.txt`:
-- Completed checklist items: 14
+- Completed checklist items: 15
 - In-progress checklist items: 0
-- Not-started checklist items: 17
+- Not-started checklist items: 16
 - Completed highlights:
   - Top-level cleanup/refactor items A1-A8, including explicit operation-class
     dispatch, centralized opcode descriptors, typed MOVE decode records, and
@@ -27,6 +27,7 @@ Based on `docs/mc68881_plan_checklist.txt`:
   - FMOVE/FMOVEM family implementation (including packed-decimal `.P` and `FMOVECR`).
   - Dyadic arithmetic set: `FADD`, `FSUB`, `FMUL`, `FDIV`, `FCMP`, `FMOD`, `FREM`,
     `FSCALE`, `FSGLDIV`, `FSGLMUL`.
+  - Monadic arithmetic: `FSQRT`.
   - Bus/timing confirmations E1-E4.
 
 ## Plan and milestones

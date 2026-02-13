@@ -195,6 +195,7 @@ architecture rtl of mc68881_divrem_unit is
       mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll drop_bits);
       if mant_round(mant_round'left) = '1' then
         mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
+        mant_main(mant_main'left) := '1';
         exp_var := exp_var + 1;
       else
         mant_main := mant_round(mant_round'left-1 downto 0);
@@ -322,6 +323,37 @@ architecture rtl of mc68881_divrem_unit is
     return qbyte;
   end function;
 
+  function fp80_add_one_integer_magnitude(value : fp80_t) return fp80_t is
+    variable u : fp_unpacked_t := unpack_fp80(value);
+    variable exp_i : integer := 0;
+    variable unit_bit : integer := 0;
+    variable increment : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable mant_next : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
+  begin
+    if u.exp = 0 or u.exp = FP_EXP_ALL_ONES then
+      return value;
+    end if;
+
+    exp_i := to_integer(u.exp) - FP_EXP_BIAS;
+    if exp_i < 0 or exp_i > integer(FP_MANT_WIDTH - 1) then
+      return value;
+    end if;
+
+    unit_bit := integer(FP_MANT_WIDTH - 1) - exp_i;
+    increment(unit_bit) := '1';
+    mant_next := ('0' & u.mant) + ('0' & increment);
+    if mant_next(mant_next'left) = '1' then
+      u.mant := shift_right(mant_next(mant_next'left-1 downto 0), 1);
+      u.mant(u.mant'left) := '1';
+      if u.exp /= FP_EXP_ALL_ONES then
+        u.exp := u.exp + 1;
+      end if;
+    else
+      u.mant := mant_next(mant_next'left-1 downto 0);
+    end if;
+    return pack_fp80(u);
+  end function;
+
 begin
   process(clk, reset_n)
     variable a_u : fp_unpacked_t;
@@ -347,10 +379,13 @@ begin
     variable step_i : integer := 0;
     variable quotient_i : integer := 0;
     variable nearest_i : integer := 0;
+    variable needs_step : boolean := false;
     variable use_integer_path : boolean := false;
     variable div_mul2 : unsigned(FP_MANT_WIDTH+1 downto 0) := (others => '0');
     variable div_mul3 : unsigned(FP_MANT_WIDTH+1 downto 0) := (others => '0');
     variable div_final_result : fp80_t := (others => '0');
+    variable div_round_mode : fp_round_mode_t := FP_RND_NEAREST;
+    variable div_round_prec : fp_round_prec_t := FP_PREC_EXTENDED;
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -522,7 +557,17 @@ begin
             mant_ext(0) := '1';
           end if;
 
-          apply_rounding(div_sign_reg, mant_ext, exp_res_i, rm_reg, rp_reg, mant_main, exp_res_i, inexact_local);
+          -- FMOD/FREM must derive quotient selection from an extended-precision
+          -- quotient independent of caller FPCR rounding/precision.
+          if op_reg = FPU_OP_DIV then
+            div_round_mode := rm_reg;
+            div_round_prec := rp_reg;
+          else
+            div_round_mode := FP_RND_NEAREST;
+            div_round_prec := FP_PREC_EXTENDED;
+          end if;
+
+          apply_rounding(div_sign_reg, mant_ext, exp_res_i, div_round_mode, div_round_prec, mant_main, exp_res_i, inexact_local);
 
           div_res_u.sign := div_sign_reg;
           if mant_main = 0 then
@@ -583,12 +628,28 @@ begin
               else
                 step_i := 1;
               end if;
+              needs_step := false;
               if half_cmp > 0 then
-                nearest_i := nearest_i + step_i;
+                needs_step := true;
               elsif half_cmp = 0 and to_signed(quotient_i, 32)(0) = '1' then
-                nearest_i := nearest_i + step_i;
+                needs_step := true;
               end if;
-              nearest_q := fp80_from_int(nearest_i);
+
+              if needs_step then
+                -- Guard the integer fast path at the VHDL integer bounds and
+                -- perform the final increment/decrement in FP80 when needed.
+                if (step_i = 1 and nearest_i = integer'high) or
+                   (step_i = -1 and nearest_i = integer'low) then
+                  -- At integer limits, move one step in magnitude space without
+                  -- round-tripping through VHDL integer arithmetic.
+                  nearest_q := fp80_add_one_integer_magnitude(quotient_trunc);
+                else
+                  nearest_i := nearest_i + step_i;
+                  nearest_q := fp80_from_int(nearest_i);
+                end if;
+              else
+                nearest_q := quotient_trunc;
+              end if;
             else
               quotient_trunc := fp80_trunc_toward_zero_local(quotient_fp);
               nearest_q := quotient_trunc;

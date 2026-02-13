@@ -123,6 +123,13 @@ begin
     assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_EXTENDED, 128, "FDIV mem extended");
     assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_PACKED, 940, "FDIV mem packed");
 
+    assert_base_cycles(FPU_OP_SQRT, FPU_SRC_FPM, 120, "FSQRT FPM");
+    assert_base_cycles(FPU_OP_SQRT, FPU_SRC_MEM_INTEGER, 149, "FSQRT mem integer");
+    assert_base_cycles(FPU_OP_SQRT, FPU_SRC_MEM_SINGLE, 141, "FSQRT mem single");
+    assert_base_cycles(FPU_OP_SQRT, FPU_SRC_MEM_DOUBLE, 147, "FSQRT mem double");
+    assert_base_cycles(FPU_OP_SQRT, FPU_SRC_MEM_EXTENDED, 145, "FSQRT mem extended");
+    assert_base_cycles(FPU_OP_SQRT, FPU_SRC_MEM_PACKED, 960, "FSQRT mem packed");
+
     assert_base_cycles(FPU_OP_CMP, FPU_SRC_FPM, 49, "FCMP FPM");
     assert_base_cycles(FPU_OP_CMP, FPU_SRC_MEM_INTEGER, 78, "FCMP mem integer (B/W/L)");
     assert_base_cycles(FPU_OP_CMP, FPU_SRC_MEM_PACKED, 886, "FCMP mem packed (.P)");
@@ -201,6 +208,17 @@ begin
       true,
       965,
       "FMOD packed + dynamic K + EA worst (xxx).L"
+    );
+    assert_total_cycles(
+      FPU_OP_SQRT,
+      FPU_SRC_FPM,
+      EA_MODE_DN_AN,
+      EA_CYCLE_BEST,
+      false,
+      false,
+      false,
+      120,
+      "FSQRT FPM base cycles"
     );
 
     assert_move_cycles(FPU_OP_MOVE, FPU_SRC_FPM, 4, "FMOVE FPR<->FPR");

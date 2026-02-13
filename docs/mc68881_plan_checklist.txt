@@ -44,7 +44,7 @@ A) Design Quality Improvements (from review)
 
 B) Functional Completeness (Core Missing Ops)
 ---------------------------------------------
-[ ] B1. Implement FSQRT (square root).
+[x] B1. Implement FSQRT (square root).
     - Target cycle count ~120 (per datasheet guidance).
 
 [x] B2. Implement FMOVE/FMOVEM family per programming guide section 3.3.1.

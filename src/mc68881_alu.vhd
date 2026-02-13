@@ -359,6 +359,17 @@ begin
             busy_reg <= '1';
             latency_count_reg <= op_alu_latency(op_sel) - 1;
           end if;
+        elsif op_sel = FPU_OP_SQRT then
+          result_reg <= sqrt_fp80(a_in, round_mode, round_prec);
+          if op_alu_latency(op_sel) = 0 then
+            valid <= '1';
+            busy_reg <= '0';
+            op_pending_reg <= FPU_OP_NOP;
+            latency_count_reg <= 0;
+          else
+            busy_reg <= '1';
+            latency_count_reg <= op_alu_latency(op_sel) - 1;
+          end if;
         elsif is_divrem_op(op_sel) then
           divrem_op_reg <= op_sel;
           divrem_a_reg <= a_in;

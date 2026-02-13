@@ -33,6 +33,7 @@ package mc68881_pkg is
     FPU_OP_SUB,
     FPU_OP_MUL,
     FPU_OP_DIV,
+    FPU_OP_SQRT,
     FPU_OP_CMP,
     FPU_OP_MOD,
     FPU_OP_REM,
@@ -219,6 +220,11 @@ package mc68881_pkg is
     round_mode : fp_round_mode_t;
     round_prec : fp_round_prec_t
   ) return fp80_t;
+  function sqrt_fp80(
+    a : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t;
   function fmod_fp80(
     a : fp80_t;
     b : fp80_t;
@@ -401,6 +407,17 @@ package body mc68881_pkg is
       arith_cycles => (
         FPU_SRC_FPM => 103, FPU_SRC_MEM_INTEGER => 132, FPU_SRC_MEM_SINGLE => 124,
         FPU_SRC_MEM_DOUBLE => 130, FPU_SRC_MEM_EXTENDED => 128, FPU_SRC_MEM_PACKED => 940
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_SQRT => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"11",
+      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
+        FPU_SRC_MEM_DOUBLE => 147, FPU_SRC_MEM_EXTENDED => 145, FPU_SRC_MEM_PACKED => 960
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
@@ -949,6 +966,7 @@ package body mc68881_pkg is
       mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll drop_bits);
       if mant_round(mant_round'left) = '1' then
         mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
+        mant_main(mant_main'left) := '1';
         exp_var := exp_var + 1;
       else
         mant_main := mant_round(mant_round'left-1 downto 0);
@@ -961,6 +979,39 @@ package body mc68881_pkg is
 
     mant_out := mant_main;
     exp_out := exp_var;
+  end procedure;
+
+  procedure int_sqrt_with_rem(
+    radicand : in unsigned;
+    root     : out unsigned;
+    rem_out  : out unsigned
+  ) is
+    constant RAD_W : integer := radicand'length;
+    constant EVEN_W : integer := (RAD_W + 1) / 2 * 2;
+    variable rad_even : unsigned(EVEN_W-1 downto 0) := (others => '0');
+    variable root_var : unsigned(root'length-1 downto 0) := (others => '0');
+    variable rem_var  : unsigned(EVEN_W-1 downto 0) := (others => '0');
+    variable trial    : unsigned(EVEN_W-1 downto 0) := (others => '0');
+    variable pair_hi  : integer := 0;
+  begin
+    rad_even(EVEN_W-1 downto EVEN_W-RAD_W) := radicand;
+
+    for idx in 0 to (EVEN_W/2 - 1) loop
+      pair_hi := EVEN_W-1 - idx * 2;
+      rem_var := shift_left(rem_var, 2);
+      rem_var(1 downto 0) := rad_even(pair_hi downto pair_hi-1);
+      trial := shift_left(resize(root_var, EVEN_W), 2) + 1;
+      if rem_var >= trial then
+        rem_var := rem_var - trial;
+        root_var := shift_left(root_var, 1);
+        root_var(0) := '1';
+      else
+        root_var := shift_left(root_var, 1);
+      end if;
+    end loop;
+
+    root := root_var;
+    rem_out := resize(rem_var, rem_out'length);
   end procedure;
 
   function unpack_fp80(value : fp80_t) return fp_unpacked_t is
@@ -1144,6 +1195,7 @@ package body mc68881_pkg is
 
       if mant_sum(mant_sum'left) = '1' then
         mant_sum(mant_sum'left-1 downto 0) := shift_right_with_sticky(mant_sum(mant_sum'left-1 downto 0), 1);
+        mant_sum(mant_sum'left-1) := '1';
         mant_sum(mant_sum'left) := '0';
         if exp_res /= FP_EXP_ALL_ONES then
           exp_res := exp_res + 1;
@@ -1379,6 +1431,117 @@ package body mc68881_pkg is
 
     exp_res := to_unsigned(exp_res_i, FP_EXP_WIDTH);
     res_u.exp := exp_res;
+    res_u.mant := mant_main;
+    return pack_fp80(res_u);
+  end function;
+
+  function sqrt_fp80(
+    a : fp80_t;
+    round_mode : fp_round_mode_t;
+    round_prec : fp_round_prec_t
+  ) return fp80_t is
+    constant SQRT_SCALE_SHIFT : natural := FP_MANT_WIDTH - 1 + FP_GRS_BITS - 32;
+    constant MANT_EVEN_WIDTH : natural := FP_MANT_WIDTH + 2;
+    constant RADICAND_WIDTH : natural := MANT_EVEN_WIDTH + (2 * SQRT_SCALE_SHIFT);
+    variable a_u : fp_unpacked_t := unpack_fp80(a);
+    variable res_u : fp_unpacked_t;
+    variable mantissa_even : unsigned(MANT_EVEN_WIDTH-1 downto 0) := (others => '0');
+    variable radicand : unsigned(RADICAND_WIDTH-1 downto 0) := (others => '0');
+    variable root : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
+    variable rem_val : unsigned(RADICAND_WIDTH-1 downto 0) := (others => '0');
+    variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable exp_unbiased : integer := 0;
+    variable exp_out_i : integer := 0;
+    variable nan_result : fp_unpacked_t;
+  begin
+    res_u.sign := '0';
+    res_u.exp := (others => '0');
+    res_u.mant := (others => '0');
+
+    if a_u.exp = FP_EXP_ALL_ONES then
+      if a_u.mant = 0 and a_u.sign = '0' then
+        return a;
+      end if;
+      nan_result.sign := '0';
+      nan_result.exp := FP_EXP_ALL_ONES;
+      nan_result.mant := (others => '0');
+      nan_result.mant(FP_MANT_WIDTH-1) := '1';
+      nan_result.mant(FP_MANT_WIDTH-2) := '1';
+      return pack_fp80(nan_result);
+    end if;
+
+    if a_u.exp = 0 then
+      if a_u.mant = 0 then
+        res_u.sign := a_u.sign;
+        return pack_fp80(res_u);
+      end if;
+      if a_u.sign = '1' then
+        nan_result.sign := '0';
+        nan_result.exp := FP_EXP_ALL_ONES;
+        nan_result.mant := (others => '0');
+        nan_result.mant(FP_MANT_WIDTH-1) := '1';
+        nan_result.mant(FP_MANT_WIDTH-2) := '1';
+        return pack_fp80(nan_result);
+      end if;
+
+      exp_unbiased := 1 - FP_EXP_BIAS;
+      mantissa_even := resize(a_u.mant, mantissa_even'length);
+      for idx in 0 to FP_MANT_WIDTH-1 loop
+        exit when mantissa_even(mantissa_even'left) = '1';
+        mantissa_even := shift_left(mantissa_even, 1);
+        exp_unbiased := exp_unbiased - 1;
+      end loop;
+    else
+      if a_u.sign = '1' then
+        nan_result.sign := '0';
+        nan_result.exp := FP_EXP_ALL_ONES;
+        nan_result.mant := (others => '0');
+        nan_result.mant(FP_MANT_WIDTH-1) := '1';
+        nan_result.mant(FP_MANT_WIDTH-2) := '1';
+        return pack_fp80(nan_result);
+      end if;
+
+      exp_unbiased := to_integer(a_u.exp) - FP_EXP_BIAS;
+      mantissa_even := resize(a_u.mant, mantissa_even'length);
+    end if;
+    if (exp_unbiased mod 2) /= 0 then
+      exp_unbiased := exp_unbiased - 1;
+      mantissa_even := shift_left(mantissa_even, 2);
+    else
+      mantissa_even := shift_left(mantissa_even, 1);
+    end if;
+
+    exp_out_i := exp_unbiased / 2 + FP_EXP_BIAS;
+
+    radicand := shift_left(resize(mantissa_even, radicand'length), 2 * SQRT_SCALE_SHIFT);
+    int_sqrt_with_rem(radicand, root, rem_val);
+    if rem_val /= 0 then
+      root(0) := '1';
+    end if;
+
+    apply_rounding('0', root, exp_out_i, round_mode, round_prec, mant_main, exp_out_i);
+
+    if mant_main = 0 then
+      res_u.sign := '0';
+      res_u.exp := (others => '0');
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    if exp_out_i <= 0 then
+      res_u.sign := '0';
+      res_u.exp := (others => '0');
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    if exp_out_i >= FP_EXP_MAX then
+      res_u.exp := FP_EXP_ALL_ONES;
+      res_u.mant := (others => '0');
+      return pack_fp80(res_u);
+    end if;
+
+    res_u.exp := to_unsigned(exp_out_i, FP_EXP_WIDTH);
     res_u.mant := mant_main;
     return pack_fp80(res_u);
   end function;

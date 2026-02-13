@@ -34,6 +34,8 @@ begin
       report "decode_op_sel_word legacy MOVE mapping failed." severity failure;
     assert decode_op_sel_word(x"01000005") = FPU_OP_MOVE
       report "decode_op_sel_word core-v1 MOVE mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000011") = FPU_OP_SQRT
+      report "decode_op_sel_word core-v1 SQRT mapping failed." severity failure;
     assert decode_op_sel_word(x"01000020") = FPU_OP_FNOP
       report "decode_op_sel_word core-v1 FNOP mapping failed." severity failure;
     assert decode_op_sel_word(x"01000030") = FPU_OP_FSAVE
@@ -61,6 +63,8 @@ begin
       report "op_class MOVE mapping failed." severity failure;
     assert op_class(FPU_OP_SIN) = OP_CLASS_ARITH
       report "op_class SIN mapping failed." severity failure;
+    assert op_class(FPU_OP_SQRT) = OP_CLASS_ARITH
+      report "op_class SQRT mapping failed." severity failure;
     assert op_class(FPU_OP_FNOP) = OP_CLASS_PROG_CTRL
       report "op_class FNOP mapping failed." severity failure;
     assert op_class(FPU_OP_FSAVE) = OP_CLASS_SYS_CTRL
@@ -75,6 +79,8 @@ begin
       report "op_alu_latency MOVE mapping failed." severity failure;
     assert op_alu_latency(FPU_OP_TAN) = 13
       report "op_alu_latency TAN mapping failed." severity failure;
+    assert op_alu_latency(FPU_OP_SQRT) = 12
+      report "op_alu_latency SQRT mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_ADD) = OP_CYCLE_ARITH
       report "op_cycle_model ADD mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_FRESTORE) = OP_CYCLE_ZERO
@@ -97,6 +103,11 @@ begin
     exc_policy := op_exception_policy(FPU_OP_CMP);
     assert exc_policy.update_cc_from_compare and not exc_policy.update_cc_from_result
       report "CMP exception policy should source CC from compare relation." severity failure;
+    exc_policy := op_exception_policy(FPU_OP_SQRT);
+    assert exc_policy.invalid_on_nan_inputs and exc_policy.invalid_on_nan_result
+      report "SQRT exception policy should flag NaN inputs/results." severity failure;
+    assert exc_policy.update_cc_from_result and exc_policy.capture_fpiar_on_exception
+      report "SQRT exception policy should update CC and capture FPIAR." severity failure;
 
     cycles := op_cycle_count(
       FPU_OP_ADD,

@@ -113,6 +113,7 @@ architecture sim of tb_mc68881_top is
   constant DIV_1_10_SINGLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_SINGLE);
   constant DIV_1_10_DOUBLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_DOUBLE);
   constant FP80_POS_INF : fp80_t := make_fp80('0', (FP_EXP_WIDTH-1 downto 0 => '1'), (others => '0'));
+  constant FP80_ZERO : fp80_t := make_fp80('0', (others => '0'), (others => '0'));
 
   -- Single bus write beat (address, data, strobe assert/deassert timing).
   procedure bus_write(
@@ -393,6 +394,41 @@ begin
     report "DIV cycle end: " & integer'image(cycle_cnt)
       severity note;
     check_fp80(rd_full, exp_r, "DIV result");
+
+    -- SQRT
+    op_a := fp80_from_int(9);
+    op_b := FP80_ZERO;
+    exp_r := fp80_from_int(3);
+    report "SQRT operands: op_a=" & to_hstring(op_a)
+      severity note;
+    report "SQRT expected: " & to_hstring(exp_r)
+      severity note;
+    report "SQRT cycle start: " & integer'image(cycle_cnt)
+      severity note;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000011");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    rd_res  <= rd_full;
+    report "SQRT readback: ex=" & to_hstring(rd_ex) & " hi=" & to_hstring(rd_hi) & " lo=" & to_hstring(rd_lo)
+      severity note;
+    report "SQRT result:  " & to_hstring(rd_full)
+      severity note;
+    report "SQRT cycle end: " & integer'image(cycle_cnt)
+      severity note;
+    check_fp80(rd_full, exp_r, "SQRT result");
 
     -- CMP
     op_a := fp80_from_int(9);
@@ -801,6 +837,52 @@ begin
       severity failure;
     assert rd_lo(FPSR_CC_NAN) = '1' and rd_lo(FPSR_CC_INF) = '0'
       report "FPSR CC should report NAN for DIV inf/inf invalid exception"
+      severity failure;
+
+    -- FPSR exception flags: FSQRT negative should raise invalid and return NaN.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    fpiar_seed := x"55AA1122";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
+    op_a := fp80_from_int(-4);
+    op_b := FP80_ZERO;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), op_b(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(5, 5), op_b(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(6, 5), x"0000" & op_b(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000011");
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(8, 5));
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(9, 5));
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FSQRT -4 result: " & to_hstring(rd_full)
+      severity note;
+    split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
+    assert rd_exp = (rd_exp'range => '1') and rd_mant /= 0
+      report "FSQRT negative input should return NaN"
+      severity failure;
+
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after FSQRT negative: " & to_hstring(rd_lo)
+      severity note;
+    assert rd_lo(FPSR_EXC_INVALID) = '1'
+      report "FPSR invalid flag not set for FSQRT negative"
+      severity failure;
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
+      report "FPSR accrued invalid flag not set for FSQRT negative"
+      severity failure;
+    assert rd_lo(FPSR_CC_NAN) = '1'
+      report "FPSR CC NAN flag not set for FSQRT negative result"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
+    report "FPIAR after FSQRT negative: " & to_hstring(rd_hi)
+      severity note;
+    assert rd_hi = fpiar_seed
+      report "FPIAR exception snapshot mismatch for FSQRT negative"
       severity failure;
 
     -- FPSR exception flags: FMOD by zero should raise invalid and return NaN.

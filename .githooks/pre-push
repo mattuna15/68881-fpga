@@ -1,12 +1,11 @@
 #!/bin/sh
 set -eu
 
-GHDL_EXE="${GHDL_EXE:-ghdl}"
-if [ "$GHDL_EXE" = "ghdl" ]; then
-  if [ -x "C:/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe" ]; then
-    GHDL_EXE="C:/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe"
-  elif [ -x "/c/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe" ]; then
+if [ -z "${GHDL_EXE:-}" ]; then
+  if [ -x "/c/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe" ]; then
     GHDL_EXE="/c/code/ghdl-mcode-5.1.1-mingw64/bin/ghdl.exe"
+  else
+    GHDL_EXE="ghdl"
   fi
 fi
 

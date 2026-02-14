@@ -837,6 +837,189 @@ begin
     assert aux_valid = '1' report "SINCOS aux lane missing" severity failure;
     assert aux_result = FP80_ONE report "SINCOS cosine lane mismatch" severity failure;
 
+    -- FABS clears sign and preserves class payloads.
+    op_sel <= FPU_OP_ABS;
+    a_in   <= fp80_from_int(-9);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(9), "FABS -9");
+
+    op_sel <= FPU_OP_ABS;
+    a_in   <= FP80_QNAN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(FP80_QNAN, "FABS NaN payload preserved");
+
+    -- FNEG toggles sign, including signed zero.
+    op_sel <= FPU_OP_NEG;
+    a_in   <= fp80_from_int(4);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(-4), "FNEG 4");
+
+    op_sel <= FPU_OP_NEG;
+    a_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(x"80000000000000000000", "FNEG +0 -> -0");
+
+    -- FINTRZ truncates toward zero for positive and negative values.
+    op_sel <= FPU_OP_INTRZ;
+    a_in   <= x"4000B000000000000000"; -- 2.75
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(2), "FINTRZ +2.75");
+
+    op_sel <= FPU_OP_INTRZ;
+    a_in   <= x"C000B000000000000000"; -- -2.75
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(-2), "FINTRZ -2.75");
+
+    -- FINT uses FPCR round mode.
+    op_sel <= FPU_OP_INT;
+    round_mode <= FP_RND_NEAREST;
+    a_in   <= x"4000A000000000000000"; -- 2.5
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(2), "FINT nearest tie-to-even +2.5");
+
+    op_sel <= FPU_OP_INT;
+    round_mode <= FP_RND_NEAREST;
+    a_in   <= x"3FFFC000000000000000"; -- 1.5
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(2), "FINT nearest +1.5");
+
+    op_sel <= FPU_OP_INT;
+    round_mode <= FP_RND_PLUS_INF;
+    a_in   <= x"40009000000000000000"; -- 2.25
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(3), "FINT +inf mode +2.25");
+
+    op_sel <= FPU_OP_INT;
+    round_mode <= FP_RND_MINUS_INF;
+    a_in   <= x"C0009000000000000000"; -- -2.25
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(-3), "FINT -inf mode -2.25");
+    round_mode <= FP_RND_NEAREST;
+
+    -- FGETEXP class behavior and finite exponent extraction.
+    op_sel <= FPU_OP_GETEXP;
+    a_in   <= fp80_from_int(8);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(3), "FGETEXP 8 -> 3");
+
+    op_sel <= FPU_OP_GETEXP;
+    a_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(x"FFFF0000000000000000", "FGETEXP 0 -> -inf");
+
+    op_sel <= FPU_OP_GETEXP;
+    a_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(x"7FFF0000000000000000", "FGETEXP inf -> +inf");
+
+    op_sel <= FPU_OP_GETEXP;
+    a_in   <= FP80_QNAN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(FP80_QNAN, "FGETEXP NaN propagate");
+
+    -- FGETMAN normalizes finite values and passes through zero/inf/nan.
+    op_sel <= FPU_OP_GETMAN;
+    a_in   <= x"C001D000000000000000"; -- -6.5
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(x"BFFFD000000000000000", "FGETMAN -6.5 -> -1.625");
+
+    op_sel <= FPU_OP_GETMAN;
+    a_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(FP80_ZERO, "FGETMAN zero passthrough");
+
+    op_sel <= FPU_OP_GETMAN;
+    a_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(FP80_POS_INF, "FGETMAN inf passthrough");
+
+    op_sel <= FPU_OP_GETMAN;
+    a_in   <= FP80_QNAN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(FP80_QNAN, "FGETMAN NaN passthrough");
+
+    -- FTST result pass-through.
+    op_sel <= FPU_OP_TST;
+    a_in   <= x"BFFF8000000000000000"; -- -1
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(x"BFFF8000000000000000", "FTST passthrough");
+
     std.env.stop;
     wait;
   end process;

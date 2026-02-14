@@ -44,6 +44,13 @@ package mc68881_pkg is
     FPU_OP_COS,
     FPU_OP_TAN,
     FPU_OP_SINCOS,
+    FPU_OP_ABS,
+    FPU_OP_NEG,
+    FPU_OP_INT,
+    FPU_OP_INTRZ,
+    FPU_OP_GETEXP,
+    FPU_OP_GETMAN,
+    FPU_OP_TST,
     FPU_OP_MOVE,
     FPU_OP_MOVEM,
     FPU_OP_FNOP,
@@ -198,7 +205,16 @@ package mc68881_pkg is
 
   function to_fp80(value : unsigned) return fp80_t;
   function fp80_from_int(value : integer) return fp80_t;
+  function fp80_is_zero(value : fp80_t) return boolean;
+  function fp80_is_inf(value : fp80_t) return boolean;
+  function fp80_is_nan(value : fp80_t) return boolean;
   function abs_fp80(value : fp80_t) return fp80_t;
+  function neg_fp80(value : fp80_t) return fp80_t;
+  function fint_fp80(value : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
+  function fintrz_fp80(value : fp80_t) return fp80_t;
+  function fgetexp_fp80(value : fp80_t) return fp80_t;
+  function fgetman_fp80(value : fp80_t) return fp80_t;
+  function ftst_fp80(value : fp80_t) return fp80_t;
   function compare_fp80(a : fp80_t; b : fp80_t) return integer;
   function fp80_to_int_trunc(value : fp80_t) return integer;
   function add_sub_fp80(
@@ -217,11 +233,6 @@ package mc68881_pkg is
   function div_fp80(
     a : fp80_t;
     b : fp80_t;
-    round_mode : fp_round_mode_t;
-    round_prec : fp_round_prec_t
-  ) return fp80_t;
-  function sqrt_fp80(
-    a : fp80_t;
     round_mode : fp_round_mode_t;
     round_prec : fp_round_prec_t
   ) return fp80_t;
@@ -353,6 +364,21 @@ package body mc68881_pkg is
     capture_fpiar_on_exception => true
   );
 
+  constant EXC_POLICY_TST : op_exception_policy_t := (
+    divzero_on_zero_divisor_nonzero_dividend => false,
+    invalid_zero_over_zero => false,
+    invalid_inf_over_inf => false,
+    invalid_divisor_zero => false,
+    invalid_on_nan_inputs => true,
+    invalid_on_nan_result => true,
+    update_exc_status => true,
+    update_accumulated_exc => true,
+    update_cc_from_result => true,
+    update_cc_from_compare => false,
+    classify_overflow_underflow => false,
+    capture_fpiar_on_exception => true
+  );
+
   constant OP_DESCRIPTORS : op_descriptor_table_t := (
     FPU_OP_NOP => (
       legacy_decode_id_valid => true,
@@ -413,7 +439,7 @@ package body mc68881_pkg is
     FPU_OP_SQRT => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"11",
-      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 73, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
@@ -528,6 +554,83 @@ package body mc68881_pkg is
       arith_cycles => (
         FPU_SRC_FPM => 124, FPU_SRC_MEM_INTEGER => 153, FPU_SRC_MEM_SINGLE => 145,
         FPU_SRC_MEM_DOUBLE => 151, FPU_SRC_MEM_EXTENDED => 149, FPU_SRC_MEM_PACKED => 964
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ABS => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"12",
+      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
+        FPU_SRC_MEM_DOUBLE => 76, FPU_SRC_MEM_EXTENDED => 74, FPU_SRC_MEM_PACKED => 886
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_NEG => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"13",
+      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
+        FPU_SRC_MEM_DOUBLE => 76, FPU_SRC_MEM_EXTENDED => 74, FPU_SRC_MEM_PACKED => 886
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_INT => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"14",
+      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
+        FPU_SRC_MEM_DOUBLE => 76, FPU_SRC_MEM_EXTENDED => 74, FPU_SRC_MEM_PACKED => 886
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_INTRZ => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"15",
+      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
+        FPU_SRC_MEM_DOUBLE => 76, FPU_SRC_MEM_EXTENDED => 74, FPU_SRC_MEM_PACKED => 886
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_GETEXP => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"16",
+      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
+        FPU_SRC_MEM_DOUBLE => 76, FPU_SRC_MEM_EXTENDED => 74, FPU_SRC_MEM_PACKED => 886
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_GETMAN => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"17",
+      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
+        FPU_SRC_MEM_DOUBLE => 76, FPU_SRC_MEM_EXTENDED => 74, FPU_SRC_MEM_PACKED => 886
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_TST => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"18",
+      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_TST,
+      arith_cycles => (
+        FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
+        FPU_SRC_MEM_DOUBLE => 76, FPU_SRC_MEM_EXTENDED => 74, FPU_SRC_MEM_PACKED => 886
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
@@ -988,19 +1091,23 @@ package body mc68881_pkg is
   ) is
     constant RAD_W : integer := radicand'length;
     constant EVEN_W : integer := (RAD_W + 1) / 2 * 2;
+    constant ROOT_W : integer := root'length;
+    constant REM_W : integer := ROOT_W + 2;
     variable rad_even : unsigned(EVEN_W-1 downto 0) := (others => '0');
-    variable root_var : unsigned(root'length-1 downto 0) := (others => '0');
-    variable rem_var  : unsigned(EVEN_W-1 downto 0) := (others => '0');
-    variable trial    : unsigned(EVEN_W-1 downto 0) := (others => '0');
+    variable root_var : unsigned(ROOT_W-1 downto 0) := (others => '0');
+    -- Keep the active remainder/trial datapath near sqrt-result width; the
+    -- previous full-radicand width drives a much larger compare/subtract cone.
+    variable rem_var  : unsigned(REM_W-1 downto 0) := (others => '0');
+    variable trial    : unsigned(REM_W-1 downto 0) := (others => '0');
     variable pair_hi  : integer := 0;
   begin
     rad_even(EVEN_W-1 downto EVEN_W-RAD_W) := radicand;
 
-    for idx in 0 to (EVEN_W/2 - 1) loop
+    for idx in 0 to (ROOT_W - 1) loop
       pair_hi := EVEN_W-1 - idx * 2;
       rem_var := shift_left(rem_var, 2);
       rem_var(1 downto 0) := rad_even(pair_hi downto pair_hi-1);
-      trial := shift_left(resize(root_var, EVEN_W), 2) + 1;
+      trial := shift_left(resize(root_var, REM_W), 2) + 1;
       if rem_var >= trial then
         rem_var := rem_var - trial;
         root_var := shift_left(root_var, 1);
@@ -1435,121 +1542,38 @@ package body mc68881_pkg is
     return pack_fp80(res_u);
   end function;
 
-  function sqrt_fp80(
-    a : fp80_t;
-    round_mode : fp_round_mode_t;
-    round_prec : fp_round_prec_t
-  ) return fp80_t is
-    constant SQRT_SCALE_SHIFT : natural := FP_MANT_WIDTH - 1 + FP_GRS_BITS - 32;
-    constant MANT_EVEN_WIDTH : natural := FP_MANT_WIDTH + 2;
-    constant RADICAND_WIDTH : natural := MANT_EVEN_WIDTH + (2 * SQRT_SCALE_SHIFT);
-    variable a_u : fp_unpacked_t := unpack_fp80(a);
-    variable res_u : fp_unpacked_t;
-    variable mantissa_even : unsigned(MANT_EVEN_WIDTH-1 downto 0) := (others => '0');
-    variable radicand : unsigned(RADICAND_WIDTH-1 downto 0) := (others => '0');
-    variable root : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
-    variable rem_val : unsigned(RADICAND_WIDTH-1 downto 0) := (others => '0');
-    variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
-    variable exp_unbiased : integer := 0;
-    variable exp_out_i : integer := 0;
-    variable nan_result : fp_unpacked_t;
-  begin
-    res_u.sign := '0';
-    res_u.exp := (others => '0');
-    res_u.mant := (others => '0');
-
-    if a_u.exp = FP_EXP_ALL_ONES then
-      if a_u.mant = 0 and a_u.sign = '0' then
-        return a;
-      end if;
-      nan_result.sign := '0';
-      nan_result.exp := FP_EXP_ALL_ONES;
-      nan_result.mant := (others => '0');
-      nan_result.mant(FP_MANT_WIDTH-1) := '1';
-      nan_result.mant(FP_MANT_WIDTH-2) := '1';
-      return pack_fp80(nan_result);
-    end if;
-
-    if a_u.exp = 0 then
-      if a_u.mant = 0 then
-        res_u.sign := a_u.sign;
-        return pack_fp80(res_u);
-      end if;
-      if a_u.sign = '1' then
-        nan_result.sign := '0';
-        nan_result.exp := FP_EXP_ALL_ONES;
-        nan_result.mant := (others => '0');
-        nan_result.mant(FP_MANT_WIDTH-1) := '1';
-        nan_result.mant(FP_MANT_WIDTH-2) := '1';
-        return pack_fp80(nan_result);
-      end if;
-
-      exp_unbiased := 1 - FP_EXP_BIAS;
-      mantissa_even := resize(a_u.mant, mantissa_even'length);
-      for idx in 0 to FP_MANT_WIDTH-1 loop
-        exit when mantissa_even(mantissa_even'left) = '1';
-        mantissa_even := shift_left(mantissa_even, 1);
-        exp_unbiased := exp_unbiased - 1;
-      end loop;
-    else
-      if a_u.sign = '1' then
-        nan_result.sign := '0';
-        nan_result.exp := FP_EXP_ALL_ONES;
-        nan_result.mant := (others => '0');
-        nan_result.mant(FP_MANT_WIDTH-1) := '1';
-        nan_result.mant(FP_MANT_WIDTH-2) := '1';
-        return pack_fp80(nan_result);
-      end if;
-
-      exp_unbiased := to_integer(a_u.exp) - FP_EXP_BIAS;
-      mantissa_even := resize(a_u.mant, mantissa_even'length);
-    end if;
-    if (exp_unbiased mod 2) /= 0 then
-      exp_unbiased := exp_unbiased - 1;
-      mantissa_even := shift_left(mantissa_even, 2);
-    else
-      mantissa_even := shift_left(mantissa_even, 1);
-    end if;
-
-    exp_out_i := exp_unbiased / 2 + FP_EXP_BIAS;
-
-    radicand := shift_left(resize(mantissa_even, radicand'length), 2 * SQRT_SCALE_SHIFT);
-    int_sqrt_with_rem(radicand, root, rem_val);
-    if rem_val /= 0 then
-      root(0) := '1';
-    end if;
-
-    apply_rounding('0', root, exp_out_i, round_mode, round_prec, mant_main, exp_out_i);
-
-    if mant_main = 0 then
-      res_u.sign := '0';
-      res_u.exp := (others => '0');
-      res_u.mant := (others => '0');
-      return pack_fp80(res_u);
-    end if;
-
-    if exp_out_i <= 0 then
-      res_u.sign := '0';
-      res_u.exp := (others => '0');
-      res_u.mant := (others => '0');
-      return pack_fp80(res_u);
-    end if;
-
-    if exp_out_i >= FP_EXP_MAX then
-      res_u.exp := FP_EXP_ALL_ONES;
-      res_u.mant := (others => '0');
-      return pack_fp80(res_u);
-    end if;
-
-    res_u.exp := to_unsigned(exp_out_i, FP_EXP_WIDTH);
-    res_u.mant := mant_main;
-    return pack_fp80(res_u);
-  end function;
-
   function abs_fp80(value : fp80_t) return fp80_t is
     variable result : fp80_t := value;
   begin
     result(FP_WIDTH-1) := '0';
+    return result;
+  end function;
+
+  function fp80_is_zero(value : fp80_t) return boolean is
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+  begin
+    return value_u.exp = 0 and value_u.mant = 0;
+  end function;
+
+  function fp80_is_inf(value : fp80_t) return boolean is
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+    variable canonical_mant : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+  begin
+    canonical_mant(FP_MANT_WIDTH-1) := '1';
+    return value_u.exp = FP_EXP_ALL_ONES and
+      (value_u.mant = 0 or value_u.mant = canonical_mant);
+  end function;
+
+  function fp80_is_nan(value : fp80_t) return boolean is
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+  begin
+    return value_u.exp = FP_EXP_ALL_ONES and not fp80_is_inf(value);
+  end function;
+
+  function neg_fp80(value : fp80_t) return fp80_t is
+    variable result : fp80_t := value;
+  begin
+    result(FP_WIDTH-1) := not value(FP_WIDTH-1);
     return result;
   end function;
 
@@ -1686,6 +1710,110 @@ package body mc68881_pkg is
 
     lsb_idx := integer(FP_MANT_WIDTH - 1) - exp_i;
     return value_u.mant(lsb_idx) = '1';
+  end function;
+
+  function fintrz_fp80(value : fp80_t) return fp80_t is
+  begin
+    return fp80_trunc_toward_zero(value);
+  end function;
+
+  function fint_fp80(value : fp80_t; round_mode : fp_round_mode_t) return fp80_t is
+    variable trunc_v : fp80_t := (others => '0');
+    variable frac_v : fp80_t := (others => '0');
+    variable frac_abs_v : fp80_t := (others => '0');
+    variable half_v : fp80_t := x"3FFE8000000000000000";
+    variable one_v : fp80_t := x"3FFF8000000000000000";
+    variable cmp_half : integer := 0;
+    variable step_down : boolean := false;
+    variable result_v : fp80_t := (others => '0');
+  begin
+    if fp80_is_zero(value) or fp80_is_inf(value) or fp80_is_nan(value) then
+      return value;
+    end if;
+
+    trunc_v := fp80_trunc_toward_zero(value);
+    frac_v := add_sub_fp80(value, trunc_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    if fp80_is_zero(frac_v) then
+      return trunc_v;
+    end if;
+
+    step_down := value(FP_WIDTH-1) = '1';
+
+    case round_mode is
+      when FP_RND_ZERO =>
+        return trunc_v;
+      when FP_RND_MINUS_INF =>
+        if step_down then
+          return add_sub_fp80(trunc_v, one_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        end if;
+        return trunc_v;
+      when FP_RND_PLUS_INF =>
+        if not step_down then
+          return add_sub_fp80(trunc_v, one_v, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        end if;
+        return trunc_v;
+      when FP_RND_NEAREST =>
+        frac_abs_v := abs_fp80(frac_v);
+        cmp_half := compare_fp80(frac_abs_v, half_v);
+        result_v := trunc_v;
+        if cmp_half > 0 then
+          if step_down then
+            result_v := add_sub_fp80(trunc_v, one_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+          else
+            result_v := add_sub_fp80(trunc_v, one_v, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+          end if;
+        elsif cmp_half = 0 and fp80_is_odd_integer(trunc_v) then
+          if step_down then
+            result_v := add_sub_fp80(trunc_v, one_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+          else
+            result_v := add_sub_fp80(trunc_v, one_v, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+          end if;
+        end if;
+        return result_v;
+    end case;
+  end function;
+
+  function fgetexp_fp80(value : fp80_t) return fp80_t is
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+    variable result_u : fp_unpacked_t;
+    variable unbiased_exp : integer := 0;
+  begin
+    if fp80_is_nan(value) then
+      return value;
+    end if;
+
+    if fp80_is_zero(value) then
+      result_u.sign := '1';
+      result_u.exp := FP_EXP_ALL_ONES;
+      result_u.mant := (others => '0');
+      return pack_fp80(result_u);
+    end if;
+
+    if fp80_is_inf(value) then
+      result_u.sign := '0';
+      result_u.exp := FP_EXP_ALL_ONES;
+      result_u.mant := (others => '0');
+      return pack_fp80(result_u);
+    end if;
+
+    unbiased_exp := to_integer(value_u.exp) - FP_EXP_BIAS;
+    return fp80_from_int(unbiased_exp);
+  end function;
+
+  function fgetman_fp80(value : fp80_t) return fp80_t is
+    variable result_u : fp_unpacked_t := unpack_fp80(value);
+  begin
+    if fp80_is_zero(value) or fp80_is_inf(value) or fp80_is_nan(value) then
+      return value;
+    end if;
+
+    result_u.exp := to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH);
+    return pack_fp80(result_u);
+  end function;
+
+  function ftst_fp80(value : fp80_t) return fp80_t is
+  begin
+    return value;
   end function;
 
   function fmod_fp80(

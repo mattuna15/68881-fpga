@@ -60,7 +60,7 @@ B) Functional Completeness (Core Missing Ops)
     - Done: FADD, FSUB, FMUL, FDIV.
     - Done: FCMP, FMOD, FREM, FSCALE, FSGLDIV, FSGLMUL.
 
-[ ] B4. Implement monadic arithmetic/data ops (guide section 3.3.3).
+[x] B4. Implement monadic arithmetic/data ops (guide section 3.3.3).
     - FABS, FNEG, FINT, FINTRZ, FGETEXP, FGETMAN, FTST.
     - Keep IEEE-class behavior aligned for zero/inf/nan inputs.
 

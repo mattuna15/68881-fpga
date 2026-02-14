@@ -456,33 +456,6 @@ architecture rtl of mc68881_top is
     end case;
   end function;
 
-  function fp80_is_zero(value : fp80_t) return boolean is
-    variable exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
-    variable mant : unsigned(FP_MANT_WIDTH-1 downto 0);
-  begin
-    exp := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
-    mant := unsigned(value(FP_MANT_WIDTH-1 downto 0));
-    return exp = 0 and mant = 0;
-  end function;
-
-  function fp80_is_inf(value : fp80_t) return boolean is
-    variable exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
-    variable mant : unsigned(FP_MANT_WIDTH-1 downto 0);
-  begin
-    exp := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
-    mant := unsigned(value(FP_MANT_WIDTH-1 downto 0));
-    return exp = FP_EXP_ALL_ONES and mant = 0;
-  end function;
-
-  function fp80_is_nan(value : fp80_t) return boolean is
-    variable exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
-    variable mant : unsigned(FP_MANT_WIDTH-1 downto 0);
-  begin
-    exp := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
-    mant := unsigned(value(FP_MANT_WIDTH-1 downto 0));
-    return exp = FP_EXP_ALL_ONES and mant /= 0;
-  end function;
-
   function compare_fp80_ordered(a : fp80_t; b : fp80_t) return integer is
     variable a_sign : std_logic := a(FP_WIDTH-1);
     variable b_sign : std_logic := b(FP_WIDTH-1);

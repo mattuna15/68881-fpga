@@ -50,6 +50,20 @@ begin
       report "decode_op_sel_word core-v1 TAN mapping failed." severity failure;
     assert decode_op_sel_word(x"01000010") = FPU_OP_SINCOS
       report "decode_op_sel_word core-v1 SINCOS mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000012") = FPU_OP_ABS
+      report "decode_op_sel_word core-v1 FABS mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000013") = FPU_OP_NEG
+      report "decode_op_sel_word core-v1 FNEG mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000014") = FPU_OP_INT
+      report "decode_op_sel_word core-v1 FINT mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000015") = FPU_OP_INTRZ
+      report "decode_op_sel_word core-v1 FINTRZ mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000016") = FPU_OP_GETEXP
+      report "decode_op_sel_word core-v1 FGETEXP mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000017") = FPU_OP_GETMAN
+      report "decode_op_sel_word core-v1 FGETMAN mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000018") = FPU_OP_TST
+      report "decode_op_sel_word core-v1 FTST mapping failed." severity failure;
     assert decode_op_sel_word(x"7F000005") = FPU_OP_NOP
       report "decode_op_sel_word unknown namespace should map to NOP." severity failure;
 
@@ -65,6 +79,8 @@ begin
       report "op_class SIN mapping failed." severity failure;
     assert op_class(FPU_OP_SQRT) = OP_CLASS_ARITH
       report "op_class SQRT mapping failed." severity failure;
+    assert op_class(FPU_OP_TST) = OP_CLASS_ARITH
+      report "op_class FTST mapping failed." severity failure;
     assert op_class(FPU_OP_FNOP) = OP_CLASS_PROG_CTRL
       report "op_class FNOP mapping failed." severity failure;
     assert op_class(FPU_OP_FSAVE) = OP_CLASS_SYS_CTRL
@@ -79,12 +95,16 @@ begin
       report "op_alu_latency MOVE mapping failed." severity failure;
     assert op_alu_latency(FPU_OP_TAN) = 13
       report "op_alu_latency TAN mapping failed." severity failure;
-    assert op_alu_latency(FPU_OP_SQRT) = 12
+    assert op_alu_latency(FPU_OP_SQRT) = 73
       report "op_alu_latency SQRT mapping failed." severity failure;
+    assert op_alu_latency(FPU_OP_GETMAN) = 1
+      report "op_alu_latency FGETMAN mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_ADD) = OP_CYCLE_ARITH
       report "op_cycle_model ADD mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_FRESTORE) = OP_CYCLE_ZERO
       report "op_cycle_model FRESTORE mapping failed." severity failure;
+    assert op_cycle_model(FPU_OP_TST) = OP_CYCLE_ARITH
+      report "op_cycle_model FTST mapping failed." severity failure;
 
     exc_policy := op_exception_policy(FPU_OP_DIV);
     assert exc_policy.divzero_on_zero_divisor_nonzero_dividend
@@ -108,6 +128,12 @@ begin
       report "SQRT exception policy should flag NaN inputs/results." severity failure;
     assert exc_policy.update_cc_from_result and exc_policy.capture_fpiar_on_exception
       report "SQRT exception policy should update CC and capture FPIAR." severity failure;
+    exc_policy := op_exception_policy(FPU_OP_TST);
+    assert exc_policy.update_cc_from_result and not exc_policy.classify_overflow_underflow
+      report "FTST exception policy should update CC without overflow/underflow classification." severity failure;
+    exc_policy := op_exception_policy(FPU_OP_GETEXP);
+    assert exc_policy.invalid_on_nan_inputs and exc_policy.invalid_on_nan_result
+      report "FGETEXP exception policy should flag NaN inputs/results." severity failure;
 
     cycles := op_cycle_count(
       FPU_OP_ADD,

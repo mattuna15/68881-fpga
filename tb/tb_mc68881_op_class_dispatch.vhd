@@ -142,6 +142,16 @@ begin
       report "FSQRT should execute through arithmetic class with expected modeled cycles."
       severity failure;
 
+    -- Arithmetic class dispatch (FTST).
+    report "Issuing FTST opcode through OPSEL." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000018");
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FTST");
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
+    report "FTST cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
+    assert to_integer(unsigned(cycle_total_word)) = 49
+      report "FTST should execute through arithmetic class with expected modeled cycles."
+      severity failure;
+
     -- Program-control class dispatch (FNOP).
     report "Issuing FNOP opcode through OPSEL." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000020");

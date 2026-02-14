@@ -32,12 +32,63 @@ architecture rtl of mc68881_alu is
 
   function is_divrem_op(op : fpu_op_t) return boolean is
   begin
-    return op = FPU_OP_DIV or op = FPU_OP_MOD or op = FPU_OP_REM;
+    return op = FPU_OP_DIV or op = FPU_OP_SQRT or op = FPU_OP_MOD or op = FPU_OP_REM;
   end function;
 
   function is_sglops_op(op : fpu_op_t) return boolean is
   begin
     return op = FPU_OP_SCALE or op = FPU_OP_SGLDIV or op = FPU_OP_SGLMUL;
+  end function;
+
+  function is_simple_op(op : fpu_op_t) return boolean is
+  begin
+    return op = FPU_OP_ADD or
+           op = FPU_OP_SUB or
+           op = FPU_OP_MUL or
+           op = FPU_OP_CMP or
+           op = FPU_OP_ABS or
+           op = FPU_OP_NEG or
+           op = FPU_OP_INT or
+           op = FPU_OP_INTRZ or
+           op = FPU_OP_GETEXP or
+           op = FPU_OP_GETMAN or
+           op = FPU_OP_TST;
+  end function;
+
+  function compute_simple_result(
+    op : fpu_op_t;
+    a : fp80_t;
+    b : fp80_t;
+    rm : fp_round_mode_t;
+    rp : fp_round_prec_t
+  ) return fp80_t is
+  begin
+    case op is
+      when FPU_OP_ADD =>
+        return add_sub_fp80(a, b, false, rm, rp);
+      when FPU_OP_SUB =>
+        return add_sub_fp80(a, b, true, rm, rp);
+      when FPU_OP_MUL =>
+        return mul_fp80(a, b, rm, rp);
+      when FPU_OP_CMP =>
+        return fp80_from_int(compare_fp80(a, b));
+      when FPU_OP_ABS =>
+        return abs_fp80(a);
+      when FPU_OP_NEG =>
+        return neg_fp80(a);
+      when FPU_OP_INT =>
+        return fint_fp80(a, rm);
+      when FPU_OP_INTRZ =>
+        return fintrz_fp80(a);
+      when FPU_OP_GETEXP =>
+        return fgetexp_fp80(a);
+      when FPU_OP_GETMAN =>
+        return fgetman_fp80(a);
+      when FPU_OP_TST =>
+        return ftst_fp80(a);
+      when others =>
+        return (others => '0');
+    end case;
   end function;
 
   signal result_reg : fp80_t := (others => '0');
@@ -55,7 +106,6 @@ architecture rtl of mc68881_alu is
   signal trig_done_seen_reg : std_logic := '0';
   signal trig_result_latched_reg : fp80_t := (others => '0');
   signal trig_aux_result_latched_reg : fp80_t := (others => '0');
-  signal trig_aux_valid_latched_reg : std_logic := '0';
   signal aux_result_reg : fp80_t := (others => '0');
   signal quotient_byte_reg : std_logic_vector(7 downto 0) := (others => '0');
   signal quotient_valid_reg : std_logic := '0';
@@ -97,10 +147,6 @@ architecture rtl of mc68881_alu is
   signal op_pending_is_divrem : std_logic := '0';
   signal op_pending_is_sglops : std_logic := '0';
 
-  attribute keep_hierarchy : string;
-  attribute keep_hierarchy of trig_inst : label is "yes";
-  attribute keep_hierarchy of divrem_inst : label is "yes";
-  attribute keep_hierarchy of sglops_inst : label is "yes";
 begin
   trig_inst : entity work.mc68881_trig_unit
     port map (
@@ -191,7 +237,6 @@ begin
       trig_done_seen_reg <= '0';
       trig_result_latched_reg <= (others => '0');
       trig_aux_result_latched_reg <= (others => '0');
-      trig_aux_valid_latched_reg <= '0';
       quotient_byte_reg <= (others => '0');
       quotient_valid_reg <= '0';
     elsif rising_edge(clk) then
@@ -221,13 +266,11 @@ begin
             trig_done_seen_reg <= '1';
             trig_result_latched_reg <= trig_result;
             trig_aux_result_latched_reg <= trig_aux_result;
-            trig_aux_valid_latched_reg <= trig_aux_valid;
             result_reg <= trig_result;
             aux_result_reg <= trig_aux_result;
           end if;
 
           if trig_aux_valid = '1' then
-            trig_aux_valid_latched_reg <= '1';
             trig_aux_result_latched_reg <= trig_aux_result;
             aux_result_reg <= trig_aux_result;
           end if;
@@ -320,47 +363,13 @@ begin
           trig_start_reg <= '1';
           busy_reg <= '1';
           trig_done_seen_reg <= '0';
-          trig_aux_valid_latched_reg <= '0';
           if op_alu_latency(op_sel) <= 1 then
             latency_count_reg <= 0;
           else
             latency_count_reg <= op_alu_latency(op_sel) - 2;
           end if;
-        elsif op_sel = FPU_OP_ADD then
-          result_reg <= add_sub_fp80(a_in, b_in, false, round_mode, round_prec);
-          if op_alu_latency(op_sel) = 0 then
-            valid <= '1';
-            busy_reg <= '0';
-            op_pending_reg <= FPU_OP_NOP;
-            latency_count_reg <= 0;
-          else
-            busy_reg <= '1';
-            latency_count_reg <= op_alu_latency(op_sel) - 1;
-          end if;
-        elsif op_sel = FPU_OP_SUB then
-          result_reg <= add_sub_fp80(a_in, b_in, true, round_mode, round_prec);
-          if op_alu_latency(op_sel) = 0 then
-            valid <= '1';
-            busy_reg <= '0';
-            op_pending_reg <= FPU_OP_NOP;
-            latency_count_reg <= 0;
-          else
-            busy_reg <= '1';
-            latency_count_reg <= op_alu_latency(op_sel) - 1;
-          end if;
-        elsif op_sel = FPU_OP_MUL then
-          result_reg <= mul_fp80(a_in, b_in, round_mode, round_prec);
-          if op_alu_latency(op_sel) = 0 then
-            valid <= '1';
-            busy_reg <= '0';
-            op_pending_reg <= FPU_OP_NOP;
-            latency_count_reg <= 0;
-          else
-            busy_reg <= '1';
-            latency_count_reg <= op_alu_latency(op_sel) - 1;
-          end if;
-        elsif op_sel = FPU_OP_SQRT then
-          result_reg <= sqrt_fp80(a_in, round_mode, round_prec);
+        elsif is_simple_op(op_sel) then
+          result_reg <= compute_simple_result(op_sel, a_in, b_in, round_mode, round_prec);
           if op_alu_latency(op_sel) = 0 then
             valid <= '1';
             busy_reg <= '0';
@@ -382,17 +391,6 @@ begin
             latency_count_reg <= 0;
           else
             latency_count_reg <= op_alu_latency(op_sel) - 2;
-          end if;
-        elsif op_sel = FPU_OP_CMP then
-          result_reg <= fp80_from_int(compare_fp80(a_in, b_in));
-          if op_alu_latency(op_sel) = 0 then
-            valid <= '1';
-            busy_reg <= '0';
-            op_pending_reg <= FPU_OP_NOP;
-            latency_count_reg <= 0;
-          else
-            busy_reg <= '1';
-            latency_count_reg <= op_alu_latency(op_sel) - 1;
           end if;
         elsif is_sglops_op(op_sel) then
           sglops_op_reg <= op_sel;

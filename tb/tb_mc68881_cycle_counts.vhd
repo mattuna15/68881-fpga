@@ -134,6 +134,20 @@ begin
     assert_base_cycles(FPU_OP_CMP, FPU_SRC_MEM_INTEGER, 78, "FCMP mem integer (B/W/L)");
     assert_base_cycles(FPU_OP_CMP, FPU_SRC_MEM_PACKED, 886, "FCMP mem packed (.P)");
 
+    assert_base_cycles(FPU_OP_ABS, FPU_SRC_FPM, 49, "FABS FPM");
+    assert_base_cycles(FPU_OP_NEG, FPU_SRC_FPM, 49, "FNEG FPM");
+    assert_base_cycles(FPU_OP_INT, FPU_SRC_FPM, 49, "FINT FPM");
+    assert_base_cycles(FPU_OP_INTRZ, FPU_SRC_FPM, 49, "FINTRZ FPM");
+    assert_base_cycles(FPU_OP_GETEXP, FPU_SRC_FPM, 49, "FGETEXP FPM");
+    assert_base_cycles(FPU_OP_GETMAN, FPU_SRC_FPM, 49, "FGETMAN FPM");
+    assert_base_cycles(FPU_OP_TST, FPU_SRC_FPM, 49, "FTST FPM");
+
+    assert_base_cycles(FPU_OP_ABS, FPU_SRC_MEM_INTEGER, 78, "FABS mem integer");
+    assert_base_cycles(FPU_OP_ABS, FPU_SRC_MEM_SINGLE, 70, "FABS mem single");
+    assert_base_cycles(FPU_OP_ABS, FPU_SRC_MEM_DOUBLE, 76, "FABS mem double");
+    assert_base_cycles(FPU_OP_ABS, FPU_SRC_MEM_EXTENDED, 74, "FABS mem extended");
+    assert_base_cycles(FPU_OP_ABS, FPU_SRC_MEM_PACKED, 886, "FABS mem packed");
+
     assert_base_cycles(FPU_OP_MOD, FPU_SRC_FPM, 109, "FMOD FPM");
     assert_base_cycles(FPU_OP_MOD, FPU_SRC_MEM_INTEGER, 138, "FMOD mem integer (B/W/L)");
     assert_base_cycles(FPU_OP_MOD, FPU_SRC_MEM_PACKED, 946, "FMOD mem packed (.P)");

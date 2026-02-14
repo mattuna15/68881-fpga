@@ -34,6 +34,10 @@ architecture rtl of mc68881_divrem_unit is
   constant FP_EXP_MAX : integer := (2**FP_EXP_WIDTH) - 1;
   constant DIV_Q_BITS : natural := FP_MANT_WIDTH + FP_GRS_BITS;
   constant DIVIDEND_BITS : natural := FP_MANT_WIDTH + DIV_Q_BITS;
+  constant REM_WIDTH : natural := FP_MANT_EXT_WIDTH + 2;
+  constant SQRT_SCALE_SHIFT : natural := FP_MANT_WIDTH - 1 + FP_GRS_BITS - 32;
+  constant SQRT_MANT_EVEN_WIDTH : natural := FP_MANT_WIDTH + 2;
+  constant SQRT_RADICAND_BITS : natural := SQRT_MANT_EVEN_WIDTH + (2 * SQRT_SCALE_SHIFT);
   constant FP80_ZERO : fp80_t := x"00000000000000000000";
   constant FP80_ONE  : fp80_t := x"3FFF8000000000000000";
   constant FP80_HALF : fp80_t := x"3FFE8000000000000000";
@@ -49,6 +53,8 @@ architecture rtl of mc68881_divrem_unit is
     ST_CLASSIFY,
     ST_DIV_ITER,
     ST_POST_DIV,
+    ST_SQRT_ITER,
+    ST_SQRT_POST,
     ST_MOD_ROUND,
     ST_MOD_PRODUCT,
     ST_MOD_SUB,
@@ -64,11 +70,15 @@ architecture rtl of mc68881_divrem_unit is
 
   signal divisor_reg : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   signal dividend_reg : unsigned(DIVIDEND_BITS-1 downto 0) := (others => '0');
-  signal rem_reg : unsigned(FP_MANT_WIDTH+1 downto 0) := (others => '0');
+  signal rem_reg : unsigned(REM_WIDTH-1 downto 0) := (others => '0');
   signal quot_reg : unsigned(DIVIDEND_BITS-1 downto 0) := (others => '0');
   signal iter_idx_reg : integer range 0 to DIVIDEND_BITS-1 := 0;
   signal div_sign_reg : std_logic := '0';
   signal div_exp_base_reg : integer := 0;
+  signal sqrt_radicand_reg : unsigned(SQRT_RADICAND_BITS-1 downto 0) := (others => '0');
+  signal sqrt_root_reg : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
+  signal sqrt_iter_idx_reg : integer range 0 to FP_MANT_EXT_WIDTH-1 := 0;
+  signal sqrt_exp_out_reg : integer := 0;
 
   signal div_result_reg : fp80_t := (others => '0');
   signal n_fp_reg : fp80_t := (others => '0');
@@ -262,7 +272,11 @@ architecture rtl of mc68881_divrem_unit is
     end if;
 
     frac_bits := integer(FP_MANT_WIDTH - 1) - exp_i;
-    result_u.mant(frac_bits-1 downto 0) := (others => '0');
+    for bit_idx in 0 to FP_MANT_WIDTH-1 loop
+      if bit_idx < frac_bits then
+        result_u.mant(bit_idx) := '0';
+      end if;
+    end loop;
     return pack_fp80(result_u);
   end function;
 
@@ -311,7 +325,8 @@ architecture rtl of mc68881_divrem_unit is
       if shift_amt >= 7 then
         bits := (others => '0');
       else
-        bits := resize(shift_left(u.mant(6-shift_amt downto 0), shift_amt), 7);
+        -- Avoid variable-range slicing that can create null-range warnings.
+        bits := resize(shift_left(u.mant, shift_amt), 7);
       end if;
     else
       shift_amt := integer(FP_MANT_WIDTH - 1) - exp_i;
@@ -323,48 +338,22 @@ architecture rtl of mc68881_divrem_unit is
     return qbyte;
   end function;
 
-  function fp80_add_one_integer_magnitude(value : fp80_t) return fp80_t is
-    variable u : fp_unpacked_t := unpack_fp80(value);
-    variable exp_i : integer := 0;
-    variable unit_bit : integer := 0;
-    variable increment : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
-    variable mant_next : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
-  begin
-    if u.exp = 0 or u.exp = FP_EXP_ALL_ONES then
-      return value;
-    end if;
-
-    exp_i := to_integer(u.exp) - FP_EXP_BIAS;
-    if exp_i < 0 or exp_i > integer(FP_MANT_WIDTH - 1) then
-      return value;
-    end if;
-
-    unit_bit := integer(FP_MANT_WIDTH - 1) - exp_i;
-    increment(unit_bit) := '1';
-    mant_next := ('0' & u.mant) + ('0' & increment);
-    if mant_next(mant_next'left) = '1' then
-      u.mant := shift_right(mant_next(mant_next'left-1 downto 0), 1);
-      u.mant(u.mant'left) := '1';
-      if u.exp /= FP_EXP_ALL_ONES then
-        u.exp := u.exp + 1;
-      end if;
-    else
-      u.mant := mant_next(mant_next'left-1 downto 0);
-    end if;
-    return pack_fp80(u);
-  end function;
-
 begin
   process(clk, reset_n)
     variable a_u : fp_unpacked_t;
     variable b_u : fp_unpacked_t;
-    variable rem_next : unsigned(FP_MANT_WIDTH+1 downto 0);
+    variable rem_next : unsigned(REM_WIDTH-1 downto 0);
     variable quot_next : unsigned(DIVIDEND_BITS-1 downto 0);
+    variable root_next : unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
+    variable trial : unsigned(REM_WIDTH-1 downto 0);
+    variable divisor_ext : unsigned(REM_WIDTH-1 downto 0);
     variable mant_ext : unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
     variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0);
     variable exp_res_i : integer := 0;
+    variable exp_unbiased : integer := 0;
     variable top_idx : integer := 0;
     variable lead_idx : integer := 0;
+    variable pair_hi : integer := 0;
     variable div_res_u : fp_unpacked_t;
     variable inexact_local : std_logic := '0';
     variable quotient_fp : fp80_t := (others => '0');
@@ -376,16 +365,12 @@ begin
     variable one_fp : fp80_t := FP80_ONE;
     variable product_fp : fp80_t := (others => '0');
     variable remainder_fp : fp80_t := (others => '0');
-    variable step_i : integer := 0;
-    variable quotient_i : integer := 0;
-    variable nearest_i : integer := 0;
-    variable needs_step : boolean := false;
-    variable use_integer_path : boolean := false;
-    variable div_mul2 : unsigned(FP_MANT_WIDTH+1 downto 0) := (others => '0');
-    variable div_mul3 : unsigned(FP_MANT_WIDTH+1 downto 0) := (others => '0');
+    variable div_mul2 : unsigned(REM_WIDTH-1 downto 0) := (others => '0');
+    variable div_mul3 : unsigned(REM_WIDTH-1 downto 0) := (others => '0');
     variable div_final_result : fp80_t := (others => '0');
     variable div_round_mode : fp_round_mode_t := FP_RND_NEAREST;
     variable div_round_prec : fp_round_prec_t := FP_PREC_EXTENDED;
+    variable mantissa_even : unsigned(SQRT_MANT_EVEN_WIDTH-1 downto 0) := (others => '0');
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -461,6 +446,55 @@ begin
               div_exp_base_reg <= to_integer(a_u.exp) - to_integer(b_u.exp) + FP_EXP_BIAS;
               state_reg <= ST_DIV_ITER;
             end if;
+          elsif op_reg = FPU_OP_SQRT then
+            if fp80_is_nan(a_reg) then
+              result_reg <= canonical_qnan;
+              flag_invalid_reg <= '1';
+              state_reg <= ST_DONE;
+            elsif fp80_is_inf(a_reg) then
+              if a_u.sign = '1' then
+                result_reg <= canonical_qnan;
+                flag_invalid_reg <= '1';
+              else
+                result_reg <= a_reg;
+              end if;
+              state_reg <= ST_DONE;
+            elsif a_u.exp = 0 and a_u.mant = 0 then
+              -- Preserve signed zero for sqrt(+-0).
+              result_reg <= a_reg;
+              state_reg <= ST_DONE;
+            elsif a_u.sign = '1' then
+              result_reg <= canonical_qnan;
+              flag_invalid_reg <= '1';
+              state_reg <= ST_DONE;
+            else
+              if a_u.exp = 0 then
+                exp_unbiased := 1 - FP_EXP_BIAS;
+                mantissa_even := resize(a_u.mant, SQRT_MANT_EVEN_WIDTH);
+                for idx in 0 to FP_MANT_WIDTH-1 loop
+                  exit when mantissa_even(mantissa_even'left) = '1';
+                  mantissa_even := shift_left(mantissa_even, 1);
+                  exp_unbiased := exp_unbiased - 1;
+                end loop;
+              else
+                exp_unbiased := to_integer(a_u.exp) - FP_EXP_BIAS;
+                mantissa_even := resize(a_u.mant, SQRT_MANT_EVEN_WIDTH);
+              end if;
+
+              if (exp_unbiased mod 2) /= 0 then
+                exp_unbiased := exp_unbiased - 1;
+                mantissa_even := shift_left(mantissa_even, 2);
+              else
+                mantissa_even := shift_left(mantissa_even, 1);
+              end if;
+
+              sqrt_exp_out_reg <= exp_unbiased / 2 + FP_EXP_BIAS;
+              sqrt_radicand_reg <= shift_left(resize(mantissa_even, SQRT_RADICAND_BITS), 2 * SQRT_SCALE_SHIFT);
+              sqrt_root_reg <= (others => '0');
+              rem_reg <= (others => '0');
+              sqrt_iter_idx_reg <= 0;
+              state_reg <= ST_SQRT_ITER;
+            end if;
           else
             if fp80_is_nan(a_reg) or fp80_is_nan(b_reg) or fp80_is_inf(a_reg) or (b_u.exp = 0 and b_u.mant = 0) then
               result_reg <= canonical_qnan;
@@ -490,11 +524,12 @@ begin
 
         when ST_DIV_ITER =>
           quot_next := quot_reg;
+          divisor_ext := resize("00" & divisor_reg, REM_WIDTH);
           if iter_idx_reg = DIVIDEND_BITS-1 then
             rem_next := shift_left(rem_reg, 1);
             rem_next(0) := dividend_reg(iter_idx_reg);
-            if rem_next >= ("00" & divisor_reg) then
-              rem_next := rem_next - ("00" & divisor_reg);
+            if rem_next >= divisor_ext then
+              rem_next := rem_next - divisor_ext;
               quot_next(iter_idx_reg) := '1';
             else
               quot_next(iter_idx_reg) := '0';
@@ -505,16 +540,16 @@ begin
           else
             rem_next := shift_left(rem_reg, 2);
             rem_next(1 downto 0) := dividend_reg(iter_idx_reg downto iter_idx_reg-1);
-            div_mul2 := shift_left(("00" & divisor_reg), 1);
-            div_mul3 := ("00" & divisor_reg) + div_mul2;
+            div_mul2 := shift_left(divisor_ext, 1);
+            div_mul3 := divisor_ext + div_mul2;
             if rem_next >= div_mul3 then
               rem_next := rem_next - div_mul3;
               quot_next(iter_idx_reg downto iter_idx_reg-1) := "11";
             elsif rem_next >= div_mul2 then
               rem_next := rem_next - div_mul2;
               quot_next(iter_idx_reg downto iter_idx_reg-1) := "10";
-            elsif rem_next >= ("00" & divisor_reg) then
-              rem_next := rem_next - ("00" & divisor_reg);
+            elsif rem_next >= divisor_ext then
+              rem_next := rem_next - divisor_ext;
               quot_next(iter_idx_reg downto iter_idx_reg-1) := "01";
             else
               quot_next(iter_idx_reg downto iter_idx_reg-1) := "00";
@@ -528,6 +563,60 @@ begin
               iter_idx_reg <= iter_idx_reg - 2;
             end if;
           end if;
+
+        when ST_SQRT_ITER =>
+          pair_hi := SQRT_RADICAND_BITS-1 - (sqrt_iter_idx_reg * 2);
+          rem_next := shift_left(rem_reg, 2);
+          rem_next(1 downto 0) := sqrt_radicand_reg(pair_hi downto pair_hi-1);
+          trial := shift_left(resize(sqrt_root_reg, REM_WIDTH), 2) + to_unsigned(1, REM_WIDTH);
+          root_next := shift_left(sqrt_root_reg, 1);
+          if rem_next >= trial then
+            rem_next := rem_next - trial;
+            root_next(0) := '1';
+          end if;
+          rem_reg <= rem_next;
+          sqrt_root_reg <= root_next;
+          if sqrt_iter_idx_reg = FP_MANT_EXT_WIDTH-1 then
+            state_reg <= ST_SQRT_POST;
+          else
+            sqrt_iter_idx_reg <= sqrt_iter_idx_reg + 1;
+          end if;
+
+        when ST_SQRT_POST =>
+          mant_ext := sqrt_root_reg;
+          exp_res_i := sqrt_exp_out_reg;
+          inexact_local := '0';
+          if rem_reg /= 0 then
+            mant_ext(0) := '1';
+            inexact_local := '1';
+          end if;
+
+          apply_rounding('0', mant_ext, exp_res_i, rm_reg, rp_reg, mant_main, exp_res_i, inexact_local);
+
+          div_res_u.sign := '0';
+          if mant_main = 0 then
+            div_res_u.exp := (others => '0');
+            div_res_u.mant := (others => '0');
+            div_final_result := pack_fp80(div_res_u);
+          elsif exp_res_i <= 0 then
+            div_res_u.exp := (others => '0');
+            div_res_u.mant := (others => '0');
+            div_final_result := pack_fp80(div_res_u);
+            flag_underflow_reg <= '1';
+          elsif exp_res_i >= FP_EXP_MAX then
+            div_res_u.exp := FP_EXP_ALL_ONES;
+            div_res_u.mant := (others => '0');
+            div_final_result := pack_fp80(div_res_u);
+            flag_overflow_reg <= '1';
+          else
+            div_res_u.exp := to_unsigned(exp_res_i, FP_EXP_WIDTH);
+            div_res_u.mant := mant_main;
+            div_final_result := pack_fp80(div_res_u);
+          end if;
+
+          result_reg <= div_final_result;
+          flag_inexact_reg <= inexact_local;
+          state_reg <= ST_DONE;
 
         when ST_POST_DIV =>
           top_idx := integer(DIV_Q_BITS);
@@ -608,66 +697,22 @@ begin
             n_fp_reg <= quotient_trunc;
             quotient_byte_reg <= quotient_byte_from_fp_integer(quotient_trunc);
           else
-            use_integer_path := false;
-            if not fp80_is_nan(quotient_fp) and not fp80_is_inf(quotient_fp) then
-              if (to_integer(unsigned(quotient_fp(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH))) - FP_EXP_BIAS) <= 30 and
-                 unsigned(quotient_fp(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) /= 0 then
-                use_integer_path := true;
-              end if;
-            end if;
-
-            if use_integer_path then
-              quotient_i := fp80_to_int_trunc(quotient_fp);
-              nearest_i := quotient_i;
-              quotient_trunc := fp80_from_int(quotient_i);
-              frac := add_sub_fp80(quotient_fp, quotient_trunc, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-              frac_abs := abs_fp80(frac);
-              half_cmp := compare_fp80(frac_abs, FP80_HALF);
+            quotient_trunc := fp80_trunc_toward_zero_local(quotient_fp);
+            nearest_q := quotient_trunc;
+            frac := add_sub_fp80(quotient_fp, quotient_trunc, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
+            frac_abs := abs_fp80(frac);
+            half_cmp := compare_fp80(frac_abs, FP80_HALF);
+            if half_cmp > 0 then
               if quotient_fp(FP_WIDTH-1) = '1' then
-                step_i := -1;
+                nearest_q := add_sub_fp80(nearest_q, one_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
               else
-                step_i := 1;
+                nearest_q := add_sub_fp80(nearest_q, one_fp, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
               end if;
-              needs_step := false;
-              if half_cmp > 0 then
-                needs_step := true;
-              elsif half_cmp = 0 and to_signed(quotient_i, 32)(0) = '1' then
-                needs_step := true;
-              end if;
-
-              if needs_step then
-                -- Guard the integer fast path at the VHDL integer bounds and
-                -- perform the final increment/decrement in FP80 when needed.
-                if (step_i = 1 and nearest_i = integer'high) or
-                   (step_i = -1 and nearest_i = integer'low) then
-                  -- At integer limits, move one step in magnitude space without
-                  -- round-tripping through VHDL integer arithmetic.
-                  nearest_q := fp80_add_one_integer_magnitude(quotient_trunc);
-                else
-                  nearest_i := nearest_i + step_i;
-                  nearest_q := fp80_from_int(nearest_i);
-                end if;
+            elsif half_cmp = 0 and fp80_is_odd_integer_local(quotient_trunc) then
+              if quotient_fp(FP_WIDTH-1) = '1' then
+                nearest_q := add_sub_fp80(nearest_q, one_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
               else
-                nearest_q := quotient_trunc;
-              end if;
-            else
-              quotient_trunc := fp80_trunc_toward_zero_local(quotient_fp);
-              nearest_q := quotient_trunc;
-              frac := add_sub_fp80(quotient_fp, quotient_trunc, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-              frac_abs := abs_fp80(frac);
-              half_cmp := compare_fp80(frac_abs, FP80_HALF);
-              if half_cmp > 0 then
-                if quotient_fp(FP_WIDTH-1) = '1' then
-                  nearest_q := add_sub_fp80(nearest_q, one_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-                else
-                  nearest_q := add_sub_fp80(nearest_q, one_fp, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
-                end if;
-              elsif half_cmp = 0 and fp80_is_odd_integer_local(quotient_trunc) then
-                if quotient_fp(FP_WIDTH-1) = '1' then
-                  nearest_q := add_sub_fp80(nearest_q, one_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-                else
-                  nearest_q := add_sub_fp80(nearest_q, one_fp, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
-                end if;
+                nearest_q := add_sub_fp80(nearest_q, one_fp, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
               end if;
             end if;
 

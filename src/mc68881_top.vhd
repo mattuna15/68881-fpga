@@ -177,6 +177,32 @@ architecture rtl of mc68881_top is
     return to_integer(signed(bits));
   end function;
 
+  function signed16_to_integer(bits : std_logic_vector(15 downto 0)) return integer is
+    variable magnitude : unsigned(14 downto 0);
+  begin
+    if bits(15) = '0' then
+      return to_integer(unsigned(bits(14 downto 0)));
+    elsif bits = x"8000" then
+      return -32768;
+    else
+      magnitude := unsigned(not bits(14 downto 0)) + 1;
+      return -to_integer(magnitude);
+    end if;
+  end function;
+
+  function signed32_to_integer(bits : std_logic_vector(31 downto 0)) return integer is
+    variable magnitude : unsigned(30 downto 0);
+  begin
+    if bits(31) = '0' then
+      return to_integer(unsigned(bits(30 downto 0)));
+    elsif bits = x"80000000" then
+      return integer'low;
+    else
+      magnitude := unsigned(not bits(30 downto 0)) + 1;
+      return -to_integer(magnitude);
+    end if;
+  end function;
+
   function clamp_integer(value : integer; min_value : integer; max_value : integer) return integer is
   begin
     if value < min_value then
@@ -428,33 +454,6 @@ architecture rtl of mc68881_top is
       when "01" => return EA_CYCLE_CACHE;
       when others => return EA_CYCLE_WORST;
     end case;
-  end function;
-
-  function fp80_is_zero(value : fp80_t) return boolean is
-    variable exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
-    variable mant : unsigned(FP_MANT_WIDTH-1 downto 0);
-  begin
-    exp := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
-    mant := unsigned(value(FP_MANT_WIDTH-1 downto 0));
-    return exp = 0 and mant = 0;
-  end function;
-
-  function fp80_is_inf(value : fp80_t) return boolean is
-    variable exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
-    variable mant : unsigned(FP_MANT_WIDTH-1 downto 0);
-  begin
-    exp := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
-    mant := unsigned(value(FP_MANT_WIDTH-1 downto 0));
-    return exp = FP_EXP_ALL_ONES and mant = 0;
-  end function;
-
-  function fp80_is_nan(value : fp80_t) return boolean is
-    variable exp  : unsigned(FP_EXP_WIDTH-1 downto 0);
-    variable mant : unsigned(FP_MANT_WIDTH-1 downto 0);
-  begin
-    exp := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
-    mant := unsigned(value(FP_MANT_WIDTH-1 downto 0));
-    return exp = FP_EXP_ALL_ONES and mant /= 0;
   end function;
 
   function compare_fp80_ordered(a : fp80_t; b : fp80_t) return integer is
@@ -944,11 +943,11 @@ begin
                     if move_cfg.mem_to_reg_integer = '1' then
                       case mem_fmt is
                         when "00" =>
-                          int_value := to_integer(resize(signed(operand_reg(0)(7 downto 0)), 32));
+                          int_value := signed8_to_integer(operand_reg(0)(7 downto 0));
                         when "01" =>
-                          int_value := to_integer(resize(signed(operand_reg(0)(15 downto 0)), 32));
+                          int_value := signed16_to_integer(operand_reg(0)(15 downto 0));
                         when others =>
-                          int_value := to_integer(signed(operand_reg(0)(31 downto 0)));
+                          int_value := signed32_to_integer(operand_reg(0)(31 downto 0));
                       end case;
                       move_result := fp80_from_int(int_value);
                     else
@@ -1121,6 +1120,9 @@ begin
     result_lo_reg,
     result_hi_reg,
     result_ex_reg,
+    aux_result_lo_reg,
+    aux_result_hi_reg,
+    aux_result_ex_reg,
     status_valid_reg,
     status_busy_reg,
     status_frame_valid_reg,

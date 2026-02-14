@@ -856,6 +856,15 @@ begin
     wait until valid = '1';
     check_result(FP80_QNAN, "FABS NaN payload preserved");
 
+    op_sel <= FPU_OP_ABS;
+    a_in   <= SUBNORMAL_NEG;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(SUBNORMAL_POS, "FABS subnormal sign clear");
+
     -- FNEG toggles sign, including signed zero.
     op_sel <= FPU_OP_NEG;
     a_in   <= fp80_from_int(4);
@@ -875,6 +884,15 @@ begin
     wait until valid = '1';
     check_result(x"80000000000000000000", "FNEG +0 -> -0");
 
+    op_sel <= FPU_OP_NEG;
+    a_in   <= SUBNORMAL_POS;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(SUBNORMAL_NEG, "FNEG subnormal sign toggle");
+
     -- FINTRZ truncates toward zero for positive and negative values.
     op_sel <= FPU_OP_INTRZ;
     a_in   <= x"4000B000000000000000"; -- 2.75
@@ -893,6 +911,24 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     check_result(fp80_from_int(-2), "FINTRZ -2.75");
+
+    op_sel <= FPU_OP_INTRZ;
+    a_in   <= SUBNORMAL_POS;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(FP80_ZERO, "FINTRZ +subnormal -> +0");
+
+    op_sel <= FPU_OP_INTRZ;
+    a_in   <= SUBNORMAL_NEG;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(x"80000000000000000000", "FINTRZ -subnormal -> -0");
 
     -- FINT uses FPCR round mode.
     op_sel <= FPU_OP_INT;
@@ -934,6 +970,36 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     check_result(fp80_from_int(-3), "FINT -inf mode -2.25");
+
+    op_sel <= FPU_OP_INT;
+    round_mode <= FP_RND_NEAREST;
+    a_in   <= SUBNORMAL_NEG;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(x"80000000000000000000", "FINT nearest -subnormal -> -0");
+
+    op_sel <= FPU_OP_INT;
+    round_mode <= FP_RND_PLUS_INF;
+    a_in   <= SUBNORMAL_POS;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(FP80_ONE, "FINT +inf +subnormal -> +1");
+
+    op_sel <= FPU_OP_INT;
+    round_mode <= FP_RND_MINUS_INF;
+    a_in   <= SUBNORMAL_NEG;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(-1), "FINT -inf -subnormal -> -1");
     round_mode <= FP_RND_NEAREST;
 
     -- FGETEXP class behavior and finite exponent extraction.
@@ -973,6 +1039,15 @@ begin
     wait until valid = '1';
     check_result(FP80_QNAN, "FGETEXP NaN propagate");
 
+    op_sel <= FPU_OP_GETEXP;
+    a_in   <= x"00000000000000000001"; -- smallest positive subnormal
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(fp80_from_int(1 - FP_EXP_BIAS - (FP_MANT_WIDTH - 1)), "FGETEXP min subnormal");
+
     -- FGETMAN normalizes finite values and passes through zero/inf/nan.
     op_sel <= FPU_OP_GETMAN;
     a_in   <= x"C001D000000000000000"; -- -6.5
@@ -982,6 +1057,15 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     check_result(x"BFFFD000000000000000", "FGETMAN -6.5 -> -1.625");
+
+    op_sel <= FPU_OP_GETMAN;
+    a_in   <= x"00000000000000000001"; -- smallest positive subnormal
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(x"3FFF8000000000000000", "FGETMAN min subnormal -> +1.0");
 
     op_sel <= FPU_OP_GETMAN;
     a_in   <= FP80_ZERO;
@@ -1019,6 +1103,15 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     check_result(x"BFFF8000000000000000", "FTST passthrough");
+
+    op_sel <= FPU_OP_TST;
+    a_in   <= SUBNORMAL_NEG;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    check_result(SUBNORMAL_NEG, "FTST subnormal passthrough");
 
     std.env.stop;
     wait;

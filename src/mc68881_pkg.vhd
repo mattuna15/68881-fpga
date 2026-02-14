@@ -1664,8 +1664,18 @@ package body mc68881_pkg is
     variable frac_bits : integer := 0;
     variable result_u : fp_unpacked_t := value_u;
   begin
-    if value_u.exp = 0 or value_u.exp = FP_EXP_ALL_ONES then
+    if value_u.exp = FP_EXP_ALL_ONES then
       return value;
+    end if;
+
+    if value_u.exp = 0 then
+      if value_u.mant = 0 then
+        return value;
+      end if;
+      -- Non-zero subnormals truncate to signed zero.
+      result_u.exp := (others => '0');
+      result_u.mant := (others => '0');
+      return pack_fp80(result_u);
     end if;
 
     exp_i := to_integer(value_u.exp) - FP_EXP_BIAS;
@@ -1777,6 +1787,7 @@ package body mc68881_pkg is
     variable value_u : fp_unpacked_t := unpack_fp80(value);
     variable result_u : fp_unpacked_t;
     variable unbiased_exp : integer := 0;
+    variable mantissa_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
     if fp80_is_nan(value) then
       return value;
@@ -1796,15 +1807,37 @@ package body mc68881_pkg is
       return pack_fp80(result_u);
     end if;
 
-    unbiased_exp := to_integer(value_u.exp) - FP_EXP_BIAS;
+    if value_u.exp = 0 then
+      -- Normalize subnormal mantissa before extracting the unbiased exponent.
+      unbiased_exp := 1 - FP_EXP_BIAS;
+      mantissa_norm := value_u.mant;
+      for idx in 0 to FP_MANT_WIDTH-1 loop
+        exit when mantissa_norm(mantissa_norm'left) = '1';
+        mantissa_norm := shift_left(mantissa_norm, 1);
+        unbiased_exp := unbiased_exp - 1;
+      end loop;
+    else
+      unbiased_exp := to_integer(value_u.exp) - FP_EXP_BIAS;
+    end if;
     return fp80_from_int(unbiased_exp);
   end function;
 
   function fgetman_fp80(value : fp80_t) return fp80_t is
     variable result_u : fp_unpacked_t := unpack_fp80(value);
+    variable mantissa_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
     if fp80_is_zero(value) or fp80_is_inf(value) or fp80_is_nan(value) then
       return value;
+    end if;
+
+    if result_u.exp = 0 then
+      -- Normalize denormal mantissas before forcing exponent to bias.
+      mantissa_norm := result_u.mant;
+      for idx in 0 to FP_MANT_WIDTH-1 loop
+        exit when mantissa_norm(mantissa_norm'left) = '1';
+        mantissa_norm := shift_left(mantissa_norm, 1);
+      end loop;
+      result_u.mant := mantissa_norm;
     end if;
 
     result_u.exp := to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH);

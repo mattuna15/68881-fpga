@@ -16,3 +16,4 @@ __synthesis_is_complete__
 *.dcp
 *.jou
 *.log
+.tmp_report_hier.tcl

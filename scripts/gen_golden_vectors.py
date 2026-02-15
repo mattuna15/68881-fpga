@@ -94,6 +94,7 @@ def main() -> None:
         "GV_ARG_2P4": c["P2_4"],
         "GV_ARG_3P7": c["P3_7"],
         "GV_ARG_12P5": c["P12_5"],
+        "GV_ARG_1234567": mp.mpf("1234567.0"),
         "GV_ARG_M2": mp.mpf("-2.0"),
         "GV_ADD_3P7_2P4": c["P3_7"] + c["P2_4"],
         "GV_SUB_M2P3_0P6": c["M2_3"] - c["P0_6"],
@@ -114,6 +115,9 @@ def main() -> None:
         "GV_ATAN_2": mp.atan(mp.mpf("2.0")),
         "GV_ATAN_M2": mp.atan(mp.mpf("-2.0")),
         "GV_TANH_0P75": mp.tanh(c["P0_75"]),
+        "GV_SIN_1234567": mp.sin(mp.mpf("1234567.0")),
+        "GV_COS_1234567": mp.cos(mp.mpf("1234567.0")),
+        "GV_TAN_1234567": mp.tan(mp.mpf("1234567.0")),
     }
 
     lines = []

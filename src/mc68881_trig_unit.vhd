@@ -468,7 +468,6 @@ architecture rtl of mc68881_trig_unit is
   function fp80_int_mod4(value : fp80_t) return integer is
     variable exp_bits : unsigned(FP_EXP_WIDTH-1 downto 0);
     variable exp_i : integer := 0;
-    variable shift_amt : integer := 0;
     variable idx0 : integer := 0;
     variable idx1 : integer := 0;
     variable bit0 : integer := 0;
@@ -485,16 +484,15 @@ architecture rtl of mc68881_trig_unit is
       return 0;
     end if;
 
-    shift_amt := exp_i - integer(FP_MANT_WIDTH - 1);
-    if shift_amt <= 0 then
-      idx0 := integer(FP_MANT_WIDTH - 1) - exp_i;
-      idx1 := idx0 + 1;
-      if idx0 >= 0 and idx0 < integer(FP_MANT_WIDTH) and value(idx0) = '1' then
-        bit0 := 1;
-      end if;
-      if idx1 >= 0 and idx1 < integer(FP_MANT_WIDTH) and value(idx1) = '1' then
-        bit1 := 1;
-      end if;
+    -- Always derive low modulo bits from aligned mantissa indices.
+    -- For exp_i = 64, idx1 = 0 still contributes to the 2's bit.
+    idx0 := integer(FP_MANT_WIDTH - 1) - exp_i;
+    idx1 := idx0 + 1;
+    if idx0 >= 0 and idx0 < integer(FP_MANT_WIDTH) and value(idx0) = '1' then
+      bit0 := 1;
+    end if;
+    if idx1 >= 0 and idx1 < integer(FP_MANT_WIDTH) and value(idx1) = '1' then
+      bit1 := 1;
     end if;
 
     mag_mod := bit0 + (2 * bit1);
@@ -1043,6 +1041,9 @@ begin
 
         when ST_TRIG_REDUCE =>
           exp_bits := unsigned(x_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+          if exp_bits /= 0 and to_integer(exp_bits) > FP_EXP_BIAS + 20 then
+            x_reg <= fmod_fp80(x_reg, FP80_TWO_PI, FP_RND_NEAREST, FP_PREC_EXTENDED);
+          end if;
           state_reg <= ST_TRIG_SCALE_PREP;
 
         when ST_TRIG_SCALE_PREP =>

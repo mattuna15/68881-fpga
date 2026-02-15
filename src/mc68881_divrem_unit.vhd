@@ -425,7 +425,16 @@ begin
               end if;
               state_reg <= ST_DONE;
             elsif a_u.exp = 0 and a_u.mant = 0 then
-              result_reg <= FP80_ZERO;
+              div_res_u.sign := a_u.sign xor b_u.sign;
+              div_res_u.exp := (others => '0');
+              div_res_u.mant := (others => '0');
+              result_reg <= pack_fp80(div_res_u);
+              state_reg <= ST_DONE;
+            elsif b_u.exp = FP_EXP_ALL_ONES and a_u.exp /= FP_EXP_ALL_ONES then
+              div_res_u.sign := a_u.sign xor b_u.sign;
+              div_res_u.exp := (others => '0');
+              div_res_u.mant := (others => '0');
+              result_reg <= pack_fp80(div_res_u);
               state_reg <= ST_DONE;
             elsif a_u.exp = FP_EXP_ALL_ONES or b_u.exp = FP_EXP_ALL_ONES then
               div_res_u.sign := a_u.sign xor b_u.sign;

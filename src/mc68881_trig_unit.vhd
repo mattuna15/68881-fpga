@@ -29,6 +29,12 @@ architecture rtl of mc68881_trig_unit is
     ST_IDLE,
     ST_CLASSIFY,
     ST_TRIG_REDUCE,
+    ST_TRIG_MOD_SCALE_POST,
+    ST_TRIG_MOD_INV4_POST,
+    ST_TRIG_MOD_QPI_PREP,
+    ST_TRIG_MOD_QPI_POST,
+    ST_TRIG_MOD_SUB_PREP,
+    ST_TRIG_MOD_SUB_POST,
     ST_TRIG_SCALE_PREP,
     ST_TRIG_SCALE_POST,
     ST_TRIG_FRAC_PREP,
@@ -75,6 +81,7 @@ architecture rtl of mc68881_trig_unit is
     ST_EXP_REDUCE_KLN2_POST,
     ST_EXP_REDUCE_R_POST,
     ST_LOG_EXP_TERM_POST,
+    ST_ATAN_INV_POST,
     ST_TRANS_PREP,
     ST_TRANS_INPUT_ADJUST_POST,
     ST_TRANS_PRE_MUL_POST,
@@ -956,7 +963,6 @@ begin
                   coeff4_reg <= FP80_ZERO;
                   coeff5_reg <= FP80_ONE_FIFTH;
                   if compare_fp80(abs_a, FP80_ONE) > 0 then
-                    x_local := div_fp80(FP80_ONE, x_local, FP_RND_NEAREST, FP_PREC_EXTENDED);
                     trans_post_add_en_reg <= '1';
                     trans_post_add_sub_reg <= '1';
                     if fp80_sign(a_reg) = '1' then
@@ -964,12 +970,19 @@ begin
                     else
                       trans_post_add_const_reg <= FP80_HALF_PI;
                     end if;
+                    div_a_reg <= FP80_ONE;
+                    div_b_reg <= x_local;
+                    div_rm_reg <= FP_RND_NEAREST;
+                    div_rp_reg <= FP_PREC_EXTENDED;
+                    cont_state_reg <= ST_ATAN_INV_POST;
+                    state_reg <= ST_FP_DIV;
+                  else
+                    seed_domain_reg <= SEED_DOMAIN_ATAN;
+                    seed_idx_reg <= 0;
+                    seed_return_state_reg <= ST_TRANS_PREP;
+                    x_reg <= x_local;
+                    state_reg <= ST_SEED_READ;
                   end if;
-                  seed_domain_reg <= SEED_DOMAIN_ATAN;
-                  seed_idx_reg <= 0;
-                  seed_return_state_reg <= ST_TRANS_PREP;
-                  x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
                 end if;
 
               when FPU_OP_ASIN =>
@@ -1117,8 +1130,50 @@ begin
         when ST_TRIG_REDUCE =>
           exp_bits := unsigned(x_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
           if exp_bits /= 0 and to_integer(exp_bits) > FP_EXP_BIAS + 20 then
-            x_reg <= fmod_fp80(x_reg, FP80_TWO_PI, FP_RND_NEAREST, FP_PREC_EXTENDED);
+            mul_a_reg <= x_reg;
+            mul_b_reg <= FP80_TWO_OVER_PI;
+            mul_rm_reg <= FP_RND_NEAREST;
+            mul_rp_reg <= FP_PREC_EXTENDED;
+            cont_state_reg <= ST_TRIG_MOD_SCALE_POST;
+            state_reg <= ST_FP_MUL;
+          else
+            state_reg <= ST_TRIG_SCALE_PREP;
           end if;
+
+        when ST_TRIG_MOD_SCALE_POST =>
+          mul_a_reg <= tmp_reg;
+          mul_b_reg <= FP80_ONE_FOURTH;
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TRIG_MOD_INV4_POST;
+          state_reg <= ST_FP_MUL;
+
+        when ST_TRIG_MOD_INV4_POST =>
+          q_fp_reg <= fintrz_fp80(tmp_reg);
+          state_reg <= ST_TRIG_MOD_QPI_PREP;
+
+        when ST_TRIG_MOD_QPI_PREP =>
+          mul_a_reg <= q_fp_reg;
+          mul_b_reg <= FP80_TWO_PI;
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TRIG_MOD_QPI_POST;
+          state_reg <= ST_FP_MUL;
+
+        when ST_TRIG_MOD_QPI_POST =>
+          state_reg <= ST_TRIG_MOD_SUB_PREP;
+
+        when ST_TRIG_MOD_SUB_PREP =>
+          add_a_reg <= x_reg;
+          add_b_reg <= tmp_reg;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TRIG_MOD_SUB_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_TRIG_MOD_SUB_POST =>
+          x_reg <= tmp_reg;
           state_reg <= ST_TRIG_SCALE_PREP;
 
         when ST_TRIG_SCALE_PREP =>
@@ -1534,6 +1589,13 @@ begin
           log_exp_term_reg <= tmp_reg;
           log_exp_term_valid_reg <= '1';
           state_reg <= ST_TRANS_PREP;
+
+        when ST_ATAN_INV_POST =>
+          seed_domain_reg <= SEED_DOMAIN_ATAN;
+          seed_idx_reg <= 0;
+          seed_return_state_reg <= ST_TRANS_PREP;
+          x_reg <= tmp_reg;
+          state_reg <= ST_SEED_READ;
 
         when ST_TRANS_PREP =>
           if log_exp_add_en_reg = '1' and log_exp_term_valid_reg = '0' then

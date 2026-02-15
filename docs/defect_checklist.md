@@ -4,7 +4,28 @@ Track known functional defects that are intentionally not enforced as hard regre
 Keep this list short, actionable, and updated whenever a defect is fixed or newly discovered.
 
 ## Open Defects
-- None currently tracked.
+
+### DEF-DIVREM-001: DIV/SQRT Underflow Flushes Tiny Results To Zero
+- Status: Open
+- File: `src/mc68881_divrem_unit.vhd`
+- Evidence:
+  - Underflow paths in post-round stages force zero when `exp_res_i <= 0`:
+    - `ST_SQRT_POST` (`src/mc68881_divrem_unit.vhd:604` vicinity)
+    - `ST_POST_DIV` (`src/mc68881_divrem_unit.vhd:670` vicinity)
+- Impact:
+  - Tiny finite results are flushed instead of emitting gradual-underflow subnormals.
+- Planned fix:
+  - Implement subnormal packing/rounding path for `exp_res_i <= 0` rather than hard zero.
+
+### DEF-DIVREM-002: DIV NaN Policy Marks All NaN Inputs Invalid
+- Status: Open
+- File: `src/mc68881_divrem_unit.vhd`
+- Evidence:
+  - DIV classify sets `flag_invalid_reg <= '1'` for any NaN input.
+- Impact:
+  - Quiet-NaN propagation behavior may be over-signaled versus 68881/QEMU-compatible policy.
+- Planned fix:
+  - Distinguish signaling-NaN vs quiet-NaN handling and raise invalid only where required by policy.
 
 ## Closed Defects
 

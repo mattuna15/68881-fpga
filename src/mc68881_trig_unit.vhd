@@ -882,6 +882,16 @@ begin
                   coeff3_reg <= FP80_NEG_ONE_THIRD;
                   coeff4_reg <= FP80_ZERO;
                   coeff5_reg <= FP80_ONE_FIFTH;
+                  if compare_fp80(abs_a, FP80_ONE) > 0 then
+                    x_local := div_fp80(FP80_ONE, x_local, FP_RND_NEAREST, FP_PREC_EXTENDED);
+                    trans_post_add_en_reg <= '1';
+                    trans_post_add_sub_reg <= '1';
+                    if fp80_sign(a_reg) = '1' then
+                      trans_post_add_const_reg <= FP80_NEG_HALF_PI;
+                    else
+                      trans_post_add_const_reg <= FP80_HALF_PI;
+                    end if;
+                  end if;
                   seed_domain_reg <= SEED_DOMAIN_ATAN;
                   seed_idx_reg <= 0;
                   seed_return_state_reg <= ST_TRANS_PREP;
@@ -895,6 +905,12 @@ begin
                   state_reg <= ST_DONE;
                 elsif fp80_is_zero(a_reg) then
                   result_reg <= FP80_ZERO;
+                  state_reg <= ST_DONE;
+                elsif a_reg = FP80_ONE then
+                  result_reg <= FP80_HALF_PI;
+                  state_reg <= ST_DONE;
+                elsif a_reg = FP80_NEG_ONE then
+                  result_reg <= FP80_NEG_HALF_PI;
                   state_reg <= ST_DONE;
                 else
                   coeff0_reg <= FP80_ZERO;
@@ -916,6 +932,12 @@ begin
                   state_reg <= ST_DONE;
                 elsif fp80_is_zero(a_reg) then
                   result_reg <= FP80_HALF_PI;
+                  state_reg <= ST_DONE;
+                elsif a_reg = FP80_ONE then
+                  result_reg <= FP80_ZERO;
+                  state_reg <= ST_DONE;
+                elsif a_reg = FP80_NEG_ONE then
+                  result_reg <= FP80_PI;
                   state_reg <= ST_DONE;
                 else
                   coeff0_reg <= FP80_ZERO;
@@ -1340,7 +1362,15 @@ begin
           state_reg <= ST_FP_DIV;
 
         when ST_TRIG_TAN_DIV_POST =>
-          result_reg <= tmp_reg;
+          if op_reg = FPU_OP_TANH and compare_fp80(abs_fp80(tmp_reg), FP80_ONE) > 0 then
+            if tmp_reg(FP_WIDTH-1) = '1' then
+              result_reg <= FP80_NEG_ONE;
+            else
+              result_reg <= FP80_ONE;
+            end if;
+          else
+            result_reg <= tmp_reg;
+          end if;
           state_reg <= ST_DONE;
 
         when ST_TRIG_TINY_ROUND_POST =>

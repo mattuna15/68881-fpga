@@ -90,9 +90,11 @@ def main() -> None:
         "GV_ARG_1P1": c["P1_1"],
         "GV_ARG_1P25": c["P1_25"],
         "GV_ARG_1P7": c["P1_7"],
+        "GV_ARG_2": mp.mpf("2.0"),
         "GV_ARG_2P4": c["P2_4"],
         "GV_ARG_3P7": c["P3_7"],
         "GV_ARG_12P5": c["P12_5"],
+        "GV_ARG_M2": mp.mpf("-2.0"),
         "GV_ADD_3P7_2P4": c["P3_7"] + c["P2_4"],
         "GV_SUB_M2P3_0P6": c["M2_3"] - c["P0_6"],
         "GV_MUL_3P7_2P4": c["P3_7"] * c["P2_4"],
@@ -109,6 +111,8 @@ def main() -> None:
         "GV_LOGN_1P25": mp.log(c["P1_25"]),
         "GV_TWOTOX_0P75": mp.power(2, c["P0_75"]),
         "GV_TENTOX_0P5": mp.power(10, c["P0_5"]),
+        "GV_ATAN_2": mp.atan(mp.mpf("2.0")),
+        "GV_ATAN_M2": mp.atan(mp.mpf("-2.0")),
         "GV_TANH_0P75": mp.tanh(c["P0_75"]),
     }
 

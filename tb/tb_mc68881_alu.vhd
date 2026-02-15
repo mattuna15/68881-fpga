@@ -207,6 +207,7 @@ architecture sim of tb_mc68881_alu is
   constant FP80_ARG_3P7  : fp80_t := x"4000ECCCCCCCCCCCD000";
   constant FP80_ARG_M6P2 : fp80_t := x"C001C666666666666800";
   constant FP80_ARG_12P5 : fp80_t := x"4002C800000000000000";
+  constant FP80_ARG_M12P5 : fp80_t := x"C002C800000000000000";
   constant FP80_ARG_25P3 : fp80_t := x"4003CA66666666666800";
   constant FP80_ARG_0P9  : fp80_t := x"3FFEE666666666666800";
   constant FP80_ARG_M1P1 : fp80_t := x"BFFF8CCCCCCCCCCCD000";
@@ -705,6 +706,8 @@ begin
     run_monadic_close(FPU_OP_LOGN, GV_ARG_1P25, GV_LOGN_1P25, FP80_TOL_1E3, "GV LOGN");
     run_monadic_close(FPU_OP_TWOTOX, GV_ARG_0P75, GV_TWOTOX_0P75, FP80_TOL_1E3, "GV TWOTOX");
     run_monadic_close(FPU_OP_TENTOX, GV_ARG_0P5, GV_TENTOX_0P5, FP80_TOL_1E2, "GV TENTOX");
+    run_monadic_close(FPU_OP_ATAN, GV_ARG_2, GV_ATAN_2, FP80_TOL_2E2, "GV ATAN 2");
+    run_monadic_close(FPU_OP_ATAN, GV_ARG_M2, GV_ATAN_M2, FP80_TOL_2E2, "GV ATAN -2");
     run_monadic_close(FPU_OP_TANH, GV_ARG_0P75, GV_TANH_0P75, FP80_TOL_2E2, "GV TANH");
 
     -- SQRT
@@ -1337,6 +1340,46 @@ begin
     wait for 0 ns;
     check_result(FP80_HALF_PI, "FACOS 0");
 
+    op_sel <= FPU_OP_ASIN;
+    a_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(FP80_HALF_PI, "FASIN +1");
+
+    op_sel <= FPU_OP_ASIN;
+    a_in   <= x"BFFF8000000000000000";
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(x"BFFFC90FDAA22168C235", "FASIN -1");
+
+    op_sel <= FPU_OP_ACOS;
+    a_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(FP80_ZERO, "FACOS +1");
+
+    op_sel <= FPU_OP_ACOS;
+    a_in   <= x"BFFF8000000000000000";
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(FP80_PI, "FACOS -1");
+
     op_sel <= FPU_OP_ATANH;
     a_in   <= FP80_ZERO;
     start <= '1';
@@ -1620,6 +1663,26 @@ begin
     wait until valid = '1';
     wait for 0 ns;
     check_result_close(FP80_EXP_TANH_0P75, FP80_TOL_2E2, "FTANH 0.75");
+
+    op_sel <= FPU_OP_TANH;
+    a_in   <= FP80_ARG_12P5;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(FP80_ONE, "FTANH 12.5 clamp");
+
+    op_sel <= FPU_OP_TANH;
+    a_in   <= FP80_ARG_M12P5;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(x"BFFF8000000000000000", "FTANH -12.5 clamp");
 
     op_sel <= FPU_OP_TWOTOX;
     a_in   <= FP80_ARG_0P75;

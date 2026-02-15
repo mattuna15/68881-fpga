@@ -18,3 +18,4 @@ __synthesis_is_complete__
 *.log
 .tmp_report_hier.tcl
 .tmp_synth_util.tcl
+.tmp_run_synth_util.tcl

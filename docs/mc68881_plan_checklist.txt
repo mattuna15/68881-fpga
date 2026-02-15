@@ -95,15 +95,56 @@ C) Exception Handling & Edge Cases
 [~] C2. Improve NaN propagation details.
     - Ensure quiet/signaling NaN behavior is correct for each op.
     - In progress: broad NaN-class propagation checks exist for monadic/trig/trans ops.
+    - REVIEW FINDING (critical): No SNaN vs QNaN discrimination anywhere in codebase.
+      No fp80_is_snan/fp80_is_qnan function exists. invalid_on_nan_inputs fires
+      for ALL NaN inputs; per datasheet only SNaN should set SNAN exception, QNaN
+      should propagate silently with no exception.
+    - REVIEW FINDING (critical): NaN payloads destroyed. All units return canonical_qnan()
+      with a fixed pattern instead of propagating the input NaN payload. Datasheet
+      Section 4.5.4 requires input NaN payload preservation (with SNaN quieted by
+      setting fraction MSB). Two-NaN priority (SNaN > QNaN, destination > source)
+      is also missing.
+    - REVIEW FINDING (medium): FPCP-generated NaN pattern incorrect. canonical_qnan
+      returns 0xC000000000000000 (bits 63-62 only). Datasheet says FPCP-created
+      NaNs should have all mantissa bits set (0xFFFFFFFFFFFFFFFF).
 
 [~] C3. Expand exception detection tests.
     - Invalid, divzero, overflow, underflow, inexact for new ops.
     - In progress: invalid/divzero coverage is exercised; overflow/underflow/inexact matrix is still incomplete.
+    - REVIEW FINDING (medium): Exception granularity is 5 bits instead of 8.
+      Code has INVALID, OVERFLOW, UNDERFLOW, DIVZERO, INEXACT. Datasheet defines
+      BSUN, SNAN, OPERR, OVFL, UNFL, DZ, INEX2, INEX1. Missing: BSUN (for B6
+      conditional instructions), SNAN vs OPERR distinction (different trap vectors
+      54 vs 52), INEX1 vs INEX2 (packed decimal input inexact).
+    - REVIEW FINDING (medium): Transcendental divide-by-zero not detected. FLOG(0),
+      FLOG2(0), FLOG10(0) should set DZ. FATANH(+/-1) should also set DZ. These
+      use EXC_POLICY_ARITH which has divzero disabled.
+    - REVIEW FINDING (low): FTAN uses EXC_POLICY_DIV instead of EXC_POLICY_ARITH.
+      FTAN's only OPERR condition is source=infinity; it has no divide-by-zero
+      semantics at the instruction level.
 
 [~] C4. Complete FPCR/FPSR architectural fields.
     - FPCR exception-enable byte semantics.
     - FPSR condition code, quotient, exception status, accrued exception bytes.
     - In progress: per-op policy flow (A8) and key FPSR behavior are in place; full architectural closure remains.
+    - REVIEW FINDING (critical): FPSR EXC/AEXC byte positions are SWAPPED.
+      Code has FPSR_EXC at bits 0-7, FPSR_AEXC at bits 8-15. Datasheet says
+      EXC status byte = bits 15-8, Accrued byte = bits 7-0. Software reading
+      FPSR will see exception data in wrong byte positions.
+    - REVIEW FINDING (high): EXC status byte not cleared per operation. Code ORs
+      new flags into existing EXC byte (line 793-797). Datasheet Section 2.3.3
+      says EXC byte is cleared at the start of each arithmetic operation, then
+      new exception bits are set. Current code accumulates across instructions.
+    - REVIEW FINDING (medium): AEXC combination logic incorrect. Datasheet requires:
+      AEXC(UNFL) = UNFL AND INEX2 (not just UNFL alone);
+      AEXC(INEX) includes OVFL (overflow always implies inexact).
+      Code does a straight OR of raw exc_flags into AEXC byte.
+    - REVIEW FINDING (medium): FPCR exception enable byte (bits 15-8) stored but
+      never consulted. No exception trapping is implemented.
+    - REVIEW FINDING (critical): fpsr_cc_from_result uses mutually exclusive
+      if/elsif so N bit is NEVER set alongside I, Z, or NAN. Per Table 2-1:
+      -Infinity requires N=1,I=1; -Zero requires N=1,Z=1; -NaN requires N=1,NAN=1.
+      The N bit must always reflect the sign independently of data-type bits.
 
 [~] C5. Track FPIAR behavior across exceptions and restart points.
     - Verify faulting instruction address capture and restore interactions.
@@ -143,9 +184,62 @@ E) Bus Interface & Timing (Confirmations)
 [x] E3. Access size handling for 8/16/32-bit.
 [x] E4. Microsequencer for cycle-accurate timing.
 
+F) Datasheet Conformance (MC68881UM Review Findings)
+-----------------------------------------------------
+[ ] F1. Fix NaN-to-extended conversion destroying NaN (becomes infinity).
+    - fp80_from_single (mc68881_top.vhd:297-302) and fp80_from_double (337-342)
+      set exponent to all-ones and integer bit to 1 but do NOT copy fraction bits.
+      Result is infinity (fraction=0) instead of NaN. Must copy source fraction
+      bits into extended mantissa, left-justified.
+    - Severity: critical. Any single/double NaN fed through FMOVE mem-to-register
+      becomes infinity, fundamentally changing propagation semantics.
+
+[ ] F2. Fix format conversion rounding (fp80_to_single / fp80_to_double).
+    - fp80_to_single (line 376) and fp80_to_double (line 405) truncate mantissa
+      bits with no rounding. Datasheet Section 3.5.2 requires rounding using
+      current FPCR rounding mode (guard/round/sticky bit evaluation).
+    - Severity: high. Affects all FMOVE.S and FMOVE.D to memory.
+
+[ ] F3. Add exception handling to FMOVE operations.
+    - FPU_OP_MOVE uses EXC_POLICY_NONE (mc68881_pkg.vhd:823), disabling all
+      exception classification. Datasheet states FMOVE is an arithmetic operation
+      that must signal OVFL, UNFL, INEX, SNAN during format conversion.
+    - Severity: high. Even if conversion functions are fixed, no exceptions
+      would be recorded.
+
+[ ] F4. Fix format conversion overflow/underflow behavior.
+    - fp80_to_single/double overflow: always saturates to infinity. Per datasheet
+      Section 6.1.4, in RZ/RM/RP modes the result should be the largest
+      representable normalized number, not infinity.
+    - fp80_to_single/double underflow: flushes to zero. Per IEEE 754 and datasheet,
+      gradual underflow (denormalized result) is required.
+    - Severity: high.
+
+[ ] F5. Fix FGETEXP(infinity) and FGETMAN(infinity).
+    - fgetexp_fp80 returns +infinity for infinity input; should return NaN with
+      OPERR set (mc68881_pkg.vhd:1992-1997).
+    - fgetman_fp80 returns infinity unchanged; should return NaN with OPERR set
+      (mc68881_pkg.vhd:2018-2019).
+    - Severity: medium.
+
+[ ] F6. Fix FSCALE NaN source operand handling.
+    - When source (scale factor) is NaN and destination is normal, fp80_to_int_trunc
+      returns 0 for NaN, so result is destination unchanged. Per Section 4.5.4,
+      the source NaN should be returned as the result.
+    - Affects mc68881_sgl_ops_unit.vhd (lines 276-297) and fscale_fp80 in
+      mc68881_pkg.vhd.
+    - Severity: medium.
+
+[ ] F7. Fix FMOD/FREM signed zero preservation.
+    - FMOD(-0, x) returns +0 (FP80_ZERO constant at divrem_unit line 513).
+      Per datasheet, result should be -0. Use a_reg instead to preserve sign.
+    - Severity: low.
+
 Notes:
 - Priorities from the review: FSQRT, FMOVE/FMOVEM, FCMP/FTST first; refactor top state machine next.
 - Checklist expanded using docs/68881-programming.txt (instruction groups + format/control details).
+- Section 7 (coprocessor interface) closure plan is tracked in
+  docs/section7_coprocessor_interface_checklist.md.
 - Maintain VHDL-2008 compatibility and avoid vendor-specific primitives.
 - Use scripts/run_tests.ps1 for local verification (set GHDL_EXE if needed).
 - For LUT/area regression checks, use non-incremental synthesis only.

@@ -400,9 +400,14 @@ architecture rtl of mc68881_trig_unit is
   signal seed_aux0_reg : fp80_t := (others => '0');
   signal seed_aux1_reg : fp80_t := (others => '0');
   signal trig_seed_addr_reg : integer range 0 to 63 := 0;
+  signal aux_seed_addr_reg : integer range 0 to 63 := 0;
   signal trig_seed_center_q : fp80_t := (others => '0');
   signal trig_seed_sin_q : fp80_t := (others => '0');
   signal trig_seed_cos_q : fp80_t := (others => '0');
+  signal exp_seed_pre_mul_q : fp80_t := (others => '0');
+  signal log_seed_input_adj_q : fp80_t := (others => '0');
+  signal log_seed_post_scale_q : fp80_t := (others => '0');
+  signal atan_seed_offset_q : fp80_t := (others => '0');
 
   signal trig_seed_center_rom : fp80_table64_t := TRIG_SEED_CENTER_INIT;
   signal trig_seed_sin_rom : fp80_table64_t := TRIG_SEED_SIN_INIT;
@@ -528,6 +533,10 @@ begin
       trig_seed_center_q <= trig_seed_center_rom(trig_seed_addr_reg);
       trig_seed_sin_q <= trig_seed_sin_rom(trig_seed_addr_reg);
       trig_seed_cos_q <= trig_seed_cos_rom(trig_seed_addr_reg);
+      exp_seed_pre_mul_q <= exp_seed_pre_mul_rom(aux_seed_addr_reg);
+      log_seed_input_adj_q <= log_seed_input_adj_rom(aux_seed_addr_reg);
+      log_seed_post_scale_q <= log_seed_post_scale_rom(aux_seed_addr_reg);
+      atan_seed_offset_q <= atan_seed_offset_rom(aux_seed_addr_reg);
     end if;
   end process;
 
@@ -1281,11 +1290,6 @@ begin
           state_reg <= ST_SEED_READ;
 
         when ST_SEED_READ =>
-          seed_center_reg <= FP80_ZERO;
-          seed_sin_reg <= FP80_ZERO;
-          seed_cos_reg <= FP80_ZERO;
-          seed_aux0_reg <= FP80_ZERO;
-          seed_aux1_reg <= FP80_ZERO;
           case seed_domain_reg is
             when SEED_DOMAIN_TRIG =>
               if table_impl = TABLE_IMPL_BRAM then
@@ -1299,36 +1303,48 @@ begin
               end if;
             when SEED_DOMAIN_EXP =>
               if table_impl = TABLE_IMPL_BRAM then
-                seed_aux0_reg <= exp_seed_pre_mul_rom(seed_idx_reg);
+                aux_seed_addr_reg <= seed_idx_reg;
+                state_reg <= ST_SEED_READ_WAIT;
               else
                 seed_aux0_reg <= EXP_SEED_PRE_MUL_INIT(seed_idx_reg);
+                state_reg <= seed_return_state_reg;
               end if;
-              state_reg <= seed_return_state_reg;
             when SEED_DOMAIN_LOG =>
               if table_impl = TABLE_IMPL_BRAM then
-                seed_aux0_reg <= log_seed_input_adj_rom(seed_idx_reg);
-                seed_aux1_reg <= log_seed_post_scale_rom(seed_idx_reg);
+                aux_seed_addr_reg <= seed_idx_reg;
+                state_reg <= ST_SEED_READ_WAIT;
               else
                 seed_aux0_reg <= LOG_SEED_INPUT_ADJ_INIT(seed_idx_reg);
                 seed_aux1_reg <= LOG_SEED_POST_SCALE_INIT(seed_idx_reg);
+                state_reg <= seed_return_state_reg;
               end if;
-              state_reg <= seed_return_state_reg;
             when others =>
               if table_impl = TABLE_IMPL_BRAM then
-                seed_aux0_reg <= atan_seed_offset_rom(seed_idx_reg);
+                aux_seed_addr_reg <= seed_idx_reg;
+                state_reg <= ST_SEED_READ_WAIT;
               else
                 seed_aux0_reg <= ATAN_SEED_OFFSET_INIT(seed_idx_reg);
+                state_reg <= seed_return_state_reg;
               end if;
-              state_reg <= seed_return_state_reg;
           end case;
 
         when ST_SEED_READ_WAIT =>
           state_reg <= ST_SEED_READ_LATCH;
 
         when ST_SEED_READ_LATCH =>
-          seed_center_reg <= trig_seed_center_q;
-          seed_sin_reg <= trig_seed_sin_q;
-          seed_cos_reg <= trig_seed_cos_q;
+          case seed_domain_reg is
+            when SEED_DOMAIN_TRIG =>
+              seed_center_reg <= trig_seed_center_q;
+              seed_sin_reg <= trig_seed_sin_q;
+              seed_cos_reg <= trig_seed_cos_q;
+            when SEED_DOMAIN_EXP =>
+              seed_aux0_reg <= exp_seed_pre_mul_q;
+            when SEED_DOMAIN_LOG =>
+              seed_aux0_reg <= log_seed_input_adj_q;
+              seed_aux1_reg <= log_seed_post_scale_q;
+            when others =>
+              seed_aux0_reg <= atan_seed_offset_q;
+          end case;
           state_reg <= seed_return_state_reg;
 
         when ST_TRIG_SEED_DELTA_PREP =>

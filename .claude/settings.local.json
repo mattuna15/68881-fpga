@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(wc:*)",
+      "Bash(where:*)",
+      "Bash(pdftotext:*)",
+      "Bash(python:*)",
+      "Bash(python3:*)"
+    ]
+  }
+}

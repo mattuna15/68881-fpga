@@ -27,7 +27,25 @@ end entity mc68881_alu;
 architecture rtl of mc68881_alu is
   function is_trig_op(op : fpu_op_t) return boolean is
   begin
-    return op = FPU_OP_SIN or op = FPU_OP_COS or op = FPU_OP_TAN or op = FPU_OP_SINCOS;
+    return op = FPU_OP_SIN or
+           op = FPU_OP_COS or
+           op = FPU_OP_TAN or
+           op = FPU_OP_SINCOS or
+           op = FPU_OP_ACOS or
+           op = FPU_OP_ASIN or
+           op = FPU_OP_ATAN or
+           op = FPU_OP_ATANH or
+           op = FPU_OP_COSH or
+           op = FPU_OP_ETOX or
+           op = FPU_OP_ETOXM1 or
+           op = FPU_OP_LOGN or
+           op = FPU_OP_LOGNP1 or
+           op = FPU_OP_LOG10 or
+           op = FPU_OP_LOG2 or
+           op = FPU_OP_SINH or
+           op = FPU_OP_TANH or
+           op = FPU_OP_TENTOX or
+           op = FPU_OP_TWOTOX;
   end function;
 
   function is_divrem_op(op : fpu_op_t) return boolean is
@@ -149,6 +167,9 @@ architecture rtl of mc68881_alu is
 
 begin
   trig_inst : entity work.mc68881_trig_unit
+    generic map (
+      table_impl => TABLE_IMPL_BRAM
+    )
     port map (
       clk        => clk,
       reset_n    => reset_n,
@@ -246,14 +267,14 @@ begin
       trig_start_reg <= '0';
       divrem_start_reg <= '0';
       sglops_start_reg <= '0';
-      if divrem_complete_reg = '1' then
+      if busy_reg = '1' and op_pending_is_divrem = '1' and divrem_complete_reg = '1' then
         valid <= '1';
         quotient_valid_reg <= divrem_quotient_valid_latched_reg;
         busy_reg <= '0';
         op_pending_reg <= FPU_OP_NOP;
         divrem_complete_reg <= '0';
       end if;
-      if sglops_complete_reg = '1' then
+      if busy_reg = '1' and op_pending_is_sglops = '1' and sglops_complete_reg = '1' then
         valid <= '1';
         busy_reg <= '0';
         op_pending_reg <= FPU_OP_NOP;

@@ -14,6 +14,8 @@ package mc68881_pkg is
   constant FP80_RESULT_EX_WIDTH : natural := FP_WIDTH - FP80_RESULT_LO_WIDTH - FP80_RESULT_HI_WIDTH;
   constant OPSEL_NAMESPACE_WIDTH : natural := 8;
   constant OPSEL_OPCODE_ID_WIDTH : natural := 8;
+  constant TABLE_IMPL_BRAM : natural := 0;
+  constant TABLE_IMPL_LUTROM : natural := 1;
 
   subtype fp80_t is std_logic_vector(FP_WIDTH-1 downto 0);
   subtype op_namespace_t is std_logic_vector(OPSEL_NAMESPACE_WIDTH-1 downto 0);
@@ -44,6 +46,21 @@ package mc68881_pkg is
     FPU_OP_COS,
     FPU_OP_TAN,
     FPU_OP_SINCOS,
+    FPU_OP_ACOS,
+    FPU_OP_ASIN,
+    FPU_OP_ATAN,
+    FPU_OP_ATANH,
+    FPU_OP_COSH,
+    FPU_OP_ETOX,
+    FPU_OP_ETOXM1,
+    FPU_OP_LOGN,
+    FPU_OP_LOGNP1,
+    FPU_OP_LOG10,
+    FPU_OP_LOG2,
+    FPU_OP_SINH,
+    FPU_OP_TANH,
+    FPU_OP_TENTOX,
+    FPU_OP_TWOTOX,
     FPU_OP_ABS,
     FPU_OP_NEG,
     FPU_OP_INT,
@@ -516,7 +533,7 @@ package body mc68881_pkg is
     FPU_OP_SIN => (
       legacy_decode_id_valid => true, legacy_decode_id => 13,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0D",
-      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
@@ -527,7 +544,7 @@ package body mc68881_pkg is
     FPU_OP_COS => (
       legacy_decode_id_valid => true, legacy_decode_id => 14,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0E",
-      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
@@ -538,7 +555,7 @@ package body mc68881_pkg is
     FPU_OP_TAN => (
       legacy_decode_id_valid => true, legacy_decode_id => 15,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0F",
-      op_class => OP_CLASS_ARITH, alu_latency => 13, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_DIV,
       arith_cycles => (
         FPU_SRC_FPM => 156, FPU_SRC_MEM_INTEGER => 185, FPU_SRC_MEM_SINGLE => 177,
@@ -549,11 +566,176 @@ package body mc68881_pkg is
     FPU_OP_SINCOS => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"10",
-      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 124, FPU_SRC_MEM_INTEGER => 153, FPU_SRC_MEM_SINGLE => 145,
         FPU_SRC_MEM_DOUBLE => 151, FPU_SRC_MEM_EXTENDED => 149, FPU_SRC_MEM_PACKED => 964
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ACOS => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"40",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ASIN => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"41",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ATAN => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"42",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ATANH => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"43",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_COSH => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"44",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ETOX => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"45",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ETOXM1 => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"46",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_LOGN => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"47",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_LOGNP1 => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"48",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_LOG10 => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"49",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_LOG2 => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"4A",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_SINH => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"4B",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_TANH => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"4C",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_TENTOX => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"4D",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_TWOTOX => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"4E",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
@@ -1370,6 +1552,8 @@ package body mc68881_pkg is
     variable exp_res_i : integer := 0;
     variable exp_res   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
     variable low_or : std_logic := '0';
+    variable mant_hi : integer := 0;
+    variable low_hi  : integer := 0;
   begin
     res_u.sign := a_u.sign xor b_u.sign;
     res_u.exp  := (others => '0');
@@ -1391,12 +1575,17 @@ package body mc68881_pkg is
 
     if mant_prod(mant_prod'left) = '1' then
       exp_res_i := exp_res_i + 1;
+      mant_hi := mant_prod'left;
+    end if;
+    if mant_hi = 0 then
+      mant_hi := mant_prod'left-1;
     end if;
 
-    mant_ext := mant_prod(mant_prod'left-1 downto mant_prod'left-1-(FP_MANT_EXT_WIDTH-1));
-    if (mant_prod'left-1-(FP_MANT_EXT_WIDTH) >= 0) then
-      for idx in 0 to mant_prod'left-1-FP_MANT_EXT_WIDTH loop
-        if mant_prod(idx) = '1' then
+    mant_ext := mant_prod(mant_hi downto mant_hi-(FP_MANT_EXT_WIDTH-1));
+    low_hi := mant_hi - FP_MANT_EXT_WIDTH;
+    if low_hi >= 0 then
+      for idx in mant_prod'reverse_range loop
+        if idx <= low_hi and mant_prod(idx) = '1' then
           low_or := '1';
         end if;
       end loop;

@@ -6,6 +6,9 @@
 
 ## Development notes
 - Keep updates aligned with `docs/mc68881_plan_checklist.txt`.
+- Keep known defects tracked in `docs/defect_checklist.md`.
+  If a vector/behavior is excluded from passing regressions to keep CI green,
+  record it there with exact operand/value reproduction and fix-exit criteria.
 - A5 is implemented: route execution through explicit opcode classes
   (`ARITH`, `MOVE`, `PROG_CTRL`, `SYS_CTRL`) instead of adding ad-hoc
   top-level opcode special-cases.
@@ -24,6 +27,8 @@
   parameter and never write to an `in` parameter (use local variables or `buffer`/`inout`
   only when semantically required).
 - Use `scripts/run_tests.ps1` for local verification; set `GHDL_EXE` if GHDL is not on PATH.
+- Vivado tools are installed under `C:\amddesigntools`; use that location for synthesis
+  (`vivado.bat`) and add its Vivado `bin` directory to PATH when running batch flows.
 - For LUT/area checks, do not use incremental synthesis results.
   Disable run-level incremental reuse on `synth_1` (`AUTO_INCREMENTAL_CHECKPOINT=0`,
   `INCREMENTAL_CHECKPOINT=""`) before collecting utilization numbers.
@@ -46,3 +51,6 @@
 - Testbenches that validate FP80 values must deconstruct the value into sign/exponent/mantissa
   (or full 80-bit recomposition from bus words) and compare against the expected FP80 encoding
   before asserting; do not compare raw integer literals against FP80 results.
+- For trig/trans validation runs, review `docs/defect_checklist.md` first and ensure
+  listed open defects are either explicitly exercised (expected fail workflow) or
+  deliberately documented as excluded from pass criteria.

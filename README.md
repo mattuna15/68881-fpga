@@ -43,10 +43,17 @@ covering:
 - Master checklist: `docs/mc68881_plan_checklist.txt`
 - Programming reference: `docs/68881-programming.txt`
 - FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`
+- Defect checklist: `docs/defect_checklist.md`
 - Technical summary: `docs/68881-tech-summary.pdf`
 - Motorola references:
   - `docs/MC68881.PDF`
   - `docs/AN-0947_MC68881_Floating-Point_Coprocessor_as_a_Peripheral_in_a_M68000_System_[Motorola_1987_37p].pdf`
+
+## Known defects
+- Open defect tracking is maintained in `docs/defect_checklist.md`.
+- Current status:
+  - No open defects are currently tracked.
+  - `DEF-TRIG-001` is closed; see `docs/defect_checklist.md` for closure notes.
 
 ## Running simulations
 Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). The repo includes a test
@@ -59,6 +66,12 @@ scripts/run_tests.ps1
 
 The script uses `GHDL_EXE` if set, otherwise it defaults to
 `C:\code\ghdl-mcode-5.1.1-mingw64\bin\ghdl.exe` and finally `ghdl` on PATH.
+
+Known-defect status checks (non-gating, currently includes `DEF-TRIG-001`) can be run with:
+
+```powershell
+scripts/run_known_defects.ps1
+```
 
 The pre-push hook in `.githooks/pre-push` runs the same tests. To enable hooks locally:
 

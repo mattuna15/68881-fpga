@@ -938,6 +938,71 @@ begin
       report "FTST NaN exception should capture FPIAR"
       severity failure;
 
+    -- B5: FTWOTOX functional smoke test (finite and positive for x=1).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := fp80_from_int(1);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"0100004E"); -- FTWOTOX
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
+    split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
+    assert rd_sign = '0' and not (rd_exp = (rd_exp'range => '1') and rd_mant /= 0)
+      report "FTWOTOX 1 should return finite positive result"
+      severity failure;
+
+    -- B5 exception policy: FLOGN(0) should raise invalid, set CC NAN, and capture FPIAR.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    fpiar_seed := x"0BADF00D";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
+    op_a := FP80_ZERO;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000047"); -- FLOGN
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
+    split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
+    assert rd_exp = (rd_exp'range => '1') and rd_mant /= 0
+      report "FLOGN(0) should return NaN"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_INVALID) = '1'
+      report "FLOGN(0) should raise invalid"
+      severity failure;
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
+      report "FLOGN(0) should accrue invalid"
+      severity failure;
+    assert rd_lo(FPSR_CC_NAN) = '1'
+      report "FLOGN(0) should set CC NAN"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
+    assert rd_hi = fpiar_seed
+      report "FLOGN(0) exception should capture FPIAR"
+      severity failure;
+
+    -- B5 exception policy: FASIN(|x|>1) invalid + NaN class.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := fp80_from_int(2);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000041"); -- FASIN
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
+    split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
+    assert rd_exp = (rd_exp'range => '1') and rd_mant /= 0
+      report "FASIN(|x|>1) should return NaN"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_INVALID) = '1'
+      report "FASIN(|x|>1) should raise invalid"
+      severity failure;
+    assert rd_lo(FPSR_CC_NAN) = '1'
+      report "FASIN(|x|>1) should set CC NAN"
+      severity failure;
+
     -- DSACK behavior coverage
     size_n <= "11";
     a_in   <= "10000";

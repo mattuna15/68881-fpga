@@ -514,6 +514,15 @@ architecture rtl of mc68881_top is
     return cc_bits;
   end function;
 
+  function fp80_exp_is_zero_nonzero_mant(value : fp80_t) return boolean is
+    variable exp_bits : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable mant_bits : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+  begin
+    exp_bits := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+    mant_bits := unsigned(value(FP_MANT_WIDTH-1 downto 0));
+    return exp_bits = 0 and mant_bits /= 0;
+  end function;
+
   function fpsr_cc_from_compare(a : fp80_t; b : fp80_t) return std_logic_vector is
     variable cc_bits : std_logic_vector(3 downto 0) := (others => '0');
     variable cmp : integer := 0;
@@ -624,6 +633,7 @@ begin
     variable res_zero : boolean;
     variable res_inf  : boolean;
     variable res_nan  : boolean;
+    variable res_subnormal : boolean;
   begin
     if reset_n = '0' then
       op_sel_reg <= FPU_OP_NOP;
@@ -735,6 +745,7 @@ begin
         res_zero := fp80_is_zero(result);
         res_inf := fp80_is_inf(result);
         res_nan := fp80_is_nan(result);
+        res_subnormal := fp80_exp_is_zero_nonzero_mant(result);
 
         if exc_policy.invalid_on_nan_inputs and (a_nan or b_nan) then
           exc_flags(FPSR_EXC_INVALID) := '1';
@@ -770,7 +781,7 @@ begin
             exc_flags(FPSR_EXC_OVERFLOW) := '1';
           end if;
 
-          if res_zero and not a_zero and not b_zero and not res_nan and not res_inf then
+          if (res_zero or res_subnormal) and not a_zero and not b_zero and not res_nan and not res_inf then
             exc_flags(FPSR_EXC_UNDERFLOW) := '1';
           end if;
 

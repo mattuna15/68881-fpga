@@ -152,6 +152,16 @@ begin
       report "FTST should execute through arithmetic class with expected modeled cycles."
       severity failure;
 
+    -- Arithmetic class dispatch (FETOX).
+    report "Issuing FETOX opcode through OPSEL." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000045");
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FETOX");
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
+    report "FETOX cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
+    assert to_integer(unsigned(cycle_total_word)) = 132
+      report "FETOX should execute through arithmetic class with expected modeled cycles."
+      severity failure;
+
     -- Program-control class dispatch (FNOP).
     report "Issuing FNOP opcode through OPSEL." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000020");

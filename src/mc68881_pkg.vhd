@@ -1941,59 +1941,163 @@ package body mc68881_pkg is
   end function;
 
   function fint_fp80(value : fp80_t; round_mode : fp_round_mode_t) return fp80_t is
-    variable trunc_v : fp80_t := (others => '0');
-    variable frac_v : fp80_t := (others => '0');
-    variable frac_abs_v : fp80_t := (others => '0');
-    variable half_v : fp80_t := x"3FFE8000000000000000";
-    variable one_v : fp80_t := x"3FFF8000000000000000";
-    variable cmp_half : integer := 0;
-    variable step_down : boolean := false;
-    variable result_v : fp80_t := (others => '0');
+    -- Bit-manipulation implementation: avoids expensive add_sub_fp80 calls.
+    -- Uses direct guard/sticky extraction and integer-boundary increment.
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+    variable result_u : fp_unpacked_t;
+    variable exp_i : integer := 0;
+    variable frac_bits : integer := 0;
+    variable guard_bit : std_logic := '0';
+    variable sticky_bits : std_logic := '0';
+    variable round_up : boolean := false;
+    variable mant_inc : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
+    variable inc_val : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
   begin
     if fp80_is_zero(value) or fp80_is_inf(value) or fp80_is_nan(value) then
       return value;
     end if;
 
-    trunc_v := fp80_trunc_toward_zero(value);
-    frac_v := add_sub_fp80(value, trunc_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-    if fp80_is_zero(frac_v) then
-      return trunc_v;
+    -- Compute true exponent
+    if value_u.exp = 0 then
+      exp_i := -(FP_EXP_BIAS - 1);
+    else
+      exp_i := to_integer(value_u.exp) - FP_EXP_BIAS;
     end if;
 
-    step_down := value(FP_WIDTH-1) = '1';
+    -- Already an integer (no fractional bits possible)
+    if exp_i >= integer(FP_MANT_WIDTH - 1) then
+      return value;
+    end if;
 
+    -- Magnitude < 1.0: entire value is fractional
+    if exp_i < 0 then
+      case round_mode is
+        when FP_RND_ZERO =>
+          result_u.sign := value_u.sign;
+          result_u.exp := (others => '0');
+          result_u.mant := (others => '0');
+          return pack_fp80(result_u);
+
+        when FP_RND_MINUS_INF =>
+          if value_u.sign = '1' then
+            -- Negative fraction rounds to -1
+            result_u.sign := '1';
+            result_u.exp := to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH);
+            result_u.mant := (others => '0');
+            result_u.mant(FP_MANT_WIDTH-1) := '1';
+            return pack_fp80(result_u);
+          else
+            result_u.sign := '0';
+            result_u.exp := (others => '0');
+            result_u.mant := (others => '0');
+            return pack_fp80(result_u);
+          end if;
+
+        when FP_RND_PLUS_INF =>
+          if value_u.sign = '0' then
+            -- Positive fraction rounds to +1
+            result_u.sign := '0';
+            result_u.exp := to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH);
+            result_u.mant := (others => '0');
+            result_u.mant(FP_MANT_WIDTH-1) := '1';
+            return pack_fp80(result_u);
+          else
+            result_u.sign := '1';
+            result_u.exp := (others => '0');
+            result_u.mant := (others => '0');
+            return pack_fp80(result_u);
+          end if;
+
+        when FP_RND_NEAREST =>
+          if exp_i = -1 then
+            -- Value in [0.5, 1.0): check if > 0.5 or exactly 0.5
+            if value_u.mant(FP_MANT_WIDTH-2 downto 0) /= 0 then
+              -- > 0.5: round to +/-1
+              result_u.sign := value_u.sign;
+              result_u.exp := to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH);
+              result_u.mant := (others => '0');
+              result_u.mant(FP_MANT_WIDTH-1) := '1';
+              return pack_fp80(result_u);
+            else
+              -- Exactly 0.5: tie -> round to even (0)
+              result_u.sign := value_u.sign;
+              result_u.exp := (others => '0');
+              result_u.mant := (others => '0');
+              return pack_fp80(result_u);
+            end if;
+          else
+            -- |value| < 0.5: round to signed zero
+            result_u.sign := value_u.sign;
+            result_u.exp := (others => '0');
+            result_u.mant := (others => '0');
+            return pack_fp80(result_u);
+          end if;
+      end case;
+    end if;
+
+    -- General case: 0 <= exp_i < MANT_WIDTH - 1
+    frac_bits := integer(FP_MANT_WIDTH - 1) - exp_i;
+
+    -- Extract guard bit (MSB of fraction) and sticky (OR of remaining)
+    guard_bit := value_u.mant(frac_bits - 1);
+    sticky_bits := '0';
+    for idx in 0 to FP_MANT_WIDTH-1 loop
+      if idx < frac_bits - 1 and value_u.mant(idx) = '1' then
+        sticky_bits := '1';
+      end if;
+    end loop;
+
+    -- No fractional part: already an integer
+    if guard_bit = '0' and sticky_bits = '0' then
+      return value;
+    end if;
+
+    -- Truncate: clear fractional bits
+    result_u := value_u;
+    for idx in 0 to FP_MANT_WIDTH-1 loop
+      if idx < frac_bits then
+        result_u.mant(idx) := '0';
+      end if;
+    end loop;
+
+    -- Determine rounding direction
     case round_mode is
       when FP_RND_ZERO =>
-        return trunc_v;
+        round_up := false;
       when FP_RND_MINUS_INF =>
-        if step_down then
-          return add_sub_fp80(trunc_v, one_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-        end if;
-        return trunc_v;
+        round_up := value_u.sign = '1';
       when FP_RND_PLUS_INF =>
-        if not step_down then
-          return add_sub_fp80(trunc_v, one_v, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
-        end if;
-        return trunc_v;
+        round_up := value_u.sign = '0';
       when FP_RND_NEAREST =>
-        frac_abs_v := abs_fp80(frac_v);
-        cmp_half := compare_fp80(frac_abs_v, half_v);
-        result_v := trunc_v;
-        if cmp_half > 0 then
-          if step_down then
-            result_v := add_sub_fp80(trunc_v, one_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-          else
-            result_v := add_sub_fp80(trunc_v, one_v, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
-          end if;
-        elsif cmp_half = 0 and fp80_is_odd_integer(trunc_v) then
-          if step_down then
-            result_v := add_sub_fp80(trunc_v, one_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-          else
-            result_v := add_sub_fp80(trunc_v, one_v, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
-          end if;
+        if guard_bit = '1' and sticky_bits = '1' then
+          round_up := true;
+        elsif guard_bit = '1' and sticky_bits = '0' then
+          -- Tie: round to even (check integer LSB at position frac_bits)
+          round_up := value_u.mant(frac_bits) = '1';
+        else
+          round_up := false;
         end if;
-        return result_v;
     end case;
+
+    if round_up then
+      -- Increment integer part by adding 1 at position frac_bits
+      inc_val := (others => '0');
+      for idx in 0 to FP_MANT_WIDTH loop
+        if idx = frac_bits then
+          inc_val(idx) := '1';
+        end if;
+      end loop;
+      mant_inc := ('0' & result_u.mant) + inc_val;
+      if mant_inc(FP_MANT_WIDTH) = '1' then
+        -- Carry past MSB: renormalize
+        result_u.mant := mant_inc(FP_MANT_WIDTH downto 1);
+        result_u.exp := result_u.exp + 1;
+      else
+        result_u.mant := mant_inc(FP_MANT_WIDTH-1 downto 0);
+      end if;
+    end if;
+
+    return pack_fp80(result_u);
   end function;
 
   function fgetexp_fp80(value : fp80_t) return fp80_t is

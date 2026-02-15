@@ -82,10 +82,8 @@ architecture rtl of mc68881_alu is
   ) return fp80_t is
   begin
     case op is
-      when FPU_OP_ADD =>
-        return add_sub_fp80(a, b, false, rm, rp);
-      when FPU_OP_SUB =>
-        return add_sub_fp80(a, b, true, rm, rp);
+      when FPU_OP_ADD | FPU_OP_SUB =>
+        return add_sub_fp80(a, b, op = FPU_OP_SUB, rm, rp);
       when FPU_OP_MUL =>
         return mul_fp80(a, b, rm, rp);
       when FPU_OP_CMP =>

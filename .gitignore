@@ -17,3 +17,4 @@ __synthesis_is_complete__
 *.jou
 *.log
 .tmp_report_hier.tcl
+.tmp_synth_util.tcl

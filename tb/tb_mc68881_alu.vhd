@@ -170,6 +170,7 @@ architecture sim of tb_mc68881_alu is
   constant FREM_BOUNDARY_EXPECTED : fp80_t := x"BFFD8000000000000000"; -- -0.25 (round-to-nearest-even quotient)
   constant FP80_ZERO : fp80_t := x"00000000000000000000";
   constant FP80_ONE : fp80_t := x"3FFF8000000000000000";
+  constant FP80_TEN : fp80_t := x"4002A000000000000000";
   constant FP80_HALF : fp80_t := x"3FFE8000000000000000";
   constant FP80_QUARTER : fp80_t := x"3FFD8000000000000000";
   constant FP80_LN2 : fp80_t := x"3FFEB17217F7D1CF79AC";
@@ -237,6 +238,7 @@ architecture sim of tb_mc68881_alu is
   constant FP80_EXP_TANH_0P75  : fp80_t := x"3FFEA2991F2A97914000";
   constant FP80_EXP_TWOTOX_0P75: fp80_t := x"3FFFD744FCCAD69D6800";
   constant FP80_EXP_TENTOX_0P5 : fp80_t := x"4000CA62C1D6D2DA9800";
+  constant FP80_EXP_ETOX_10    : fp80_t := x"400DAC14EE7CA82AFCF8";
   constant FP80_EXP_SIN_1P1    : fp80_t := x"3FFEE4262A616B19C000";
   constant FP80_EXP_SIN_M2P3   : fp80_t := x"BFFEBEE6896AC1792000";
   constant FP80_EXP_SIN_3P7    : fp80_t := x"BFFE87A3576170DA0800";
@@ -1238,13 +1240,7 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     wait for 0 ns;
-    split_fp80(result, got_sign, got_exp, got_mant);
-    assert got_sign = '0' and not (got_exp = (got_exp'range => '1') and got_mant /= 0)
-      report "FTWOTOX 1 should produce finite positive result"
-      severity failure;
-    assert compare_fp80(result, FP80_ONE) > 0
-      report "FTWOTOX 1 should be greater than 1"
-      severity failure;
+    check_result(fp80_from_int(2), "FTWOTOX 1");
 
     op_sel <= FPU_OP_TENTOX;
     a_in   <= fp80_from_int(2);
@@ -1254,13 +1250,27 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     wait for 0 ns;
-    split_fp80(result, got_sign, got_exp, got_mant);
-    assert got_sign = '0' and not (got_exp = (got_exp'range => '1') and got_mant /= 0)
-      report "FTENTOX 2 should produce finite positive result"
-      severity failure;
-    assert compare_fp80(result, FP80_ONE) > 0
-      report "FTENTOX 2 should be greater than 1"
-      severity failure;
+    check_result_close(fp80_from_int(100), FP80_TOL_5E2, "FTENTOX 2");
+
+    op_sel <= FPU_OP_ETOX;
+    a_in   <= FP80_TEN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result_close(FP80_EXP_ETOX_10, FP80_TOL_2E2, "FETOX 10 reduced");
+
+    op_sel <= FPU_OP_TWOTOX;
+    a_in   <= FP80_TEN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(fp80_from_int(1024), "FTWOTOX 10");
 
     -- LOG family.
     op_sel <= FPU_OP_LOGN;
@@ -1302,6 +1312,49 @@ begin
     wait until valid = '1';
     wait for 0 ns;
     check_result(FP80_ZERO, "FLOG10 1");
+
+    op_sel <= FPU_OP_LOGN;
+    a_in   <= FP80_TEN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result_close(FP80_LN10, FP80_TOL_2E2, "FLOGN 10 normalized");
+
+    op_sel <= FPU_OP_LOGNP1;
+    a_in   <= fp80_from_int(9);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result_close(FP80_LN10, FP80_TOL_2E2, "FLOGNP1 9 normalized");
+
+    op_sel <= FPU_OP_LOG2;
+    a_in   <= FP80_TEN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    sweep_v1 := result;
+
+    op_sel <= FPU_OP_LOG10;
+    a_in   <= FP80_TEN;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result_close(FP80_ONE, FP80_TOL_2E2, "FLOG10 10 normalized");
+
+    sweep_ref := mul_fp80(sweep_v1, FP80_LN2, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    check_fp80_close(sweep_ref, FP80_LN10, FP80_TOL_2E2, "FLOG2 10 consistency");
 
     op_sel <= FPU_OP_LOGN;
     a_in   <= FP80_ZERO;

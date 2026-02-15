@@ -71,6 +71,10 @@ architecture rtl of mc68881_trig_unit is
     ST_TANH_DEN_MUL_PREP,
     ST_TANH_DEN_MUL_POST,
     ST_TANH_DEN_ADD_POST,
+    ST_EXP_REDUCE_K_POST,
+    ST_EXP_REDUCE_KLN2_POST,
+    ST_EXP_REDUCE_R_POST,
+    ST_LOG_EXP_TERM_POST,
     ST_TRANS_PREP,
     ST_TRANS_INPUT_ADJUST_POST,
     ST_TRANS_PRE_MUL_POST,
@@ -123,6 +127,7 @@ architecture rtl of mc68881_trig_unit is
   constant FP80_LN10 : fp80_t := x"4000935D8DDDAAA8AC17";
   constant FP80_INV_LN2 : fp80_t := x"3FFFB8AA3B295C17F0BC";
   constant FP80_INV_LN10 : fp80_t := x"3FFDDE5BD8A937287195";
+  constant FP80_LOG10_2 : fp80_t := x"3FFD9A209A84FBCFF798";
 
   type fp80_table64_t is array (0 to 63) of fp80_t;
   type seed_domain_t is (SEED_DOMAIN_TRIG, SEED_DOMAIN_EXP, SEED_DOMAIN_LOG, SEED_DOMAIN_ATAN);
@@ -418,6 +423,13 @@ architecture rtl of mc68881_trig_unit is
   signal trans_post_add_en_reg : std_logic := '0';
   signal trans_post_add_sub_reg : std_logic := '0';
   signal trans_post_add_const_reg : fp80_t := (others => '0');
+  signal exp_reduce_en_reg : std_logic := '0';
+  signal exp_reduce_done_reg : std_logic := '0';
+  signal exp_k_reg : fp80_t := (others => '0');
+  signal log_exp_reg : fp80_t := (others => '0');
+  signal log_exp_term_reg : fp80_t := (others => '0');
+  signal log_exp_add_en_reg : std_logic := '0';
+  signal log_exp_term_valid_reg : std_logic := '0';
 
   signal mul_a_reg : fp80_t := (others => '0');
   signal mul_b_reg : fp80_t := (others => '0');
@@ -523,6 +535,8 @@ begin
     variable r_clamped : fp80_t;
     variable coeff_sel : fp80_t;
     variable x_local : fp80_t;
+    variable z_local : fp80_t;
+    variable log_exp_local : fp80_t;
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -561,6 +575,13 @@ begin
       trans_post_add_en_reg <= '0';
       trans_post_add_sub_reg <= '0';
       trans_post_add_const_reg <= (others => '0');
+      exp_reduce_en_reg <= '0';
+      exp_reduce_done_reg <= '0';
+      exp_k_reg <= (others => '0');
+      log_exp_reg <= (others => '0');
+      log_exp_term_reg <= (others => '0');
+      log_exp_add_en_reg <= '0';
+      log_exp_term_valid_reg <= '0';
       div_a_reg <= (others => '0');
       div_b_reg <= (others => '0');
     elsif rising_edge(clk) then
@@ -588,6 +609,11 @@ begin
           trans_pre_mul_const_reg <= FP80_ZERO;
           trans_post_mul_const_reg <= FP80_ZERO;
           trans_post_add_const_reg <= FP80_ZERO;
+          exp_reduce_en_reg <= '0';
+          exp_reduce_done_reg <= '0';
+          exp_k_reg <= FP80_ZERO;
+          log_exp_add_en_reg <= '0';
+          log_exp_term_valid_reg <= '0';
           seed_domain_reg <= SEED_DOMAIN_EXP;
           seed_idx_reg <= 0;
           seed_return_state_reg <= ST_TRANS_PREP;
@@ -661,6 +687,7 @@ begin
                   result_reg <= FP80_ONE;
                   state_reg <= ST_DONE;
                 else
+                  exp_reduce_en_reg <= '1';
                   coeff0_reg <= FP80_ONE;
                   coeff1_reg <= FP80_ONE;
                   coeff2_reg <= FP80_HALF;
@@ -717,6 +744,7 @@ begin
                   result_reg <= FP80_TWO;
                   state_reg <= ST_DONE;
                 else
+                  exp_reduce_en_reg <= '1';
                   coeff0_reg <= FP80_ONE;
                   coeff1_reg <= FP80_ONE;
                   coeff2_reg <= FP80_HALF;
@@ -743,6 +771,7 @@ begin
                   result_reg <= FP80_ONE;
                   state_reg <= ST_DONE;
                 else
+                  exp_reduce_en_reg <= '1';
                   coeff0_reg <= FP80_ONE;
                   coeff1_reg <= FP80_ONE;
                   coeff2_reg <= FP80_HALF;
@@ -768,6 +797,16 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
+                  x_local := fgetman_fp80(a_reg);
+                  log_exp_local := fgetexp_fp80(a_reg);
+                  log_exp_reg <= log_exp_local;
+                  if fp80_is_zero(log_exp_local) then
+                    log_exp_term_reg <= FP80_ZERO;
+                    log_exp_term_valid_reg <= '1';
+                  else
+                    log_exp_term_valid_reg <= '0';
+                  end if;
+                  log_exp_add_en_reg <= '1';
                   coeff0_reg <= FP80_ZERO;
                   coeff1_reg <= FP80_ONE;
                   coeff2_reg <= FP80_NEG_HALF;
@@ -777,6 +816,8 @@ begin
                   trans_input_adjust_en_reg <= '1';
                   trans_input_adjust_sub_reg <= '1';
                   trans_post_mul_en_reg <= '1';
+                  trans_post_add_en_reg <= '1';
+                  trans_post_add_sub_reg <= '0';
                   seed_domain_reg <= SEED_DOMAIN_LOG;
                   seed_idx_reg <= 0;
                   seed_return_state_reg <= ST_TRANS_PREP;
@@ -785,13 +826,27 @@ begin
                 end if;
 
               when FPU_OP_LOGNP1 =>
-                if compare_fp80(a_reg, FP80_NEG_ONE) <= 0 then
+                if fp80_is_inf(a_reg) and fp80_sign(a_reg) = '0' then
+                  result_reg <= FP80_POS_INF;
+                  state_reg <= ST_DONE;
+                elsif compare_fp80(a_reg, FP80_NEG_ONE) <= 0 then
                   result_reg <= canonical_nan(FP80_ZERO);
                   state_reg <= ST_DONE;
                 elsif fp80_is_zero(a_reg) then
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
+                  z_local := add_sub_fp80(a_reg, FP80_ONE, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+                  x_local := fgetman_fp80(z_local);
+                  log_exp_local := fgetexp_fp80(z_local);
+                  log_exp_reg <= log_exp_local;
+                  if fp80_is_zero(log_exp_local) then
+                    log_exp_term_reg <= FP80_ZERO;
+                    log_exp_term_valid_reg <= '1';
+                  else
+                    log_exp_term_valid_reg <= '0';
+                  end if;
+                  log_exp_add_en_reg <= '1';
                   coeff0_reg <= FP80_ZERO;
                   coeff1_reg <= FP80_ONE;
                   coeff2_reg <= FP80_NEG_HALF;
@@ -801,8 +856,10 @@ begin
                   trans_input_adjust_en_reg <= '1';
                   trans_input_adjust_sub_reg <= '1';
                   trans_post_mul_en_reg <= '1';
+                  trans_post_add_en_reg <= '1';
+                  trans_post_add_sub_reg <= '0';
                   seed_domain_reg <= SEED_DOMAIN_LOG;
-                  seed_idx_reg <= 1;
+                  seed_idx_reg <= 0;
                   seed_return_state_reg <= ST_TRANS_PREP;
                   x_reg <= x_local;
                   state_reg <= ST_SEED_READ;
@@ -819,6 +876,11 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
+                  x_local := fgetman_fp80(a_reg);
+                  log_exp_local := fgetexp_fp80(a_reg);
+                  log_exp_term_reg <= log_exp_local;
+                  log_exp_term_valid_reg <= '1';
+                  log_exp_add_en_reg <= '1';
                   coeff0_reg <= FP80_ZERO;
                   coeff1_reg <= FP80_ONE;
                   coeff2_reg <= FP80_NEG_HALF;
@@ -828,6 +890,8 @@ begin
                   trans_input_adjust_en_reg <= '1';
                   trans_input_adjust_sub_reg <= '1';
                   trans_post_mul_en_reg <= '1';
+                  trans_post_add_en_reg <= '1';
+                  trans_post_add_sub_reg <= '0';
                   seed_domain_reg <= SEED_DOMAIN_LOG;
                   seed_idx_reg <= 2;
                   seed_return_state_reg <= ST_TRANS_PREP;
@@ -846,6 +910,15 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
+                  x_local := fgetman_fp80(a_reg);
+                  log_exp_local := fgetexp_fp80(a_reg);
+                  if fp80_is_zero(log_exp_local) then
+                    log_exp_term_reg <= FP80_ZERO;
+                  else
+                    log_exp_term_reg <= mul_fp80(log_exp_local, FP80_LOG10_2, FP_RND_NEAREST, FP_PREC_EXTENDED);
+                  end if;
+                  log_exp_term_valid_reg <= '1';
+                  log_exp_add_en_reg <= '1';
                   coeff0_reg <= FP80_ZERO;
                   coeff1_reg <= FP80_ONE;
                   coeff2_reg <= FP80_NEG_HALF;
@@ -855,6 +928,8 @@ begin
                   trans_input_adjust_en_reg <= '1';
                   trans_input_adjust_sub_reg <= '1';
                   trans_post_mul_en_reg <= '1';
+                  trans_post_add_en_reg <= '1';
+                  trans_post_add_sub_reg <= '0';
                   seed_domain_reg <= SEED_DOMAIN_LOG;
                   seed_idx_reg <= 3;
                   seed_return_state_reg <= ST_TRANS_PREP;
@@ -1432,8 +1507,43 @@ begin
           c_reg <= tmp_reg;
           state_reg <= ST_TRIG_TAN_DIV;
 
+        when ST_EXP_REDUCE_K_POST =>
+          exp_k_reg <= fintrz_fp80(tmp_reg);
+          mul_a_reg <= fintrz_fp80(tmp_reg);
+          mul_b_reg <= FP80_LN2;
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP_REDUCE_KLN2_POST;
+          state_reg <= ST_FP_MUL;
+
+        when ST_EXP_REDUCE_KLN2_POST =>
+          add_a_reg <= x_reg;
+          add_b_reg <= tmp_reg;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP_REDUCE_R_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_EXP_REDUCE_R_POST =>
+          x_reg <= tmp_reg;
+          exp_reduce_done_reg <= '1';
+          state_reg <= ST_TRANS_PREP;
+
+        when ST_LOG_EXP_TERM_POST =>
+          log_exp_term_reg <= tmp_reg;
+          log_exp_term_valid_reg <= '1';
+          state_reg <= ST_TRANS_PREP;
+
         when ST_TRANS_PREP =>
-          if trans_input_adjust_en_reg = '1' then
+          if log_exp_add_en_reg = '1' and log_exp_term_valid_reg = '0' then
+            mul_a_reg <= log_exp_reg;
+            mul_b_reg <= FP80_LN2;
+            mul_rm_reg <= FP_RND_NEAREST;
+            mul_rp_reg <= FP_PREC_EXTENDED;
+            cont_state_reg <= ST_LOG_EXP_TERM_POST;
+            state_reg <= ST_FP_MUL;
+          elsif trans_input_adjust_en_reg = '1' then
             add_a_reg <= x_reg;
             if seed_domain_reg = SEED_DOMAIN_LOG then
               add_b_reg <= seed_aux0_reg;
@@ -1456,6 +1566,13 @@ begin
             mul_rp_reg <= FP_PREC_EXTENDED;
             cont_state_reg <= ST_TRANS_PRE_MUL_POST;
             state_reg <= ST_FP_MUL;
+          elsif exp_reduce_en_reg = '1' and exp_reduce_done_reg = '0' then
+            mul_a_reg <= x_reg;
+            mul_b_reg <= FP80_INV_LN2;
+            mul_rm_reg <= FP_RND_NEAREST;
+            mul_rp_reg <= FP_PREC_EXTENDED;
+            cont_state_reg <= ST_EXP_REDUCE_K_POST;
+            state_reg <= ST_FP_MUL;
           else
             state_reg <= ST_TRANS_POLY_INIT;
           end if;
@@ -1467,7 +1584,8 @@ begin
 
         when ST_TRANS_PRE_MUL_POST =>
           x_reg <= tmp_reg;
-          state_reg <= ST_TRANS_POLY_INIT;
+          trans_pre_mul_en_reg <= '0';
+          state_reg <= ST_TRANS_PREP;
 
         when ST_TRANS_POLY_INIT =>
           poly_reg <= coeff5_reg;
@@ -1530,7 +1648,11 @@ begin
 
         when ST_TRANS_POST_ADD_PREP =>
           if trans_post_add_en_reg = '1' then
-            add_a_reg <= trans_post_add_const_reg;
+            if log_exp_add_en_reg = '1' then
+              add_a_reg <= log_exp_term_reg;
+            else
+              add_a_reg <= trans_post_add_const_reg;
+            end if;
             add_b_reg <= result_reg;
             add_sub_reg <= (trans_post_add_sub_reg = '1');
             add_rm_reg <= rm_reg;
@@ -1548,11 +1670,19 @@ begin
           end if;
 
         when ST_TRANS_POST_ADD_POST =>
-          result_reg <= tmp_reg;
+          if exp_reduce_en_reg = '1' then
+            result_reg <= fscale_fp80(exp_k_reg, tmp_reg);
+          else
+            result_reg <= tmp_reg;
+          end if;
           state_reg <= ST_DONE;
 
         when ST_TRANS_FINAL_ROUND_POST =>
-          result_reg <= tmp_reg;
+          if exp_reduce_en_reg = '1' then
+            result_reg <= fscale_fp80(exp_k_reg, tmp_reg);
+          else
+            result_reg <= tmp_reg;
+          end if;
           state_reg <= ST_DONE;
 
         when ST_FP_MUL =>

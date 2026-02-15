@@ -157,6 +157,7 @@ package mc68881_pkg is
     update_cc_from_compare : boolean;
     classify_overflow_underflow : boolean;
     capture_fpiar_on_exception : boolean;
+    divzero_on_zero_input : boolean;
   end record;
 
   type move_cfg_mode_t is (
@@ -318,7 +319,8 @@ package body mc68881_pkg is
     update_cc_from_result => false,
     update_cc_from_compare => false,
     classify_overflow_underflow => false,
-    capture_fpiar_on_exception => false
+    capture_fpiar_on_exception => false,
+    divzero_on_zero_input => false
   );
 
   constant EXC_POLICY_ARITH : op_exception_policy_t := (
@@ -333,7 +335,8 @@ package body mc68881_pkg is
     update_cc_from_result => true,
     update_cc_from_compare => false,
     classify_overflow_underflow => true,
-    capture_fpiar_on_exception => true
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
   );
 
   constant EXC_POLICY_DIV : op_exception_policy_t := (
@@ -348,7 +351,8 @@ package body mc68881_pkg is
     update_cc_from_result => true,
     update_cc_from_compare => false,
     classify_overflow_underflow => true,
-    capture_fpiar_on_exception => true
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
   );
 
   constant EXC_POLICY_MOD_REM : op_exception_policy_t := (
@@ -363,7 +367,8 @@ package body mc68881_pkg is
     update_cc_from_result => true,
     update_cc_from_compare => false,
     classify_overflow_underflow => true,
-    capture_fpiar_on_exception => true
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
   );
 
   constant EXC_POLICY_CMP : op_exception_policy_t := (
@@ -378,7 +383,8 @@ package body mc68881_pkg is
     update_cc_from_result => false,
     update_cc_from_compare => true,
     classify_overflow_underflow => false,
-    capture_fpiar_on_exception => true
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
   );
 
   constant EXC_POLICY_TST : op_exception_policy_t := (
@@ -393,7 +399,25 @@ package body mc68881_pkg is
     update_cc_from_result => true,
     update_cc_from_compare => false,
     classify_overflow_underflow => false,
-    capture_fpiar_on_exception => true
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
+  );
+
+  -- Logarithmic ops: same as ARITH but with DZ on zero input (log singularity).
+  constant EXC_POLICY_LOG : op_exception_policy_t := (
+    divzero_on_zero_divisor_nonzero_dividend => false,
+    invalid_zero_over_zero => false,
+    invalid_inf_over_inf => false,
+    invalid_divisor_zero => false,
+    invalid_on_nan_inputs => true,
+    invalid_on_nan_result => true,
+    update_exc_status => true,
+    update_accumulated_exc => true,
+    update_cc_from_result => true,
+    update_cc_from_compare => false,
+    classify_overflow_underflow => true,
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => true
   );
 
   constant OP_DESCRIPTORS : op_descriptor_table_t := (
@@ -655,7 +679,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"47",
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_ARITH,
+      exception_policy => EXC_POLICY_LOG,
       arith_cycles => (
         FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
         FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
@@ -677,7 +701,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"49",
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_ARITH,
+      exception_policy => EXC_POLICY_LOG,
       arith_cycles => (
         FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
         FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
@@ -688,7 +712,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"4A",
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_ARITH,
+      exception_policy => EXC_POLICY_LOG,
       arith_cycles => (
         FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
         FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
@@ -820,7 +844,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => true, legacy_decode_id => 5,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"05",
       op_class => OP_CLASS_MOVE, alu_latency => 0, cycle_model => OP_CYCLE_MOVE,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_ARITH,
       arith_cycles => SRC_CYCLES_ZERO,
       move_cycles => (
         FPU_SRC_FPM => 4, FPU_SRC_MEM_INTEGER => 10, FPU_SRC_MEM_SINGLE => 8,

@@ -179,6 +179,7 @@ architecture sim of tb_mc68881_alu is
   constant FP80_PI : fp80_t := x"4000C90FDAA22168C235";
   constant SMALL_FASTPATH_ARG : fp80_t := x"3FD78000000000000001";
   constant FP80_POS_INF : fp80_t := x"7FFF8000000000000000";
+  constant FP80_NEG_INF : fp80_t := x"FFFF8000000000000000";
   constant FP80_QNAN : fp80_t := x"7FFFC000000000000001";
   constant SUBNORMAL_POS : fp80_t := make_fp80('0', (others => '0'), to_unsigned(1, FP_MANT_WIDTH));
   constant SUBNORMAL_NEG : fp80_t := make_fp80('1', (others => '0'), to_unsigned(1, FP_MANT_WIDTH));
@@ -1364,7 +1365,7 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     wait for 0 ns;
-    check_result_nan("FLOGN 0 -> NaN");
+    check_result(FP80_NEG_INF, "FLOGN 0 -> -inf (DZ)");
 
     -- Inverse trig/hyperbolic.
     op_sel <= FPU_OP_ATAN;

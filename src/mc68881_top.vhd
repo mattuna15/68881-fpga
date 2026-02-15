@@ -765,6 +765,11 @@ begin
           end if;
         end if;
 
+        -- Transcendental singularity: log(0) = -infinity is DZ, not OVERFLOW.
+        if exc_policy.divzero_on_zero_input and a_zero then
+          exc_flags(FPSR_EXC_DIVZERO) := '1';
+        end if;
+
         if exc_policy.invalid_zero_over_zero and a_zero and b_zero then
           exc_flags(FPSR_EXC_INVALID) := '1';
         end if;

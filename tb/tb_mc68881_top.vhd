@@ -953,7 +953,7 @@ begin
       report "FTWOTOX 1 should return finite positive result"
       severity failure;
 
-    -- B5 exception policy: FLOGN(0) should raise invalid, set CC NAN, and capture FPIAR.
+    -- B5 exception policy: FLOGN(0) should raise DZ, return -inf, set CC N+I, and capture FPIAR.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
     fpiar_seed := x"0BADF00D";
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
@@ -964,19 +964,18 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000047"); -- FLOGN
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
-    split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
-    assert rd_exp = (rd_exp'range => '1') and rd_mant /= 0
-      report "FLOGN(0) should return NaN"
+    assert rd_full = x"FFFF8000000000000000"
+      report "FLOGN(0) should return -infinity, got=" & to_hstring(rd_full)
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FLOGN(0) should raise invalid"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DIVZERO) = '1'
+      report "FLOGN(0) should raise DZ"
       severity failure;
-    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
-      report "FLOGN(0) should accrue invalid"
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_DIVZERO) = '1'
+      report "FLOGN(0) should accrue DZ"
       severity failure;
-    assert rd_lo(FPSR_CC_NAN) = '1'
-      report "FLOGN(0) should set CC NAN"
+    assert rd_lo(FPSR_CC_NEG) = '1' and rd_lo(FPSR_CC_INF) = '1'
+      report "FLOGN(0) should set CC N+I (negative infinity)"
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
     assert rd_hi = fpiar_seed

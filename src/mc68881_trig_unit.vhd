@@ -109,6 +109,7 @@ architecture rtl of mc68881_trig_unit is
   constant FP80_TWENTY_SEVEN : fp80_t := x"4003D800000000000000";
   constant FP80_NEG_ONE   : fp80_t := x"BFFF8000000000000000";
   constant FP80_POS_INF   : fp80_t := x"7FFF8000000000000000";
+  constant FP80_NEG_INF   : fp80_t := x"FFFF8000000000000000";
   constant FP80_PI        : fp80_t := x"4000C90FDAA22168C235";
   constant FP80_HALF_PI   : fp80_t := x"3FFFC90FDAA22168C235";
   constant FP80_QUARTER_PI : fp80_t := x"3FFEC90FDAA22168C000";
@@ -807,7 +808,11 @@ begin
                 if fp80_is_inf(a_reg) and fp80_sign(a_reg) = '0' then
                   result_reg <= FP80_POS_INF;
                   state_reg <= ST_DONE;
-                elsif fp80_sign(a_reg) = '1' or fp80_is_zero(a_reg) then
+                elsif fp80_is_zero(a_reg) then
+                  -- DZ: log(0) = -infinity per datasheet.
+                  result_reg <= FP80_NEG_INF;
+                  state_reg <= ST_DONE;
+                elsif fp80_sign(a_reg) = '1' then
                   result_reg <= canonical_nan(FP80_ZERO);
                   state_reg <= ST_DONE;
                 elsif a_reg = FP80_ONE then
@@ -886,7 +891,11 @@ begin
                 if fp80_is_inf(a_reg) and fp80_sign(a_reg) = '0' then
                   result_reg <= FP80_POS_INF;
                   state_reg <= ST_DONE;
-                elsif fp80_sign(a_reg) = '1' or fp80_is_zero(a_reg) then
+                elsif fp80_is_zero(a_reg) then
+                  -- DZ: log2(0) = -infinity per datasheet.
+                  result_reg <= FP80_NEG_INF;
+                  state_reg <= ST_DONE;
+                elsif fp80_sign(a_reg) = '1' then
                   result_reg <= canonical_nan(FP80_ZERO);
                   state_reg <= ST_DONE;
                 elsif a_reg = FP80_ONE then
@@ -920,7 +929,11 @@ begin
                 if fp80_is_inf(a_reg) and fp80_sign(a_reg) = '0' then
                   result_reg <= FP80_POS_INF;
                   state_reg <= ST_DONE;
-                elsif fp80_sign(a_reg) = '1' or fp80_is_zero(a_reg) then
+                elsif fp80_is_zero(a_reg) then
+                  -- DZ: log10(0) = -infinity per datasheet.
+                  result_reg <= FP80_NEG_INF;
+                  state_reg <= ST_DONE;
+                elsif fp80_sign(a_reg) = '1' then
                   result_reg <= canonical_nan(FP80_ZERO);
                   state_reg <= ST_DONE;
                 elsif a_reg = FP80_ONE then

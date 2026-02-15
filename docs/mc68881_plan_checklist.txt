@@ -119,6 +119,11 @@ C) Exception Handling & Edge Cases
       FLOG2(0), FLOG10(0) should set DZ. FATANH(+/-1) should also set DZ. These
       use EXC_POLICY_ARITH which has divzero disabled.
     - FIXED: FTAN exception policy changed from EXC_POLICY_DIV to EXC_POLICY_ARITH.
+    - FIXED: FLOGN(0), FLOG10(0), FLOG2(0) now return -infinity and set DZ exception.
+      Added EXC_POLICY_LOG with divzero_on_zero_input flag. Trig unit split
+      zero/negative conditions to produce correct result per datasheet.
+    - REMAINING: FATANH(+/-1) and FLOGNP1(-1) still return NaN instead of +-infinity
+      with DZ. Requires trig unit DZ output port or per-op value comparison.
 
 [~] C4. Complete FPCR/FPSR architectural fields.
     - FPCR exception-enable byte semantics.
@@ -184,12 +189,17 @@ F) Datasheet Conformance (MC68881UM Review Findings)
       current FPCR rounding mode (guard/round/sticky bit evaluation).
     - Severity: high. Affects all FMOVE.S and FMOVE.D to memory.
 
-[ ] F3. Add exception handling to FMOVE operations.
+[~] F3. Add exception handling to FMOVE operations.
     - FPU_OP_MOVE uses EXC_POLICY_NONE (mc68881_pkg.vhd:823), disabling all
       exception classification. Datasheet states FMOVE is an arithmetic operation
       that must signal OVFL, UNFL, INEX, SNAN during format conversion.
     - Severity: high. Even if conversion functions are fixed, no exceptions
       would be recorded.
+    - FIXED (partial): FPU_OP_MOVE policy changed from EXC_POLICY_NONE to
+      EXC_POLICY_ARITH. Policy metadata is correct; however, the FMOVE execution
+      path bypasses the ALU (no valid pulse), so the exception classification
+      block does not run for FMOVE ops. Full fix requires routing FMOVE
+      completion through the exception classification path.
 
 [ ] F4. Fix format conversion overflow/underflow behavior.
     - fp80_to_single/double overflow: always saturates to infinity. Per datasheet

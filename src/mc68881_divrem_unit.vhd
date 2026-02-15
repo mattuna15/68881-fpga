@@ -244,9 +244,7 @@ architecture rtl of mc68881_divrem_unit is
   begin
     res.sign := '0';
     res.exp := FP_EXP_ALL_ONES;
-    res.mant := (others => '0');
-    res.mant(FP_MANT_WIDTH-1) := '1';
-    res.mant(FP_MANT_WIDTH-2) := '1';
+    res.mant := (others => '1');
     return pack_fp80(res);
   end function;
 
@@ -510,7 +508,8 @@ begin
               flag_invalid_reg <= '1';
               state_reg <= ST_DONE;
             elsif a_u.exp = 0 and a_u.mant = 0 then
-              result_reg <= FP80_ZERO;
+              -- Preserve sign of zero dividend (datasheet: FMOD(-0,x) = -0).
+              result_reg <= a_reg(FP_WIDTH-1) & FP80_ZERO(FP_WIDTH-2 downto 0);
               quotient_byte_reg <= (others => '0');
               quotient_valid_reg <= '1';
               state_reg <= ST_DONE;

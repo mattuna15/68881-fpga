@@ -556,7 +556,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => true, legacy_decode_id => 15,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0F",
       op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_DIV,
+      exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 156, FPU_SRC_MEM_INTEGER => 185, FPU_SRC_MEM_SINGLE => 177,
         FPU_SRC_MEM_DOUBLE => 183, FPU_SRC_MEM_EXTENDED => 181, FPU_SRC_MEM_PACKED => 996
@@ -1990,9 +1990,10 @@ package body mc68881_pkg is
     end if;
 
     if fp80_is_inf(value) then
+      -- Datasheet: FGETEXP(infinity) is OPERR; return NaN.
       result_u.sign := '0';
       result_u.exp := FP_EXP_ALL_ONES;
-      result_u.mant := (others => '0');
+      result_u.mant := (others => '1');
       return pack_fp80(result_u);
     end if;
 
@@ -2015,8 +2016,15 @@ package body mc68881_pkg is
     variable result_u : fp_unpacked_t := unpack_fp80(value);
     variable mantissa_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
-    if fp80_is_zero(value) or fp80_is_inf(value) or fp80_is_nan(value) then
+    if fp80_is_nan(value) or fp80_is_zero(value) then
       return value;
+    end if;
+    if fp80_is_inf(value) then
+      -- Datasheet: FGETMAN(infinity) is OPERR; return NaN.
+      result_u.sign := '0';
+      result_u.exp := FP_EXP_ALL_ONES;
+      result_u.mant := (others => '1');
+      return pack_fp80(result_u);
     end if;
 
     if result_u.exp = 0 then

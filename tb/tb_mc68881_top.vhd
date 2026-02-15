@@ -47,7 +47,8 @@ architecture sim of tb_mc68881_top is
   constant FPSR_CC_NEG      : natural := 27;
   constant FPSR_QUOT_LSB    : natural := 16;
   constant FPSR_QUOT_MSB    : natural := 23;
-  constant FPSR_ACCR_BASE   : natural := 8;
+  constant FPSR_EXC_BASE    : natural := 8;
+  constant FPSR_ACCR_BASE   : natural := 0;
   constant FPSR_EXC_DIVZERO : natural := 3;
   constant FPSR_EXC_INVALID : natural := 4;
 
@@ -703,7 +704,7 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after DIV by zero: " & to_hstring(rd_lo)
       severity note;
-    assert rd_lo(FPSR_EXC_DIVZERO) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DIVZERO) = '1'
       report "FPSR DIV-by-zero flag not set"
       severity failure;
     assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_DIVZERO) = '1'
@@ -738,7 +739,7 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after DIV inf/inf: " & to_hstring(rd_lo)
       severity note;
-    assert rd_lo(FPSR_EXC_INVALID) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
       report "FPSR invalid flag not set for DIV inf/inf"
       severity failure;
     assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
@@ -769,7 +770,7 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after FSQRT negative: " & to_hstring(rd_lo)
       severity note;
-    assert rd_lo(FPSR_EXC_INVALID) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
       report "FPSR invalid flag not set for FSQRT negative"
       severity failure;
     assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
@@ -804,10 +805,10 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after FMOD by zero: " & to_hstring(rd_lo)
       severity note;
-    assert rd_lo(FPSR_EXC_INVALID) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
       report "FPSR invalid flag not set for FMOD divide-by-zero"
       severity failure;
-    assert rd_lo(FPSR_EXC_DIVZERO) = '0'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DIVZERO) = '0'
       report "FPSR DIVZERO should not be set for FMOD divide-by-zero"
       severity failure;
     assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
@@ -836,10 +837,10 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after FREM by zero: " & to_hstring(rd_lo)
       severity note;
-    assert rd_lo(FPSR_EXC_INVALID) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
       report "FPSR invalid flag not set for FREM divide-by-zero"
       severity failure;
-    assert rd_lo(FPSR_EXC_DIVZERO) = '0'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DIVZERO) = '0'
       report "FPSR DIVZERO should not be set for FREM divide-by-zero"
       severity failure;
     assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
@@ -924,7 +925,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000018"); -- FTST
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
-    assert rd_lo(FPSR_EXC_INVALID) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
       report "FTST NaN should raise invalid"
       severity failure;
     assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
@@ -968,7 +969,7 @@ begin
       report "FLOGN(0) should return NaN"
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
-    assert rd_lo(FPSR_EXC_INVALID) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
       report "FLOGN(0) should raise invalid"
       severity failure;
     assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
@@ -996,7 +997,7 @@ begin
       report "FASIN(|x|>1) should return NaN"
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
-    assert rd_lo(FPSR_EXC_INVALID) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
       report "FASIN(|x|>1) should raise invalid"
       severity failure;
     assert rd_lo(FPSR_CC_NAN) = '1'

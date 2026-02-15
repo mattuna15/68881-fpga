@@ -104,9 +104,7 @@ architecture rtl of mc68881_sgl_ops_unit is
   begin
     res.sign := '0';
     res.exp := FP_EXP_ALL_ONES;
-    res.mant := (others => '0');
-    res.mant(FP_MANT_WIDTH-1) := '1';
-    res.mant(FP_MANT_WIDTH-2) := '1';
+    res.mant := (others => '1');
     return pack_fp80(res);
   end function;
 
@@ -276,7 +274,9 @@ begin
         when ST_SCALE_EXEC =>
           a_u := unpack_fp80(a_reg);
           b_u := unpack_fp80(b_reg);
-          if b_u.exp = 0 or b_u.exp = FP_EXP_ALL_ONES then
+          if fp80_is_nan_local(a_reg) or fp80_is_nan_local(b_reg) then
+            result_reg <= canonical_qnan;
+          elsif b_u.exp = 0 or fp80_is_inf_local(b_reg) then
             result_reg <= b_reg;
           else
             scale_i := fp80_to_int_trunc(a_reg);

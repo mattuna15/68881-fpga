@@ -463,7 +463,8 @@ architecture rtl of mc68881_trig_unit is
     res(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
     res(FP_MANT_WIDTH-1) := '1';
     if res(FP_MANT_WIDTH-2 downto 0) = (res(FP_MANT_WIDTH-2 downto 0)'range => '0') then
-      res(FP_MANT_WIDTH-2) := '1';
+      -- FPCP-created NaN: all mantissa bits set per datasheet.
+      res(FP_MANT_WIDTH-2 downto 0) := (others => '1');
     end if;
     return res;
   end function;

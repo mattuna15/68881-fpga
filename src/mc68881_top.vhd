@@ -147,10 +147,10 @@ architecture rtl of mc68881_top is
   constant FPSR_CC_NEG      : natural := 27;
   constant FPSR_QUOT_LSB    : natural := 16;
   constant FPSR_QUOT_MSB    : natural := 23;
-  constant FPSR_AEXC_LSB    : natural := 8;
-  constant FPSR_AEXC_MSB    : natural := 15;
-  constant FPSR_EXC_LSB     : natural := 0;
-  constant FPSR_EXC_MSB     : natural := 7;
+  constant FPSR_AEXC_LSB    : natural := 0;
+  constant FPSR_AEXC_MSB    : natural := 7;
+  constant FPSR_EXC_LSB     : natural := 8;
+  constant FPSR_EXC_MSB     : natural := 15;
   constant FPSR_EXC_INEXACT  : natural := 0;
   constant FPSR_EXC_UNDERFLOW: natural := 1;
   constant FPSR_EXC_OVERFLOW : natural := 2;
@@ -298,6 +298,7 @@ architecture rtl of mc68881_top is
       fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
       if frac_s /= 0 then
         fp_value(FP_MANT_WIDTH-1) := '1';
+        fp_value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-24) := std_logic_vector(frac_s);
       end if;
       return fp_value;
     else
@@ -338,6 +339,7 @@ architecture rtl of mc68881_top is
       fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
       if frac_d /= 0 then
         fp_value(FP_MANT_WIDTH-1) := '1';
+        fp_value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-53) := std_logic_vector(frac_d);
       end if;
       return fp_value;
     else
@@ -502,15 +504,16 @@ architecture rtl of mc68881_top is
   function fpsr_cc_from_result(value : fp80_t) return std_logic_vector is
     variable cc_bits : std_logic_vector(3 downto 0) := (others => '0');
   begin
+    -- Data-type classification bits (mutually exclusive).
     if fp80_is_nan(value) then
       cc_bits(0) := '1';
     elsif fp80_is_inf(value) then
       cc_bits(1) := '1';
     elsif fp80_is_zero(value) then
       cc_bits(2) := '1';
-    else
-      cc_bits(3) := value(FP_WIDTH-1);
     end if;
+    -- N bit always reflects sign independently (datasheet Table 2-1).
+    cc_bits(3) := value(FP_WIDTH-1);
     return cc_bits;
   end function;
 
@@ -634,6 +637,7 @@ begin
     variable res_inf  : boolean;
     variable res_nan  : boolean;
     variable res_subnormal : boolean;
+    variable aexc_combined : std_logic_vector(4 downto 0);
   begin
     if reset_n = '0' then
       op_sel_reg <= FPU_OP_NOP;
@@ -791,16 +795,23 @@ begin
         end if;
 
         if exc_policy.update_exc_status then
-          exc_status_byte := fpsr_reg(FPSR_EXC_MSB downto FPSR_EXC_LSB);
-          exc_status_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) :=
-            exc_status_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) or exc_flags;
+          -- Datasheet Section 2.3.3: EXC byte is cleared then set per operation.
+          exc_status_byte := (others => '0');
+          exc_status_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) := exc_flags;
           fpsr_reg(FPSR_EXC_MSB downto FPSR_EXC_LSB) <= exc_status_byte;
         end if;
 
         if exc_policy.update_accumulated_exc then
+          -- Datasheet AEXC combination rules:
+          -- AEXC(UNFL) |= UNFL AND INEX; AEXC(INEX) |= INEX OR OVFL.
+          aexc_combined(FPSR_EXC_INVALID)   := exc_flags(FPSR_EXC_INVALID);
+          aexc_combined(FPSR_EXC_OVERFLOW)  := exc_flags(FPSR_EXC_OVERFLOW);
+          aexc_combined(FPSR_EXC_UNDERFLOW) := exc_flags(FPSR_EXC_UNDERFLOW) and exc_flags(FPSR_EXC_INEXACT);
+          aexc_combined(FPSR_EXC_DIVZERO)   := exc_flags(FPSR_EXC_DIVZERO);
+          aexc_combined(FPSR_EXC_INEXACT)   := exc_flags(FPSR_EXC_INEXACT) or exc_flags(FPSR_EXC_OVERFLOW);
           accrued_exc_byte := fpsr_reg(FPSR_AEXC_MSB downto FPSR_AEXC_LSB);
           accrued_exc_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) :=
-            accrued_exc_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) or exc_flags;
+            accrued_exc_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) or aexc_combined;
           fpsr_reg(FPSR_AEXC_MSB downto FPSR_AEXC_LSB) <= accrued_exc_byte;
         end if;
 

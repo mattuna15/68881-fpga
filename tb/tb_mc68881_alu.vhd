@@ -2101,7 +2101,7 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     wait for 0 ns;
-    check_result(x"7FFF0000000000000000", "FGETEXP inf -> +inf");
+    check_result(x"7FFFFFFFFFFFFFFFFFFF", "FGETEXP inf -> NaN (OPERR)");
 
     op_sel <= FPU_OP_GETEXP;
     a_in   <= FP80_QNAN;
@@ -2165,7 +2165,7 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     wait for 0 ns;
-    check_result(FP80_POS_INF, "FGETMAN inf passthrough");
+    check_result(x"7FFFFFFFFFFFFFFFFFFF", "FGETMAN inf -> NaN (OPERR)");
 
     op_sel <= FPU_OP_GETMAN;
     a_in   <= FP80_QNAN;

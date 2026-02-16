@@ -14,6 +14,8 @@ package mc68881_pkg is
   constant FP80_RESULT_EX_WIDTH : natural := FP_WIDTH - FP80_RESULT_LO_WIDTH - FP80_RESULT_HI_WIDTH;
   constant OPSEL_NAMESPACE_WIDTH : natural := 8;
   constant OPSEL_OPCODE_ID_WIDTH : natural := 8;
+  constant TABLE_IMPL_BRAM : natural := 0;
+  constant TABLE_IMPL_LUTROM : natural := 1;
 
   subtype fp80_t is std_logic_vector(FP_WIDTH-1 downto 0);
   subtype op_namespace_t is std_logic_vector(OPSEL_NAMESPACE_WIDTH-1 downto 0);
@@ -44,6 +46,21 @@ package mc68881_pkg is
     FPU_OP_COS,
     FPU_OP_TAN,
     FPU_OP_SINCOS,
+    FPU_OP_ACOS,
+    FPU_OP_ASIN,
+    FPU_OP_ATAN,
+    FPU_OP_ATANH,
+    FPU_OP_COSH,
+    FPU_OP_ETOX,
+    FPU_OP_ETOXM1,
+    FPU_OP_LOGN,
+    FPU_OP_LOGNP1,
+    FPU_OP_LOG10,
+    FPU_OP_LOG2,
+    FPU_OP_SINH,
+    FPU_OP_TANH,
+    FPU_OP_TENTOX,
+    FPU_OP_TWOTOX,
     FPU_OP_ABS,
     FPU_OP_NEG,
     FPU_OP_INT,
@@ -140,6 +157,7 @@ package mc68881_pkg is
     update_cc_from_compare : boolean;
     classify_overflow_underflow : boolean;
     capture_fpiar_on_exception : boolean;
+    divzero_on_zero_input : boolean;
   end record;
 
   type move_cfg_mode_t is (
@@ -301,7 +319,8 @@ package body mc68881_pkg is
     update_cc_from_result => false,
     update_cc_from_compare => false,
     classify_overflow_underflow => false,
-    capture_fpiar_on_exception => false
+    capture_fpiar_on_exception => false,
+    divzero_on_zero_input => false
   );
 
   constant EXC_POLICY_ARITH : op_exception_policy_t := (
@@ -316,7 +335,8 @@ package body mc68881_pkg is
     update_cc_from_result => true,
     update_cc_from_compare => false,
     classify_overflow_underflow => true,
-    capture_fpiar_on_exception => true
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
   );
 
   constant EXC_POLICY_DIV : op_exception_policy_t := (
@@ -331,7 +351,8 @@ package body mc68881_pkg is
     update_cc_from_result => true,
     update_cc_from_compare => false,
     classify_overflow_underflow => true,
-    capture_fpiar_on_exception => true
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
   );
 
   constant EXC_POLICY_MOD_REM : op_exception_policy_t := (
@@ -346,7 +367,8 @@ package body mc68881_pkg is
     update_cc_from_result => true,
     update_cc_from_compare => false,
     classify_overflow_underflow => true,
-    capture_fpiar_on_exception => true
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
   );
 
   constant EXC_POLICY_CMP : op_exception_policy_t := (
@@ -361,7 +383,8 @@ package body mc68881_pkg is
     update_cc_from_result => false,
     update_cc_from_compare => true,
     classify_overflow_underflow => false,
-    capture_fpiar_on_exception => true
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
   );
 
   constant EXC_POLICY_TST : op_exception_policy_t := (
@@ -376,7 +399,25 @@ package body mc68881_pkg is
     update_cc_from_result => true,
     update_cc_from_compare => false,
     classify_overflow_underflow => false,
-    capture_fpiar_on_exception => true
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
+  );
+
+  -- Logarithmic ops: same as ARITH but with DZ on zero input (log singularity).
+  constant EXC_POLICY_LOG : op_exception_policy_t := (
+    divzero_on_zero_divisor_nonzero_dividend => false,
+    invalid_zero_over_zero => false,
+    invalid_inf_over_inf => false,
+    invalid_divisor_zero => false,
+    invalid_on_nan_inputs => true,
+    invalid_on_nan_result => true,
+    update_exc_status => true,
+    update_accumulated_exc => true,
+    update_cc_from_result => true,
+    update_cc_from_compare => false,
+    classify_overflow_underflow => true,
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => true
   );
 
   constant OP_DESCRIPTORS : op_descriptor_table_t := (
@@ -516,7 +557,7 @@ package body mc68881_pkg is
     FPU_OP_SIN => (
       legacy_decode_id_valid => true, legacy_decode_id => 13,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0D",
-      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
@@ -527,7 +568,7 @@ package body mc68881_pkg is
     FPU_OP_COS => (
       legacy_decode_id_valid => true, legacy_decode_id => 14,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0E",
-      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 120, FPU_SRC_MEM_INTEGER => 149, FPU_SRC_MEM_SINGLE => 141,
@@ -538,8 +579,8 @@ package body mc68881_pkg is
     FPU_OP_TAN => (
       legacy_decode_id_valid => true, legacy_decode_id => 15,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"0F",
-      op_class => OP_CLASS_ARITH, alu_latency => 13, cycle_model => OP_CYCLE_ARITH,
-      exception_policy => EXC_POLICY_DIV,
+      op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 156, FPU_SRC_MEM_INTEGER => 185, FPU_SRC_MEM_SINGLE => 177,
         FPU_SRC_MEM_DOUBLE => 183, FPU_SRC_MEM_EXTENDED => 181, FPU_SRC_MEM_PACKED => 996
@@ -549,11 +590,176 @@ package body mc68881_pkg is
     FPU_OP_SINCOS => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"10",
-      op_class => OP_CLASS_ARITH, alu_latency => 12, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 124, FPU_SRC_MEM_INTEGER => 153, FPU_SRC_MEM_SINGLE => 145,
         FPU_SRC_MEM_DOUBLE => 151, FPU_SRC_MEM_EXTENDED => 149, FPU_SRC_MEM_PACKED => 964
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ACOS => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"40",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ASIN => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"41",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ATAN => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"42",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ATANH => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"43",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_COSH => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"44",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ETOX => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"45",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_ETOXM1 => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"46",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_LOGN => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"47",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_LOG,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_LOGNP1 => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"48",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_LOG10 => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"49",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_LOG,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_LOG2 => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"4A",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_LOG,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_SINH => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"4B",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_TANH => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"4C",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_TENTOX => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"4D",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
+      ),
+      move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_TWOTOX => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"4E",
+      op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
+      exception_policy => EXC_POLICY_ARITH,
+      arith_cycles => (
+        FPU_SRC_FPM => 132, FPU_SRC_MEM_INTEGER => 161, FPU_SRC_MEM_SINGLE => 153,
+        FPU_SRC_MEM_DOUBLE => 159, FPU_SRC_MEM_EXTENDED => 157, FPU_SRC_MEM_PACKED => 972
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
@@ -638,7 +844,7 @@ package body mc68881_pkg is
       legacy_decode_id_valid => true, legacy_decode_id => 5,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"05",
       op_class => OP_CLASS_MOVE, alu_latency => 0, cycle_model => OP_CYCLE_MOVE,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_ARITH,
       arith_cycles => SRC_CYCLES_ZERO,
       move_cycles => (
         FPU_SRC_FPM => 4, FPU_SRC_MEM_INTEGER => 10, FPU_SRC_MEM_SINGLE => 8,
@@ -1370,6 +1576,8 @@ package body mc68881_pkg is
     variable exp_res_i : integer := 0;
     variable exp_res   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
     variable low_or : std_logic := '0';
+    variable mant_hi : integer := 0;
+    variable low_hi  : integer := 0;
   begin
     res_u.sign := a_u.sign xor b_u.sign;
     res_u.exp  := (others => '0');
@@ -1391,12 +1599,17 @@ package body mc68881_pkg is
 
     if mant_prod(mant_prod'left) = '1' then
       exp_res_i := exp_res_i + 1;
+      mant_hi := mant_prod'left;
+    end if;
+    if mant_hi = 0 then
+      mant_hi := mant_prod'left-1;
     end if;
 
-    mant_ext := mant_prod(mant_prod'left-1 downto mant_prod'left-1-(FP_MANT_EXT_WIDTH-1));
-    if (mant_prod'left-1-(FP_MANT_EXT_WIDTH) >= 0) then
-      for idx in 0 to mant_prod'left-1-FP_MANT_EXT_WIDTH loop
-        if mant_prod(idx) = '1' then
+    mant_ext := mant_prod(mant_hi downto mant_hi-(FP_MANT_EXT_WIDTH-1));
+    low_hi := mant_hi - FP_MANT_EXT_WIDTH;
+    if low_hi >= 0 then
+      for idx in mant_prod'reverse_range loop
+        if idx <= low_hi and mant_prod(idx) = '1' then
           low_or := '1';
         end if;
       end loop;
@@ -1728,59 +1941,163 @@ package body mc68881_pkg is
   end function;
 
   function fint_fp80(value : fp80_t; round_mode : fp_round_mode_t) return fp80_t is
-    variable trunc_v : fp80_t := (others => '0');
-    variable frac_v : fp80_t := (others => '0');
-    variable frac_abs_v : fp80_t := (others => '0');
-    variable half_v : fp80_t := x"3FFE8000000000000000";
-    variable one_v : fp80_t := x"3FFF8000000000000000";
-    variable cmp_half : integer := 0;
-    variable step_down : boolean := false;
-    variable result_v : fp80_t := (others => '0');
+    -- Bit-manipulation implementation: avoids expensive add_sub_fp80 calls.
+    -- Uses direct guard/sticky extraction and integer-boundary increment.
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+    variable result_u : fp_unpacked_t;
+    variable exp_i : integer := 0;
+    variable frac_bits : integer := 0;
+    variable guard_bit : std_logic := '0';
+    variable sticky_bits : std_logic := '0';
+    variable round_up : boolean := false;
+    variable mant_inc : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
+    variable inc_val : unsigned(FP_MANT_WIDTH downto 0) := (others => '0');
   begin
     if fp80_is_zero(value) or fp80_is_inf(value) or fp80_is_nan(value) then
       return value;
     end if;
 
-    trunc_v := fp80_trunc_toward_zero(value);
-    frac_v := add_sub_fp80(value, trunc_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-    if fp80_is_zero(frac_v) then
-      return trunc_v;
+    -- Compute true exponent
+    if value_u.exp = 0 then
+      exp_i := -(FP_EXP_BIAS - 1);
+    else
+      exp_i := to_integer(value_u.exp) - FP_EXP_BIAS;
     end if;
 
-    step_down := value(FP_WIDTH-1) = '1';
+    -- Already an integer (no fractional bits possible)
+    if exp_i >= integer(FP_MANT_WIDTH - 1) then
+      return value;
+    end if;
 
+    -- Magnitude < 1.0: entire value is fractional
+    if exp_i < 0 then
+      case round_mode is
+        when FP_RND_ZERO =>
+          result_u.sign := value_u.sign;
+          result_u.exp := (others => '0');
+          result_u.mant := (others => '0');
+          return pack_fp80(result_u);
+
+        when FP_RND_MINUS_INF =>
+          if value_u.sign = '1' then
+            -- Negative fraction rounds to -1
+            result_u.sign := '1';
+            result_u.exp := to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH);
+            result_u.mant := (others => '0');
+            result_u.mant(FP_MANT_WIDTH-1) := '1';
+            return pack_fp80(result_u);
+          else
+            result_u.sign := '0';
+            result_u.exp := (others => '0');
+            result_u.mant := (others => '0');
+            return pack_fp80(result_u);
+          end if;
+
+        when FP_RND_PLUS_INF =>
+          if value_u.sign = '0' then
+            -- Positive fraction rounds to +1
+            result_u.sign := '0';
+            result_u.exp := to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH);
+            result_u.mant := (others => '0');
+            result_u.mant(FP_MANT_WIDTH-1) := '1';
+            return pack_fp80(result_u);
+          else
+            result_u.sign := '1';
+            result_u.exp := (others => '0');
+            result_u.mant := (others => '0');
+            return pack_fp80(result_u);
+          end if;
+
+        when FP_RND_NEAREST =>
+          if exp_i = -1 then
+            -- Value in [0.5, 1.0): check if > 0.5 or exactly 0.5
+            if value_u.mant(FP_MANT_WIDTH-2 downto 0) /= 0 then
+              -- > 0.5: round to +/-1
+              result_u.sign := value_u.sign;
+              result_u.exp := to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH);
+              result_u.mant := (others => '0');
+              result_u.mant(FP_MANT_WIDTH-1) := '1';
+              return pack_fp80(result_u);
+            else
+              -- Exactly 0.5: tie -> round to even (0)
+              result_u.sign := value_u.sign;
+              result_u.exp := (others => '0');
+              result_u.mant := (others => '0');
+              return pack_fp80(result_u);
+            end if;
+          else
+            -- |value| < 0.5: round to signed zero
+            result_u.sign := value_u.sign;
+            result_u.exp := (others => '0');
+            result_u.mant := (others => '0');
+            return pack_fp80(result_u);
+          end if;
+      end case;
+    end if;
+
+    -- General case: 0 <= exp_i < MANT_WIDTH - 1
+    frac_bits := integer(FP_MANT_WIDTH - 1) - exp_i;
+
+    -- Extract guard bit (MSB of fraction) and sticky (OR of remaining)
+    guard_bit := value_u.mant(frac_bits - 1);
+    sticky_bits := '0';
+    for idx in 0 to FP_MANT_WIDTH-1 loop
+      if idx < frac_bits - 1 and value_u.mant(idx) = '1' then
+        sticky_bits := '1';
+      end if;
+    end loop;
+
+    -- No fractional part: already an integer
+    if guard_bit = '0' and sticky_bits = '0' then
+      return value;
+    end if;
+
+    -- Truncate: clear fractional bits
+    result_u := value_u;
+    for idx in 0 to FP_MANT_WIDTH-1 loop
+      if idx < frac_bits then
+        result_u.mant(idx) := '0';
+      end if;
+    end loop;
+
+    -- Determine rounding direction
     case round_mode is
       when FP_RND_ZERO =>
-        return trunc_v;
+        round_up := false;
       when FP_RND_MINUS_INF =>
-        if step_down then
-          return add_sub_fp80(trunc_v, one_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-        end if;
-        return trunc_v;
+        round_up := value_u.sign = '1';
       when FP_RND_PLUS_INF =>
-        if not step_down then
-          return add_sub_fp80(trunc_v, one_v, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
-        end if;
-        return trunc_v;
+        round_up := value_u.sign = '0';
       when FP_RND_NEAREST =>
-        frac_abs_v := abs_fp80(frac_v);
-        cmp_half := compare_fp80(frac_abs_v, half_v);
-        result_v := trunc_v;
-        if cmp_half > 0 then
-          if step_down then
-            result_v := add_sub_fp80(trunc_v, one_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-          else
-            result_v := add_sub_fp80(trunc_v, one_v, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
-          end if;
-        elsif cmp_half = 0 and fp80_is_odd_integer(trunc_v) then
-          if step_down then
-            result_v := add_sub_fp80(trunc_v, one_v, true, FP_RND_NEAREST, FP_PREC_EXTENDED);
-          else
-            result_v := add_sub_fp80(trunc_v, one_v, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
-          end if;
+        if guard_bit = '1' and sticky_bits = '1' then
+          round_up := true;
+        elsif guard_bit = '1' and sticky_bits = '0' then
+          -- Tie: round to even (check integer LSB at position frac_bits)
+          round_up := value_u.mant(frac_bits) = '1';
+        else
+          round_up := false;
         end if;
-        return result_v;
     end case;
+
+    if round_up then
+      -- Increment integer part by adding 1 at position frac_bits
+      inc_val := (others => '0');
+      for idx in 0 to FP_MANT_WIDTH loop
+        if idx = frac_bits then
+          inc_val(idx) := '1';
+        end if;
+      end loop;
+      mant_inc := ('0' & result_u.mant) + inc_val;
+      if mant_inc(FP_MANT_WIDTH) = '1' then
+        -- Carry past MSB: renormalize
+        result_u.mant := mant_inc(FP_MANT_WIDTH downto 1);
+        result_u.exp := result_u.exp + 1;
+      else
+        result_u.mant := mant_inc(FP_MANT_WIDTH-1 downto 0);
+      end if;
+    end if;
+
+    return pack_fp80(result_u);
   end function;
 
   function fgetexp_fp80(value : fp80_t) return fp80_t is
@@ -1801,9 +2118,10 @@ package body mc68881_pkg is
     end if;
 
     if fp80_is_inf(value) then
+      -- Datasheet: FGETEXP(infinity) is OPERR; return NaN.
       result_u.sign := '0';
       result_u.exp := FP_EXP_ALL_ONES;
-      result_u.mant := (others => '0');
+      result_u.mant := (others => '1');
       return pack_fp80(result_u);
     end if;
 
@@ -1826,8 +2144,15 @@ package body mc68881_pkg is
     variable result_u : fp_unpacked_t := unpack_fp80(value);
     variable mantissa_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
-    if fp80_is_zero(value) or fp80_is_inf(value) or fp80_is_nan(value) then
+    if fp80_is_nan(value) or fp80_is_zero(value) then
       return value;
+    end if;
+    if fp80_is_inf(value) then
+      -- Datasheet: FGETMAN(infinity) is OPERR; return NaN.
+      result_u.sign := '0';
+      result_u.exp := FP_EXP_ALL_ONES;
+      result_u.mant := (others => '1');
+      return pack_fp80(result_u);
     end if;
 
     if result_u.exp = 0 then

@@ -15,3 +15,10 @@ __synthesis_is_complete__
 *.pb
 *.dcp
 *.jou
+*.log
+.tmp_report_hier.tcl
+.tmp_synth_util.tcl
+.tmp_run_synth_util.tcl
+.claude/settings.local.json
+/.claude
+project/fpga68881/utilization_report.txt

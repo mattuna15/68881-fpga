@@ -17,9 +17,9 @@ for the core arithmetic datapath. The current plan and progress tracking live in
 
 ## Progress snapshot
 Based on `docs/mc68881_plan_checklist.txt`:
-- Completed checklist items: 15
-- In-progress checklist items: 0
-- Not-started checklist items: 16
+- Completed checklist items: 19
+- In-progress checklist items: 9
+- Not-started checklist items: 3
 - Completed highlights:
   - Top-level cleanup/refactor items A1-A8, including explicit operation-class
     dispatch, centralized opcode descriptors, typed MOVE decode records, and
@@ -27,8 +27,20 @@ Based on `docs/mc68881_plan_checklist.txt`:
   - FMOVE/FMOVEM family implementation (including packed-decimal `.P` and `FMOVECR`).
   - Dyadic arithmetic set: `FADD`, `FSUB`, `FMUL`, `FDIV`, `FCMP`, `FMOD`, `FREM`,
     `FSCALE`, `FSGLDIV`, `FSGLMUL`.
-  - Monadic arithmetic: `FSQRT`.
+  - Monadic arithmetic/data ops: `FSQRT`, `FABS`, `FNEG`, `FINT`, `FINTRZ`, `FGETEXP`, `FGETMAN`, `FTST`.
+  - B5 transcendental set implemented (`FSIN/FCOS/FTAN/FSINCOS`, inverse trig, exp/log families,
+    hyperbolic families, `FTENTOX/FTWOTOX`).
   - Bus/timing confirmations E1-E4.
+
+## Transcendental architecture guardrails
+- The B5 implementation uses a shared serialized transcendental engine (`src/mc68881_trig_unit.vhd`)
+  and is dispatched from ALU via `table_impl => TABLE_IMPL_BRAM` (`src/mc68881_alu.vhd`).
+- Trig seed tables are intentionally synchronous BRAM-style reads using the
+  `ST_SEED_READ -> ST_SEED_READ_WAIT -> ST_SEED_READ_LATCH` path.
+- Avoid replacing this with combinational table indexing for trig seeds in BRAM mode; that can
+  break BRAM inference and increase LUT usage sharply.
+- Validate architecture changes with non-incremental synth utilization reports, including
+  hierarchical reports (`trig_inst` focus).
 
 ## Plan and milestones
 The implementation plan is tracked as a checklist in `docs/mc68881_plan_checklist.txt`,
@@ -43,10 +55,17 @@ covering:
 - Master checklist: `docs/mc68881_plan_checklist.txt`
 - Programming reference: `docs/68881-programming.txt`
 - FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`
+- Defect checklist: `docs/defect_checklist.md`
 - Technical summary: `docs/68881-tech-summary.pdf`
 - Motorola references:
   - `docs/MC68881.PDF`
   - `docs/AN-0947_MC68881_Floating-Point_Coprocessor_as_a_Peripheral_in_a_M68000_System_[Motorola_1987_37p].pdf`
+
+## Known defects
+- Open defect tracking is maintained in `docs/defect_checklist.md`.
+- Current status:
+  - No open defects are currently tracked.
+  - `DEF-TRIG-001` is closed; see `docs/defect_checklist.md` for closure notes.
 
 ## Running simulations
 Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). The repo includes a test
@@ -59,6 +78,18 @@ scripts/run_tests.ps1
 
 The script uses `GHDL_EXE` if set, otherwise it defaults to
 `C:\code\ghdl-mcode-5.1.1-mingw64\bin\ghdl.exe` and finally `ghdl` on PATH.
+
+Golden vectors:
+- Generator: `scripts/gen_golden_vectors.py` (mpmath-based FP80 rounded constants).
+- Checked-in package: `tb/mc68881_golden_vectors_pkg.vhd`.
+- Keep compile order correct in CI/hooks/scripts:
+  `tb/mc68881_golden_vectors_pkg.vhd` must be analyzed before `tb/tb_mc68881_alu.vhd`.
+
+Known-defect status checks (non-gating, currently includes `DEF-TRIG-001`) can be run with:
+
+```powershell
+scripts/run_known_defects.ps1
+```
 
 The pre-push hook in `.githooks/pre-push` runs the same tests. To enable hooks locally:
 

@@ -64,11 +64,14 @@ B) Functional Completeness (Core Missing Ops)
     - FABS, FNEG, FINT, FINTRZ, FGETEXP, FGETMAN, FTST.
     - Keep IEEE-class behavior aligned for zero/inf/nan inputs.
 
-[~] B5. Implement transcendental operations (guide section 3.3.3).
+[x] B5. Implement transcendental operations (guide section 3.3.3).
     - FACOS, FASIN, FATAN, FATANH, FCOS, FCOSH.
     - FETOX, FETOXM1, FLOGN, FLOGNP1, FLOG10, FLOG2.
     - FSIN, FSINCOS, FSINH, FTAN, FTANH, FTENTOX, FTWOTOX.
     - Done subset: FSIN, FCOS, FTAN, FSINCOS.
+    - Done: FACOS, FASIN, FATAN, FATANH, FCOSH.
+    - Done: FETOX, FETOXM1, FLOGN, FLOGNP1, FLOG10, FLOG2.
+    - Done: FSINH, FTANH, FTENTOX, FTWOTOX.
 
 [ ] B6. Implement program-control instruction set (guide section 3.3.4).
     - FBcc, FDBcc, FScc, FNOP.
@@ -85,44 +88,87 @@ B) Functional Completeness (Core Missing Ops)
 
 C) Exception Handling & Edge Cases
 ----------------------------------
-[ ] C1. Add denormal handling coverage.
+[~] C1. Add denormal handling coverage.
     - Define flush/denormal rules per MC68881 behavior.
+    - In progress: subnormal input/output checks exist for sqrt/trig/trans and integer-conversion paths.
 
-[ ] C2. Improve NaN propagation details.
+[~] C2. Improve NaN propagation details.
     - Ensure quiet/signaling NaN behavior is correct for each op.
+    - In progress: broad NaN-class propagation checks exist for monadic/trig/trans ops.
+    - REVIEW FINDING (critical): No SNaN vs QNaN discrimination anywhere in codebase.
+      No fp80_is_snan/fp80_is_qnan function exists. invalid_on_nan_inputs fires
+      for ALL NaN inputs; per datasheet only SNaN should set SNAN exception, QNaN
+      should propagate silently with no exception.
+    - REVIEW FINDING (critical): NaN payloads destroyed. All units return canonical_qnan()
+      with a fixed pattern instead of propagating the input NaN payload. Datasheet
+      Section 4.5.4 requires input NaN payload preservation (with SNaN quieted by
+      setting fraction MSB). Two-NaN priority (SNaN > QNaN, destination > source)
+      is also missing.
+    - FIXED: FPCP-generated NaN pattern corrected. canonical_qnan/canonical_nan
+      now returns all-ones mantissa (0xFFFFFFFFFFFFFFFF) per datasheet.
 
-[ ] C3. Expand exception detection tests.
+[~] C3. Expand exception detection tests.
     - Invalid, divzero, overflow, underflow, inexact for new ops.
+    - In progress: invalid/divzero coverage is exercised; overflow/underflow/inexact matrix is still incomplete.
+    - REVIEW FINDING (medium): Exception granularity is 5 bits instead of 8.
+      Code has INVALID, OVERFLOW, UNDERFLOW, DIVZERO, INEXACT. Datasheet defines
+      BSUN, SNAN, OPERR, OVFL, UNFL, DZ, INEX2, INEX1. Missing: BSUN (for B6
+      conditional instructions), SNAN vs OPERR distinction (different trap vectors
+      54 vs 52), INEX1 vs INEX2 (packed decimal input inexact).
+    - REVIEW FINDING (medium): Transcendental divide-by-zero not detected. FLOG(0),
+      FLOG2(0), FLOG10(0) should set DZ. FATANH(+/-1) should also set DZ. These
+      use EXC_POLICY_ARITH which has divzero disabled.
+    - FIXED: FTAN exception policy changed from EXC_POLICY_DIV to EXC_POLICY_ARITH.
+    - FIXED: FLOGN(0), FLOG10(0), FLOG2(0) now return -infinity and set DZ exception.
+      Added EXC_POLICY_LOG with divzero_on_zero_input flag. Trig unit split
+      zero/negative conditions to produce correct result per datasheet.
+    - REMAINING: FATANH(+/-1) and FLOGNP1(-1) still return NaN instead of +-infinity
+      with DZ. Requires trig unit DZ output port or per-op value comparison.
 
-[ ] C4. Complete FPCR/FPSR architectural fields.
+[~] C4. Complete FPCR/FPSR architectural fields.
     - FPCR exception-enable byte semantics.
     - FPSR condition code, quotient, exception status, accrued exception bytes.
+    - In progress: per-op policy flow (A8) and key FPSR behavior are in place; full architectural closure remains.
+    - FIXED: FPSR EXC/AEXC byte positions corrected. EXC status byte now at
+      bits 15-8, Accrued byte at bits 7-0 per datasheet.
+    - FIXED: EXC status byte now cleared then set per operation (Section 2.3.3).
+    - FIXED: AEXC combination logic corrected per datasheet:
+      AEXC(UNFL) = UNFL AND INEX; AEXC(INEX) = INEX OR OVFL.
+    - REVIEW FINDING (medium): FPCR exception enable byte (bits 15-8) stored but
+      never consulted. No exception trapping is implemented.
+    - FIXED: fpsr_cc_from_result now sets N bit independently from sign, per
+      Table 2-1. -Infinity correctly sets N=1,I=1; -Zero sets N=1,Z=1.
 
-[ ] C5. Track FPIAR behavior across exceptions and restart points.
+[~] C5. Track FPIAR behavior across exceptions and restart points.
     - Verify faulting instruction address capture and restore interactions.
+    - In progress: exception-time FPIAR capture checks exist for top-level flows; restart-corner coverage remains.
 
 D) Verification / Testbench Coverage
 ------------------------------------
-[ ] D1. Add self-checking testbenches for each newly implemented opcode.
+[~] D1. Add self-checking testbenches for each newly implemented opcode.
     - Wait on DUT valid signals before checking.
     - Avoid reserved identifiers in signal/procedure arguments.
+    - In progress: broad self-checking ALU/top coverage exists, including added sweep and golden-vector spot checks.
 
-[ ] D2. Log key transactions in testbenches using report (severity note).
+[x] D2. Log key transactions in testbenches using report (severity note).
     - Include expected vs observed values.
 
-[ ] D3. FP80 value checks must compare encoding fields.
+[x] D3. FP80 value checks must compare encoding fields.
     - Deconstruct sign/exponent/mantissa or recomposition from bus words.
     - Do not compare raw integer literals to FP80 results.
 
-[ ] D4. Cycle-count verification for all newly implemented ops.
+[~] D4. Cycle-count verification for all newly implemented ops.
     - Include EA timing adjustments where applicable.
+    - In progress: latency checks exist for key arithmetic/trig/trans paths; full per-op closure remains.
 
-[ ] D5. Add opcode matrix coverage from programming guide sections 3.3.1-3.3.5.
+[~] D5. Add opcode matrix coverage from programming guide sections 3.3.1-3.3.5.
     - Explicit per-op test status list to prevent silent gaps.
+    - In progress: microseq/dispatch coverage is substantial for implemented classes; B6/B7 matrices remain open.
 
-[ ] D6. Add format-specific FMOVE/FMOVEM tests.
+[~] D6. Add format-specific FMOVE/FMOVEM tests.
     - B/W/L/S/D/X/P data formats.
     - FMOVEM list encoding rules and Dn mask behavior.
+    - In progress: major FMOVE/FMOVEM paths are covered; full format/mode closure tracking still needed.
 
 E) Bus Interface & Timing (Confirmations)
 -----------------------------------------
@@ -131,9 +177,53 @@ E) Bus Interface & Timing (Confirmations)
 [x] E3. Access size handling for 8/16/32-bit.
 [x] E4. Microsequencer for cycle-accurate timing.
 
+F) Datasheet Conformance (MC68881UM Review Findings)
+-----------------------------------------------------
+[x] F1. Fix NaN-to-extended conversion destroying NaN (becomes infinity).
+    - FIXED: fp80_from_single and fp80_from_double now copy source fraction bits
+      into extended mantissa, left-justified, preserving NaN payloads.
+
+[ ] F2. Fix format conversion rounding (fp80_to_single / fp80_to_double).
+    - fp80_to_single (line 376) and fp80_to_double (line 405) truncate mantissa
+      bits with no rounding. Datasheet Section 3.5.2 requires rounding using
+      current FPCR rounding mode (guard/round/sticky bit evaluation).
+    - Severity: high. Affects all FMOVE.S and FMOVE.D to memory.
+
+[~] F3. Add exception handling to FMOVE operations.
+    - FPU_OP_MOVE uses EXC_POLICY_NONE (mc68881_pkg.vhd:823), disabling all
+      exception classification. Datasheet states FMOVE is an arithmetic operation
+      that must signal OVFL, UNFL, INEX, SNAN during format conversion.
+    - Severity: high. Even if conversion functions are fixed, no exceptions
+      would be recorded.
+    - FIXED (partial): FPU_OP_MOVE policy changed from EXC_POLICY_NONE to
+      EXC_POLICY_ARITH. Policy metadata is correct; however, the FMOVE execution
+      path bypasses the ALU (no valid pulse), so the exception classification
+      block does not run for FMOVE ops. Full fix requires routing FMOVE
+      completion through the exception classification path.
+
+[ ] F4. Fix format conversion overflow/underflow behavior.
+    - fp80_to_single/double overflow: always saturates to infinity. Per datasheet
+      Section 6.1.4, in RZ/RM/RP modes the result should be the largest
+      representable normalized number, not infinity.
+    - fp80_to_single/double underflow: flushes to zero. Per IEEE 754 and datasheet,
+      gradual underflow (denormalized result) is required.
+    - Severity: high.
+
+[x] F5. Fix FGETEXP(infinity) and FGETMAN(infinity).
+    - FIXED: Both now return NaN (all-ones mantissa) for infinity input per datasheet.
+
+[x] F6. Fix FSCALE NaN source operand handling.
+    - FIXED: FSCALE now checks for NaN source/destination before scaling.
+      Returns canonical NaN when either operand is NaN.
+
+[x] F7. Fix FMOD/FREM signed zero preservation.
+    - FIXED: Zero-dividend result now preserves sign from input operand.
+
 Notes:
 - Priorities from the review: FSQRT, FMOVE/FMOVEM, FCMP/FTST first; refactor top state machine next.
 - Checklist expanded using docs/68881-programming.txt (instruction groups + format/control details).
+- Section 7 (coprocessor interface) closure plan is tracked in
+  docs/section7_coprocessor_interface_checklist.md.
 - Maintain VHDL-2008 compatibility and avoid vendor-specific primitives.
 - Use scripts/run_tests.ps1 for local verification (set GHDL_EXE if needed).
 - For LUT/area regression checks, use non-incremental synthesis only.

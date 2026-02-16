@@ -42,6 +42,7 @@ architecture rtl of mc68881_top is
   signal quotient_valid : std_logic := '0';
   signal quotient_byte : std_logic_vector(7 downto 0) := (others => '0');
   signal busy      : std_logic := '0';
+  signal alu_flag_divzero : std_logic := '0';
   signal sense_drive : std_logic := '1';
   signal op_start_reg  : std_logic := '0';
   signal status_valid_reg : std_logic := '0';
@@ -147,10 +148,10 @@ architecture rtl of mc68881_top is
   constant FPSR_CC_NEG      : natural := 27;
   constant FPSR_QUOT_LSB    : natural := 16;
   constant FPSR_QUOT_MSB    : natural := 23;
-  constant FPSR_AEXC_LSB    : natural := 8;
-  constant FPSR_AEXC_MSB    : natural := 15;
-  constant FPSR_EXC_LSB     : natural := 0;
-  constant FPSR_EXC_MSB     : natural := 7;
+  constant FPSR_AEXC_LSB    : natural := 0;
+  constant FPSR_AEXC_MSB    : natural := 7;
+  constant FPSR_EXC_LSB     : natural := 8;
+  constant FPSR_EXC_MSB     : natural := 15;
   constant FPSR_EXC_INEXACT  : natural := 0;
   constant FPSR_EXC_UNDERFLOW: natural := 1;
   constant FPSR_EXC_OVERFLOW : natural := 2;
@@ -298,6 +299,7 @@ architecture rtl of mc68881_top is
       fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
       if frac_s /= 0 then
         fp_value(FP_MANT_WIDTH-1) := '1';
+        fp_value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-24) := std_logic_vector(frac_s);
       end if;
       return fp_value;
     else
@@ -338,6 +340,7 @@ architecture rtl of mc68881_top is
       fp_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
       if frac_d /= 0 then
         fp_value(FP_MANT_WIDTH-1) := '1';
+        fp_value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-53) := std_logic_vector(frac_d);
       end if;
       return fp_value;
     else
@@ -502,16 +505,26 @@ architecture rtl of mc68881_top is
   function fpsr_cc_from_result(value : fp80_t) return std_logic_vector is
     variable cc_bits : std_logic_vector(3 downto 0) := (others => '0');
   begin
+    -- Data-type classification bits (mutually exclusive).
     if fp80_is_nan(value) then
       cc_bits(0) := '1';
     elsif fp80_is_inf(value) then
       cc_bits(1) := '1';
     elsif fp80_is_zero(value) then
       cc_bits(2) := '1';
-    else
-      cc_bits(3) := value(FP_WIDTH-1);
     end if;
+    -- N bit always reflects sign independently (datasheet Table 2-1).
+    cc_bits(3) := value(FP_WIDTH-1);
     return cc_bits;
+  end function;
+
+  function fp80_exp_is_zero_nonzero_mant(value : fp80_t) return boolean is
+    variable exp_bits : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable mant_bits : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+  begin
+    exp_bits := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+    mant_bits := unsigned(value(FP_MANT_WIDTH-1 downto 0));
+    return exp_bits = 0 and mant_bits /= 0;
   end function;
 
   function fpsr_cc_from_compare(a : fp80_t; b : fp80_t) return std_logic_vector is
@@ -601,7 +614,8 @@ begin
       quotient_byte  => quotient_byte,
       quotient_valid => quotient_valid,
       aux_result => aux_result,
-      aux_valid  => aux_valid
+      aux_valid  => aux_valid,
+      flag_divzero => alu_flag_divzero
     );
 
   -- Bus/register process:
@@ -624,6 +638,8 @@ begin
     variable res_zero : boolean;
     variable res_inf  : boolean;
     variable res_nan  : boolean;
+    variable res_subnormal : boolean;
+    variable aexc_combined : std_logic_vector(4 downto 0);
   begin
     if reset_n = '0' then
       op_sel_reg <= FPU_OP_NOP;
@@ -735,6 +751,7 @@ begin
         res_zero := fp80_is_zero(result);
         res_inf := fp80_is_inf(result);
         res_nan := fp80_is_nan(result);
+        res_subnormal := fp80_exp_is_zero_nonzero_mant(result);
 
         if exc_policy.invalid_on_nan_inputs and (a_nan or b_nan) then
           exc_flags(FPSR_EXC_INVALID) := '1';
@@ -748,6 +765,16 @@ begin
           if b_zero and not a_zero then
             exc_flags(FPSR_EXC_DIVZERO) := '1';
           end if;
+        end if;
+
+        -- Transcendental singularity: log(0) = -infinity is DZ, not OVERFLOW.
+        if exc_policy.divzero_on_zero_input and a_zero then
+          exc_flags(FPSR_EXC_DIVZERO) := '1';
+        end if;
+
+        -- Trig/divrem unit explicit DZ flag (FLOGNP1(-1), FATANH(±1), etc.)
+        if alu_flag_divzero = '1' then
+          exc_flags(FPSR_EXC_DIVZERO) := '1';
         end if;
 
         if exc_policy.invalid_zero_over_zero and a_zero and b_zero then
@@ -770,7 +797,7 @@ begin
             exc_flags(FPSR_EXC_OVERFLOW) := '1';
           end if;
 
-          if res_zero and not a_zero and not b_zero and not res_nan and not res_inf then
+          if (res_zero or res_subnormal) and not a_zero and not b_zero and not res_nan and not res_inf then
             exc_flags(FPSR_EXC_UNDERFLOW) := '1';
           end if;
 
@@ -780,16 +807,23 @@ begin
         end if;
 
         if exc_policy.update_exc_status then
-          exc_status_byte := fpsr_reg(FPSR_EXC_MSB downto FPSR_EXC_LSB);
-          exc_status_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) :=
-            exc_status_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) or exc_flags;
+          -- Datasheet Section 2.3.3: EXC byte is cleared then set per operation.
+          exc_status_byte := (others => '0');
+          exc_status_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) := exc_flags;
           fpsr_reg(FPSR_EXC_MSB downto FPSR_EXC_LSB) <= exc_status_byte;
         end if;
 
         if exc_policy.update_accumulated_exc then
+          -- Datasheet AEXC combination rules:
+          -- AEXC(UNFL) |= UNFL AND INEX; AEXC(INEX) |= INEX OR OVFL.
+          aexc_combined(FPSR_EXC_INVALID)   := exc_flags(FPSR_EXC_INVALID);
+          aexc_combined(FPSR_EXC_OVERFLOW)  := exc_flags(FPSR_EXC_OVERFLOW);
+          aexc_combined(FPSR_EXC_UNDERFLOW) := exc_flags(FPSR_EXC_UNDERFLOW) and exc_flags(FPSR_EXC_INEXACT);
+          aexc_combined(FPSR_EXC_DIVZERO)   := exc_flags(FPSR_EXC_DIVZERO);
+          aexc_combined(FPSR_EXC_INEXACT)   := exc_flags(FPSR_EXC_INEXACT) or exc_flags(FPSR_EXC_OVERFLOW);
           accrued_exc_byte := fpsr_reg(FPSR_AEXC_MSB downto FPSR_AEXC_LSB);
           accrued_exc_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) :=
-            accrued_exc_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) or exc_flags;
+            accrued_exc_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) or aexc_combined;
           fpsr_reg(FPSR_AEXC_MSB downto FPSR_AEXC_LSB) <= accrued_exc_byte;
         end if;
 

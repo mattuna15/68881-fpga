@@ -462,6 +462,11 @@ architecture rtl of mc68881_trig_unit is
   signal div_rm_reg : fp_round_mode_t := FP_RND_NEAREST;
   signal div_rp_reg : fp_round_prec_t := FP_PREC_EXTENDED;
 
+  -- Multi-cycle hold for FP operations: inputs are stable for N cycles
+  -- before the result is latched, allowing combinational logic to settle.
+  signal fp_hold_count_reg  : integer range 0 to 7 := 0;
+  signal fp_hold_loaded_reg : std_logic := '0';
+
   function canonical_nan(value : fp80_t) return fp80_t is
     variable res : fp80_t := value;
   begin
@@ -607,6 +612,8 @@ begin
       log_exp_term_valid_reg <= '0';
       div_a_reg <= (others => '0');
       div_b_reg <= (others => '0');
+      fp_hold_count_reg <= 0;
+      fp_hold_loaded_reg <= '0';
     elsif rising_edge(clk) then
       done_reg <= '0';
       aux_valid_reg <= '0';
@@ -1815,16 +1822,40 @@ begin
           state_reg <= ST_DONE;
 
         when ST_FP_MUL =>
-          tmp_reg <= mul_fp80(mul_a_reg, mul_b_reg, mul_rm_reg, mul_rp_reg);
-          state_reg <= cont_state_reg;
+          if fp_hold_loaded_reg = '0' then
+            fp_hold_count_reg <= 0;  -- 1 hold cycle (this one), then compute
+            fp_hold_loaded_reg <= '1';
+          elsif fp_hold_count_reg = 0 then
+            tmp_reg <= mul_fp80(mul_a_reg, mul_b_reg, mul_rm_reg, mul_rp_reg);
+            state_reg <= cont_state_reg;
+            fp_hold_loaded_reg <= '0';
+          else
+            fp_hold_count_reg <= fp_hold_count_reg - 1;
+          end if;
 
         when ST_FP_ADD =>
-          tmp_reg <= add_sub_fp80(add_a_reg, add_b_reg, add_sub_reg, add_rm_reg, add_rp_reg);
-          state_reg <= cont_state_reg;
+          if fp_hold_loaded_reg = '0' then
+            fp_hold_count_reg <= 0;  -- 1 hold cycle (this one), then compute
+            fp_hold_loaded_reg <= '1';
+          elsif fp_hold_count_reg = 0 then
+            tmp_reg <= add_sub_fp80(add_a_reg, add_b_reg, add_sub_reg, add_rm_reg, add_rp_reg);
+            state_reg <= cont_state_reg;
+            fp_hold_loaded_reg <= '0';
+          else
+            fp_hold_count_reg <= fp_hold_count_reg - 1;
+          end if;
 
         when ST_FP_DIV =>
-          tmp_reg <= div_fp80(div_a_reg, div_b_reg, div_rm_reg, div_rp_reg);
-          state_reg <= cont_state_reg;
+          if fp_hold_loaded_reg = '0' then
+            fp_hold_count_reg <= 4;  -- 5 hold cycles (this + 4 more), then compute
+            fp_hold_loaded_reg <= '1';
+          elsif fp_hold_count_reg = 0 then
+            tmp_reg <= div_fp80(div_a_reg, div_b_reg, div_rm_reg, div_rp_reg);
+            state_reg <= cont_state_reg;
+            fp_hold_loaded_reg <= '0';
+          else
+            fp_hold_count_reg <= fp_hold_count_reg - 1;
+          end if;
 
         when ST_DONE =>
           done_reg <= '1';

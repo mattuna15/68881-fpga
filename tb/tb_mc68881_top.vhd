@@ -982,6 +982,21 @@ begin
       report "FLOGN(0) exception should capture FPIAR"
       severity failure;
 
+    -- P1 regression: DZ from transcendental/divrem units must not leak into
+    -- unrelated operations that do not use those subunits.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := fp80_from_int(2);
+    op_b := fp80_from_int(3);
+    write_binary_operands(a_in, d_in, rw, cs_n, as_n, ds_n, op_a, op_b);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000001"); -- FADD
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
+    check_fp80(rd_full, fp80_from_int(5), "FADD result after FLOGN(0)");
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DIVZERO) = '0'
+      report "Stale DZ leaked into non-trig/non-divrem operation"
+      severity failure;
+
     -- B5 exception policy: FASIN(|x|>1) invalid + NaN class.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
     op_a := fp80_from_int(2);

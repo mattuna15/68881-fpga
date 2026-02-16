@@ -56,6 +56,7 @@ architecture rtl of mc68881_divrem_unit is
     ST_SQRT_ITER,
     ST_SQRT_POST,
     ST_MOD_ROUND,
+    ST_MOD_FP_WAIT,   -- multi-cycle hold: let FP engine settle
     ST_MOD_FRAC,
     ST_MOD_ADJUST,
     ST_MOD_PRODUCT,
@@ -107,6 +108,10 @@ architecture rtl of mc68881_divrem_unit is
   -- Combinational results from shared engines
   signal mod_add_result    : fp80_t;
   signal mod_mul_result    : fp80_t;
+
+  -- Multi-cycle hold: FP engine inputs are registered; wait before reading result.
+  signal mod_fp_cont_state_reg : state_t := ST_IDLE;
+  signal mod_fp_wait_count_reg : integer range 0 to 3 := 0;
 
   function prec_bits(prec : fp_round_prec_t) return natural is
   begin
@@ -392,6 +397,8 @@ begin
       flag_overflow_reg <= '0';
       flag_underflow_reg <= '0';
       flag_inexact_reg <= '0';
+      mod_fp_cont_state_reg <= ST_IDLE;
+      mod_fp_wait_count_reg <= 0;
     elsif rising_edge(clk) then
       done_reg <= '0';
       quotient_valid_reg <= '0';
@@ -710,7 +717,7 @@ begin
           end if;
 
         when ST_MOD_ROUND =>
-          -- Set up shared engines; results read in subsequent states.
+          -- Set up shared engines; results read after FP wait.
           quotient_fp := div_result_reg;
           quotient_trunc := fp80_trunc_toward_zero_local(quotient_fp);
           n_fp_reg <= quotient_trunc;
@@ -720,7 +727,9 @@ begin
             quotient_valid_reg <= '1';
             mod_fp_mul_a <= b_reg;
             mod_fp_mul_b <= quotient_trunc;
-            state_reg <= ST_MOD_PRODUCT;
+            mod_fp_cont_state_reg <= ST_MOD_PRODUCT;
+            mod_fp_wait_count_reg <= 0;
+            state_reg <= ST_MOD_FP_WAIT;
           else
             -- FREM: need nearest integer. Compute frac = q - trunc(q) first.
             mod_fp_add_a <= quotient_fp;
@@ -728,7 +737,17 @@ begin
             mod_fp_add_is_sub <= true;
             mod_fp_add_rm <= FP_RND_NEAREST;
             mod_fp_add_rp <= FP_PREC_EXTENDED;
-            state_reg <= ST_MOD_FRAC;
+            mod_fp_cont_state_reg <= ST_MOD_FRAC;
+            mod_fp_wait_count_reg <= 0;
+            state_reg <= ST_MOD_FP_WAIT;
+          end if;
+
+        when ST_MOD_FP_WAIT =>
+          -- Multi-cycle hold: let FP engine combinational logic settle.
+          if mod_fp_wait_count_reg = 0 then
+            state_reg <= mod_fp_cont_state_reg;
+          else
+            mod_fp_wait_count_reg <= mod_fp_wait_count_reg - 1;
           end if;
 
         when ST_MOD_FRAC =>
@@ -743,14 +762,18 @@ begin
             mod_fp_add_is_sub <= div_result_reg(FP_WIDTH-1) = '1';
             mod_fp_add_rm <= FP_RND_NEAREST;
             mod_fp_add_rp <= FP_PREC_EXTENDED;
-            state_reg <= ST_MOD_ADJUST;
+            mod_fp_cont_state_reg <= ST_MOD_ADJUST;
+            mod_fp_wait_count_reg <= 0;
+            state_reg <= ST_MOD_FP_WAIT;
           else
             -- No adjustment needed; trunc is the nearest integer.
             quotient_byte_reg <= quotient_byte_from_fp_integer(n_fp_reg);
             quotient_valid_reg <= '1';
             mod_fp_mul_a <= b_reg;
             mod_fp_mul_b <= n_fp_reg;
-            state_reg <= ST_MOD_PRODUCT;
+            mod_fp_cont_state_reg <= ST_MOD_PRODUCT;
+            mod_fp_wait_count_reg <= 0;
+            state_reg <= ST_MOD_FP_WAIT;
           end if;
 
         when ST_MOD_ADJUST =>
@@ -760,7 +783,9 @@ begin
           quotient_valid_reg <= '1';
           mod_fp_mul_a <= b_reg;
           mod_fp_mul_b <= mod_add_result;
-          state_reg <= ST_MOD_PRODUCT;
+          mod_fp_cont_state_reg <= ST_MOD_PRODUCT;
+          mod_fp_wait_count_reg <= 0;
+          state_reg <= ST_MOD_FP_WAIT;
 
         when ST_MOD_PRODUCT =>
           -- Read product = b * n from shared mul engine.
@@ -770,7 +795,9 @@ begin
           mod_fp_add_is_sub <= true;
           mod_fp_add_rm <= rm_reg;
           mod_fp_add_rp <= rp_reg;
-          state_reg <= ST_MOD_SUB;
+          mod_fp_cont_state_reg <= ST_MOD_SUB;
+          mod_fp_wait_count_reg <= 0;
+          state_reg <= ST_MOD_FP_WAIT;
 
         when ST_MOD_SUB =>
           -- Read remainder = a - product from shared add engine.

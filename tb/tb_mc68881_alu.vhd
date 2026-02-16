@@ -24,12 +24,13 @@ architecture sim of tb_mc68881_alu is
   signal aux_valid : std_logic;
   signal quotient_valid : std_logic;
   signal quotient_byte : std_logic_vector(7 downto 0);
+  signal flag_divzero : std_logic;
   signal busy   : std_logic;
   signal cycle_cnt : natural := 0;
 
   constant CLK_PERIOD : time := 10 ns;
-  constant ADD_LATENCY : natural := 1;
-  constant SUB_LATENCY : natural := 1;
+  constant ADD_LATENCY : natural := 2;  -- registered dispatch adds 1 cycle
+  constant SUB_LATENCY : natural := 2;  -- registered dispatch adds 1 cycle
   constant MUL_LATENCY : natural := 4;
   constant DIV_LATENCY : natural := op_alu_latency(FPU_OP_DIV);
   constant SQRT_LATENCY : natural := op_alu_latency(FPU_OP_SQRT);
@@ -286,7 +287,8 @@ begin
       quotient_byte => quotient_byte,
       quotient_valid => quotient_valid,
       aux_result => aux_result,
-      aux_valid => aux_valid
+      aux_valid => aux_valid,
+      flag_divzero => flag_divzero
     );
 
   process

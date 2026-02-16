@@ -1,206 +1,148 @@
-#set_property IOSTANDARD LVCMOS33 [get_ports {led_1}]
-#set_property PACKAGE_PIN T23 [get_ports {led_1}]
-#set_property IOSTANDARD LVCMOS33 [get_ports {led_2}]
-#set_property PACKAGE_PIN R23 [get_ports {led_2}]
-set_property IOSTANDARD LVCMOS33 [get_ports clk]
-set_property PACKAGE_PIN U22 [get_ports clk]
-set_property IOSTANDARD LVCMOS33 [get_ports sys_rst_n]
-set_property PACKAGE_PIN P4 [get_ports sys_rst_n]
+# MC68881 FPGA - Timing and I/O Constraints for xc7a200t
+# ======================================================
 
+# Configuration voltage
+set_property CFGBVS VCCO [current_design]
+set_property CONFIG_VOLTAGE 3.3 [current_design]
 set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 4 [current_design]
 
+# Clock: 10 MHz initial target (100ns period)
+create_clock -period 100.000 -name sys_clk [get_ports clk]
+set_property IOSTANDARD LVCMOS33 [get_ports clk]
+set_property PACKAGE_PIN U22 [get_ports clk]
 
-### Auto-generated from tmp/core-db-pr2.xdc
-### Profile: core_ddr
+# Reset
+set_property IOSTANDARD LVCMOS33 [get_ports reset_n]
+set_property PACKAGE_PIN P4 [get_ports reset_n]
 
-## ddr_a[0]
-#set_property PACKAGE_PIN N3   [get_ports {ddr_a[0]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[0]}]
+# Bus interface - IOSTANDARD (PACKAGE_PIN assignments are board-specific)
+set_property IOSTANDARD LVCMOS33 [get_ports {a_in[*]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {d_in[*]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {d_out[*]}]
+set_property IOSTANDARD LVCMOS33 [get_ports {size_n[*]}]
+set_property IOSTANDARD LVCMOS33 [get_ports as_n]
+set_property IOSTANDARD LVCMOS33 [get_ports cs_n]
+set_property IOSTANDARD LVCMOS33 [get_ports rw]
+set_property IOSTANDARD LVCMOS33 [get_ports ds_n]
+set_property IOSTANDARD LVCMOS33 [get_ports dsack0_n]
+set_property IOSTANDARD LVCMOS33 [get_ports dsack1_n]
+set_property IOSTANDARD LVCMOS33 [get_ports sense_n]
 
-## ddr_a[1]
-#set_property PACKAGE_PIN P7   [get_ports {ddr_a[1]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[1]}]
+# ======================================================
+# Multi-Cycle Path Constraints
+# ======================================================
+# FP combinational functions (div_fp80, mul_fp80, add_sub_fp80) take longer
+# than one 100ns clock period to settle.  The RTL holds inputs stable for
+# N cycles via hold counters, so these MCP constraints are safe.
 
-## ddr_a[10]
-#set_property PACKAGE_PIN L7   [get_ports {ddr_a[10]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[10]}]
+# --- Trig unit: div_fp80 (6 cycle MCP) ---
+set_multicycle_path -setup 6 -from [get_cells alu_inst/trig_inst/div_a_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  5 -from [get_cells alu_inst/trig_inst/div_a_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -setup 6 -from [get_cells alu_inst/trig_inst/div_b_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  5 -from [get_cells alu_inst/trig_inst/div_b_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -setup 6 -from [get_cells alu_inst/trig_inst/div_rm_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  5 -from [get_cells alu_inst/trig_inst/div_rm_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -setup 6 -from [get_cells alu_inst/trig_inst/div_rp_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  5 -from [get_cells alu_inst/trig_inst/div_rp_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
 
-## ddr_a[11]
-#set_property PACKAGE_PIN R7   [get_ports {ddr_a[11]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[11]}]
+# --- Trig unit: mul_fp80 (2 cycle MCP) ---
+set_multicycle_path -setup 2 -from [get_cells alu_inst/trig_inst/mul_a_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/trig_inst/mul_a_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/trig_inst/mul_b_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/trig_inst/mul_b_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/trig_inst/mul_rm_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/trig_inst/mul_rm_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/trig_inst/mul_rp_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/trig_inst/mul_rp_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
 
-## ddr_a[12]
-#set_property PACKAGE_PIN N7   [get_ports {ddr_a[12]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[12]}]
+# --- Trig unit: add_sub_fp80 (2 cycle MCP) ---
+set_multicycle_path -setup 2 -from [get_cells alu_inst/trig_inst/add_a_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/trig_inst/add_a_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/trig_inst/add_b_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/trig_inst/add_b_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/trig_inst/add_sub_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/trig_inst/add_sub_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/trig_inst/add_rm_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/trig_inst/add_rm_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/trig_inst/add_rp_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/trig_inst/add_rp_reg_reg*] \
+                              -to   [get_cells alu_inst/trig_inst/tmp_reg_reg*]
 
-## ddr_a[13]
-#set_property PACKAGE_PIN T3   [get_ports {ddr_a[13]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[13]}]
+# --- ALU: simple ops add_sub_fp80 / mul_fp80 (2 cycle MCP) ---
+set_multicycle_path -setup 2 -from [get_cells alu_inst/simple_a_reg_reg*] \
+                              -to   [get_cells alu_inst/result_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/simple_a_reg_reg*] \
+                              -to   [get_cells alu_inst/result_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/simple_b_reg_reg*] \
+                              -to   [get_cells alu_inst/result_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/simple_b_reg_reg*] \
+                              -to   [get_cells alu_inst/result_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/simple_op_reg_reg*] \
+                              -to   [get_cells alu_inst/result_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/simple_op_reg_reg*] \
+                              -to   [get_cells alu_inst/result_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/simple_rm_reg_reg*] \
+                              -to   [get_cells alu_inst/result_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/simple_rm_reg_reg*] \
+                              -to   [get_cells alu_inst/result_reg_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/simple_rp_reg_reg*] \
+                              -to   [get_cells alu_inst/result_reg_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/simple_rp_reg_reg*] \
+                              -to   [get_cells alu_inst/result_reg_reg*]
 
-## ddr_a[2]
-#set_property PACKAGE_PIN P3   [get_ports {ddr_a[2]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[2]}]
-
-## ddr_a[3]
-#set_property PACKAGE_PIN N2   [get_ports {ddr_a[3]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[3]}]
-
-## ddr_a[4]
-#set_property PACKAGE_PIN P8   [get_ports {ddr_a[4]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[4]}]
-
-## ddr_a[5]
-#set_property PACKAGE_PIN P2   [get_ports {ddr_a[5]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[5]}]
-
-## ddr_a[6]
-#set_property PACKAGE_PIN R8   [get_ports {ddr_a[6]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[6]}]
-
-## ddr_a[7]
-#set_property PACKAGE_PIN R2   [get_ports {ddr_a[7]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[7]}]
-
-## ddr_a[8]
-#set_property PACKAGE_PIN T8   [get_ports {ddr_a[8]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[8]}]
-
-## ddr_a[9]
-#set_property PACKAGE_PIN R3   [get_ports {ddr_a[9]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_a[9]}]
-
-## ddr_ba[0]
-#set_property PACKAGE_PIN M2   [get_ports {ddr_ba[0]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_ba[0]}]
-
-## ddr_ba[1]
-#set_property PACKAGE_PIN N8   [get_ports {ddr_ba[1]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_ba[1]}]
-
-## ddr_ba[2]
-#set_property PACKAGE_PIN M3   [get_ports {ddr_ba[2]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_ba[2]}]
-
-## ddr_cas_n
-#set_property PACKAGE_PIN K3   [get_ports {ddr_cas_n}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_cas_n}]
-
-## ddr_ck_n
-#set_property PACKAGE_PIN K7   [get_ports {ddr_ck_n}]
-#set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr_ck_n}]
-
-## ddr_ck_p
-#set_property PACKAGE_PIN J7   [get_ports {ddr_ck_p}]
-#set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr_ck_p}]
-
-## ddr_cke
-#set_property PACKAGE_PIN K9   [get_ports {ddr_cke}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_cke}]
-
-## ddr_cs_n
-#set_property PACKAGE_PIN L2   [get_ports {ddr_cs_n}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_cs_n}]
-
-## ddr_dm[0]
-#set_property PACKAGE_PIN E7   [get_ports {ddr_dm[0]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dm[0]}]
-
-## ddr_dm[1]
-#set_property PACKAGE_PIN D3   [get_ports {ddr_dm[1]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dm[1]}]
-
-## ddr_dq[0]
-#set_property PACKAGE_PIN E3   [get_ports {ddr_dq[0]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[0]}]
-
-## ddr_dq[1]
-#set_property PACKAGE_PIN F7   [get_ports {ddr_dq[1]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[1]}]
-
-## ddr_dq[10]
-#set_property PACKAGE_PIN C8   [get_ports {ddr_dq[10]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[10]}]
-
-## ddr_dq[11]
-#set_property PACKAGE_PIN C2   [get_ports {ddr_dq[11]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[11]}]
-
-## ddr_dq[12]
-#set_property PACKAGE_PIN A7   [get_ports {ddr_dq[12]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[12]}]
-
-## ddr_dq[13]
-#set_property PACKAGE_PIN A2   [get_ports {ddr_dq[13]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[13]}]
-
-## ddr_dq[14]
-#set_property PACKAGE_PIN B8   [get_ports {ddr_dq[14]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[14]}]
-
-## ddr_dq[15]
-#set_property PACKAGE_PIN A3   [get_ports {ddr_dq[15]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[15]}]
-
-## ddr_dq[2]
-#set_property PACKAGE_PIN F2   [get_ports {ddr_dq[2]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[2]}]
-
-## ddr_dq[3]
-#set_property PACKAGE_PIN F8   [get_ports {ddr_dq[3]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[3]}]
-
-## ddr_dq[4]
-#set_property PACKAGE_PIN H3   [get_ports {ddr_dq[4]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[4]}]
-
-## ddr_dq[5]
-#set_property PACKAGE_PIN H8   [get_ports {ddr_dq[5]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[5]}]
-
-## ddr_dq[6]
-#set_property PACKAGE_PIN G2   [get_ports {ddr_dq[6]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[6]}]
-
-## ddr_dq[7]
-#set_property PACKAGE_PIN H7   [get_ports {ddr_dq[7]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[7]}]
-
-## ddr_dq[8]
-#set_property PACKAGE_PIN D7   [get_ports {ddr_dq[8]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[8]}]
-
-## ddr_dq[9]
-#set_property PACKAGE_PIN C3   [get_ports {ddr_dq[9]}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_dq[9]}]
-
-## ddr_dqs_n[0]
-#set_property PACKAGE_PIN G3  [get_ports {ddr_dqs_n[0]}]
-#set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr_dqs_n[0]}]
-
-## ddr_dqs_n[1]
-#set_property PACKAGE_PIN B7  [get_ports {ddr_dqs_n[1]}]
-#set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr_dqs_n[1]}]
-
-## ddr_dqs_p[0]
-#set_property PACKAGE_PIN F3  [get_ports {ddr_dqs_p[0]}]
-#set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr_dqs_p[0]}]
-
-## ddr_dqs_p[1]
-#set_property PACKAGE_PIN C7  [get_ports {ddr_dqs_p[1]}]
-#set_property IOSTANDARD DIFF_SSTL15 [get_ports {ddr_dqs_p[1]}]
-
-## ddr_odt
-#set_property PACKAGE_PIN K1   [get_ports {ddr_odt}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_odt}]
-
-## ddr_ras_n
-#set_property PACKAGE_PIN J3   [get_ports {ddr_ras_n}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_ras_n}]
-
-## ddr_reset_n
-#set_property PACKAGE_PIN T2   [get_ports {ddr_reset_n}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_reset_n}]
-
-## ddr_we_n
-#set_property PACKAGE_PIN L3   [get_ports {ddr_we_n}]
-#set_property IOSTANDARD SSTL15 [get_ports {ddr_we_n}]
+# --- Divrem unit: mod FP engines (2 cycle MCP) ---
+# add_sub_fp80 paths
+set_multicycle_path -setup 2 -from [get_cells alu_inst/divrem_inst/mod_fp_add_a_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/divrem_inst/mod_fp_add_a_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/divrem_inst/mod_fp_add_b_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/divrem_inst/mod_fp_add_b_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/divrem_inst/mod_fp_add_is_sub_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/divrem_inst/mod_fp_add_is_sub_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/divrem_inst/mod_fp_add_rm_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/divrem_inst/mod_fp_add_rm_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/divrem_inst/mod_fp_add_rp_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/divrem_inst/mod_fp_add_rp_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+# mul_fp80 paths
+set_multicycle_path -setup 2 -from [get_cells alu_inst/divrem_inst/mod_fp_mul_a_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/divrem_inst/mod_fp_mul_a_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -setup 2 -from [get_cells alu_inst/divrem_inst/mod_fp_mul_b_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]
+set_multicycle_path -hold  1 -from [get_cells alu_inst/divrem_inst/mod_fp_mul_b_reg*] \
+                              -to   [get_cells alu_inst/divrem_inst/*_reg*]

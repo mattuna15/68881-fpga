@@ -20,7 +20,8 @@ entity mc68881_alu is
     quotient_byte  : out std_logic_vector(7 downto 0);
     quotient_valid : out std_logic;
     aux_result : out fp80_t;
-    aux_valid  : out std_logic
+    aux_valid  : out std_logic;
+    flag_divzero : out std_logic
   );
 end entity mc68881_alu;
 
@@ -116,6 +117,7 @@ architecture rtl of mc68881_alu is
   signal trig_result : fp80_t := (others => '0');
   signal trig_aux_result : fp80_t := (others => '0');
   signal trig_aux_valid : std_logic := '0';
+  signal trig_flag_divzero : std_logic := '0';
 
   signal op_pending_reg : fpu_op_t := FPU_OP_NOP;
   signal latency_count_reg : natural := 0;
@@ -180,7 +182,8 @@ begin
       done       => trig_done,
       result     => trig_result,
       aux_valid  => trig_aux_valid,
-      aux_result => trig_aux_result
+      aux_result => trig_aux_result,
+      flag_divzero => trig_flag_divzero
     );
 
   divrem_inst : entity work.mc68881_divrem_unit
@@ -222,6 +225,8 @@ begin
   op_pending_is_trig <= '1' when is_trig_op(op_pending_reg) else '0';
   op_pending_is_divrem <= '1' when is_divrem_op(op_pending_reg) else '0';
   op_pending_is_sglops <= '1' when is_sglops_op(op_pending_reg) else '0';
+
+  flag_divzero <= trig_flag_divzero or divrem_flag_divzero;
 
   process(clk, reset_n)
   begin

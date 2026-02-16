@@ -42,6 +42,7 @@ architecture rtl of mc68881_top is
   signal quotient_valid : std_logic := '0';
   signal quotient_byte : std_logic_vector(7 downto 0) := (others => '0');
   signal busy      : std_logic := '0';
+  signal alu_flag_divzero : std_logic := '0';
   signal sense_drive : std_logic := '1';
   signal op_start_reg  : std_logic := '0';
   signal status_valid_reg : std_logic := '0';
@@ -613,7 +614,8 @@ begin
       quotient_byte  => quotient_byte,
       quotient_valid => quotient_valid,
       aux_result => aux_result,
-      aux_valid  => aux_valid
+      aux_valid  => aux_valid,
+      flag_divzero => alu_flag_divzero
     );
 
   -- Bus/register process:
@@ -767,6 +769,11 @@ begin
 
         -- Transcendental singularity: log(0) = -infinity is DZ, not OVERFLOW.
         if exc_policy.divzero_on_zero_input and a_zero then
+          exc_flags(FPSR_EXC_DIVZERO) := '1';
+        end if;
+
+        -- Trig/divrem unit explicit DZ flag (FLOGNP1(-1), FATANH(±1), etc.)
+        if alu_flag_divzero = '1' then
           exc_flags(FPSR_EXC_DIVZERO) := '1';
         end if;
 

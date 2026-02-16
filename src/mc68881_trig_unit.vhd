@@ -20,7 +20,8 @@ entity mc68881_trig_unit is
     done       : out std_logic;
     result     : out fp80_t;
     aux_valid  : out std_logic;
-    aux_result : out fp80_t
+    aux_result : out fp80_t;
+    flag_divzero : out std_logic
   );
 end entity mc68881_trig_unit;
 
@@ -381,6 +382,7 @@ architecture rtl of mc68881_trig_unit is
   signal aux_result_reg : fp80_t := (others => '0');
   signal done_reg : std_logic := '0';
   signal aux_valid_reg : std_logic := '0';
+  signal flag_divzero_reg : std_logic := '0';
 
   signal coeff0_reg : fp80_t := (others => '0');
   signal coeff1_reg : fp80_t := (others => '0');
@@ -562,6 +564,7 @@ begin
       state_reg <= ST_IDLE;
       done_reg <= '0';
       aux_valid_reg <= '0';
+      flag_divzero_reg <= '0';
       result_reg <= (others => '0');
       aux_result_reg <= (others => '0');
       x_reg <= (others => '0');
@@ -614,6 +617,7 @@ begin
             a_reg <= a_in;
             rm_reg <= round_mode;
             rp_reg <= round_prec;
+            flag_divzero_reg <= '0';
             state_reg <= ST_CLASSIFY;
           end if;
 
@@ -854,7 +858,12 @@ begin
                 if fp80_is_inf(a_reg) and fp80_sign(a_reg) = '0' then
                   result_reg <= FP80_POS_INF;
                   state_reg <= ST_DONE;
-                elsif compare_fp80(a_reg, FP80_NEG_ONE) <= 0 then
+                elsif a_reg = FP80_NEG_ONE then
+                  -- Singularity: log(1 + (-1)) = log(0) = -infinity, DZ.
+                  result_reg <= FP80_NEG_INF;
+                  flag_divzero_reg <= '1';
+                  state_reg <= ST_DONE;
+                elsif compare_fp80(a_reg, FP80_NEG_ONE) < 0 then
                   result_reg <= canonical_nan(FP80_ZERO);
                   state_reg <= ST_DONE;
                 elsif fp80_is_zero(a_reg) then
@@ -1054,7 +1063,16 @@ begin
                 end if;
 
               when FPU_OP_ATANH =>
-                if compare_fp80(abs_a, FP80_ONE) >= 0 then
+                if abs_a = FP80_ONE then
+                  -- Singularity: atanh(±1) = ±infinity, DZ.
+                  if fp80_sign(a_reg) = '1' then
+                    result_reg <= FP80_NEG_INF;
+                  else
+                    result_reg <= FP80_POS_INF;
+                  end if;
+                  flag_divzero_reg <= '1';
+                  state_reg <= ST_DONE;
+                elsif compare_fp80(abs_a, FP80_ONE) > 0 then
                   result_reg <= canonical_nan(FP80_ZERO);
                   state_reg <= ST_DONE;
                 elsif fp80_is_zero(a_reg) then
@@ -1817,6 +1835,7 @@ begin
 
   busy <= '1' when state_reg /= ST_IDLE else '0';
   done <= done_reg;
+  flag_divzero <= flag_divzero_reg;
   result <= result_reg;
   aux_valid <= aux_valid_reg;
   aux_result <= aux_result_reg;

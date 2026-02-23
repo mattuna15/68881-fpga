@@ -17,9 +17,6 @@ for the core arithmetic datapath. The current plan and progress tracking live in
 
 ## Progress snapshot
 Based on `docs/fpu-progress-checklist.md`:
-- Completed checklist items: 19
-- In-progress checklist items: 9
-- Not-started checklist items: 3
 - Completed highlights:
   - Top-level cleanup/refactor items A1-A8, including explicit operation-class
     dispatch, centralized opcode descriptors, typed MOVE decode records, and
@@ -31,6 +28,17 @@ Based on `docs/fpu-progress-checklist.md`:
   - B5 transcendental set implemented (`FSIN/FCOS/FTAN/FSINCOS`, inverse trig, exp/log families,
     hyperbolic families, `FTENTOX/FTWOTOX`).
   - Bus/timing confirmations E1-E4.
+
+## Implementation baseline (2026-02-23)
+- Clean non-incremental batch flow (`scripts/run_impl.tcl`) meets routed timing:
+  - `WNS = 1.356 ns`
+  - `TNS = 0.000 ns`
+  - `WHS = 0.026 ns`
+  - `THS = 0.000 ns`
+- Post-implementation LUT utilization:
+  - `Slice LUTs = 66523 / 134600 (49.42%)`
+- Reproducibility:
+  - A second clean non-incremental run reproduced the same signoff metrics.
 
 ## Transcendental architecture guardrails
 - The B5 implementation uses a shared serialized transcendental engine (`src/mc68881_trig_unit.vhd`)
@@ -64,7 +72,10 @@ covering:
 ## Known defects
 - Open defect tracking is maintained in `docs/fpu-progress-checklist.md`.
 - Current status:
-  - No open defects are currently tracked.
+  - Open:
+    - `DEF-TIMING-001`
+    - `DEF-DIVREM-001`
+    - `DEF-DIVREM-002`
   - `DEF-TRIG-001` is closed; see `docs/fpu-progress-checklist.md` for closure notes.
 
 ## Running simulations

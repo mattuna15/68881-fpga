@@ -37,6 +37,8 @@
 - Use `scripts/run_tests.ps1` for local verification; set `GHDL_EXE` if GHDL is not on PATH.
 - Keep analyzed file order in CI/hooks/scripts synchronized when adding dependencies. In particular,
   `tb/mc68881_golden_vectors_pkg.vhd` must be analyzed before `tb/tb_mc68881_alu.vhd`.
+- Keep RTL dependency order synchronized in CI/hooks/scripts.
+  `src/mc68881_modrem_post_unit.vhd` must be analyzed before `src/mc68881_divrem_unit.vhd`.
 - Golden-vector workflow:
   - Source generator: `scripts/gen_golden_vectors.py` (mpmath, FP80 rounding).
   - Checked-in package: `tb/mc68881_golden_vectors_pkg.vhd`.
@@ -46,6 +48,9 @@
 - For LUT/area checks, do not use incremental synthesis results.
   Disable run-level incremental reuse on `synth_1` (`AUTO_INCREMENTAL_CHECKPOINT=0`,
   `INCREMENTAL_CHECKPOINT=""`) before collecting utilization numbers.
+- Current implementation signoff baseline (2026-02-23):
+  routed timing met (`WNS 1.356 ns`, `TNS 0.000 ns`) and post-impl LUT usage
+  `66523 / 134600 (49.42%)`. Treat this as the reference for regression checks.
 - For area triage, generate hierarchical utilization reports from the synthesized checkpoint
   (`report_utilization -hierarchical`) and prioritize the largest LUT consumers.
 - Keep opcode decode/class coverage updated in `tb/mc68881_microseq_tb.vhd`.

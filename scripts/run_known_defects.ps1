@@ -25,9 +25,8 @@ function Invoke-Ghdl {
   }
 }
 
-Invoke-Ghdl @('-a', '--std=08', 'src/mc68881_pkg.vhd', 'src/mc68881_trig_unit.vhd', 'src/mc68881_divrem_unit.vhd', 'src/mc68881_sgl_ops_unit.vhd', 'src/mc68881_alu.vhd', 'tb/tb_mc68881_known_defects.vhd')
+Invoke-Ghdl @('-a', '--std=08', 'src/mc68881_pkg.vhd', 'src/mc68881_modrem_post_unit.vhd', 'src/mc68881_divrem_unit.vhd', 'src/mc68881_trig_unit.vhd', 'src/mc68881_sgl_ops_unit.vhd', 'src/mc68881_alu.vhd', 'tb/tb_mc68881_known_defects.vhd')
 Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_known_defects')
 Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_known_defects', '--assert-level=error')
 
 Write-Host 'Known-defect checks completed.'
-

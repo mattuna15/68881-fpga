@@ -82,7 +82,10 @@ architecture rtl of mc68881_trig_unit is
     ST_EXP_REDUCE_KLN2_POST,
     ST_EXP_REDUCE_R_POST,
     ST_LOG_EXP_TERM_POST,
+    ST_LOG_GETEXP,
+    ST_LOG_GETEXP_POST,
     ST_LOGNP1_Z_POST,
+    ST_LOGNP1_GETEXP_POST,
     ST_ATAN_INV_POST,
     ST_TRANS_PREP,
     ST_TRANS_INPUT_ADJUST_POST,
@@ -442,10 +445,10 @@ architecture rtl of mc68881_trig_unit is
   signal exp_reduce_en_reg : std_logic := '0';
   signal exp_reduce_done_reg : std_logic := '0';
   signal exp_k_reg : fp80_t := (others => '0');
-  signal log_exp_reg : fp80_t := (others => '0');
   signal log_exp_term_reg : fp80_t := (others => '0');
+  signal log_unbiased_exp_reg : integer range -FP_EXP_BIAS to FP_EXP_BIAS := 0;
+  signal log_exp_term_zero_reg : std_logic := '1';
   signal log_exp_add_en_reg : std_logic := '0';
-  signal log_exp_term_valid_reg : std_logic := '0';
   signal log_scale_reg : fp80_t := FP80_LN2;
 
   signal mul_a_reg : fp80_t := (others => '0');
@@ -461,11 +464,15 @@ architecture rtl of mc68881_trig_unit is
   signal div_b_reg : fp80_t := (others => '0');
   signal div_rm_reg : fp_round_mode_t := FP_RND_NEAREST;
   signal div_rp_reg : fp_round_prec_t := FP_PREC_EXTENDED;
+  signal trig_div_start_reg : std_logic := '0';
+  signal trig_div_busy : std_logic := '0';
+  signal trig_div_done : std_logic := '0';
+  signal trig_div_result : fp80_t := (others => '0');
+  signal trig_div_flag_divzero : std_logic := '0';
 
-  -- Multi-cycle hold for FP operations: inputs are stable for N cycles
-  -- before the result is latched, allowing combinational logic to settle.
-  signal fp_hold_count_reg  : integer range 0 to 7 := 0;
-  signal fp_hold_loaded_reg : std_logic := '0';
+  -- Serialized FP execution control for shared trig FP micro-ops.
+  signal fp_exec_busy_reg : std_logic := '0';
+  signal fp_exec_cycles_left_reg : integer range 0 to 7 := 0;
 
   function canonical_nan(value : fp80_t) return fp80_t is
     variable res : fp80_t := value;
@@ -538,6 +545,31 @@ architecture rtl of mc68881_trig_unit is
   end function;
 
 begin
+  trig_div_inst : entity work.mc68881_divrem_unit
+    generic map (
+      enable_modrem_post => false
+    )
+    port map (
+      clk     => clk,
+      reset_n => reset_n,
+      start   => trig_div_start_reg,
+      op_sel  => FPU_OP_DIV,
+      a_in    => div_a_reg,
+      b_in    => div_b_reg,
+      round_mode => div_rm_reg,
+      round_prec => div_rp_reg,
+      busy    => trig_div_busy,
+      done    => trig_div_done,
+      result  => trig_div_result,
+      quotient_byte  => open,
+      quotient_valid => open,
+      flag_invalid   => open,
+      flag_divzero   => trig_div_flag_divzero,
+      flag_overflow  => open,
+      flag_underflow => open,
+      flag_inexact   => open
+    );
+
   trig_seed_read_proc : process(clk)
   begin
     if rising_edge(clk) then
@@ -563,7 +595,7 @@ begin
     variable coeff_sel : fp80_t;
     variable x_local : fp80_t;
     variable z_local : fp80_t;
-    variable log_exp_local : fp80_t;
+    variable unbiased_exp_local : integer;
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -606,17 +638,19 @@ begin
       exp_reduce_en_reg <= '0';
       exp_reduce_done_reg <= '0';
       exp_k_reg <= (others => '0');
-      log_exp_reg <= (others => '0');
       log_exp_term_reg <= (others => '0');
+      log_unbiased_exp_reg <= 0;
+      log_exp_term_zero_reg <= '1';
       log_exp_add_en_reg <= '0';
-      log_exp_term_valid_reg <= '0';
       div_a_reg <= (others => '0');
       div_b_reg <= (others => '0');
-      fp_hold_count_reg <= 0;
-      fp_hold_loaded_reg <= '0';
+      fp_exec_busy_reg <= '0';
+      fp_exec_cycles_left_reg <= 0;
+      trig_div_start_reg <= '0';
     elsif rising_edge(clk) then
       done_reg <= '0';
       aux_valid_reg <= '0';
+      trig_div_start_reg <= '0';
       case state_reg is
         when ST_IDLE =>
           if start = '1' then
@@ -644,7 +678,6 @@ begin
           exp_reduce_done_reg <= '0';
           exp_k_reg <= FP80_ZERO;
           log_exp_add_en_reg <= '0';
-          log_exp_term_valid_reg <= '0';
           seed_domain_reg <= SEED_DOMAIN_EXP;
           seed_idx_reg <= 0;
           seed_return_state_reg <= ST_TRANS_PREP;
@@ -832,15 +865,7 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  x_local := fgetman_fp80(a_reg);
-                  log_exp_local := fgetexp_fp80(a_reg);
-                  log_exp_reg <= log_exp_local;
-                  if fp80_is_zero(log_exp_local) then
-                    log_exp_term_reg <= FP80_ZERO;
-                    log_exp_term_valid_reg <= '1';
-                  else
-                    log_exp_term_valid_reg <= '0';
-                  end if;
+                  -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (2-cycle MCP).
                   log_scale_reg <= FP80_LN2;
                   log_exp_add_en_reg <= '1';
                   coeff0_reg <= FP80_ZERO;
@@ -857,8 +882,7 @@ begin
                   seed_domain_reg <= SEED_DOMAIN_LOG;
                   seed_idx_reg <= 0;
                   seed_return_state_reg <= ST_TRANS_PREP;
-                  x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
+                  state_reg <= ST_LOG_GETEXP;
                 end if;
 
               when FPU_OP_LOGNP1 =>
@@ -903,10 +927,7 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  x_local := fgetman_fp80(a_reg);
-                  log_exp_local := fgetexp_fp80(a_reg);
-                  log_exp_term_reg <= log_exp_local;
-                  log_exp_term_valid_reg <= '1';
+                  -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (2-cycle MCP).
                   log_exp_add_en_reg <= '1';
                   coeff0_reg <= FP80_ZERO;
                   coeff1_reg <= FP80_ONE;
@@ -922,8 +943,7 @@ begin
                   seed_domain_reg <= SEED_DOMAIN_LOG;
                   seed_idx_reg <= 2;
                   seed_return_state_reg <= ST_TRANS_PREP;
-                  x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
+                  state_reg <= ST_LOG_GETEXP;
                 end if;
 
               when FPU_OP_LOG10 =>
@@ -941,16 +961,7 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  x_local := fgetman_fp80(a_reg);
-                  log_exp_local := fgetexp_fp80(a_reg);
-                  log_exp_reg <= log_exp_local;
-                  if fp80_is_zero(log_exp_local) then
-                    log_exp_term_reg <= FP80_ZERO;
-                    log_exp_term_valid_reg <= '1';
-                  else
-                    -- Defer exp * LOG10_2 to shared mul in ST_TRANS_PREP.
-                    log_exp_term_valid_reg <= '0';
-                  end if;
+                  -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (2-cycle MCP).
                   log_scale_reg <= FP80_LOG10_2;
                   log_exp_add_en_reg <= '1';
                   coeff0_reg <= FP80_ZERO;
@@ -967,8 +978,7 @@ begin
                   seed_domain_reg <= SEED_DOMAIN_LOG;
                   seed_idx_reg <= 3;
                   seed_return_state_reg <= ST_TRANS_PREP;
-                  x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
+                  state_reg <= ST_LOG_GETEXP;
                 end if;
 
               when FPU_OP_ATAN =>
@@ -1630,20 +1640,57 @@ begin
 
         when ST_LOG_EXP_TERM_POST =>
           log_exp_term_reg <= tmp_reg;
-          log_exp_term_valid_reg <= '1';
-          state_reg <= ST_TRANS_PREP;
+          state_reg <= ST_SEED_READ;
+
+        when ST_LOG_GETEXP =>
+          -- Pipeline stage: capture unbiased exponent metadata and fgetman result.
+          -- a_reg was loaded in ST_IDLE, one full cycle before ST_CLASSIFY set up
+          -- coefficients and transitioned here.  This gives the heavy combinational
+          -- logic two clock periods (200 ns) to settle.
+          exp_bits := unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+          if exp_bits = 0 or exp_bits = to_unsigned(32767, FP_EXP_WIDTH) then
+            unbiased_exp_local := 0;
+          else
+            unbiased_exp_local := to_integer(exp_bits) - FP_EXP_BIAS;
+          end if;
+          log_unbiased_exp_reg <= unbiased_exp_local;
+          if unbiased_exp_local = 0 then
+            log_exp_term_zero_reg <= '1';
+          else
+            log_exp_term_zero_reg <= '0';
+          end if;
+          x_reg <= fgetman_fp80(a_reg);
+          state_reg <= ST_LOG_GETEXP_POST;
+
+        when ST_LOG_GETEXP_POST =>
+          if op_reg = FPU_OP_LOG2 or log_exp_term_zero_reg = '1' then
+            -- log2 uses exponent term directly; logn/log10 skip scaling for zero exp.
+            log_exp_term_reg <= fp80_from_int(log_unbiased_exp_reg);
+            state_reg <= ST_SEED_READ;
+          else
+            mul_a_reg <= fp80_from_int(log_unbiased_exp_reg);
+            mul_b_reg <= log_scale_reg;
+            mul_rm_reg <= FP_RND_NEAREST;
+            mul_rp_reg <= FP_PREC_EXTENDED;
+            cont_state_reg <= ST_LOG_EXP_TERM_POST;
+            state_reg <= ST_FP_MUL;
+          end if;
 
         when ST_LOGNP1_Z_POST =>
           -- z = tmp_reg = a + 1.  Finish FLOGNP1 setup using z.
           z_local := tmp_reg;
           x_local := fgetman_fp80(z_local);
-          log_exp_local := fgetexp_fp80(z_local);
-          log_exp_reg <= log_exp_local;
-          if fp80_is_zero(log_exp_local) then
-            log_exp_term_reg <= FP80_ZERO;
-            log_exp_term_valid_reg <= '1';
+          exp_bits := unsigned(z_local(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+          if exp_bits = 0 or exp_bits = to_unsigned(32767, FP_EXP_WIDTH) then
+            unbiased_exp_local := 0;
           else
-            log_exp_term_valid_reg <= '0';
+            unbiased_exp_local := to_integer(exp_bits) - FP_EXP_BIAS;
+          end if;
+          log_unbiased_exp_reg <= unbiased_exp_local;
+          if unbiased_exp_local = 0 then
+            log_exp_term_zero_reg <= '1';
+          else
+            log_exp_term_zero_reg <= '0';
           end if;
           log_scale_reg <= FP80_LN2;
           log_exp_add_en_reg <= '1';
@@ -1662,7 +1709,20 @@ begin
           seed_idx_reg <= 0;
           seed_return_state_reg <= ST_TRANS_PREP;
           x_reg <= x_local;
-          state_reg <= ST_SEED_READ;
+          state_reg <= ST_LOGNP1_GETEXP_POST;
+
+        when ST_LOGNP1_GETEXP_POST =>
+          if log_exp_term_zero_reg = '1' then
+            log_exp_term_reg <= fp80_from_int(log_unbiased_exp_reg);
+            state_reg <= ST_SEED_READ;
+          else
+            mul_a_reg <= fp80_from_int(log_unbiased_exp_reg);
+            mul_b_reg <= log_scale_reg;
+            mul_rm_reg <= FP_RND_NEAREST;
+            mul_rp_reg <= FP_PREC_EXTENDED;
+            cont_state_reg <= ST_LOG_EXP_TERM_POST;
+            state_reg <= ST_FP_MUL;
+          end if;
 
         when ST_ATAN_INV_POST =>
           seed_domain_reg <= SEED_DOMAIN_ATAN;
@@ -1672,14 +1732,7 @@ begin
           state_reg <= ST_SEED_READ;
 
         when ST_TRANS_PREP =>
-          if log_exp_add_en_reg = '1' and log_exp_term_valid_reg = '0' then
-            mul_a_reg <= log_exp_reg;
-            mul_b_reg <= log_scale_reg;
-            mul_rm_reg <= FP_RND_NEAREST;
-            mul_rp_reg <= FP_PREC_EXTENDED;
-            cont_state_reg <= ST_LOG_EXP_TERM_POST;
-            state_reg <= ST_FP_MUL;
-          elsif trans_input_adjust_en_reg = '1' then
+          if trans_input_adjust_en_reg = '1' then
             add_a_reg <= x_reg;
             if seed_domain_reg = SEED_DOMAIN_LOG then
               add_b_reg <= seed_aux0_reg;
@@ -1822,39 +1875,40 @@ begin
           state_reg <= ST_DONE;
 
         when ST_FP_MUL =>
-          if fp_hold_loaded_reg = '0' then
-            fp_hold_count_reg <= 0;  -- 1 hold cycle (this one), then compute
-            fp_hold_loaded_reg <= '1';
-          elsif fp_hold_count_reg = 0 then
+          if fp_exec_busy_reg = '0' then
+            fp_exec_busy_reg <= '1';
+            fp_exec_cycles_left_reg <= 0; -- 2-cycle launch->capture contract
+          elsif fp_exec_cycles_left_reg = 0 then
             tmp_reg <= mul_fp80(mul_a_reg, mul_b_reg, mul_rm_reg, mul_rp_reg);
             state_reg <= cont_state_reg;
-            fp_hold_loaded_reg <= '0';
+            fp_exec_busy_reg <= '0';
           else
-            fp_hold_count_reg <= fp_hold_count_reg - 1;
+            fp_exec_cycles_left_reg <= fp_exec_cycles_left_reg - 1;
           end if;
 
         when ST_FP_ADD =>
-          if fp_hold_loaded_reg = '0' then
-            fp_hold_count_reg <= 0;  -- 1 hold cycle (this one), then compute
-            fp_hold_loaded_reg <= '1';
-          elsif fp_hold_count_reg = 0 then
+          if fp_exec_busy_reg = '0' then
+            fp_exec_busy_reg <= '1';
+            fp_exec_cycles_left_reg <= 2; -- 4-cycle launch->capture contract
+          elsif fp_exec_cycles_left_reg = 0 then
             tmp_reg <= add_sub_fp80(add_a_reg, add_b_reg, add_sub_reg, add_rm_reg, add_rp_reg);
             state_reg <= cont_state_reg;
-            fp_hold_loaded_reg <= '0';
+            fp_exec_busy_reg <= '0';
           else
-            fp_hold_count_reg <= fp_hold_count_reg - 1;
+            fp_exec_cycles_left_reg <= fp_exec_cycles_left_reg - 1;
           end if;
 
         when ST_FP_DIV =>
-          if fp_hold_loaded_reg = '0' then
-            fp_hold_count_reg <= 4;  -- 5 hold cycles (this + 4 more), then compute
-            fp_hold_loaded_reg <= '1';
-          elsif fp_hold_count_reg = 0 then
-            tmp_reg <= div_fp80(div_a_reg, div_b_reg, div_rm_reg, div_rp_reg);
+          if fp_exec_busy_reg = '0' then
+            fp_exec_busy_reg <= '1';
+            trig_div_start_reg <= '1';
+          elsif trig_div_done = '1' then
+            tmp_reg <= trig_div_result;
             state_reg <= cont_state_reg;
-            fp_hold_loaded_reg <= '0';
-          else
-            fp_hold_count_reg <= fp_hold_count_reg - 1;
+            fp_exec_busy_reg <= '0';
+            if trig_div_flag_divzero = '1' then
+              flag_divzero_reg <= '1';
+            end if;
           end if;
 
         when ST_DONE =>

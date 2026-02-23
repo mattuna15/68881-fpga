@@ -74,15 +74,25 @@ architecture rtl of mc68881_alu is
            op = FPU_OP_TST;
   end function;
 
-  -- Trivial ops: lightweight combinational (no add_sub_fp80/mul_fp80/fint_fp80).
-  -- Heavy simple ops (ADD/SUB/MUL/FINT) use registered dispatch instead.
-  function compute_trivial_result(
+  -- All simple ops use registered dispatch to break combinational path
+  -- from operand_reg through FP logic to result_reg.
+  function compute_simple_result(
     op : fpu_op_t;
     a : fp80_t;
-    b : fp80_t
+    b : fp80_t;
+    rm : fp_round_mode_t;
+    rp : fp_round_prec_t
   ) return fp80_t is
   begin
     case op is
+      when FPU_OP_ADD =>
+        return add_sub_fp80(a, b, false, rm, rp);
+      when FPU_OP_SUB =>
+        return add_sub_fp80(a, b, true, rm, rp);
+      when FPU_OP_MUL =>
+        return mul_fp80(a, b, rm, rp);
+      when FPU_OP_INT =>
+        return fint_fp80(a, rm);
       when FPU_OP_CMP =>
         return fp80_from_int(compare_fp80(a, b));
       when FPU_OP_ABS =>
@@ -100,11 +110,6 @@ architecture rtl of mc68881_alu is
       when others =>
         return (others => '0');
     end case;
-  end function;
-
-  function is_heavy_simple_op(op : fpu_op_t) return boolean is
-  begin
-    return op = FPU_OP_ADD or op = FPU_OP_SUB or op = FPU_OP_MUL or op = FPU_OP_INT;
   end function;
 
   signal result_reg : fp80_t := (others => '0');
@@ -172,7 +177,7 @@ architecture rtl of mc68881_alu is
   signal simple_op_reg : fpu_op_t := FPU_OP_NOP;
   signal simple_rm_reg : fp_round_mode_t := FP_RND_NEAREST;
   signal simple_rp_reg : fp_round_prec_t := FP_PREC_EXTENDED;
-  signal simple_hold_reg : std_logic := '0';  -- multi-cycle hold for FP settle
+  signal simple_hold_count_reg : integer range 0 to 3 := 0;  -- multi-cycle hold for FP settle
 
 begin
   trig_inst : entity work.mc68881_trig_unit
@@ -282,7 +287,7 @@ begin
       simple_op_reg <= FPU_OP_NOP;
       simple_rm_reg <= FP_RND_NEAREST;
       simple_rp_reg <= FP_PREC_EXTENDED;
-      simple_hold_reg <= '0';
+      simple_hold_count_reg <= 0;
     elsif rising_edge(clk) then
       valid <= '0';
       aux_valid <= '0';
@@ -388,21 +393,10 @@ begin
           -- Simple ops path: compute heavy ops from registered operands
           -- Multi-cycle hold: skip 1 cycle to let combinational FP settle.
           if simple_compute_pending_reg = '1' then
-            if simple_hold_reg = '1' then
-              simple_hold_reg <= '0';
+            if simple_hold_count_reg > 0 then
+              simple_hold_count_reg <= simple_hold_count_reg - 1;
             else
-              case simple_op_reg is
-                when FPU_OP_ADD =>
-                  result_reg <= add_sub_fp80(simple_a_reg, simple_b_reg, false, simple_rm_reg, simple_rp_reg);
-                when FPU_OP_SUB =>
-                  result_reg <= add_sub_fp80(simple_a_reg, simple_b_reg, true, simple_rm_reg, simple_rp_reg);
-                when FPU_OP_MUL =>
-                  result_reg <= mul_fp80(simple_a_reg, simple_b_reg, simple_rm_reg, simple_rp_reg);
-                when FPU_OP_INT =>
-                  result_reg <= fint_fp80(simple_a_reg, simple_rm_reg);
-                when others =>
-                  null;
-              end case;
+              result_reg <= compute_simple_result(simple_op_reg, simple_a_reg, simple_b_reg, simple_rm_reg, simple_rp_reg);
               simple_compute_pending_reg <= '0';
             end if;
           end if;
@@ -436,33 +430,19 @@ begin
             latency_count_reg <= op_alu_latency(op_sel) - 2;
           end if;
         elsif is_simple_op(op_sel) then
-          if is_heavy_simple_op(op_sel) then
-            -- Heavy ops (ADD/SUB/MUL/FINT): register operands, compute next cycle
-            simple_a_reg <= a_in;
-            simple_b_reg <= b_in;
-            simple_op_reg <= op_sel;
-            simple_rm_reg <= round_mode;
-            simple_rp_reg <= round_prec;
-            simple_compute_pending_reg <= '1';
-            simple_hold_reg <= '1';  -- 1 extra hold cycle for FP settle
-            busy_reg <= '1';
-            if op_alu_latency(op_sel) <= 1 then
-              latency_count_reg <= 1;
-            else
-              latency_count_reg <= op_alu_latency(op_sel) - 1;
-            end if;
+          -- All simple ops: register operands, compute after hold cycles
+          simple_a_reg <= a_in;
+          simple_b_reg <= b_in;
+          simple_op_reg <= op_sel;
+          simple_rm_reg <= round_mode;
+          simple_rp_reg <= round_prec;
+          simple_compute_pending_reg <= '1';
+          simple_hold_count_reg <= 3;  -- 3 skip cycles + compute = MCP 4 (budget 400ns)
+          busy_reg <= '1';
+          if op_alu_latency(op_sel) <= 1 then
+            latency_count_reg <= 1;
           else
-            -- Trivial ops (ABS/NEG/TST/CMP/GETEXP/GETMAN/INTRZ): immediate
-            result_reg <= compute_trivial_result(op_sel, a_in, b_in);
-            if op_alu_latency(op_sel) = 0 then
-              valid <= '1';
-              busy_reg <= '0';
-              op_pending_reg <= FPU_OP_NOP;
-              latency_count_reg <= 0;
-            else
-              busy_reg <= '1';
-              latency_count_reg <= op_alu_latency(op_sel) - 1;
-            end if;
+            latency_count_reg <= op_alu_latency(op_sel) - 1;
           end if;
         elsif is_divrem_op(op_sel) then
           divrem_op_reg <= op_sel;

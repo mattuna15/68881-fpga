@@ -446,7 +446,7 @@ architecture rtl of mc68881_trig_unit is
   signal exp_reduce_done_reg : std_logic := '0';
   signal exp_k_reg : fp80_t := (others => '0');
   signal log_exp_term_reg : fp80_t := (others => '0');
-  signal log_unbiased_exp_reg : integer range -FP_EXP_BIAS to FP_EXP_BIAS := 0;
+  signal log_unbiased_exp_reg : integer range (2 - FP_EXP_BIAS - FP_MANT_WIDTH) to FP_EXP_BIAS := 0;
   signal log_exp_term_zero_reg : std_logic := '1';
   signal log_exp_add_en_reg : std_logic := '0';
   signal log_scale_reg : fp80_t := FP80_LN2;
@@ -542,6 +542,34 @@ architecture rtl of mc68881_trig_unit is
       return 4 - mag_mod;
     end if;
     return mag_mod;
+  end function;
+
+  function fgetexp_unbiased_int(value : fp80_t) return integer is
+    variable exp_bits : unsigned(FP_EXP_WIDTH-1 downto 0);
+    variable unbiased_exp : integer := 0;
+    variable mantissa_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+  begin
+    -- Log setup only needs finite/non-zero behavior; keep special classes inert.
+    if fp80_is_zero(value) or fp80_is_nan(value) or fp80_is_inf(value) then
+      return 0;
+    end if;
+
+    exp_bits := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+
+    if exp_bits = 0 then
+      -- Match fgetexp_fp80 subnormal normalization semantics.
+      unbiased_exp := 1 - FP_EXP_BIAS;
+      mantissa_norm := unsigned(value(FP_MANT_WIDTH-1 downto 0));
+      for idx in 0 to FP_MANT_WIDTH-1 loop
+        exit when mantissa_norm(mantissa_norm'left) = '1';
+        mantissa_norm := shift_left(mantissa_norm, 1);
+        unbiased_exp := unbiased_exp - 1;
+      end loop;
+    else
+      unbiased_exp := to_integer(exp_bits) - FP_EXP_BIAS;
+    end if;
+
+    return unbiased_exp;
   end function;
 
 begin
@@ -1647,12 +1675,7 @@ begin
           -- a_reg was loaded in ST_IDLE, one full cycle before ST_CLASSIFY set up
           -- coefficients and transitioned here.  This gives the heavy combinational
           -- logic two clock periods (200 ns) to settle.
-          exp_bits := unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
-          if exp_bits = 0 or exp_bits = to_unsigned(32767, FP_EXP_WIDTH) then
-            unbiased_exp_local := 0;
-          else
-            unbiased_exp_local := to_integer(exp_bits) - FP_EXP_BIAS;
-          end if;
+          unbiased_exp_local := fgetexp_unbiased_int(a_reg);
           log_unbiased_exp_reg <= unbiased_exp_local;
           if unbiased_exp_local = 0 then
             log_exp_term_zero_reg <= '1';
@@ -1680,12 +1703,7 @@ begin
           -- z = tmp_reg = a + 1.  Finish FLOGNP1 setup using z.
           z_local := tmp_reg;
           x_local := fgetman_fp80(z_local);
-          exp_bits := unsigned(z_local(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
-          if exp_bits = 0 or exp_bits = to_unsigned(32767, FP_EXP_WIDTH) then
-            unbiased_exp_local := 0;
-          else
-            unbiased_exp_local := to_integer(exp_bits) - FP_EXP_BIAS;
-          end if;
+          unbiased_exp_local := fgetexp_unbiased_int(z_local);
           log_unbiased_exp_reg <= unbiased_exp_local;
           if unbiased_exp_local = 0 then
             log_exp_term_zero_reg <= '1';

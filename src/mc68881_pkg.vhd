@@ -436,7 +436,7 @@ package body mc68881_pkg is
     FPU_OP_ADD => (
       legacy_decode_id_valid => true, legacy_decode_id => 1,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"01",
-      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 51, FPU_SRC_MEM_INTEGER => 80, FPU_SRC_MEM_SINGLE => 72,
@@ -447,7 +447,7 @@ package body mc68881_pkg is
     FPU_OP_SUB => (
       legacy_decode_id_valid => true, legacy_decode_id => 2,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"02",
-      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 51, FPU_SRC_MEM_INTEGER => 80, FPU_SRC_MEM_SINGLE => 72,
@@ -458,7 +458,7 @@ package body mc68881_pkg is
     FPU_OP_MUL => (
       legacy_decode_id_valid => true, legacy_decode_id => 3,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"03",
-      op_class => OP_CLASS_ARITH, alu_latency => 4, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 71, FPU_SRC_MEM_INTEGER => 100, FPU_SRC_MEM_SINGLE => 92,
@@ -491,7 +491,7 @@ package body mc68881_pkg is
     FPU_OP_CMP => (
       legacy_decode_id_valid => true, legacy_decode_id => 7,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"07",
-      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_CMP,
       arith_cycles => (
         FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
@@ -513,7 +513,7 @@ package body mc68881_pkg is
     FPU_OP_REM => (
       legacy_decode_id_valid => true, legacy_decode_id => 9,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"09",
-      op_class => OP_CLASS_ARITH, alu_latency => 84, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 94, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
         FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,
@@ -766,7 +766,7 @@ package body mc68881_pkg is
     FPU_OP_ABS => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"12",
-      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
@@ -777,7 +777,7 @@ package body mc68881_pkg is
     FPU_OP_NEG => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"13",
-      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
@@ -788,7 +788,7 @@ package body mc68881_pkg is
     FPU_OP_INT => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"14",
-      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
@@ -799,7 +799,7 @@ package body mc68881_pkg is
     FPU_OP_INTRZ => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"15",
-      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
@@ -810,7 +810,7 @@ package body mc68881_pkg is
     FPU_OP_GETEXP => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"16",
-      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
@@ -821,7 +821,7 @@ package body mc68881_pkg is
     FPU_OP_GETMAN => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"17",
-      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
         FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,
@@ -832,7 +832,7 @@ package body mc68881_pkg is
     FPU_OP_TST => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"18",
-      op_class => OP_CLASS_ARITH, alu_latency => 1, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_TST,
       arith_cycles => (
         FPU_SRC_FPM => 49, FPU_SRC_MEM_INTEGER => 78, FPU_SRC_MEM_SINGLE => 70,

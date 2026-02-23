@@ -5,6 +5,9 @@ set project_path "C:/code/68881-fpga/project/fpga68881/fpga68881.xpr"
 set report_dir "C:/code/68881-fpga/reports"
 file mkdir $report_dir
 
+# Use more threads for synthesis/implementation
+set_param general.maxThreads 8
+
 puts "=== Opening project ==="
 open_project $project_path
 
@@ -53,6 +56,7 @@ report_utilization -file "$report_dir/post_impl_util.rpt"
 report_utilization -hierarchical -hierarchical_depth 10 -file "$report_dir/post_impl_util_hier.rpt"
 report_timing_summary -max_paths 10 -file "$report_dir/timing_summary.rpt"
 report_timing -max_paths 20 -sort_by slack -file "$report_dir/timing_paths.rpt"
+report_exceptions -coverage -file "$report_dir/exceptions_coverage.rpt"
 report_power -file "$report_dir/power.rpt"
 report_drc -file "$report_dir/drc.rpt"
 report_methodology -file "$report_dir/methodology.rpt"

@@ -5,7 +5,7 @@ This repository contains a VHDL-2008 implementation of an MC68881-compatible
 floating-point unit targeting Xilinx Artix-7 devices. The focus is on cycle-accurate
 external behavior (bus timing, DSACK sequencing) while using DSP-friendly pipelines
 for the core arithmetic datapath. The current plan and progress tracking live in
-`docs/mc68881_plan_checklist.txt`.
+`docs/fpu-progress-checklist.md`.
 
 ## Repository layout
 - `src/`: RTL sources for the MC68881-compatible core.
@@ -16,10 +16,7 @@ for the core arithmetic datapath. The current plan and progress tracking live in
   and `MC68881.PDF`: Reference documentation.
 
 ## Progress snapshot
-Based on `docs/mc68881_plan_checklist.txt`:
-- Completed checklist items: 19
-- In-progress checklist items: 9
-- Not-started checklist items: 3
+Based on `docs/fpu-progress-checklist.md`:
 - Completed highlights:
   - Top-level cleanup/refactor items A1-A8, including explicit operation-class
     dispatch, centralized opcode descriptors, typed MOVE decode records, and
@@ -32,6 +29,17 @@ Based on `docs/mc68881_plan_checklist.txt`:
     hyperbolic families, `FTENTOX/FTWOTOX`).
   - Bus/timing confirmations E1-E4.
 
+## Implementation baseline (2026-02-23)
+- Clean non-incremental batch flow (`scripts/run_impl.tcl`) meets routed timing:
+  - `WNS = 1.356 ns`
+  - `TNS = 0.000 ns`
+  - `WHS = 0.026 ns`
+  - `THS = 0.000 ns`
+- Post-implementation LUT utilization:
+  - `Slice LUTs = 66523 / 134600 (49.42%)`
+- Reproducibility:
+  - A second clean non-incremental run reproduced the same signoff metrics.
+
 ## Transcendental architecture guardrails
 - The B5 implementation uses a shared serialized transcendental engine (`src/mc68881_trig_unit.vhd`)
   and is dispatched from ALU via `table_impl => TABLE_IMPL_BRAM` (`src/mc68881_alu.vhd`).
@@ -43,7 +51,7 @@ Based on `docs/mc68881_plan_checklist.txt`:
   hierarchical reports (`trig_inst` focus).
 
 ## Plan and milestones
-The implementation plan is tracked as a checklist in `docs/mc68881_plan_checklist.txt`,
+The implementation plan is tracked as a checklist in `docs/fpu-progress-checklist.md`,
 covering:
 - External interface and bus timing behavior.
 - Instruction cycle accounting and effective address additions.
@@ -52,20 +60,23 @@ covering:
 - Exception-path behavior for FPSR condition codes/accrued flags and FPIAR capture hooks.
 
 ## Key documentation
-- Master checklist: `docs/mc68881_plan_checklist.txt`
+- Master checklist: `docs/fpu-progress-checklist.md`
 - Programming reference: `docs/68881-programming.txt`
 - FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`
-- Defect checklist: `docs/defect_checklist.md`
+- Defect tracking: `docs/fpu-progress-checklist.md`
 - Technical summary: `docs/68881-tech-summary.pdf`
 - Motorola references:
   - `docs/MC68881.PDF`
   - `docs/AN-0947_MC68881_Floating-Point_Coprocessor_as_a_Peripheral_in_a_M68000_System_[Motorola_1987_37p].pdf`
 
 ## Known defects
-- Open defect tracking is maintained in `docs/defect_checklist.md`.
+- Open defect tracking is maintained in `docs/fpu-progress-checklist.md`.
 - Current status:
-  - No open defects are currently tracked.
-  - `DEF-TRIG-001` is closed; see `docs/defect_checklist.md` for closure notes.
+  - Open:
+    - `DEF-TIMING-001`
+    - `DEF-DIVREM-001`
+    - `DEF-DIVREM-002`
+  - `DEF-TRIG-001` is closed; see `docs/fpu-progress-checklist.md` for closure notes.
 
 ## Running simulations
 Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). The repo includes a test

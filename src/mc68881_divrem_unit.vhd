@@ -5,6 +5,9 @@ use ieee.numeric_std.all;
 use work.mc68881_pkg.all;
 
 entity mc68881_divrem_unit is
+  generic (
+    enable_modrem_post : boolean := true
+  );
   port (
     clk     : in  std_logic;
     reset_n : in  std_logic;
@@ -39,8 +42,6 @@ architecture rtl of mc68881_divrem_unit is
   constant SQRT_MANT_EVEN_WIDTH : natural := FP_MANT_WIDTH + 2;
   constant SQRT_RADICAND_BITS : natural := SQRT_MANT_EVEN_WIDTH + (2 * SQRT_SCALE_SHIFT);
   constant FP80_ZERO : fp80_t := x"00000000000000000000";
-  constant FP80_ONE  : fp80_t := x"3FFF8000000000000000";
-  constant FP80_HALF : fp80_t := x"3FFE8000000000000000";
 
   type fp_unpacked_t is record
     sign : std_logic;
@@ -55,12 +56,7 @@ architecture rtl of mc68881_divrem_unit is
     ST_POST_DIV,
     ST_SQRT_ITER,
     ST_SQRT_POST,
-    ST_MOD_ROUND,
-    ST_MOD_FP_WAIT,   -- multi-cycle hold: let FP engine settle
-    ST_MOD_FRAC,
-    ST_MOD_ADJUST,
-    ST_MOD_PRODUCT,
-    ST_MOD_SUB,
+    ST_MOD_WAIT,
     ST_DONE
   );
 
@@ -84,34 +80,21 @@ architecture rtl of mc68881_divrem_unit is
   signal sqrt_exp_out_reg : integer := 0;
 
   signal div_result_reg : fp80_t := (others => '0');
-  signal n_fp_reg : fp80_t := (others => '0');
   signal result_reg : fp80_t := (others => '0');
   signal quotient_byte_reg : std_logic_vector(7 downto 0) := (others => '0');
   signal quotient_valid_reg : std_logic := '0';
   signal done_reg : std_logic := '0';
+  signal modrem_start_reg : std_logic := '0';
+  signal modrem_done : std_logic := '0';
+  signal modrem_result : fp80_t := (others => '0');
+  signal modrem_quotient_byte : std_logic_vector(7 downto 0) := (others => '0');
+  signal modrem_quotient_valid : std_logic := '0';
 
   signal flag_invalid_reg : std_logic := '0';
   signal flag_divzero_reg : std_logic := '0';
   signal flag_overflow_reg : std_logic := '0';
   signal flag_underflow_reg : std_logic := '0';
   signal flag_inexact_reg : std_logic := '0';
-
-  -- Shared FP arithmetic engine operands (registered).
-  -- Exactly ONE add_sub_fp80 and ONE mul_fp80 instance for MOD/REM post-processing.
-  signal mod_fp_add_a      : fp80_t := (others => '0');
-  signal mod_fp_add_b      : fp80_t := (others => '0');
-  signal mod_fp_add_is_sub : boolean := false;
-  signal mod_fp_add_rm     : fp_round_mode_t := FP_RND_NEAREST;
-  signal mod_fp_add_rp     : fp_round_prec_t := FP_PREC_EXTENDED;
-  signal mod_fp_mul_a      : fp80_t := (others => '0');
-  signal mod_fp_mul_b      : fp80_t := (others => '0');
-  -- Combinational results from shared engines
-  signal mod_add_result    : fp80_t;
-  signal mod_mul_result    : fp80_t;
-
-  -- Multi-cycle hold: FP engine inputs are registered; wait before reading result.
-  signal mod_fp_cont_state_reg : state_t := ST_IDLE;
-  signal mod_fp_wait_count_reg : integer range 0 to 3 := 0;
 
   function prec_bits(prec : fp_round_prec_t) return natural is
   begin
@@ -357,6 +340,34 @@ architecture rtl of mc68881_divrem_unit is
   end function;
 
 begin
+  gen_modpost_on : if enable_modrem_post generate
+    modpost_inst : entity work.mc68881_modrem_post_unit
+      port map (
+        clk     => clk,
+        reset_n => reset_n,
+        start   => modrem_start_reg,
+        op_sel  => op_reg,
+        a_in    => a_reg,
+        b_in    => b_reg,
+        quotient_in => div_result_reg,
+        round_mode => rm_reg,
+        round_prec => rp_reg,
+        busy    => open,
+        done    => modrem_done,
+        result  => modrem_result,
+        quotient_byte  => modrem_quotient_byte,
+        quotient_valid => modrem_quotient_valid
+      );
+  end generate;
+
+  gen_modpost_off : if not enable_modrem_post generate
+  begin
+    modrem_done <= '0';
+    modrem_result <= (others => '0');
+    modrem_quotient_byte <= (others => '0');
+    modrem_quotient_valid <= '0';
+  end generate;
+
   process(clk, reset_n)
     variable a_u : fp_unpacked_t;
     variable b_u : fp_unpacked_t;
@@ -374,11 +385,6 @@ begin
     variable pair_hi : integer := 0;
     variable div_res_u : fp_unpacked_t;
     variable inexact_local : std_logic := '0';
-    variable quotient_fp : fp80_t := (others => '0');
-    variable quotient_trunc : fp80_t := (others => '0');
-    variable frac : fp80_t := (others => '0');
-    variable frac_abs : fp80_t := (others => '0');
-    variable half_cmp : integer := 0;
     variable div_mul2 : unsigned(REM_WIDTH-1 downto 0) := (others => '0');
     variable div_mul3 : unsigned(REM_WIDTH-1 downto 0) := (others => '0');
     variable div_final_result : fp80_t := (others => '0');
@@ -397,11 +403,11 @@ begin
       flag_overflow_reg <= '0';
       flag_underflow_reg <= '0';
       flag_inexact_reg <= '0';
-      mod_fp_cont_state_reg <= ST_IDLE;
-      mod_fp_wait_count_reg <= 0;
+      modrem_start_reg <= '0';
     elsif rising_edge(clk) then
       done_reg <= '0';
       quotient_valid_reg <= '0';
+      modrem_start_reg <= '0';
 
       case state_reg is
         when ST_IDLE =>
@@ -709,100 +715,21 @@ begin
           div_result_reg <= div_final_result;
           flag_inexact_reg <= inexact_local;
 
-          if op_reg = FPU_OP_DIV then
+          if op_reg = FPU_OP_DIV or not enable_modrem_post then
             result_reg <= div_final_result;
             state_reg <= ST_DONE;
           else
-            state_reg <= ST_MOD_ROUND;
+            modrem_start_reg <= '1';
+            state_reg <= ST_MOD_WAIT;
           end if;
 
-        when ST_MOD_ROUND =>
-          -- Set up shared engines; results read after FP wait.
-          quotient_fp := div_result_reg;
-          quotient_trunc := fp80_trunc_toward_zero_local(quotient_fp);
-          n_fp_reg <= quotient_trunc;
-          if op_reg = FPU_OP_MOD then
-            -- FMOD: quotient = trunc(q), go straight to multiply.
-            quotient_byte_reg <= quotient_byte_from_fp_integer(quotient_trunc);
-            quotient_valid_reg <= '1';
-            mod_fp_mul_a <= b_reg;
-            mod_fp_mul_b <= quotient_trunc;
-            mod_fp_cont_state_reg <= ST_MOD_PRODUCT;
-            mod_fp_wait_count_reg <= 0;
-            state_reg <= ST_MOD_FP_WAIT;
-          else
-            -- FREM: need nearest integer. Compute frac = q - trunc(q) first.
-            mod_fp_add_a <= quotient_fp;
-            mod_fp_add_b <= quotient_trunc;
-            mod_fp_add_is_sub <= true;
-            mod_fp_add_rm <= FP_RND_NEAREST;
-            mod_fp_add_rp <= FP_PREC_EXTENDED;
-            mod_fp_cont_state_reg <= ST_MOD_FRAC;
-            mod_fp_wait_count_reg <= 0;
-            state_reg <= ST_MOD_FP_WAIT;
+        when ST_MOD_WAIT =>
+          if modrem_done = '1' then
+            result_reg <= modrem_result;
+            quotient_byte_reg <= modrem_quotient_byte;
+            quotient_valid_reg <= modrem_quotient_valid;
+            state_reg <= ST_DONE;
           end if;
-
-        when ST_MOD_FP_WAIT =>
-          -- Multi-cycle hold: let FP engine combinational logic settle.
-          if mod_fp_wait_count_reg = 0 then
-            state_reg <= mod_fp_cont_state_reg;
-          else
-            mod_fp_wait_count_reg <= mod_fp_wait_count_reg - 1;
-          end if;
-
-        when ST_MOD_FRAC =>
-          -- Read frac = q - trunc(q) from shared add engine.
-          frac := mod_add_result;
-          frac_abs := abs_fp80(frac);
-          half_cmp := compare_fp80(frac_abs, FP80_HALF);
-          if (half_cmp > 0) or (half_cmp = 0 and fp80_is_odd_integer_local(n_fp_reg)) then
-            -- Need to adjust: nearest = trunc ± 1 (away from zero).
-            mod_fp_add_a <= n_fp_reg;
-            mod_fp_add_b <= FP80_ONE;
-            mod_fp_add_is_sub <= div_result_reg(FP_WIDTH-1) = '1';
-            mod_fp_add_rm <= FP_RND_NEAREST;
-            mod_fp_add_rp <= FP_PREC_EXTENDED;
-            mod_fp_cont_state_reg <= ST_MOD_ADJUST;
-            mod_fp_wait_count_reg <= 0;
-            state_reg <= ST_MOD_FP_WAIT;
-          else
-            -- No adjustment needed; trunc is the nearest integer.
-            quotient_byte_reg <= quotient_byte_from_fp_integer(n_fp_reg);
-            quotient_valid_reg <= '1';
-            mod_fp_mul_a <= b_reg;
-            mod_fp_mul_b <= n_fp_reg;
-            mod_fp_cont_state_reg <= ST_MOD_PRODUCT;
-            mod_fp_wait_count_reg <= 0;
-            state_reg <= ST_MOD_FP_WAIT;
-          end if;
-
-        when ST_MOD_ADJUST =>
-          -- Read adjusted nearest = trunc ± 1 from shared add engine.
-          n_fp_reg <= mod_add_result;
-          quotient_byte_reg <= quotient_byte_from_fp_integer(mod_add_result);
-          quotient_valid_reg <= '1';
-          mod_fp_mul_a <= b_reg;
-          mod_fp_mul_b <= mod_add_result;
-          mod_fp_cont_state_reg <= ST_MOD_PRODUCT;
-          mod_fp_wait_count_reg <= 0;
-          state_reg <= ST_MOD_FP_WAIT;
-
-        when ST_MOD_PRODUCT =>
-          -- Read product = b * n from shared mul engine.
-          -- Set up remainder = a - product via shared add engine.
-          mod_fp_add_a <= a_reg;
-          mod_fp_add_b <= mod_mul_result;
-          mod_fp_add_is_sub <= true;
-          mod_fp_add_rm <= rm_reg;
-          mod_fp_add_rp <= rp_reg;
-          mod_fp_cont_state_reg <= ST_MOD_SUB;
-          mod_fp_wait_count_reg <= 0;
-          state_reg <= ST_MOD_FP_WAIT;
-
-        when ST_MOD_SUB =>
-          -- Read remainder = a - product from shared add engine.
-          result_reg <= mod_add_result;
-          state_reg <= ST_DONE;
 
         when ST_DONE =>
           done_reg <= '1';
@@ -810,11 +737,6 @@ begin
       end case;
     end if;
   end process;
-
-  -- Shared FP engines: ONE add_sub_fp80 and ONE mul_fp80 instance for MOD/REM.
-  mod_add_result <= add_sub_fp80(mod_fp_add_a, mod_fp_add_b, mod_fp_add_is_sub,
-                                 mod_fp_add_rm, mod_fp_add_rp);
-  mod_mul_result <= mul_fp80(mod_fp_mul_a, mod_fp_mul_b, FP_RND_NEAREST, FP_PREC_EXTENDED);
 
   busy <= '1' when state_reg /= ST_IDLE else '0';
   done <= done_reg;

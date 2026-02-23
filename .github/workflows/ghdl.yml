@@ -16,8 +16,9 @@ jobs:
         run: |
           ghdl -a --std=08 \
             src/mc68881_pkg.vhd \
-            src/mc68881_trig_unit.vhd \
+            src/mc68881_modrem_post_unit.vhd \
             src/mc68881_divrem_unit.vhd \
+            src/mc68881_trig_unit.vhd \
             src/mc68881_sgl_ops_unit.vhd \
             src/mc68881_alu.vhd \
             src/mc68881_top.vhd \

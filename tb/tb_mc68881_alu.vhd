@@ -29,12 +29,12 @@ architecture sim of tb_mc68881_alu is
   signal cycle_cnt : natural := 0;
 
   constant CLK_PERIOD : time := 10 ns;
-  constant ADD_LATENCY : natural := 2;  -- registered dispatch adds 1 cycle
-  constant SUB_LATENCY : natural := 2;  -- registered dispatch adds 1 cycle
-  constant MUL_LATENCY : natural := 4;
+  constant ADD_LATENCY : natural := 5;  -- MCP 4 hold cycles
+  constant SUB_LATENCY : natural := 5;  -- MCP 4 hold cycles
+  constant MUL_LATENCY : natural := 5;  -- MCP 4 hold cycles
   constant DIV_LATENCY : natural := op_alu_latency(FPU_OP_DIV);
   constant SQRT_LATENCY : natural := op_alu_latency(FPU_OP_SQRT);
-  constant CMP_LATENCY : natural := 1;
+  constant CMP_LATENCY : natural := 5;  -- MCP 4 hold cycles (registered dispatch)
   constant MOD_LATENCY : natural := op_alu_latency(FPU_OP_MOD);
   constant REM_LATENCY : natural := op_alu_latency(FPU_OP_REM);
   constant SCALE_MIN_LATENCY : natural := 2;

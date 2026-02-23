@@ -131,7 +131,7 @@ begin
       report "op_alu_latency FLOGN mapping failed." severity failure;
     assert op_alu_latency(FPU_OP_SQRT) = 73
       report "op_alu_latency SQRT mapping failed." severity failure;
-    assert op_alu_latency(FPU_OP_GETMAN) = 1
+    assert op_alu_latency(FPU_OP_GETMAN) = 5
       report "op_alu_latency FGETMAN mapping failed." severity failure;
     assert op_cycle_model(FPU_OP_ADD) = OP_CYCLE_ARITH
       report "op_cycle_model ADD mapping failed." severity failure;

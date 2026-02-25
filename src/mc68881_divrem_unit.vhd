@@ -515,6 +515,11 @@ begin
                 -- direct leading-one index decode to shorten this timing cone.
                 lead_idx := highest_one_index(a_u.mant);
                 sqrt_norm_shift := natural(SQRT_MANT_EVEN_WIDTH - 1 - lead_idx);
+                -- Match legacy bounded-loop behavior (max FP_MANT_WIDTH shifts)
+                -- so the smallest subnormal does not over-shift to zero.
+                if sqrt_norm_shift > FP_MANT_WIDTH then
+                  sqrt_norm_shift := FP_MANT_WIDTH;
+                end if;
                 exp_unbiased := (1 - FP_EXP_BIAS) - integer(sqrt_norm_shift);
                 mantissa_even := shift_left(resize(a_u.mant, SQRT_MANT_EVEN_WIDTH), sqrt_norm_shift);
               else

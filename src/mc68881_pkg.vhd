@@ -505,7 +505,7 @@ package body mc68881_pkg is
     FPU_OP_MOD => (
       legacy_decode_id_valid => true, legacy_decode_id => 8,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"08",
-      op_class => OP_CLASS_ARITH, alu_latency => 84, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 85, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
         FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,
@@ -516,7 +516,7 @@ package body mc68881_pkg is
     FPU_OP_REM => (
       legacy_decode_id_valid => true, legacy_decode_id => 9,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"09",
-      op_class => OP_CLASS_ARITH, alu_latency => 94, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 97, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
         FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,

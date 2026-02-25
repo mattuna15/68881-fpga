@@ -83,10 +83,13 @@ B) Functional Completeness (Core Missing Ops)
     - Done: FETOX, FETOXM1, FLOGN, FLOGNP1, FLOG10, FLOG2.
     - Done: FSINH, FTANH, FTENTOX, FTWOTOX.
 
-[ ] B6. Implement program-control instruction set (guide section 3.3.4).
+[~] B6. Implement program-control instruction set (guide section 3.3.4).
     - FBcc, FDBcc, FScc, FNOP.
     - Ordered/unordered condition-code variants and NaN behavior.
     - FPU condition-code generation from FCMP/FTST results.
+    - In progress: core-v1 decode/class metadata added for FScc/FBcc/FDBcc.
+      FScc now evaluates FPSR CC flags and returns byte true/false in result low byte.
+      FBcc/FDBcc remain placeholders pending branch/decrement dialog wiring.
 
 [ ] B7. Implement system-control instruction set (guide section 3.3.5).
     - FSAVE, FRESTORE.

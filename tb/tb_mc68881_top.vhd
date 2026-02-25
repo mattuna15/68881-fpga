@@ -1018,6 +1018,37 @@ begin
       report "FASIN(|x|>1) should set CC NAN"
       severity failure;
 
+    -- B6 slice: FScc uses FPSR condition code bits and writes byte result.
+    report "FScc EQ test with Z=1." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    assert rd_lo(7 downto 0) = x"FF"
+      report "FScc EQ should return 0xFF when Z=1"
+      severity failure;
+
+    report "FScc EQ test with N=1 and Z=0." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- N set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    assert rd_lo(7 downto 0) = x"00"
+      report "FScc EQ should return 0x00 when Z=0"
+      severity failure;
+
+    report "FScc UN test with NAN=1." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000008"); -- condition: UN
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    assert rd_lo(7 downto 0) = x"FF"
+      report "FScc UN should return 0xFF when NAN=1"
+      severity failure;
+
     -- DSACK behavior coverage
     size_n <= "11";
     a_in   <= "10000";

@@ -251,6 +251,16 @@ architecture rtl of mc68881_divrem_unit is
     return pack_fp80(res);
   end function;
 
+  function highest_one_index(value : unsigned(FP_MANT_WIDTH-1 downto 0)) return natural is
+  begin
+    for idx in value'high downto value'low loop
+      if value(idx) = '1' then
+        return idx;
+      end if;
+    end loop;
+    return 0;
+  end function;
+
   function fp80_trunc_toward_zero_local(value : fp80_t) return fp80_t is
     variable value_u : fp_unpacked_t := unpack_fp80(value);
     variable exp_i : integer := 0;
@@ -391,6 +401,7 @@ begin
     variable div_round_mode : fp_round_mode_t := FP_RND_NEAREST;
     variable div_round_prec : fp_round_prec_t := FP_PREC_EXTENDED;
     variable mantissa_even : unsigned(SQRT_MANT_EVEN_WIDTH-1 downto 0) := (others => '0');
+    variable sqrt_norm_shift : natural := 0;
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -500,13 +511,17 @@ begin
               state_reg <= ST_DONE;
             else
               if a_u.exp = 0 then
-                exp_unbiased := 1 - FP_EXP_BIAS;
-                mantissa_even := resize(a_u.mant, SQRT_MANT_EVEN_WIDTH);
-                for idx in 0 to FP_MANT_WIDTH-1 loop
-                  exit when mantissa_even(mantissa_even'left) = '1';
-                  mantissa_even := shift_left(mantissa_even, 1);
-                  exp_unbiased := exp_unbiased - 1;
-                end loop;
+                -- Subnormal normalization: replace iterative shift loop with
+                -- direct leading-one index decode to shorten this timing cone.
+                lead_idx := highest_one_index(a_u.mant);
+                sqrt_norm_shift := natural(SQRT_MANT_EVEN_WIDTH - 1 - lead_idx);
+                -- Match legacy bounded-loop behavior (max FP_MANT_WIDTH shifts)
+                -- so the smallest subnormal does not over-shift to zero.
+                if sqrt_norm_shift > FP_MANT_WIDTH then
+                  sqrt_norm_shift := FP_MANT_WIDTH;
+                end if;
+                exp_unbiased := (1 - FP_EXP_BIAS) - integer(sqrt_norm_shift);
+                mantissa_even := shift_left(resize(a_u.mant, SQRT_MANT_EVEN_WIDTH), sqrt_norm_shift);
               else
                 exp_unbiased := to_integer(a_u.exp) - FP_EXP_BIAS;
                 mantissa_even := resize(a_u.mant, SQRT_MANT_EVEN_WIDTH);

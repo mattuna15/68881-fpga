@@ -38,6 +38,12 @@ begin
       report "decode_op_sel_word core-v1 SQRT mapping failed." severity failure;
     assert decode_op_sel_word(x"01000020") = FPU_OP_FNOP
       report "decode_op_sel_word core-v1 FNOP mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000021") = FPU_OP_FSCC
+      report "decode_op_sel_word core-v1 FScc mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000022") = FPU_OP_FBCC
+      report "decode_op_sel_word core-v1 FBcc mapping failed." severity failure;
+    assert decode_op_sel_word(x"01000023") = FPU_OP_FDBCC
+      report "decode_op_sel_word core-v1 FDBcc mapping failed." severity failure;
     assert decode_op_sel_word(x"01000030") = FPU_OP_FSAVE
       report "decode_op_sel_word core-v1 FSAVE mapping failed." severity failure;
     assert decode_op_sel_word(x"01000031") = FPU_OP_FRESTORE
@@ -115,6 +121,12 @@ begin
       report "op_class FTST mapping failed." severity failure;
     assert op_class(FPU_OP_FNOP) = OP_CLASS_PROG_CTRL
       report "op_class FNOP mapping failed." severity failure;
+    assert op_class(FPU_OP_FSCC) = OP_CLASS_PROG_CTRL
+      report "op_class FScc mapping failed." severity failure;
+    assert op_class(FPU_OP_FBCC) = OP_CLASS_PROG_CTRL
+      report "op_class FBcc mapping failed." severity failure;
+    assert op_class(FPU_OP_FDBCC) = OP_CLASS_PROG_CTRL
+      report "op_class FDBcc mapping failed." severity failure;
     assert op_class(FPU_OP_FSAVE) = OP_CLASS_SYS_CTRL
       report "op_class FSAVE mapping failed." severity failure;
     assert op_class(FPU_OP_FRESTORE) = OP_CLASS_SYS_CTRL
@@ -221,6 +233,18 @@ begin
     );
     assert cycles = 0
       report "op_cycle_count FNOP should be zero." severity failure;
+
+    cycles := op_cycle_count(
+      FPU_OP_FSCC,
+      FPU_SRC_FPM,
+      EA_MODE_DN_AN,
+      EA_CYCLE_BEST,
+      false,
+      false,
+      false
+    );
+    assert cycles = 0
+      report "op_cycle_count FScc should be zero." severity failure;
 
     cycles := op_cycle_count(
       FPU_OP_FSAVE,

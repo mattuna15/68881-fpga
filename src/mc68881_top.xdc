@@ -32,7 +32,7 @@ set_property IOSTANDARD LVCMOS33 [get_ports sense_n]
 # Multi-Cycle Path Constraints
 # ======================================================
 
-# --- Trig a_reg -> log_exp_term (2-cycle MCP = 200ns) ---
+# --- Trig a_reg -> log_exp_term / log_unbiased_exp / log_exp_term_zero (2-cycle MCP = 200ns) ---
 set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_exp_term_reg_reg*/D}]
 set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_exp_term_reg_reg*/D}]
 set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_unbiased_exp_reg_reg*/D}]

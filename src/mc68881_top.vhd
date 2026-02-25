@@ -558,6 +558,8 @@ architecture rtl of mc68881_top is
     variable greater_than : boolean := false;
     variable less_than : boolean := false;
     variable equal_to : boolean := false;
+    -- Mirror upper 32 condition codes to lower 32 per MC68881 architecture
+    variable sel : std_logic_vector(5 downto 0);
   begin
     nan_set := cc_bits(0) = '1';
     inf_set := cc_bits(1) = '1';
@@ -567,9 +569,10 @@ architecture rtl of mc68881_top is
     ordered := not unordered;
     equal_to := ordered and zero_set;
     greater_than := ordered and (not zero_set) and (not neg_set);
-    less_than := ordered and neg_set;
+    less_than := ordered and neg_set and (not zero_set);
 
-    case condition_sel is
+    sel := '0' & condition_sel(4 downto 0);
+    case sel is
       when "000000" => return '0'; -- F
       when "000001" => if equal_to then return '1'; else return '0'; end if; -- EQ
       when "000010" => if greater_than then return '1'; else return '0'; end if; -- OGT
@@ -1156,6 +1159,9 @@ begin
             end if;
           when OP_CLASS_PROG_CTRL =>
             -- Program-control opcodes complete without ALU launch.
+            result_lo_reg <= (others => '0');
+            result_hi_reg <= (others => '0');
+            result_ex_reg <= (others => '0');
             if op_sel_write_decoded = FPU_OP_FSCC then
               cc_field := fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN);
               cond_true := eval_fcc_condition(operand_reg(0)(5 downto 0), cc_field);
@@ -1164,8 +1170,6 @@ begin
                 prog_result(7 downto 0) := x"FF";
               end if;
               result_lo_reg <= prog_result;
-              result_hi_reg <= (others => '0');
-              result_ex_reg <= (others => '0');
             end if;
             result_ready_reg <= '1';
           when OP_CLASS_SYS_CTRL =>

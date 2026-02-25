@@ -32,11 +32,13 @@ set_property IOSTANDARD LVCMOS33 [get_ports sense_n]
 # Multi-Cycle Path Constraints
 # ======================================================
 
-# --- Trig a_reg -> log_exp_term (2-cycle MCP = 200ns) ---
+# --- Trig a_reg -> log_exp_term / log_unbiased_exp / log_exp_term_zero (2-cycle MCP = 200ns) ---
 set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_exp_term_reg_reg*/D}]
 set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_exp_term_reg_reg*/D}]
-set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_exp_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_exp_reg_reg*/D}]
+set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_unbiased_exp_reg_reg*/D}]
+set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_unbiased_exp_reg_reg*/D}]
+set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_exp_term_zero_reg_reg*/D}]
+set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_exp_term_zero_reg_reg*/D}]
 
 # --- Trig a_reg -> x_reg (2-cycle) ---
 set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/x_reg_reg*/D}]
@@ -68,22 +70,22 @@ set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 # ST_FP_DIV now uses sequential mc68881_divrem_unit in trig_inst,
 # so no direct div_*_reg -> tmp_reg MCP is required here.
 
-# --- Simple ALU ops -> result (4-cycle MCP = 400ns) ---
-set_multicycle_path -setup 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
-set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
-set_multicycle_path -setup 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
-set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
-set_multicycle_path -setup 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_op_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
-set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_op_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+# --- Simple ALU ops -> result (5-cycle MCP = 500ns) ---
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_op_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_op_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
 
 # --- operand_reg -> result (4-cycle MCP = 400ns) ---
 set_multicycle_path -setup 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
 set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
 
-# --- Modpost paths (4-cycle MCP = 400ns) ---
+# --- Modpost paths (5-cycle MCP = 500ns) ---
 # Scope only the ALU divrem modpost instance. Avoid constraining similarly named
 # internals in other units (e.g. trig-local divider helpers).
-set_multicycle_path -setup 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_fp_add_a_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_add_result_reg_reg*/D}]
-set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_fp_add_a_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_add_result_reg_reg*/D}]
-set_multicycle_path -setup 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_fp_add_b_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_add_result_reg_reg*/D}]
-set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_fp_add_b_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_add_result_reg_reg*/D}]
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_fp_add_a_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_add_result_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_fp_add_a_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_add_result_reg_reg*/D}]
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_fp_add_b_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_add_result_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_fp_add_b_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *alu_inst/divrem_inst/gen_modpost_on.modpost_inst/mod_add_result_reg_reg*/D}]

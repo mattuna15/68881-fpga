@@ -248,11 +248,11 @@ begin
             state_reg <= ST_FP_ADD;
           end if;
 
-        -- Registered FP add: 1 load + 2 hold + 1 compute = MCP 4 (400ns budget)
+        -- Registered FP add: 1 load + 3 hold + 1 compute = MCP 5 (500ns budget)
         when ST_FP_ADD =>
           if fp_hold_loaded_reg = '0' then
             fp_hold_loaded_reg <= '1';
-            mod_fp_wait_count_reg <= 2;
+            mod_fp_wait_count_reg <= 3;
           elsif mod_fp_wait_count_reg = 0 then
             mod_add_result_reg <= add_sub_fp80(mod_fp_add_a, mod_fp_add_b,
                                                mod_fp_add_is_sub, mod_fp_add_rm, mod_fp_add_rp);

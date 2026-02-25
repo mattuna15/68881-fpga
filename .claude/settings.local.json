@@ -33,7 +33,8 @@
       "Bash(powershell.exe -NoProfile -Command 'Get-ChildItem \"\"C:\\\\amddesigntools\\\\Vivado\\\\2025.2\\\\bin\\\\vivado*\"\" -ErrorAction SilentlyContinue | Select-Object -Property Name,FullName')",
       "Bash(powershell.exe -NoProfile -Command 'Get-ChildItem \"\"C:\\\\amddesigntools\\\\2025.2\\\\bin\\\\vivado*\"\" -ErrorAction SilentlyContinue | Select-Object -Property Name,FullName')",
       "Bash(powershell.exe -NoProfile -Command:*)",
-      "Bash(cmd //c \"C:\\\\amddesigntools\\\\2025.2\\\\Vivado\\\\bin\\\\vivado.bat -mode batch -source C:/code/68881-fpga/scripts/run_impl.tcl\")"
+      "Bash(cmd //c \"C:\\\\amddesigntools\\\\2025.2\\\\Vivado\\\\bin\\\\vivado.bat -mode batch -source C:/code/68881-fpga/scripts/run_impl.tcl\")",
+      "Bash(cd:*)"
     ]
   }
 }

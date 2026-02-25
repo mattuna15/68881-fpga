@@ -37,12 +37,16 @@ architecture sim of tb_mc68881_fmove_fmovem is
   constant ADDR_FPSR : unsigned(4 downto 0) := to_unsigned(14, 5);
   constant ADDR_MOVE_CFG : unsigned(4 downto 0) := to_unsigned(23, 5);
   constant ADDR_FPIAR : unsigned(4 downto 0) := to_unsigned(24, 5);
+  constant FPSR_AEXC_BASE : natural := 0;
+  constant FPSR_EXC_BASE : natural := 8;
+  constant FPSR_EXC_INVALID : natural := 4;
 
   constant OP_FMOVE : std_logic_vector(31 downto 0) := x"00000005";
   constant OP_FMOVEM : std_logic_vector(31 downto 0) := x"00000006";
   constant FMOVECR_PI : fp80_t := x"4000C90FDAA22168C235";
   constant FMOVE_SINGLE_SUBMIN_NEG : std_logic_vector(31 downto 0) := x"80000001";
   constant FMOVE_SINGLE_SUBMAX_POS : std_logic_vector(31 downto 0) := x"007FFFFF";
+  constant FMOVE_SINGLE_QNAN : std_logic_vector(31 downto 0) := x"7FC12345";
   constant FMOVE_DOUBLE_SUBMIN_POS_LO : std_logic_vector(31 downto 0) := x"00000001";
   constant FMOVE_DOUBLE_SUBMIN_POS_HI : std_logic_vector(31 downto 0) := x"00000000";
   constant FMOVE_DOUBLE_SUBMAX_POS_LO : std_logic_vector(31 downto 0) := x"FFFFFFFF";
@@ -51,6 +55,11 @@ architecture sim of tb_mc68881_fmove_fmovem is
   constant FMOVE_SINGLE_SUBMAX_POS_FP80 : fp80_t := x"3F80FFFFFE0000000000";
   constant FMOVE_DOUBLE_SUBMIN_POS_FP80 : fp80_t := x"3BCD8000000000000000";
   constant FMOVE_DOUBLE_SUBMAX_POS_FP80 : fp80_t := x"3C00FFFFFFFFFFFFF000";
+  constant FP80_SINGLE_HALF_ULP : fp80_t := x"3FFF8000008000000000";
+  constant FP80_SINGLE_MIN_SUBNORMAL : fp80_t := x"3F6A8000000000000000";
+  constant FP80_SINGLE_OVERFLOW : fp80_t := x"407F8000000000000000";
+  constant FP80_DOUBLE_HALF_ULP : fp80_t := x"3FFF8000000000000400";
+  constant FP80_DOUBLE_MIN_SUBNORMAL : fp80_t := x"3BCD8000000000000000";
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -274,6 +283,135 @@ begin
       report "FMOVE single conversion mismatch expected=42280000 got=" & to_hstring(rd_lo)
       severity failure;
 
+    report "FMOVE single/double rounding and range conversion checks" severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FP80_SINGLE_HALF_ULP(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, FP80_SINGLE_HALF_ULP(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & FP80_SINGLE_HALF_ULP(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 7, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000");
+    cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    report "FMOVE single tie-nearest observed=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"3F800000"
+      report "FMOVE single tie-nearest should round to even (1.0)"
+      severity failure;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000030");
+    cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    report "FMOVE single tie-plus-inf observed=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"3F800001"
+      report "FMOVE single tie-plus-inf should round upward"
+      severity failure;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FP80_SINGLE_MIN_SUBNORMAL(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, FP80_SINGLE_MIN_SUBNORMAL(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & FP80_SINGLE_MIN_SUBNORMAL(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 7, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000010");
+    cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    report "FMOVE single min-subnormal observed=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"00000001"
+      report "FMOVE single gradual underflow should keep min subnormal"
+      severity failure;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FP80_SINGLE_OVERFLOW(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, FP80_SINGLE_OVERFLOW(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & FP80_SINGLE_OVERFLOW(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 7, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000010");
+    cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    report "FMOVE single overflow RZ observed=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"7F7FFFFF"
+      report "FMOVE single overflow in RZ should saturate to max finite"
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000030");
+    cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    report "FMOVE single overflow RP observed=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"7F800000"
+      report "FMOVE single overflow in RP should produce +infinity"
+      severity failure;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FP80_DOUBLE_HALF_ULP(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, FP80_DOUBLE_HALF_ULP(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & FP80_DOUBLE_HALF_ULP(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 7, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000");
+    cfg_word := make_move_cfg("10", 7, 0, "10", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    report "FMOVE double tie-nearest observed hi=" & to_hstring(rd_hi) &
+           " lo=" & to_hstring(rd_lo) severity note;
+    assert rd_hi = x"3FF00000" and rd_lo = x"00000000"
+      report "FMOVE double tie-nearest should round to even (1.0)"
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000030");
+    cfg_word := make_move_cfg("10", 7, 0, "10", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    report "FMOVE double tie-plus-inf observed hi=" & to_hstring(rd_hi) &
+           " lo=" & to_hstring(rd_lo) severity note;
+    assert rd_hi = x"3FF00000" and rd_lo = x"00000001"
+      report "FMOVE double tie-plus-inf should round upward"
+      severity failure;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FP80_DOUBLE_MIN_SUBNORMAL(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, FP80_DOUBLE_MIN_SUBNORMAL(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & FP80_DOUBLE_MIN_SUBNORMAL(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 7, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000010");
+    cfg_word := make_move_cfg("10", 7, 0, "10", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    report "FMOVE double min-subnormal observed hi=" & to_hstring(rd_hi) &
+           " lo=" & to_hstring(rd_lo) severity note;
+    assert rd_hi = x"00000000" and rd_lo = x"00000001"
+      report "FMOVE double gradual underflow should keep min subnormal"
+      severity failure;
+
     report "FMOVE subnormal single/double source checks" severity note;
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FMOVE_SINGLE_SUBMIN_NEG);
@@ -479,6 +617,30 @@ begin
     rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
     report "FMOVE.L min source observed=" & to_hstring(rd_full) severity note;
     check_fp80(rd_full, fp80_from_int(-2147483647), "FMOVE.L min source");
+
+    report "FMOVE conversion exception path check (single qNaN mem->reg)" severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, (others => '0'));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, x"CAFEBABE");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FMOVE_SINGLE_QNAN);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, x"00000000");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"00000000");
+    cfg_word := make_move_cfg("01", 0, 7, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FMOVE qNaN FPSR=" & to_hstring(rd_lo) severity note;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
+      report "FMOVE qNaN should set FPSR EXC invalid"
+      severity failure;
+    assert rd_lo(FPSR_AEXC_BASE + FPSR_EXC_INVALID) = '1'
+      report "FMOVE qNaN should set FPSR AEXC invalid"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, fpiar_word, ADDR_FPIAR);
+    report "FMOVE qNaN FPIAR=" & to_hstring(fpiar_word) severity note;
+    assert fpiar_word = x"CAFEBABE"
+      report "FMOVE qNaN should capture FPIAR snapshot"
+      severity failure;
 
     report "FMOVE .P static/dynamic k-factor checks" severity note;
     fp_val_a := fp80_from_int(1234567);

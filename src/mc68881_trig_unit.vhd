@@ -85,9 +85,11 @@ architecture rtl of mc68881_trig_unit is
     ST_LOG_GETEXP,
     ST_LOG_GETEXP_POST,
     ST_LOGNP1_Z_POST,
+    ST_LOGNP1_META_POST,
     ST_LOGNP1_GETEXP_POST,
     ST_ATAN_INV_POST,
     ST_TRANS_PREP,
+    ST_TRANS_ADD_PREP,
     ST_TRANS_INPUT_ADJUST_POST,
     ST_TRANS_PRE_MUL_POST,
     ST_TRANS_POLY_INIT,
@@ -1705,11 +1707,6 @@ begin
           x_local := fgetman_fp80(z_local);
           unbiased_exp_local := fgetexp_unbiased_int(z_local);
           log_unbiased_exp_reg <= unbiased_exp_local;
-          if unbiased_exp_local = 0 then
-            log_exp_term_zero_reg <= '1';
-          else
-            log_exp_term_zero_reg <= '0';
-          end if;
           log_scale_reg <= FP80_LN2;
           log_exp_add_en_reg <= '1';
           coeff0_reg <= FP80_ZERO;
@@ -1727,6 +1724,15 @@ begin
           seed_idx_reg <= 0;
           seed_return_state_reg <= ST_TRANS_PREP;
           x_reg <= x_local;
+          state_reg <= ST_LOGNP1_META_POST;
+
+        when ST_LOGNP1_META_POST =>
+          -- Isolate metadata/branching from z decode to shorten this timing cone.
+          if log_unbiased_exp_reg = 0 then
+            log_exp_term_zero_reg <= '1';
+          else
+            log_exp_term_zero_reg <= '0';
+          end if;
           state_reg <= ST_LOGNP1_GETEXP_POST;
 
         when ST_LOGNP1_GETEXP_POST =>
@@ -1761,7 +1767,7 @@ begin
             add_rm_reg <= FP_RND_NEAREST;
             add_rp_reg <= FP_PREC_EXTENDED;
             cont_state_reg <= ST_TRANS_INPUT_ADJUST_POST;
-            state_reg <= ST_FP_ADD;
+            state_reg <= ST_TRANS_ADD_PREP;
           elsif trans_pre_mul_en_reg = '1' then
             mul_a_reg <= x_reg;
             if seed_domain_reg = SEED_DOMAIN_EXP then
@@ -1783,6 +1789,10 @@ begin
           else
             state_reg <= ST_TRANS_POLY_INIT;
           end if;
+
+        when ST_TRANS_ADD_PREP =>
+          -- One-cycle launch stage to decouple add operand muxing from ST_FP_ADD.
+          state_reg <= ST_FP_ADD;
 
         when ST_TRANS_INPUT_ADJUST_POST =>
           x_reg <= tmp_reg;
@@ -1821,7 +1831,7 @@ begin
           add_rm_reg <= FP_RND_NEAREST;
           add_rp_reg <= FP_PREC_EXTENDED;
           cont_state_reg <= ST_TRANS_POLY_ADD_POST;
-          state_reg <= ST_FP_ADD;
+          state_reg <= ST_TRANS_ADD_PREP;
 
         when ST_TRANS_POLY_ADD_POST =>
           poly_reg <= tmp_reg;
@@ -1865,7 +1875,7 @@ begin
             add_rm_reg <= rm_reg;
             add_rp_reg <= rp_reg;
             cont_state_reg <= ST_TRANS_POST_ADD_POST;
-            state_reg <= ST_FP_ADD;
+            state_reg <= ST_TRANS_ADD_PREP;
           else
             add_a_reg <= result_reg;
             add_b_reg <= FP80_ZERO;
@@ -1873,7 +1883,7 @@ begin
             add_rm_reg <= rm_reg;
             add_rp_reg <= rp_reg;
             cont_state_reg <= ST_TRANS_FINAL_ROUND_POST;
-            state_reg <= ST_FP_ADD;
+            state_reg <= ST_TRANS_ADD_PREP;
           end if;
 
         when ST_TRANS_POST_ADD_POST =>

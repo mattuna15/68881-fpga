@@ -177,7 +177,7 @@ architecture rtl of mc68881_alu is
   signal simple_op_reg : fpu_op_t := FPU_OP_NOP;
   signal simple_rm_reg : fp_round_mode_t := FP_RND_NEAREST;
   signal simple_rp_reg : fp_round_prec_t := FP_PREC_EXTENDED;
-  signal simple_hold_count_reg : integer range 0 to 3 := 0;  -- multi-cycle hold for FP settle
+  signal simple_hold_count_reg : integer range 0 to 4 := 0;  -- multi-cycle hold for FP settle
 
 begin
   trig_inst : entity work.mc68881_trig_unit
@@ -391,7 +391,7 @@ begin
           end if;
         else
           -- Simple ops path: compute heavy ops from registered operands
-          -- Multi-cycle hold: skip 1 cycle to let combinational FP settle.
+          -- Multi-cycle hold: wait configured cycles to let combinational FP settle.
           if simple_compute_pending_reg = '1' then
             if simple_hold_count_reg > 0 then
               simple_hold_count_reg <= simple_hold_count_reg - 1;
@@ -437,7 +437,7 @@ begin
           simple_rm_reg <= round_mode;
           simple_rp_reg <= round_prec;
           simple_compute_pending_reg <= '1';
-          simple_hold_count_reg <= 3;  -- 3 skip cycles + compute = MCP 4 (budget 400ns)
+          simple_hold_count_reg <= 4;  -- 4 skip cycles + compute = MCP 5 (budget 500ns)
           busy_reg <= '1';
           if op_alu_latency(op_sel) <= 1 then
             latency_count_reg <= 1;

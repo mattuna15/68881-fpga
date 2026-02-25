@@ -70,6 +70,9 @@ package mc68881_pkg is
     FPU_OP_TST,
     FPU_OP_MOVE,
     FPU_OP_MOVEM,
+    FPU_OP_FSCC,
+    FPU_OP_FBCC,
+    FPU_OP_FDBCC,
     FPU_OP_FNOP,
     FPU_OP_FSAVE,
     FPU_OP_FRESTORE
@@ -861,6 +864,27 @@ package body mc68881_pkg is
         FPU_SRC_FPM => 16, FPU_SRC_MEM_INTEGER => 20, FPU_SRC_MEM_SINGLE => 20,
         FPU_SRC_MEM_DOUBLE => 22, FPU_SRC_MEM_EXTENDED => 24, FPU_SRC_MEM_PACKED => 20
       )
+    ),
+    FPU_OP_FSCC => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"21",
+      op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_FBCC => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"22",
+      op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_FDBCC => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"23",
+      op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_FNOP => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,

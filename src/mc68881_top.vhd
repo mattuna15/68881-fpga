@@ -545,6 +545,66 @@ architecture rtl of mc68881_top is
     return cc_bits;
   end function;
 
+  function eval_fcc_condition(
+    condition_sel : std_logic_vector(5 downto 0);
+    cc_bits : std_logic_vector(3 downto 0)
+  ) return std_logic is
+    variable nan_set : boolean := false;
+    variable inf_set : boolean := false;
+    variable zero_set : boolean := false;
+    variable neg_set : boolean := false;
+    variable unordered : boolean := false;
+    variable ordered : boolean := false;
+    variable greater_than : boolean := false;
+    variable less_than : boolean := false;
+    variable equal_to : boolean := false;
+  begin
+    nan_set := cc_bits(0) = '1';
+    inf_set := cc_bits(1) = '1';
+    zero_set := cc_bits(2) = '1';
+    neg_set := cc_bits(3) = '1';
+    unordered := nan_set;
+    ordered := not unordered;
+    equal_to := ordered and zero_set;
+    greater_than := ordered and (not zero_set) and (not neg_set);
+    less_than := ordered and neg_set;
+
+    case condition_sel is
+      when "000000" => return '0'; -- F
+      when "000001" => if equal_to then return '1'; else return '0'; end if; -- EQ
+      when "000010" => if greater_than then return '1'; else return '0'; end if; -- OGT
+      when "000011" => if greater_than or equal_to then return '1'; else return '0'; end if; -- OGE
+      when "000100" => if less_than then return '1'; else return '0'; end if; -- OLT
+      when "000101" => if less_than or equal_to then return '1'; else return '0'; end if; -- OLE
+      when "000110" => if greater_than or less_than then return '1'; else return '0'; end if; -- OGL
+      when "000111" => if ordered then return '1'; else return '0'; end if; -- OR
+      when "001000" => if unordered then return '1'; else return '0'; end if; -- UN
+      when "001001" => if unordered or equal_to then return '1'; else return '0'; end if; -- UEQ
+      when "001010" => if unordered or greater_than then return '1'; else return '0'; end if; -- UGT
+      when "001011" => if unordered or greater_than or equal_to then return '1'; else return '0'; end if; -- UGE
+      when "001100" => if unordered or less_than then return '1'; else return '0'; end if; -- ULT
+      when "001101" => if unordered or less_than or equal_to then return '1'; else return '0'; end if; -- ULE
+      when "001110" => if not equal_to then return '1'; else return '0'; end if; -- NE
+      when "001111" => return '1'; -- T
+      when "010000" => return '0'; -- SF
+      when "010001" => if equal_to then return '1'; else return '0'; end if; -- SEQ
+      when "010010" => if greater_than then return '1'; else return '0'; end if; -- GT
+      when "010011" => if greater_than or equal_to then return '1'; else return '0'; end if; -- GE
+      when "010100" => if less_than then return '1'; else return '0'; end if; -- LT
+      when "010101" => if less_than or equal_to then return '1'; else return '0'; end if; -- LE
+      when "010110" => if greater_than or less_than then return '1'; else return '0'; end if; -- GL
+      when "010111" => if greater_than or less_than or equal_to then return '1'; else return '0'; end if; -- GLE
+      when "011000" => if unordered then return '1'; else return '0'; end if; -- NGLE
+      when "011001" => if unordered or equal_to then return '1'; else return '0'; end if; -- NGL
+      when "011010" => if unordered or greater_than then return '1'; else return '0'; end if; -- NLE
+      when "011011" => if unordered or greater_than or equal_to then return '1'; else return '0'; end if; -- NLT
+      when "011100" => if unordered or less_than then return '1'; else return '0'; end if; -- NGE
+      when "011101" => if unordered or less_than or equal_to then return '1'; else return '0'; end if; -- NGT
+      when "011110" => if not equal_to then return '1'; else return '0'; end if; -- SNE
+      when others   => return '1'; -- ST
+    end case;
+  end function;
+
 begin
   addr      <= unsigned(a_in);
   bus_write <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '0') else '0';
@@ -906,6 +966,9 @@ begin
     variable int_value : integer := 0;
     variable packed_k : integer := 0;
     variable move_cfg : move_cfg_t := move_cfg_default;
+    variable prog_result : std_logic_vector(31 downto 0) := (others => '0');
+    variable cc_field : std_logic_vector(3 downto 0) := (others => '0');
+    variable cond_true : std_logic := '0';
   begin
     if reset_n = '0' then
       result_lo_reg <= (others => '0');
@@ -1092,7 +1155,18 @@ begin
               result_ready_reg <= '1';
             end if;
           when OP_CLASS_PROG_CTRL =>
-            -- Program-control opcodes (e.g. FNOP) currently complete immediately.
+            -- Program-control opcodes complete without ALU launch.
+            if op_sel_write_decoded = FPU_OP_FSCC then
+              cc_field := fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN);
+              cond_true := eval_fcc_condition(operand_reg(0)(5 downto 0), cc_field);
+              prog_result := (others => '0');
+              if cond_true = '1' then
+                prog_result(7 downto 0) := x"FF";
+              end if;
+              result_lo_reg <= prog_result;
+              result_hi_reg <= (others => '0');
+              result_ex_reg <= (others => '0');
+            end if;
             result_ready_reg <= '1';
           when OP_CLASS_SYS_CTRL =>
             -- System-control opcodes are class-routed here for future FSAVE/FRESTORE plumbing.

@@ -138,9 +138,18 @@ architecture rtl of mc68881_top is
   signal ctrl_move_write_req_reg : std_logic := '0';
   signal ctrl_move_sel_reg : std_logic_vector(1 downto 0) := (others => '0');
   signal ctrl_move_data_reg : std_logic_vector(31 downto 0) := (others => '0');
+  signal exc_event_valid_reg : std_logic := '0';
+  signal exc_event_result_reg : fp80_t := (others => '0');
+  signal exc_event_opa_reg : fp80_t := (others => '0');
+  signal exc_event_opb_reg : fp80_t := x"3FFF8000000000000000";
+  signal exc_event_divzero_reg : std_logic := '0';
+  signal exc_event_force_overflow_reg : std_logic := '0';
+  signal exc_event_force_underflow_reg : std_logic := '0';
+  signal exc_event_force_inexact_reg : std_logic := '0';
 
   constant FRAME_LATENCY : natural := 6;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
+  constant FP80_CLASSIFY_ONE : fp80_t := x"3FFF8000000000000000";
 
   constant FPSR_CC_NAN      : natural := 24;
   constant FPSR_CC_INF      : natural := 25;
@@ -352,61 +361,299 @@ architecture rtl of mc68881_top is
     end if;
   end function;
 
-  function fp80_to_single(value : fp80_t) return std_logic_vector is
+  function should_round_up(
+    sign_bit : std_logic;
+    lsb_bit : std_logic;
+    guard_bit : std_logic;
+    sticky_bit : std_logic;
+    mode : fp_round_mode_t
+  ) return std_logic is
+    variable remainder_nonzero : std_logic := '0';
+  begin
+    remainder_nonzero := guard_bit or sticky_bit;
+    case mode is
+      when FP_RND_NEAREST =>
+        if guard_bit = '1' and (sticky_bit = '1' or lsb_bit = '1') then
+          return '1';
+        end if;
+      when FP_RND_ZERO =>
+        null;
+      when FP_RND_MINUS_INF =>
+        if sign_bit = '1' and remainder_nonzero = '1' then
+          return '1';
+        end if;
+      when FP_RND_PLUS_INF =>
+        if sign_bit = '0' and remainder_nonzero = '1' then
+          return '1';
+        end if;
+    end case;
+    return '0';
+  end function;
+
+  function fp80_to_single(value : fp80_t; mode : fp_round_mode_t) return std_logic_vector is
     variable bits32 : std_logic_vector(31 downto 0) := (others => '0');
-    variable exp80 : unsigned(FP_EXP_WIDTH-1 downto 0) := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+    variable exp80_u : unsigned(FP_EXP_WIDTH-1 downto 0) := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
     variable frac80 : unsigned(FP_MANT_WIDTH-2 downto 0) := unsigned(value(FP_MANT_WIDTH-2 downto 0));
+    variable mant80 : unsigned(FP_MANT_WIDTH-1 downto 0) := unsigned(value(FP_MANT_WIDTH-1 downto 0));
+    variable exp80_i : integer := 0;
     variable exp32 : integer := 0;
+    variable sig_base : unsigned(23 downto 0) := (others => '0');
+    variable sig_round : unsigned(24 downto 0) := (others => '0');
+    variable guard_bit : std_logic := '0';
+    variable sticky_bit : std_logic := '0';
+    variable round_up : std_logic := '0';
+    variable shift_total : integer := 0;
+    variable sticky_hi : integer := -1;
   begin
     bits32(31) := value(FP_WIDTH-1);
-    if exp80 = 0 then
+    exp80_i := to_integer(exp80_u);
+
+    if exp80_u = 0 then
+      -- fp80 subnormal: magnitude far below single range.
+      -- Directed rounding away from zero produces minimum subnormal.
+      if mant80 /= 0 then
+        if (mode = FP_RND_PLUS_INF and value(FP_WIDTH-1) = '0') or
+           (mode = FP_RND_MINUS_INF and value(FP_WIDTH-1) = '1') then
+          bits32(0) := '1';
+        end if;
+      end if;
       return bits32;
-    elsif exp80 = FP_EXP_ALL_ONES then
+    elsif exp80_u = FP_EXP_ALL_ONES then
       bits32(30 downto 23) := (others => '1');
       if frac80 /= 0 then
-        bits32(22) := '1';
+        bits32(22 downto 0) := value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-24);
+        if bits32(22 downto 0) = std_logic_vector(to_unsigned(0, 23)) then
+          bits32(22) := '1';
+        end if;
       end if;
       return bits32;
     else
-      exp32 := to_integer(exp80) - FP_EXP_BIAS + 127;
-      if exp32 <= 0 then
+      exp32 := exp80_i - FP_EXP_BIAS + 127;
+      if exp32 > 0 then
+        sig_base := mant80(FP_MANT_WIDTH-1 downto FP_MANT_WIDTH-24);
+        guard_bit := mant80(FP_MANT_WIDTH-25);
+        sticky_bit := '0';
+        for idx in 0 to FP_MANT_WIDTH-26 loop
+          if mant80(idx) = '1' then
+            sticky_bit := '1';
+          end if;
+        end loop;
+        round_up := should_round_up(value(FP_WIDTH-1), sig_base(0), guard_bit, sticky_bit, mode);
+        sig_round := resize(sig_base, sig_round'length);
+        if round_up = '1' then
+          sig_round := sig_round + 1;
+        end if;
+        if sig_round(sig_round'left) = '1' then
+          exp32 := exp32 + 1;
+          sig_base := sig_round(sig_round'left downto 1);
+        else
+          sig_base := sig_round(sig_base'range);
+        end if;
+
+        if exp32 >= 255 then
+          case mode is
+            when FP_RND_NEAREST =>
+              bits32(30 downto 23) := (others => '1');
+              bits32(22 downto 0) := (others => '0');
+            when FP_RND_ZERO =>
+              bits32(30 downto 23) := std_logic_vector(to_unsigned(254, 8));
+              bits32(22 downto 0) := (others => '1');
+            when FP_RND_MINUS_INF =>
+              if value(FP_WIDTH-1) = '1' then
+                bits32(30 downto 23) := (others => '1');
+                bits32(22 downto 0) := (others => '0');
+              else
+                bits32(30 downto 23) := std_logic_vector(to_unsigned(254, 8));
+                bits32(22 downto 0) := (others => '1');
+              end if;
+            when FP_RND_PLUS_INF =>
+              if value(FP_WIDTH-1) = '0' then
+                bits32(30 downto 23) := (others => '1');
+                bits32(22 downto 0) := (others => '0');
+              else
+                bits32(30 downto 23) := std_logic_vector(to_unsigned(254, 8));
+                bits32(22 downto 0) := (others => '1');
+              end if;
+          end case;
+          return bits32;
+        end if;
+
+        bits32(30 downto 23) := std_logic_vector(to_unsigned(exp32, 8));
+        bits32(22 downto 0) := std_logic_vector(sig_base(22 downto 0));
         return bits32;
-      elsif exp32 >= 255 then
-        bits32(30 downto 23) := (others => '1');
+      else
+        -- Gradual underflow: right-shift significand into subnormal range.
+        shift_total := 40 + (1 - exp32);
+        sig_base := (others => '0');
+        guard_bit := '0';
+        sticky_bit := '0';
+        if shift_total < FP_MANT_WIDTH then
+          sig_base := shift_right(mant80, shift_total)(23 downto 0);
+        end if;
+
+        if shift_total > 0 and shift_total - 1 < FP_MANT_WIDTH then
+          guard_bit := mant80(shift_total - 1);
+        end if;
+        sticky_hi := shift_total - 2;
+        if sticky_hi > FP_MANT_WIDTH-1 then
+          sticky_hi := FP_MANT_WIDTH-1;
+        end if;
+        if sticky_hi >= 0 then
+          for idx in 0 to sticky_hi loop
+            if mant80(idx) = '1' then
+              sticky_bit := '1';
+            end if;
+          end loop;
+        end if;
+
+        round_up := should_round_up(value(FP_WIDTH-1), sig_base(0), guard_bit, sticky_bit, mode);
+        sig_round := resize(sig_base, sig_round'length);
+        if round_up = '1' then
+          sig_round := sig_round + 1;
+        end if;
+
+        if sig_round(23) = '1' then
+          bits32(30 downto 23) := std_logic_vector(to_unsigned(1, 8));
+          bits32(22 downto 0) := (others => '0');
+        else
+          bits32(30 downto 23) := (others => '0');
+          bits32(22 downto 0) := std_logic_vector(sig_round(22 downto 0));
+        end if;
         return bits32;
       end if;
-      bits32(30 downto 23) := std_logic_vector(to_unsigned(exp32, 8));
-      bits32(22 downto 0) := value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-24);
-      return bits32;
     end if;
   end function;
 
-  function fp80_to_double(value : fp80_t) return std_logic_vector is
+  function fp80_to_double(value : fp80_t; mode : fp_round_mode_t) return std_logic_vector is
     variable bits64 : std_logic_vector(63 downto 0) := (others => '0');
-    variable exp80 : unsigned(FP_EXP_WIDTH-1 downto 0) := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+    variable exp80_u : unsigned(FP_EXP_WIDTH-1 downto 0) := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
     variable frac80 : unsigned(FP_MANT_WIDTH-2 downto 0) := unsigned(value(FP_MANT_WIDTH-2 downto 0));
+    variable mant80 : unsigned(FP_MANT_WIDTH-1 downto 0) := unsigned(value(FP_MANT_WIDTH-1 downto 0));
+    variable exp80_i : integer := 0;
     variable exp64 : integer := 0;
+    variable sig_base : unsigned(52 downto 0) := (others => '0');
+    variable sig_round : unsigned(53 downto 0) := (others => '0');
+    variable guard_bit : std_logic := '0';
+    variable sticky_bit : std_logic := '0';
+    variable round_up : std_logic := '0';
+    variable shift_total : integer := 0;
+    variable sticky_hi : integer := -1;
   begin
     bits64(63) := value(FP_WIDTH-1);
-    if exp80 = 0 then
+    exp80_i := to_integer(exp80_u);
+
+    if exp80_u = 0 then
+      -- fp80 subnormal: magnitude far below double range.
+      -- Directed rounding away from zero produces minimum subnormal.
+      if mant80 /= 0 then
+        if (mode = FP_RND_PLUS_INF and value(FP_WIDTH-1) = '0') or
+           (mode = FP_RND_MINUS_INF and value(FP_WIDTH-1) = '1') then
+          bits64(0) := '1';
+        end if;
+      end if;
       return bits64;
-    elsif exp80 = FP_EXP_ALL_ONES then
+    elsif exp80_u = FP_EXP_ALL_ONES then
       bits64(62 downto 52) := (others => '1');
       if frac80 /= 0 then
-        bits64(51) := '1';
+        bits64(51 downto 0) := value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-53);
+        if bits64(51 downto 0) = std_logic_vector(to_unsigned(0, 52)) then
+          bits64(51) := '1';
+        end if;
       end if;
       return bits64;
     else
-      exp64 := to_integer(exp80) - FP_EXP_BIAS + 1023;
-      if exp64 <= 0 then
+      exp64 := exp80_i - FP_EXP_BIAS + 1023;
+      if exp64 > 0 then
+        sig_base := mant80(FP_MANT_WIDTH-1 downto FP_MANT_WIDTH-53);
+        guard_bit := mant80(FP_MANT_WIDTH-54);
+        sticky_bit := '0';
+        for idx in 0 to FP_MANT_WIDTH-55 loop
+          if mant80(idx) = '1' then
+            sticky_bit := '1';
+          end if;
+        end loop;
+        round_up := should_round_up(value(FP_WIDTH-1), sig_base(0), guard_bit, sticky_bit, mode);
+        sig_round := resize(sig_base, sig_round'length);
+        if round_up = '1' then
+          sig_round := sig_round + 1;
+        end if;
+        if sig_round(sig_round'left) = '1' then
+          exp64 := exp64 + 1;
+          sig_base := sig_round(sig_round'left downto 1);
+        else
+          sig_base := sig_round(sig_base'range);
+        end if;
+
+        if exp64 >= 2047 then
+          case mode is
+            when FP_RND_NEAREST =>
+              bits64(62 downto 52) := (others => '1');
+              bits64(51 downto 0) := (others => '0');
+            when FP_RND_ZERO =>
+              bits64(62 downto 52) := std_logic_vector(to_unsigned(2046, 11));
+              bits64(51 downto 0) := (others => '1');
+            when FP_RND_MINUS_INF =>
+              if value(FP_WIDTH-1) = '1' then
+                bits64(62 downto 52) := (others => '1');
+                bits64(51 downto 0) := (others => '0');
+              else
+                bits64(62 downto 52) := std_logic_vector(to_unsigned(2046, 11));
+                bits64(51 downto 0) := (others => '1');
+              end if;
+            when FP_RND_PLUS_INF =>
+              if value(FP_WIDTH-1) = '0' then
+                bits64(62 downto 52) := (others => '1');
+                bits64(51 downto 0) := (others => '0');
+              else
+                bits64(62 downto 52) := std_logic_vector(to_unsigned(2046, 11));
+                bits64(51 downto 0) := (others => '1');
+              end if;
+          end case;
+          return bits64;
+        end if;
+
+        bits64(62 downto 52) := std_logic_vector(to_unsigned(exp64, 11));
+        bits64(51 downto 0) := std_logic_vector(sig_base(51 downto 0));
         return bits64;
-      elsif exp64 >= 2047 then
-        bits64(62 downto 52) := (others => '1');
+      else
+        shift_total := 11 + (1 - exp64);
+        sig_base := (others => '0');
+        guard_bit := '0';
+        sticky_bit := '0';
+        if shift_total < FP_MANT_WIDTH then
+          sig_base := shift_right(mant80, shift_total)(52 downto 0);
+        end if;
+
+        if shift_total > 0 and shift_total - 1 < FP_MANT_WIDTH then
+          guard_bit := mant80(shift_total - 1);
+        end if;
+        sticky_hi := shift_total - 2;
+        if sticky_hi > FP_MANT_WIDTH-1 then
+          sticky_hi := FP_MANT_WIDTH-1;
+        end if;
+        if sticky_hi >= 0 then
+          for idx in 0 to sticky_hi loop
+            if mant80(idx) = '1' then
+              sticky_bit := '1';
+            end if;
+          end loop;
+        end if;
+
+        round_up := should_round_up(value(FP_WIDTH-1), sig_base(0), guard_bit, sticky_bit, mode);
+        sig_round := resize(sig_base, sig_round'length);
+        if round_up = '1' then
+          sig_round := sig_round + 1;
+        end if;
+
+        if sig_round(52) = '1' then
+          bits64(62 downto 52) := std_logic_vector(to_unsigned(1, 11));
+          bits64(51 downto 0) := (others => '0');
+        else
+          bits64(62 downto 52) := (others => '0');
+          bits64(51 downto 0) := std_logic_vector(sig_round(51 downto 0));
+        end if;
         return bits64;
       end if;
-      bits64(62 downto 52) := std_logic_vector(to_unsigned(exp64, 11));
-      bits64(51 downto 0) := value(FP_MANT_WIDTH-2 downto FP_MANT_WIDTH-53);
-      return bits64;
     end if;
   end function;
 
@@ -703,6 +950,13 @@ begin
     variable res_nan  : boolean;
     variable res_subnormal : boolean;
     variable aexc_combined : std_logic_vector(4 downto 0);
+    variable class_opa : fp80_t := (others => '0');
+    variable class_opb : fp80_t := FP80_CLASSIFY_ONE;
+    variable class_result : fp80_t := (others => '0');
+    variable class_divzero : std_logic := '0';
+    variable class_force_overflow : std_logic := '0';
+    variable class_force_underflow : std_logic := '0';
+    variable class_force_inexact : std_logic := '0';
   begin
     if reset_n = '0' then
       op_sel_reg <= FPU_OP_NOP;
@@ -801,20 +1055,38 @@ begin
         end case;
       end if;
 
-      -- Exception classification is performed at result-valid boundary.
-      if valid = '1' then
+      -- Exception classification is performed at operation-complete boundary
+      -- (ALU valid or FMOVE conversion completion event).
+      if valid = '1' or exc_event_valid_reg = '1' then
         exc_flags := (others => '0');
         exc_policy := op_exception_policy(last_op_sel_reg);
-        a_zero := fp80_is_zero(operand_reg(0));
-        b_zero := fp80_is_zero(operand_reg(1));
-        a_inf := fp80_is_inf(operand_reg(0));
-        b_inf := fp80_is_inf(operand_reg(1));
-        a_nan := fp80_is_nan(operand_reg(0));
-        b_nan := fp80_is_nan(operand_reg(1));
-        res_zero := fp80_is_zero(result);
-        res_inf := fp80_is_inf(result);
-        res_nan := fp80_is_nan(result);
-        res_subnormal := fp80_exp_is_zero_nonzero_mant(result);
+        if valid = '1' then
+          class_opa := operand_reg(0);
+          class_opb := operand_reg(1);
+          class_result := result;
+          class_divzero := alu_flag_divzero;
+          class_force_overflow := '0';
+          class_force_underflow := '0';
+          class_force_inexact := '0';
+        else
+          class_opa := exc_event_opa_reg;
+          class_opb := exc_event_opb_reg;
+          class_result := exc_event_result_reg;
+          class_divzero := exc_event_divzero_reg;
+          class_force_overflow := exc_event_force_overflow_reg;
+          class_force_underflow := exc_event_force_underflow_reg;
+          class_force_inexact := exc_event_force_inexact_reg;
+        end if;
+        a_zero := fp80_is_zero(class_opa);
+        b_zero := fp80_is_zero(class_opb);
+        a_inf := fp80_is_inf(class_opa);
+        b_inf := fp80_is_inf(class_opb);
+        a_nan := fp80_is_nan(class_opa);
+        b_nan := fp80_is_nan(class_opb);
+        res_zero := fp80_is_zero(class_result);
+        res_inf := fp80_is_inf(class_result);
+        res_nan := fp80_is_nan(class_result);
+        res_subnormal := fp80_exp_is_zero_nonzero_mant(class_result);
 
         if exc_policy.invalid_on_nan_inputs and (a_nan or b_nan) then
           exc_flags(FPSR_EXC_INVALID) := '1';
@@ -836,7 +1108,7 @@ begin
         end if;
 
         -- Trig/divrem unit explicit DZ flag (FLOGNP1(-1), FATANH(±1), etc.)
-        if alu_flag_divzero = '1' then
+        if class_divzero = '1' then
           exc_flags(FPSR_EXC_DIVZERO) := '1';
         end if;
 
@@ -855,6 +1127,14 @@ begin
         end if;
 
         if exc_policy.classify_overflow_underflow then
+          if class_force_overflow = '1' then
+            exc_flags(FPSR_EXC_OVERFLOW) := '1';
+          end if;
+
+          if class_force_underflow = '1' then
+            exc_flags(FPSR_EXC_UNDERFLOW) := '1';
+          end if;
+
           if res_inf and not a_inf and not b_inf and not res_nan and
              exc_flags(FPSR_EXC_DIVZERO) = '0' then
             exc_flags(FPSR_EXC_OVERFLOW) := '1';
@@ -864,7 +1144,8 @@ begin
             exc_flags(FPSR_EXC_UNDERFLOW) := '1';
           end if;
 
-          if exc_flags(FPSR_EXC_OVERFLOW) = '1' or exc_flags(FPSR_EXC_UNDERFLOW) = '1' then
+          if exc_flags(FPSR_EXC_OVERFLOW) = '1' or exc_flags(FPSR_EXC_UNDERFLOW) = '1'
+             or class_force_inexact = '1' then
             exc_flags(FPSR_EXC_INEXACT) := '1';
           end if;
         end if;
@@ -891,14 +1172,14 @@ begin
         end if;
 
         if exc_policy.update_cc_from_compare then
-          cc_bits := fpsr_cc_from_compare(operand_reg(0), operand_reg(1));
+          cc_bits := fpsr_cc_from_compare(class_opa, class_opb);
           fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN) <= cc_bits;
         elsif exc_policy.update_cc_from_result then
           if exc_flags(FPSR_EXC_INVALID) = '1' then
             cc_bits := (others => '0');
             cc_bits(0) := '1';
           else
-            cc_bits := fpsr_cc_from_result(result);
+            cc_bits := fpsr_cc_from_result(class_result);
           end if;
           fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN) <= cc_bits;
         end if;
@@ -907,7 +1188,7 @@ begin
           fpiar_reg <= fpiar_issue_snapshot_reg;
         end if;
 
-        if quotient_valid = '1' then
+        if valid = '1' and quotient_valid = '1' then
           fpsr_reg(FPSR_QUOT_MSB downto FPSR_QUOT_LSB) <= quotient_byte;
         end if;
       end if;
@@ -969,6 +1250,16 @@ begin
     variable int_value : integer := 0;
     variable packed_k : integer := 0;
     variable move_cfg : move_cfg_t := move_cfg_default;
+    variable move_exc_result : fp80_t := (others => '0');
+    variable move_exc_opa : fp80_t := (others => '0');
+    variable move_exc_opb : fp80_t := FP80_CLASSIFY_ONE;
+    variable move_exc_enable : std_logic := '0';
+    variable move_exc_force_overflow : std_logic := '0';
+    variable move_exc_force_underflow : std_logic := '0';
+    variable move_exc_force_inexact : std_logic := '0';
+    variable move_src_abs : fp80_t := (others => '0');
+    variable single_max_abs : fp80_t := (others => '0');
+    variable double_max_abs : fp80_t := (others => '0');
     variable prog_result : std_logic_vector(31 downto 0) := (others => '0');
     variable cc_field : std_logic_vector(3 downto 0) := (others => '0');
     variable cond_true : std_logic := '0';
@@ -992,9 +1283,20 @@ begin
       ctrl_move_write_req_reg <= '0';
       ctrl_move_sel_reg <= (others => '0');
       ctrl_move_data_reg <= (others => '0');
+      exc_event_valid_reg <= '0';
+      exc_event_result_reg <= (others => '0');
+      exc_event_opa_reg <= (others => '0');
+      exc_event_opb_reg <= FP80_CLASSIFY_ONE;
+      exc_event_divzero_reg <= '0';
+      exc_event_force_overflow_reg <= '0';
+      exc_event_force_underflow_reg <= '0';
     elsif rising_edge(clk) then
       op_start_reg <= '0';
       ctrl_move_write_req_reg <= '0';
+      exc_event_valid_reg <= '0';
+      exc_event_divzero_reg <= '0';
+      exc_event_force_overflow_reg <= '0';
+      exc_event_force_underflow_reg <= '0';
 
       if op_issue_pulse = '1' then
         result_ready_reg <= '0';
@@ -1030,14 +1332,27 @@ begin
               dst_idx := move_cfg.dst_idx;
               ctrl_sel := move_cfg.ctrl_sel;
               move_result := (others => '0');
+              move_exc_result := (others => '0');
+              move_exc_opa := (others => '0');
+              move_exc_opb := FP80_CLASSIFY_ONE;
+              move_exc_enable := '0';
+              move_exc_force_overflow := '0';
+              move_exc_force_underflow := '0';
+              move_exc_force_inexact := '0';
 
               if move_cfg.fmovecr_enable = '1' then
                 move_result := fmovecr_constant(operand_reg(0)(6 downto 0));
+                move_exc_enable := '1';
+                move_exc_result := move_result;
+                move_exc_opa := move_result;
                 fp_reg_file_reg(dst_idx) <= move_result;
               else
                 case mode is
                   when MOVE_CFG_MODE_REG_TO_REG =>
                     move_result := fp_reg_file_reg(src_idx);
+                    move_exc_enable := '1';
+                    move_exc_result := move_result;
+                    move_exc_opa := move_result;
                     fp_reg_file_reg(dst_idx) <= move_result;
                   when MOVE_CFG_MODE_MEM_TO_REG =>
                     if move_cfg.mem_to_reg_integer = '1' then
@@ -1050,19 +1365,32 @@ begin
                           int_value := signed32_to_integer(operand_reg(0)(31 downto 0));
                       end case;
                       move_result := fp80_from_int(int_value);
+                      move_exc_enable := '1';
+                      move_exc_result := move_result;
+                      move_exc_opa := move_result;
                     else
                       case mem_fmt is
                         when "01" =>
                           move_result := fp80_from_single(operand_reg(0)(31 downto 0));
+                          move_exc_enable := '1';
+                          move_exc_result := move_result;
+                          move_exc_opa := move_result;
                         when "10" =>
                           move_result := fp80_from_double(operand_reg(0)(63 downto 0));
+                          move_exc_enable := '1';
+                          move_exc_result := move_result;
+                          move_exc_opa := move_result;
                         when others =>
                           move_result := operand_reg(0);
+                          move_exc_enable := '1';
+                          move_exc_result := move_result;
+                          move_exc_opa := move_result;
                       end case;
                     end if;
                     fp_reg_file_reg(dst_idx) <= move_result;
                   when MOVE_CFG_MODE_REG_TO_MEM =>
                     move_result := fp_reg_file_reg(src_idx);
+                    move_exc_opa := move_result;
                     if move_cfg.reg_to_mem_packed = '1' then
                       if move_cfg.packed_k_from_opa = '1' then
                         packed_k := signed8_to_integer(operand_reg(0)(7 downto 0));
@@ -1070,18 +1398,52 @@ begin
                         packed_k := signed8_to_integer(operand_reg(1)(7 downto 0));
                       end if;
                       move_result := apply_packed_k_factor(move_result, packed_k);
+                      move_exc_enable := '1';
+                      move_exc_result := move_result;
                       result_lo_reg <= move_result(FP80_RESULT_LO_WIDTH-1 downto 0);
                       result_hi_reg <= move_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
                       result_ex_reg <= move_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
                     else
                       case mem_fmt is
                         when "01" =>
-                          single_bits := fp80_to_single(move_result);
+                          single_bits := fp80_to_single(move_result, round_mode);
+                          move_exc_enable := '1';
+                          move_exc_result := fp80_from_single(single_bits);
+                          if not fp80_is_nan(move_result) and not fp80_is_inf(move_result) and not fp80_is_zero(move_result) then
+                            if move_exc_result /= move_result then
+                              move_exc_force_inexact := '1';
+                            end if;
+                            if single_bits(30 downto 23) = x"00" then
+                              move_exc_force_underflow := '1';
+                            end if;
+                            move_src_abs := move_result;
+                            move_src_abs(FP_WIDTH-1) := '0';
+                            single_max_abs := fp80_from_single(x"7F7FFFFF");
+                            if compare_fp80_ordered(move_src_abs, single_max_abs) > 0 then
+                              move_exc_force_overflow := '1';
+                            end if;
+                          end if;
                           result_lo_reg <= single_bits;
                           result_hi_reg <= (others => '0');
                           result_ex_reg <= (others => '0');
                         when "10" =>
-                          double_bits := fp80_to_double(move_result);
+                          double_bits := fp80_to_double(move_result, round_mode);
+                          move_exc_enable := '1';
+                          move_exc_result := fp80_from_double(double_bits);
+                          if not fp80_is_nan(move_result) and not fp80_is_inf(move_result) and not fp80_is_zero(move_result) then
+                            if move_exc_result /= move_result then
+                              move_exc_force_inexact := '1';
+                            end if;
+                            if double_bits(62 downto 52) = std_logic_vector(to_unsigned(0, 11)) then
+                              move_exc_force_underflow := '1';
+                            end if;
+                            move_src_abs := move_result;
+                            move_src_abs(FP_WIDTH-1) := '0';
+                            double_max_abs := fp80_from_double(x"7FEFFFFFFFFFFFFF");
+                            if compare_fp80_ordered(move_src_abs, double_max_abs) > 0 then
+                              move_exc_force_overflow := '1';
+                            end if;
+                          end if;
                           result_lo_reg <= double_bits(31 downto 0);
                           result_hi_reg <= double_bits(63 downto 32);
                           result_ex_reg <= (others => '0');
@@ -1114,6 +1476,15 @@ begin
                 result_lo_reg <= move_result(FP80_RESULT_LO_WIDTH-1 downto 0);
                 result_hi_reg <= move_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
                 result_ex_reg <= move_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+              end if;
+              if move_exc_enable = '1' then
+                exc_event_valid_reg <= '1';
+                exc_event_result_reg <= move_exc_result;
+                exc_event_opa_reg <= move_exc_opa;
+                exc_event_opb_reg <= move_exc_opb;
+                exc_event_force_overflow_reg <= move_exc_force_overflow;
+                exc_event_force_underflow_reg <= move_exc_force_underflow;
+                exc_event_force_inexact_reg <= move_exc_force_inexact;
               end if;
               result_ready_reg <= '1';
             elsif op_sel_write_decoded = FPU_OP_MOVEM then

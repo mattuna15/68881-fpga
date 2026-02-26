@@ -196,31 +196,33 @@ F) Datasheet Conformance (MC68881UM Review Findings)
     - FIXED: fp80_from_single and fp80_from_double now copy source fraction bits
       into extended mantissa, left-justified, preserving NaN payloads.
 
-[ ] F2. Fix format conversion rounding (fp80_to_single / fp80_to_double).
-    - fp80_to_single (line 376) and fp80_to_double (line 405) truncate mantissa
-      bits with no rounding. Datasheet Section 3.5.2 requires rounding using
-      current FPCR rounding mode (guard/round/sticky bit evaluation).
-    - Severity: high. Affects all FMOVE.S and FMOVE.D to memory.
+[x] F2. Fix format conversion rounding (fp80_to_single / fp80_to_double).
+    - FIXED: `fp80_to_single` and `fp80_to_double` now apply guard/round/sticky
+      rounding using the active FPCR rounding mode (RN/RZ/RM/RP).
+    - FIXED: tie-to-even behavior is implemented for round-to-nearest mode.
+    - Regression coverage: `tb/tb_mc68881_fmove_fmovem.vhd` now checks single
+      and double halfway cases across rounding modes.
 
-[~] F3. Add exception handling to FMOVE operations.
-    - FPU_OP_MOVE uses EXC_POLICY_NONE (mc68881_pkg.vhd:823), disabling all
-      exception classification. Datasheet states FMOVE is an arithmetic operation
-      that must signal OVFL, UNFL, INEX, SNAN during format conversion.
-    - Severity: high. Even if conversion functions are fixed, no exceptions
-      would be recorded.
-    - FIXED (partial): FPU_OP_MOVE policy changed from EXC_POLICY_NONE to
-      EXC_POLICY_ARITH. Policy metadata is correct; however, the FMOVE execution
-      path bypasses the ALU (no valid pulse), so the exception classification
-      block does not run for FMOVE ops. Full fix requires routing FMOVE
-      completion through the exception classification path.
+[x] F3. Add exception handling to FMOVE operations.
+    - FIXED: FPU_OP_MOVE now routes conversion-complete events through the same
+      exception-classification path used by ALU-valid completions.
+    - FMOVE conversion paths now drive EXC/AEXC/CC/FPIAR side effects via
+      op-policy metadata (`EXC_POLICY_ARITH`) instead of bypassing classification.
+    - Regression coverage: `tb/tb_mc68881_fmove_fmovem.vhd` now includes a
+      FMOVE single-qNaN mem->reg case that asserts FPSR invalid/AEXC invalid
+      and exception-time FPIAR capture.
 
-[ ] F4. Fix format conversion overflow/underflow behavior.
-    - fp80_to_single/double overflow: always saturates to infinity. Per datasheet
-      Section 6.1.4, in RZ/RM/RP modes the result should be the largest
-      representable normalized number, not infinity.
-    - fp80_to_single/double underflow: flushes to zero. Per IEEE 754 and datasheet,
-      gradual underflow (denormalized result) is required.
-    - Severity: high.
+[x] F4. Fix format conversion overflow/underflow behavior.
+    - FIXED: overflow handling in `fp80_to_single/double` now follows rounding
+      mode semantics (RN -> infinity; RZ/RM/RP -> directed finite/infinity result).
+    - FIXED: underflow conversion path now emits gradual-underflow subnormals
+      instead of unconditional zero flush.
+    - FIXED: FMOVE reg->mem exception classification preserves destination-format
+      range status so directed overflow-to-max-finite and non-zero subnormal
+      results still assert FPSR EXC/AEXC overflow/underflow.
+    - Regression coverage: `tb/tb_mc68881_fmove_fmovem.vhd` now checks single
+      and double minimum-subnormal conversion, single overflow mode behavior,
+      and EXC/AEXC overflow/underflow signaling for those conversions.
 
 [x] F5. Fix FGETEXP(infinity) and FGETMAN(infinity).
     - FIXED: Both now return NaN (all-ones mantissa) for infinity input per datasheet.

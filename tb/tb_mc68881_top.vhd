@@ -33,6 +33,7 @@ architecture sim of tb_mc68881_top is
   constant CLK_PERIOD : time := 10 ns;
   constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
   constant ADDR_FPCR   : unsigned(4 downto 0) := to_unsigned(11, 5);
+  constant ADDR_CIR_RESPONSE : unsigned(4 downto 0) := to_unsigned(13, 5);
   constant ADDR_FPSR   : unsigned(4 downto 0) := to_unsigned(14, 5);
   constant ADDR_FPIAR  : unsigned(4 downto 0) := to_unsigned(24, 5);
 
@@ -51,6 +52,10 @@ architecture sim of tb_mc68881_top is
   constant FPSR_ACCR_BASE   : natural := 0;
   constant FPSR_EXC_DIVZERO : natural := 3;
   constant FPSR_EXC_INVALID : natural := 4;
+  constant FPSR_EXC_BSUN    : natural := 7;
+  constant STATUS_CIR_RESPONSE_PENDING : natural := 4;
+  constant STATUS_CIR_PROTOCOL_ERROR   : natural := 5;
+  constant STATUS_CIR_TRAP_PENDING     : natural := 6;
 
   -- Extract sign/exponent/mantissa fields for FP80-aware assertions.
   procedure split_fp80(
@@ -1028,6 +1033,10 @@ begin
     assert rd_lo(7 downto 0) = x"FF"
       report "FScc EQ should return 0xFF when Z=1"
       severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '1' and rd_lo(4) = '0'
+      report "FScc EQ should report cond_true=1 without BSUN"
+      severity failure;
 
     report "FScc EQ test with N=1 and Z=0." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- N set
@@ -1037,6 +1046,10 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
     assert rd_lo(7 downto 0) = x"00"
       report "FScc EQ should return 0x00 when Z=0"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '0' and rd_lo(4) = '0'
+      report "FScc EQ should report cond_true=0 without BSUN"
       severity failure;
 
     report "FScc UN test with NAN=1." severity note;
@@ -1048,6 +1061,304 @@ begin
     assert rd_lo(7 downto 0) = x"FF"
       report "FScc UN should return 0xFF when NAN=1"
       severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '1' and rd_lo(4) = '0'
+      report "FScc UN should report cond_true=1 without BSUN"
+      severity failure;
+
+    -- Conditional-dialog trap-gating tests start from a masked FPCR state.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000");
+
+    -- B6 slice: FBcc dialog response reports branch decision.
+    report "FBcc EQ test with Z=1 (branch taken)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000022"); -- FBcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '1' and rd_lo(1) = '1'
+      report "FBcc EQ should report cond_true=1 and branch_taken=1 when Z=1"
+      severity failure;
+
+    report "FBcc EQ test with Z=0 (branch not taken)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- N set, Z clear
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000022"); -- FBcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '0' and rd_lo(1) = '0'
+      report "FBcc EQ should report cond_true=0 and branch_taken=0 when Z=0"
+      severity failure;
+
+    -- B6 slice: FDBcc dialog response reports decrement/branch behavior and
+    -- returns the updated loop counter in CIR_RESPONSE[31:16].
+    report "FDBcc EQ test with Z=1 (no decrement)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), x"00000003"); -- Dn.w counter
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000023"); -- FDBcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '1' and rd_lo(1) = '0' and rd_lo(2) = '0' and rd_lo(3) = '0'
+      report "FDBcc cond_true path should skip decrement/branch"
+      severity failure;
+    assert rd_lo(31 downto 16) = x"0003"
+      report "FDBcc cond_true path should preserve loop counter"
+      severity failure;
+
+    report "FDBcc EQ test with Z=0 and counter=3 (decrement and branch)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- N set, Z clear
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), x"00000003"); -- Dn.w counter
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000023"); -- FDBcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '0' and rd_lo(1) = '1' and rd_lo(2) = '1' and rd_lo(3) = '0'
+      report "FDBcc cond_false path should decrement and branch when counter != -1"
+      severity failure;
+    assert rd_lo(31 downto 16) = x"0002"
+      report "FDBcc cond_false path should decrement counter to 0x0002"
+      severity failure;
+
+    report "FDBcc EQ test with Z=0 and counter=0 (terminal count, no branch)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- N set, Z clear
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), x"00000000"); -- Dn.w counter
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000023"); -- FDBcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '0' and rd_lo(1) = '0' and rd_lo(2) = '1' and rd_lo(3) = '1'
+      report "FDBcc terminal path should decrement but suppress branch at counter=-1"
+      severity failure;
+    assert rd_lo(31 downto 16) = x"FFFF"
+      report "FDBcc terminal path should return 0xFFFF counter"
+      severity failure;
+
+    -- S7-B3 slice: response ordering. A second conditional command before
+    -- response consumption should be blocked and flagged as protocol violation.
+    report "Conditional dialog ordering: block issue before CIR_RESPONSE read." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000022"); -- FBcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
+    assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1'
+      report "Conditional response should be marked pending until CIR_RESPONSE is read"
+      severity failure;
+
+    -- Attempt a second conditional command without consuming the response.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
+    assert status_word(STATUS_CIR_PROTOCOL_ERROR) = '1'
+      report "Second conditional command before response read should set protocol error"
+      severity failure;
+    assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1'
+      report "Blocked conditional command must not consume existing response"
+      severity failure;
+
+    -- Read response to clear pending/protocol bits.
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
+    assert status_word(STATUS_CIR_RESPONSE_PENDING) = '0' and
+           status_word(STATUS_CIR_PROTOCOL_ERROR) = '0'
+      report "CIR response read should clear pending/protocol status bits"
+      severity failure;
+
+    -- B6 signaling-condition BSUN path: unordered NAN + signaling condition
+    -- must produce a null response and raise BSUN in EXC/AEXC with FPIAR capture.
+    report "FScc SEQ with NAN=1 should raise BSUN and return null." severity note;
+    fpiar_seed := x"0000B6A1";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000011"); -- condition: SEQ (signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
+    assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
+           status_word(STATUS_CIR_TRAP_PENDING) = '0'
+      report "Masked BSUN should set response pending but not trap pending"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    assert rd_lo(7 downto 0) = x"00"
+      report "FScc signaling unordered path should return null (0x00)"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(5) = '0' and rd_lo(4) = '1' and rd_lo(0) = '0'
+      report "FScc signaling unordered path should set CIR null/BSUN flag"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '1'
+      report "FScc signaling unordered path should set EXC.BSUN"
+      severity failure;
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_BSUN) = '1'
+      report "FScc signaling unordered path should set AEXC.BSUN"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
+    assert rd_hi = fpiar_seed
+      report "FScc signaling unordered exception should capture FPIAR"
+      severity failure;
+
+    report "FBcc ST with NAN=1 should raise BSUN and suppress branch." severity note;
+    fpiar_seed := x"0000B6A2";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"0000001F"); -- condition: ST (signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000022"); -- FBcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
+    assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
+           status_word(STATUS_CIR_TRAP_PENDING) = '0'
+      report "Masked BSUN FBcc should not set trap pending"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(5) = '0' and rd_lo(4) = '1' and rd_lo(1) = '0'
+      report "FBcc signaling unordered path should set null/BSUN and suppress branch"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '1'
+      report "FBcc signaling unordered path should set EXC.BSUN"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
+    assert rd_hi = fpiar_seed
+      report "FBcc signaling unordered exception should capture FPIAR"
+      severity failure;
+
+    report "FDBcc ST with NAN=1 should raise BSUN and skip decrement/branch." severity note;
+    fpiar_seed := x"0000B6A3";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"0000001F"); -- condition: ST (signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), x"00000003"); -- Dn.w counter
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000023"); -- FDBcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
+    assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
+           status_word(STATUS_CIR_TRAP_PENDING) = '0'
+      report "Masked BSUN FDBcc should not set trap pending"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(5) = '0' and rd_lo(4) = '1' and rd_lo(1) = '0' and rd_lo(2) = '0'
+      report "FDBcc signaling unordered path should set null/BSUN and skip decrement/branch"
+      severity failure;
+    assert rd_lo(31 downto 16) = x"0003"
+      report "FDBcc signaling unordered path should preserve loop counter"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '1' and rd_lo(FPSR_ACCR_BASE + FPSR_EXC_BSUN) = '1'
+      report "FDBcc signaling unordered path should set EXC/AEXC BSUN"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
+    assert rd_hi = fpiar_seed
+      report "FDBcc signaling unordered exception should capture FPIAR"
+      severity failure;
+
+    -- Trap gating: enabling FPCR.BSUN should request a trap on signaling
+    -- unordered conditions and mark trap-pending until response consumption.
+    report "FBcc ST with NAN=1 and FPCR.BSUN enabled should request trap." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00008000"); -- enable BSUN trap
+    fpiar_seed := x"0000B6A4";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"0000001F"); -- condition: ST (signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000022"); -- FBcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
+    assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
+           status_word(STATUS_CIR_TRAP_PENDING) = '1'
+      report "Enabled BSUN should set response pending and trap pending status bits"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(5) = '1' and rd_lo(4) = '1'
+      report "Enabled BSUN should set CIR trap-request and null/BSUN flags"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
+    assert status_word(STATUS_CIR_RESPONSE_PENDING) = '0' and
+           status_word(STATUS_CIR_TRAP_PENDING) = '0'
+      report "Reading CIR response should clear trap-pending/status bits"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
+    assert rd_hi = fpiar_seed
+      report "Enabled BSUN path should capture FPIAR"
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000");
+
+    -- Negative test: non-signaling condition + NAN must NOT set FPSR.EXC.BSUN.
+    -- UN (0x08) is non-signaling; with NAN=1 cond_true=1 but BSUN must stay clear.
+    report "FScc UN with NAN=1 should NOT set EXC.BSUN (non-signaling guard)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000008"); -- condition: UN (non-signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '1' and rd_lo(4) = '0'
+      report "FScc UN+NAN should report cond_true=1 without BSUN"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '0'
+      report "Non-signaling condition must not set EXC.BSUN even when NAN=1"
+      severity failure;
+
+    -- Negative test: signaling condition + ordered CC must NOT produce BSUN.
+    -- SEQ (0x11) is signaling, but with NAN=0 the cc_field(0) guard blocks BSUN.
+    report "FScc SEQ with NAN=0 should NOT raise BSUN (ordered CC guard)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set, NAN clear
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000011"); -- condition: SEQ (signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '1' and rd_lo(4) = '0'
+      report "FScc SEQ+ordered should report cond_true=1 without BSUN"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '0'
+      report "Signaling condition with ordered CC must not set EXC.BSUN"
+      severity failure;
+
+    -- EXC byte clear-then-set: conditional op should clear stale EXC flags.
+    -- Pre-set EXC.INVALID via FPSR write, then issue a non-exceptional FScc.
+    report "Conditional op should clear stale EXC byte from prior ops." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04001000"); -- Z set + EXC.INVALID
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '0'
+      report "Non-exceptional conditional op should clear stale EXC.INVALID"
+      severity failure;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '0'
+      report "Non-exceptional conditional op should not set EXC.BSUN"
+      severity failure;
+
+    -- FScc trap gating: enabling FPCR.BSUN with FScc SEQ + NAN should request
+    -- trap, set CIR_RESPONSE(5)=1, and result byte should remain 0x00.
+    report "FScc SEQ with NAN=1 and FPCR.BSUN enabled should request trap." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00008000"); -- enable BSUN trap
+    fpiar_seed := x"0000B6A5";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000011"); -- condition: SEQ (signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
+    assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
+           status_word(STATUS_CIR_TRAP_PENDING) = '1'
+      report "FScc enabled BSUN should set response pending and trap pending"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    assert rd_lo(7 downto 0) = x"00"
+      report "FScc with enabled BSUN trap should still return 0x00 result byte"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(5) = '1' and rd_lo(4) = '1' and rd_lo(0) = '0'
+      report "FScc enabled BSUN should set CIR trap-request/BSUN flags with cond_true=0"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
+    assert rd_hi = fpiar_seed
+      report "FScc enabled BSUN should capture FPIAR"
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000");
 
     -- DSACK behavior coverage
     size_n <= "11";

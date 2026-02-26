@@ -63,6 +63,10 @@ architecture sim of tb_mc68881_fmove_fmovem is
   constant FP80_SINGLE_OVERFLOW : fp80_t := x"407F8000000000000000";
   constant FP80_DOUBLE_HALF_ULP : fp80_t := x"3FFF8000000000000400";
   constant FP80_DOUBLE_MIN_SUBNORMAL : fp80_t := x"3BCD8000000000000000";
+  constant FP80_DOUBLE_OVERFLOW : fp80_t := x"43FF8000000000000000";
+  constant FP80_SINGLE_OVERFLOW_NEG : fp80_t := x"C07F8000000000000000";
+  constant FP80_SINGLE_HALF_ULP_NEG : fp80_t := x"BFFF8000008000000000";
+  constant FPSR_CC_NAN : natural := 24;
 
   procedure split_fp80(
     constant value : fp80_t;
@@ -447,6 +451,112 @@ begin
     assert rd_ex(FPSR_AEXC_BASE + FPSR_EXC_UNDERFLOW) = '1'
       report "FMOVE double gradual underflow should set FPSR AEXC underflow"
       severity failure;
+    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+      report "FMOVE double gradual underflow should set FPSR EXC inexact"
+      severity failure;
+
+    report "FMOVE double overflow checks" severity note;
+    -- Load double-overflow source (2^1024, above double max ~1.8e308)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FP80_DOUBLE_OVERFLOW(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, FP80_DOUBLE_OVERFLOW(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & FP80_DOUBLE_OVERFLOW(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 7, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    -- Double overflow RZ: should saturate to max finite (7FEFFFFF_FFFFFFFF)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000010");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, (others => '0'));
+    cfg_word := make_move_cfg("10", 7, 0, "10", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    report "FMOVE double overflow RZ observed hi=" & to_hstring(rd_hi) &
+           " lo=" & to_hstring(rd_lo) severity note;
+    assert rd_hi = x"7FEFFFFF" and rd_lo = x"FFFFFFFF"
+      report "FMOVE double overflow in RZ should saturate to max finite"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_FPSR);
+    report "FMOVE double overflow RZ FPSR=" & to_hstring(rd_ex) severity note;
+    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_OVERFLOW) = '1'
+      report "FMOVE double overflow in RZ should set FPSR EXC overflow"
+      severity failure;
+    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+      report "FMOVE double overflow in RZ should set FPSR EXC inexact"
+      severity failure;
+    -- Double overflow RP: should produce +infinity (7FF00000_00000000)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000030");
+    cfg_word := make_move_cfg("10", 7, 0, "10", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    report "FMOVE double overflow RP observed hi=" & to_hstring(rd_hi) &
+           " lo=" & to_hstring(rd_lo) severity note;
+    assert rd_hi = x"7FF00000" and rd_lo = x"00000000"
+      report "FMOVE double overflow in RP should produce +infinity"
+      severity failure;
+
+    report "FMOVE negative overflow and RM rounding checks" severity note;
+    -- Load negative single overflow source
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FP80_SINGLE_OVERFLOW_NEG(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, FP80_SINGLE_OVERFLOW_NEG(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & FP80_SINGLE_OVERFLOW_NEG(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 7, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    -- Negative overflow RP: negative rounds toward +inf = truncate = -max-finite (FF7FFFFF)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000030");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, (others => '0'));
+    cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    report "FMOVE single neg overflow RP observed=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"FF7FFFFF"
+      report "FMOVE single neg overflow in RP should saturate to -max-finite"
+      severity failure;
+    -- Negative overflow RM: negative rounds toward -inf = away from zero = -inf (FF800000)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000020");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, (others => '0'));
+    cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    report "FMOVE single neg overflow RM observed=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"FF800000"
+      report "FMOVE single neg overflow in RM should produce -infinity"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPSR);
+    report "FMOVE single neg overflow RM FPSR=" & to_hstring(rd_hi) severity note;
+    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_OVERFLOW) = '1'
+      report "FMOVE single neg overflow in RM should set FPSR EXC overflow"
+      severity failure;
+
+    -- RM rounding: negative half-ULP tie should round away from zero
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FP80_SINGLE_HALF_ULP_NEG(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, FP80_SINGLE_HALF_ULP_NEG(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & FP80_SINGLE_HALF_ULP_NEG(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 7, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000020");
+    cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    report "FMOVE single neg tie RM observed=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"BF800001"
+      report "FMOVE single neg tie in RM should round away from zero (-1.0 - 1ULP)"
+      severity failure;
 
     report "FMOVE subnormal single/double source checks" severity note;
 
@@ -671,6 +781,9 @@ begin
       severity failure;
     assert rd_lo(FPSR_AEXC_BASE + FPSR_EXC_INVALID) = '1'
       report "FMOVE qNaN should set FPSR AEXC invalid"
+      severity failure;
+    assert rd_lo(FPSR_CC_NAN) = '1'
+      report "FMOVE qNaN should set FPSR CC NAN bit"
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, fpiar_word, ADDR_FPIAR);
     report "FMOVE qNaN FPIAR=" & to_hstring(fpiar_word) severity note;

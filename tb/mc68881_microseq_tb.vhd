@@ -185,6 +185,11 @@ begin
     exc_policy := op_exception_policy(FPU_OP_TWOTOX);
     assert exc_policy.invalid_on_nan_inputs and exc_policy.invalid_on_nan_result
       report "FTWOTOX exception policy should flag NaN inputs/results." severity failure;
+    exc_policy := op_exception_policy(FPU_OP_FBCC);
+    assert exc_policy.update_exc_status and exc_policy.update_accumulated_exc
+      report "FBcc exception policy should update EXC/AEXC for conditional-dialog exceptions." severity failure;
+    assert exc_policy.capture_fpiar_on_exception and not exc_policy.update_cc_from_result and not exc_policy.update_cc_from_compare
+      report "FBcc exception policy should capture FPIAR on exception without CC recompute." severity failure;
 
     cycles := op_cycle_count(
       FPU_OP_ADD,
@@ -245,6 +250,30 @@ begin
     );
     assert cycles = 0
       report "op_cycle_count FScc should be zero." severity failure;
+
+    cycles := op_cycle_count(
+      FPU_OP_FBCC,
+      FPU_SRC_FPM,
+      EA_MODE_DN_AN,
+      EA_CYCLE_BEST,
+      false,
+      false,
+      false
+    );
+    assert cycles = 0
+      report "op_cycle_count FBcc should be zero." severity failure;
+
+    cycles := op_cycle_count(
+      FPU_OP_FDBCC,
+      FPU_SRC_FPM,
+      EA_MODE_DN_AN,
+      EA_CYCLE_BEST,
+      false,
+      false,
+      false
+    );
+    assert cycles = 0
+      report "op_cycle_count FDBcc should be zero." severity failure;
 
     cycles := op_cycle_count(
       FPU_OP_FSAVE,

@@ -423,6 +423,24 @@ package body mc68881_pkg is
     divzero_on_zero_input => true
   );
 
+  -- Program-control conditional ops route only explicit dialog exceptions
+  -- (BSUN path) through the shared exception-status pipeline.
+  constant EXC_POLICY_PROG_CTRL : op_exception_policy_t := (
+    divzero_on_zero_divisor_nonzero_dividend => false,
+    invalid_zero_over_zero => false,
+    invalid_inf_over_inf => false,
+    invalid_divisor_zero => false,
+    invalid_on_nan_inputs => false,
+    invalid_on_nan_result => false,
+    update_exc_status => true,
+    update_accumulated_exc => true,
+    update_cc_from_result => false,
+    update_cc_from_compare => false,
+    classify_overflow_underflow => false,
+    capture_fpiar_on_exception => true,
+    divzero_on_zero_input => false
+  );
+
   constant OP_DESCRIPTORS : op_descriptor_table_t := (
     FPU_OP_NOP => (
       legacy_decode_id_valid => true,
@@ -869,21 +887,21 @@ package body mc68881_pkg is
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"21",
       op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_PROG_CTRL,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_FBCC => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"22",
       op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_PROG_CTRL,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_FDBCC => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"23",
       op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
-      exception_policy => EXC_POLICY_NONE,
+      exception_policy => EXC_POLICY_PROG_CTRL,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_FNOP => (

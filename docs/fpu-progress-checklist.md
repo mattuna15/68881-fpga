@@ -83,13 +83,20 @@ B) Functional Completeness (Core Missing Ops)
     - Done: FETOX, FETOXM1, FLOGN, FLOGNP1, FLOG10, FLOG2.
     - Done: FSINH, FTANH, FTENTOX, FTWOTOX.
 
-[~] B6. Implement program-control instruction set (guide section 3.3.4).
+[x] B6. Implement program-control instruction set (guide section 3.3.4).
     - FBcc, FDBcc, FScc, FNOP.
     - Ordered/unordered condition-code variants and NaN behavior.
     - FPU condition-code generation from FCMP/FTST results.
-    - In progress: core-v1 decode/class metadata added for FScc/FBcc/FDBcc.
-      FScc now evaluates FPSR CC flags and returns byte true/false in result low byte.
-      FBcc/FDBcc remain placeholders pending branch/decrement dialog wiring.
+    - Done: core-v1 decode/class metadata and conditional execution wiring are in place for
+      FScc/FBcc/FDBcc.
+      FScc evaluates FPSR CC flags and returns byte true/false in result low byte.
+      FBcc now reports condition/branch outcome via `ADDR_CIR_RESPONSE`.
+      FDBcc now applies DBcc-style decrement/branch decision and reports updated low-word counter
+      plus condition/decrement/branch flags via `ADDR_CIR_RESPONSE`.
+      Signaling-condition + unordered (`NAN`) path now reports null response and raises BSUN
+      in EXC/AEXC with exception-time FPIAR capture.
+      Conditional-response ordering and BSUN trap-gating status are now enforced in the
+      register-mapped dialog model (`STATUS`/`CIR_RESPONSE`).
 
 [ ] B7. Implement system-control instruction set (guide section 3.3.5).
     - FSAVE, FRESTORE.
@@ -363,23 +370,29 @@ Legend:
   - Define dialog kind per op: register-register, ext-register, register-ext, control-move, movem, conditional, context-switch.
 
 ### B) Functional Completeness
-- `[ ]` S7-B1. Program-control dialog implementation (`FBcc/FDBcc/FScc/FNOP`).
+- `[~]` S7-B1. Program-control dialog implementation (`FBcc/FDBcc/FScc/FNOP`).
   - Map: `B6`.
-  - Implement condition-CIR style sequencing and response behavior (true/false/null + BSUN path).
+  - In progress: register-mapped conditional response path is wired for `FScc/FBcc/FDBcc`,
+    including null/BSUN signaling path and response-order enforcement.
+  - Remaining: full Section 7 primitive-dialog transaction model (beyond register-mapped emulation).
 - `[ ]` S7-B2. System-control dialog implementation (`FTRAPcc/FSAVE/FRESTORE`).
   - Map: `B7`.
   - Implement save/restore CIR format-word flow and state-frame transfer contract.
-- `[ ]` S7-B3. Command/condition/response protocol ordering rules.
+- `[~]` S7-B3. Command/condition/response protocol ordering rules.
   - Map: `B6`, `B7`.
-  - Enforce legal initiation/completion ordering and instruction-boundary sequencing.
+  - In progress: conditional command issue is blocked while prior conditional response is pending,
+    with protocol-violation status reporting.
+  - Remaining: full instruction-boundary sequencing across all Section 7 dialog families.
 
 ### C) Exceptions and Architectural Side Effects
 - `[ ]` S7-C1. Pre- vs mid-instruction exception dialog behavior.
   - Map: `C3`, `C5`.
   - Distinguish timing/path of exception reporting for startup vs in-flight operations.
-- `[ ]` S7-C2. BSUN conditional exception behavior in conditional dialogs.
+- `[~]` S7-C2. BSUN conditional exception behavior in conditional dialogs.
   - Map: `C2`, `C3`, `C4`.
-  - Ensure NAN-condition interactions set EXC/AEXC fields and trap gating correctly.
+  - In progress: signaling-condition + unordered path now sets EXC/AEXC BSUN, captures FPIAR,
+    and reports BSUN trap-request state when FPCR enable is set.
+  - Remaining: full trap-delivery/ack sequencing under Section 7 primitive dialog protocol.
 - `[ ]` S7-C3. FPIAR update semantics tied to dialog phase.
   - Map: `C5`, `C4`.
   - Verify capture points for exceptions and non-updating moves/control operations.
@@ -424,6 +437,6 @@ Legend:
 
 ## Exit Criteria
 - `[ ]` All S7-B*, S7-C*, S7-D* items marked done.
-- `[ ]` `B6` and `B7` in this checklist can move to `[x]`.
+- `[ ]` `B7` in this checklist can move to `[x]`.
 - `[ ]` No open Section 7 protocol-related defects in this checklist.
 - `[ ]` `scripts/run_tests.ps1` passes with new dialog testbenches enabled in CI/pre-push analyze lists.

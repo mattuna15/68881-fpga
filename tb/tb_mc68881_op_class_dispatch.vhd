@@ -26,7 +26,11 @@ architecture sim of tb_mc68881_op_class_dispatch is
 
   constant CLK_PERIOD : time := 10 ns;
   constant ADDR_OPSEL : unsigned(4 downto 0) := to_unsigned(0, 5);
+  constant ADDR_OPA_L : unsigned(4 downto 0) := to_unsigned(1, 5);
+  constant ADDR_OPB_L : unsigned(4 downto 0) := to_unsigned(4, 5);
   constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
+  constant ADDR_CIR_RESPONSE : unsigned(4 downto 0) := to_unsigned(13, 5);
+  constant ADDR_FPSR : unsigned(4 downto 0) := to_unsigned(14, 5);
   constant ADDR_CYCLE_TOTAL : unsigned(4 downto 0) := to_unsigned(22, 5);
 
   procedure bus_write(
@@ -181,6 +185,34 @@ begin
     assert to_integer(unsigned(cycle_total_word)) = 0
       report "FScc should execute through program-control class with zero modeled cycles."
       severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CIR_RESPONSE);
+
+    -- Program-control class dispatch (FBcc).
+    report "Issuing FBcc opcode through OPSEL." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000022");
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FBcc");
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
+    report "FBcc cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
+    assert to_integer(unsigned(cycle_total_word)) = 0
+      report "FBcc should execute through program-control class with zero modeled cycles."
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CIR_RESPONSE);
+
+    -- Program-control class dispatch (FDBcc).
+    report "Issuing FDBcc opcode through OPSEL." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- Z clear
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000003"); -- loop counter
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000023");
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FDBcc");
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
+    report "FDBcc cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
+    assert to_integer(unsigned(cycle_total_word)) = 0
+      report "FDBcc should execute through program-control class with zero modeled cycles."
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CIR_RESPONSE);
 
     -- System-control class dispatch (FSAVE placeholder opcode).
     report "Issuing FSAVE opcode through OPSEL." severity note;

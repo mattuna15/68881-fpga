@@ -139,6 +139,15 @@ architecture rtl of mc68881_top is
   signal ctrl_move_write_req_reg : std_logic := '0';
   signal ctrl_move_sel_reg : std_logic_vector(1 downto 0) := (others => '0');
   signal ctrl_move_data_reg : std_logic_vector(31 downto 0) := (others => '0');
+  -- CIR_RESPONSE register bit layout (conditional dialog response word):
+  --   Bit  0 : cond_true       - condition evaluated true
+  --   Bit  1 : branch_taken    - branch decision (FBcc/FDBcc)
+  --   Bit  2 : decrement_taken - counter decremented (FDBcc only)
+  --   Bit  3 : counter_expired - counter reached -1 (FDBcc only)
+  --   Bit  4 : bsun_event      - BSUN raised (signaling condition + unordered)
+  --   Bit  5 : trap_requested  - BSUN trap enabled via FPCR
+  --   Bits 15:6  : reserved
+  --   Bits 31:16 : updated loop counter (FDBcc only)
   signal cir_response_reg : std_logic_vector(31 downto 0) := (others => '0');
   signal cir_response_pending_reg : std_logic := '0';
   signal cir_trap_pending_reg : std_logic := '0';
@@ -803,7 +812,8 @@ architecture rtl of mc68881_top is
   function normalize_fcc_condition(condition_sel : std_logic_vector(5 downto 0)) return std_logic_vector is
     variable sel : std_logic_vector(5 downto 0) := (others => '0');
   begin
-    -- Mirror upper 32 condition codes to lower 32 per MC68881 architecture.
+    -- Fold upper 32 condition codes (0x20-0x3F) to lower 32 (0x00-0x1F)
+    -- per MC68881 architecture; bit 5 has no effect on condition semantics.
     sel := '0' & condition_sel(4 downto 0);
     return sel;
   end function;
@@ -1196,7 +1206,8 @@ begin
 
         if exc_policy.update_accumulated_exc then
           -- Datasheet AEXC combination rules:
-          -- AEXC(UNFL) |= UNFL AND INEX; AEXC(INEX) |= INEX OR OVFL.
+          -- AEXC(UNFL) |= UNFL AND INEX; AEXC(INEX) |= INEX OR OVFL;
+          -- AEXC(BSUN) |= BSUN (direct accumulation, no combination gate).
           aexc_combined := (others => '0');
           aexc_combined(FPSR_EXC_INVALID)   := exc_flags(FPSR_EXC_INVALID);
           aexc_combined(FPSR_EXC_OVERFLOW)  := exc_flags(FPSR_EXC_OVERFLOW);
@@ -1685,10 +1696,10 @@ begin
               cir_response_pending_reg <= '1';
               cir_trap_pending_reg <= trap_requested;
               cir_protocol_violation_reg <= '0';
+              cir_response_reg <= cir_response_word;
             end if;
 
             result_lo_reg <= prog_result;
-            cir_response_reg <= cir_response_word;
             result_ready_reg <= '1';
           when OP_CLASS_SYS_CTRL =>
             -- System-control opcodes are class-routed here for future FSAVE/FRESTORE plumbing.
@@ -1796,6 +1807,14 @@ begin
         when ADDR_AUX_RES_H => d_out_comb <= aux_result_hi_reg;
         when ADDR_AUX_RES_E => d_out_comb(FP80_RESULT_EX_WIDTH-1 downto 0) <= aux_result_ex_reg;
         when ADDR_STATUS =>
+          -- STATUS register layout:
+          --   Bit 0: valid (result ready)
+          --   Bit 1: busy (engine active)
+          --   Bit 2: frame_valid (save frame ready)
+          --   Bit 3: frame_busy (save/restore in progress)
+          --   Bit 4: cir_response_pending (conditional response awaiting read)
+          --   Bit 5: cir_protocol_violation (conditional issued before response consumed)
+          --   Bit 6: cir_trap_pending (BSUN trap requested, cleared on CIR_RESPONSE read)
           d_out_comb(0) <= status_valid_reg;
           d_out_comb(1) <= status_busy_reg;
           d_out_comb(2) <= status_frame_valid_reg;

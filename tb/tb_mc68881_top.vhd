@@ -1283,6 +1283,83 @@ begin
       severity failure;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000");
 
+    -- Negative test: non-signaling condition + NAN must NOT set FPSR.EXC.BSUN.
+    -- UN (0x08) is non-signaling; with NAN=1 cond_true=1 but BSUN must stay clear.
+    report "FScc UN with NAN=1 should NOT set EXC.BSUN (non-signaling guard)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000008"); -- condition: UN (non-signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '1' and rd_lo(4) = '0'
+      report "FScc UN+NAN should report cond_true=1 without BSUN"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '0'
+      report "Non-signaling condition must not set EXC.BSUN even when NAN=1"
+      severity failure;
+
+    -- Negative test: signaling condition + ordered CC must NOT produce BSUN.
+    -- SEQ (0x11) is signaling, but with NAN=0 the cc_field(0) guard blocks BSUN.
+    report "FScc SEQ with NAN=0 should NOT raise BSUN (ordered CC guard)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set, NAN clear
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000011"); -- condition: SEQ (signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '1' and rd_lo(4) = '0'
+      report "FScc SEQ+ordered should report cond_true=1 without BSUN"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '0'
+      report "Signaling condition with ordered CC must not set EXC.BSUN"
+      severity failure;
+
+    -- EXC byte clear-then-set: conditional op should clear stale EXC flags.
+    -- Pre-set EXC.INVALID via FPSR write, then issue a non-exceptional FScc.
+    report "Conditional op should clear stale EXC byte from prior ops." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04001000"); -- Z set + EXC.INVALID
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '0'
+      report "Non-exceptional conditional op should clear stale EXC.INVALID"
+      severity failure;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '0'
+      report "Non-exceptional conditional op should not set EXC.BSUN"
+      severity failure;
+
+    -- FScc trap gating: enabling FPCR.BSUN with FScc SEQ + NAN should request
+    -- trap, set CIR_RESPONSE(5)=1, and result byte should remain 0x00.
+    report "FScc SEQ with NAN=1 and FPCR.BSUN enabled should request trap." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00008000"); -- enable BSUN trap
+    fpiar_seed := x"0000B6A5";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000011"); -- condition: SEQ (signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
+    assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
+           status_word(STATUS_CIR_TRAP_PENDING) = '1'
+      report "FScc enabled BSUN should set response pending and trap pending"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
+    assert rd_lo(7 downto 0) = x"00"
+      report "FScc with enabled BSUN trap should still return 0x00 result byte"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(5) = '1' and rd_lo(4) = '1' and rd_lo(0) = '0'
+      report "FScc enabled BSUN should set CIR trap-request/BSUN flags with cond_true=0"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
+    assert rd_hi = fpiar_seed
+      report "FScc enabled BSUN should capture FPIAR"
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000");
+
     -- DSACK behavior coverage
     size_n <= "11";
     a_in   <= "10000";

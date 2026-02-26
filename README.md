@@ -27,18 +27,21 @@ Based on `docs/fpu-progress-checklist.md`:
   - Monadic arithmetic/data ops: `FSQRT`, `FABS`, `FNEG`, `FINT`, `FINTRZ`, `FGETEXP`, `FGETMAN`, `FTST`.
   - B5 transcendental set implemented (`FSIN/FCOS/FTAN/FSINCOS`, inverse trig, exp/log families,
     hyperbolic families, `FTENTOX/FTWOTOX`).
+  - B6 conditional dialog ordering (`FScc`, `FBcc`, `FDBcc`) with BSUN trap gating.
   - Bus/timing confirmations E1-E4.
 
-## Implementation baseline (2026-02-23)
+## Implementation baseline (2026-02-26)
 - Clean non-incremental batch flow (`scripts/run_impl.tcl`) meets routed timing:
-  - `WNS = 1.356 ns`
+  - `WNS = 3.985 ns`
   - `TNS = 0.000 ns`
-  - `WHS = 0.026 ns`
+  - `WHS = 0.067 ns`
   - `THS = 0.000 ns`
-- Post-implementation LUT utilization:
-  - `Slice LUTs = 66523 / 134600 (49.42%)`
-- Reproducibility:
-  - A second clean non-incremental run reproduced the same signoff metrics.
+- Worst setup path: `trig_inst/add_b_reg_reg -> trig_inst/tmp_reg_reg` (4-cycle MCP, 400 ns budget).
+- Post-implementation utilization:
+  - `Slice LUTs  = 72,610 / 133,800 (54.27%)`
+  - `Registers   =  8,305 / 267,600 ( 3.10%)`
+  - `Block RAM   =      5 /     365 ( 1.37%)`
+  - `DSP48E1     =     48 /     740 ( 6.49%)`
 
 ## Transcendental architecture guardrails
 - The B5 implementation uses a shared serialized transcendental engine (`src/mc68881_trig_unit.vhd`)

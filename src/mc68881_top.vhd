@@ -516,13 +516,13 @@ architecture rtl of mc68881_top is
         if sticky_hi > FP_MANT_WIDTH-1 then
           sticky_hi := FP_MANT_WIDTH-1;
         end if;
-        if sticky_hi >= 0 then
-          for idx in 0 to sticky_hi loop
+        for idx in 0 to FP_MANT_WIDTH-1 loop
+          if idx <= sticky_hi then
             if mant80(idx) = '1' then
               sticky_bit := '1';
             end if;
-          end loop;
-        end if;
+          end if;
+        end loop;
 
         round_up := should_round_up(value(FP_WIDTH-1), sig_base(0), guard_bit, sticky_bit, mode);
         sig_round := resize(sig_base, sig_round'length);
@@ -649,13 +649,13 @@ architecture rtl of mc68881_top is
         if sticky_hi > FP_MANT_WIDTH-1 then
           sticky_hi := FP_MANT_WIDTH-1;
         end if;
-        if sticky_hi >= 0 then
-          for idx in 0 to sticky_hi loop
+        for idx in 0 to FP_MANT_WIDTH-1 loop
+          if idx <= sticky_hi then
             if mant80(idx) = '1' then
               sticky_bit := '1';
             end if;
-          end loop;
-        end if;
+          end if;
+        end loop;
 
         round_up := should_round_up(value(FP_WIDTH-1), sig_base(0), guard_bit, sticky_bit, mode);
         sig_round := resize(sig_base, sig_round'length);

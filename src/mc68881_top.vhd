@@ -145,6 +145,7 @@ architecture rtl of mc68881_top is
   signal exc_event_divzero_reg : std_logic := '0';
   signal exc_event_force_overflow_reg : std_logic := '0';
   signal exc_event_force_underflow_reg : std_logic := '0';
+  signal exc_event_force_inexact_reg : std_logic := '0';
 
   constant FRAME_LATENCY : natural := 6;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
@@ -408,6 +409,14 @@ architecture rtl of mc68881_top is
     exp80_i := to_integer(exp80_u);
 
     if exp80_u = 0 then
+      -- fp80 subnormal: magnitude far below single range.
+      -- Directed rounding away from zero produces minimum subnormal.
+      if mant80 /= 0 then
+        if (mode = FP_RND_PLUS_INF and value(FP_WIDTH-1) = '0') or
+           (mode = FP_RND_MINUS_INF and value(FP_WIDTH-1) = '1') then
+          bits32(0) := '1';
+        end if;
+      end if;
       return bits32;
     elsif exp80_u = FP_EXP_ALL_ONES then
       bits32(30 downto 23) := (others => '1');
@@ -534,6 +543,14 @@ architecture rtl of mc68881_top is
     exp80_i := to_integer(exp80_u);
 
     if exp80_u = 0 then
+      -- fp80 subnormal: magnitude far below double range.
+      -- Directed rounding away from zero produces minimum subnormal.
+      if mant80 /= 0 then
+        if (mode = FP_RND_PLUS_INF and value(FP_WIDTH-1) = '0') or
+           (mode = FP_RND_MINUS_INF and value(FP_WIDTH-1) = '1') then
+          bits64(0) := '1';
+        end if;
+      end if;
       return bits64;
     elsif exp80_u = FP_EXP_ALL_ONES then
       bits64(62 downto 52) := (others => '1');
@@ -939,6 +956,7 @@ begin
     variable class_divzero : std_logic := '0';
     variable class_force_overflow : std_logic := '0';
     variable class_force_underflow : std_logic := '0';
+    variable class_force_inexact : std_logic := '0';
   begin
     if reset_n = '0' then
       op_sel_reg <= FPU_OP_NOP;
@@ -1049,6 +1067,7 @@ begin
           class_divzero := alu_flag_divzero;
           class_force_overflow := '0';
           class_force_underflow := '0';
+          class_force_inexact := '0';
         else
           class_opa := exc_event_opa_reg;
           class_opb := exc_event_opb_reg;
@@ -1056,6 +1075,7 @@ begin
           class_divzero := exc_event_divzero_reg;
           class_force_overflow := exc_event_force_overflow_reg;
           class_force_underflow := exc_event_force_underflow_reg;
+          class_force_inexact := exc_event_force_inexact_reg;
         end if;
         a_zero := fp80_is_zero(class_opa);
         b_zero := fp80_is_zero(class_opb);
@@ -1124,7 +1144,8 @@ begin
             exc_flags(FPSR_EXC_UNDERFLOW) := '1';
           end if;
 
-          if exc_flags(FPSR_EXC_OVERFLOW) = '1' or exc_flags(FPSR_EXC_UNDERFLOW) = '1' then
+          if exc_flags(FPSR_EXC_OVERFLOW) = '1' or exc_flags(FPSR_EXC_UNDERFLOW) = '1'
+             or class_force_inexact = '1' then
             exc_flags(FPSR_EXC_INEXACT) := '1';
           end if;
         end if;
@@ -1235,6 +1256,7 @@ begin
     variable move_exc_enable : std_logic := '0';
     variable move_exc_force_overflow : std_logic := '0';
     variable move_exc_force_underflow : std_logic := '0';
+    variable move_exc_force_inexact : std_logic := '0';
     variable move_src_abs : fp80_t := (others => '0');
     variable single_max_abs : fp80_t := (others => '0');
     variable double_max_abs : fp80_t := (others => '0');
@@ -1316,14 +1338,21 @@ begin
               move_exc_enable := '0';
               move_exc_force_overflow := '0';
               move_exc_force_underflow := '0';
+              move_exc_force_inexact := '0';
 
               if move_cfg.fmovecr_enable = '1' then
                 move_result := fmovecr_constant(operand_reg(0)(6 downto 0));
+                move_exc_enable := '1';
+                move_exc_result := move_result;
+                move_exc_opa := move_result;
                 fp_reg_file_reg(dst_idx) <= move_result;
               else
                 case mode is
                   when MOVE_CFG_MODE_REG_TO_REG =>
                     move_result := fp_reg_file_reg(src_idx);
+                    move_exc_enable := '1';
+                    move_exc_result := move_result;
+                    move_exc_opa := move_result;
                     fp_reg_file_reg(dst_idx) <= move_result;
                   when MOVE_CFG_MODE_MEM_TO_REG =>
                     if move_cfg.mem_to_reg_integer = '1' then
@@ -1353,6 +1382,9 @@ begin
                           move_exc_opa := move_result;
                         when others =>
                           move_result := operand_reg(0);
+                          move_exc_enable := '1';
+                          move_exc_result := move_result;
+                          move_exc_opa := move_result;
                       end case;
                     end if;
                     fp_reg_file_reg(dst_idx) <= move_result;
@@ -1378,6 +1410,9 @@ begin
                           move_exc_enable := '1';
                           move_exc_result := fp80_from_single(single_bits);
                           if not fp80_is_nan(move_result) and not fp80_is_inf(move_result) and not fp80_is_zero(move_result) then
+                            if move_exc_result /= move_result then
+                              move_exc_force_inexact := '1';
+                            end if;
                             if single_bits(30 downto 23) = x"00" then
                               move_exc_force_underflow := '1';
                             end if;
@@ -1396,6 +1431,9 @@ begin
                           move_exc_enable := '1';
                           move_exc_result := fp80_from_double(double_bits);
                           if not fp80_is_nan(move_result) and not fp80_is_inf(move_result) and not fp80_is_zero(move_result) then
+                            if move_exc_result /= move_result then
+                              move_exc_force_inexact := '1';
+                            end if;
                             if double_bits(62 downto 52) = std_logic_vector(to_unsigned(0, 11)) then
                               move_exc_force_underflow := '1';
                             end if;
@@ -1446,6 +1484,7 @@ begin
                 exc_event_opb_reg <= move_exc_opb;
                 exc_event_force_overflow_reg <= move_exc_force_overflow;
                 exc_event_force_underflow_reg <= move_exc_force_underflow;
+                exc_event_force_inexact_reg <= move_exc_force_inexact;
               end if;
               result_ready_reg <= '1';
             elsif op_sel_write_decoded = FPU_OP_MOVEM then

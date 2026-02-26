@@ -217,8 +217,12 @@ F) Datasheet Conformance (MC68881UM Review Findings)
       mode semantics (RN -> infinity; RZ/RM/RP -> directed finite/infinity result).
     - FIXED: underflow conversion path now emits gradual-underflow subnormals
       instead of unconditional zero flush.
+    - FIXED: FMOVE reg->mem exception classification preserves destination-format
+      range status so directed overflow-to-max-finite and non-zero subnormal
+      results still assert FPSR EXC/AEXC overflow/underflow.
     - Regression coverage: `tb/tb_mc68881_fmove_fmovem.vhd` now checks single
-      and double minimum-subnormal conversion and single overflow mode behavior.
+      and double minimum-subnormal conversion, single overflow mode behavior,
+      and EXC/AEXC overflow/underflow signaling for those conversions.
 
 [x] F5. Fix FGETEXP(infinity) and FGETMAN(infinity).
     - FIXED: Both now return NaN (all-ones mantissa) for infinity input per datasheet.

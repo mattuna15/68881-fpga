@@ -40,6 +40,9 @@ architecture sim of tb_mc68881_fmove_fmovem is
   constant FPSR_AEXC_BASE : natural := 0;
   constant FPSR_EXC_BASE : natural := 8;
   constant FPSR_EXC_INVALID : natural := 4;
+  constant FPSR_EXC_OVERFLOW : natural := 2;
+  constant FPSR_EXC_UNDERFLOW : natural := 1;
+  constant FPSR_EXC_INEXACT : natural := 0;
 
   constant OP_FMOVE : std_logic_vector(31 downto 0) := x"00000005";
   constant OP_FMOVEM : std_logic_vector(31 downto 0) := x"00000006";
@@ -322,6 +325,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000010");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, (others => '0'));
     cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
@@ -330,6 +334,17 @@ begin
     report "FMOVE single min-subnormal observed=" & to_hstring(rd_lo) severity note;
     assert rd_lo = x"00000001"
       report "FMOVE single gradual underflow should keep min subnormal"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPSR);
+    report "FMOVE single min-subnormal FPSR=" & to_hstring(rd_hi) severity note;
+    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_UNDERFLOW) = '1'
+      report "FMOVE single gradual underflow should set FPSR EXC underflow"
+      severity failure;
+    assert rd_hi(FPSR_AEXC_BASE + FPSR_EXC_UNDERFLOW) = '1'
+      report "FMOVE single gradual underflow should set FPSR AEXC underflow"
+      severity failure;
+    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+      report "FMOVE single gradual underflow should set FPSR EXC inexact"
       severity failure;
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, FP80_SINGLE_OVERFLOW(31 downto 0));
@@ -340,6 +355,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000010");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, (others => '0'));
     cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
@@ -348,6 +364,17 @@ begin
     report "FMOVE single overflow RZ observed=" & to_hstring(rd_lo) severity note;
     assert rd_lo = x"7F7FFFFF"
       report "FMOVE single overflow in RZ should saturate to max finite"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPSR);
+    report "FMOVE single overflow RZ FPSR=" & to_hstring(rd_hi) severity note;
+    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_OVERFLOW) = '1'
+      report "FMOVE single overflow in RZ should set FPSR EXC overflow"
+      severity failure;
+    assert rd_hi(FPSR_AEXC_BASE + FPSR_EXC_OVERFLOW) = '1'
+      report "FMOVE single overflow in RZ should set FPSR AEXC overflow"
+      severity failure;
+    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+      report "FMOVE single overflow in RZ should set FPSR EXC inexact"
       severity failure;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000030");
     cfg_word := make_move_cfg("10", 7, 0, "01", '0', "00", (others => '0'), '0');
@@ -400,6 +427,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000010");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, (others => '0'));
     cfg_word := make_move_cfg("10", 7, 0, "10", '0', "00", (others => '0'), '0');
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
@@ -410,6 +438,14 @@ begin
            " lo=" & to_hstring(rd_lo) severity note;
     assert rd_hi = x"00000000" and rd_lo = x"00000001"
       report "FMOVE double gradual underflow should keep min subnormal"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_FPSR);
+    report "FMOVE double min-subnormal FPSR=" & to_hstring(rd_ex) severity note;
+    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_UNDERFLOW) = '1'
+      report "FMOVE double gradual underflow should set FPSR EXC underflow"
+      severity failure;
+    assert rd_ex(FPSR_AEXC_BASE + FPSR_EXC_UNDERFLOW) = '1'
+      report "FMOVE double gradual underflow should set FPSR AEXC underflow"
       severity failure;
 
     report "FMOVE subnormal single/double source checks" severity note;

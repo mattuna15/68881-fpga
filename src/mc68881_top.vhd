@@ -136,6 +136,7 @@ architecture rtl of mc68881_top is
   signal op_class_write_decoded : fpu_op_class_t := OP_CLASS_NONE;
   signal conditional_prog_op_write : std_logic := '0';
   signal op_issue_pulse       : std_logic := '0';
+  signal opsel_write_prev_reg : std_logic := '0';
   signal ctrl_move_write_req_reg : std_logic := '0';
   signal ctrl_move_sel_reg : std_logic_vector(1 downto 0) := (others => '0');
   signal ctrl_move_data_reg : std_logic_vector(31 downto 0) := (others => '0');
@@ -937,10 +938,13 @@ begin
   op_sel_write_decoded <= decode_op_sel_word(d_in);
   op_class_write_decoded <= op_class(op_sel_write_decoded);
   conditional_prog_op_write <= '1' when is_conditional_prog_op(op_sel_write_decoded) else '0';
-  -- One-cycle launch pulse when OPSEL write is legal and engines are idle.
+  -- One-cycle launch pulse on the rising edge of an OPSEL write when engines
+  -- are idle.  The opsel_write_prev_reg guard ensures sustained bus_write
+  -- levels do not re-fire the pulse on subsequent clocks.
   op_issue_pulse <= '1' when (
     bus_write = '1' and
     addr = ADDR_OPSEL and
+    opsel_write_prev_reg = '0' and
     op_class_write_decoded /= OP_CLASS_NONE and
     micro_active_reg = '0' and
     frame_busy_reg = '0' and
@@ -1020,9 +1024,16 @@ begin
       frame_restore_pending_reg <= '0';
       frame_start_save_reg <= '0';
       frame_start_restore_reg <= '0';
+      opsel_write_prev_reg <= '0';
     elsif rising_edge(clk) then
       frame_start_save_reg <= '0';
       frame_start_restore_reg <= '0';
+      -- Track OPSEL write level for edge detection in protocol violation check.
+      if bus_write = '1' and addr = ADDR_OPSEL then
+        opsel_write_prev_reg <= '1';
+      else
+        opsel_write_prev_reg <= '0';
+      end if;
 
       if bus_write = '1' then
         case addr is
@@ -1368,7 +1379,11 @@ begin
         cir_protocol_violation_reg <= '0';
       end if;
 
+      -- Detect protocol violation only on the rising edge of an OPSEL write
+      -- (opsel_write_prev_reg = '0') to avoid false positives when the host
+      -- holds bus_write asserted across multiple clocks.
       if bus_write = '1' and addr = ADDR_OPSEL and
+         opsel_write_prev_reg = '0' and
          conditional_prog_op_write = '1' and
          cir_response_pending_reg = '1' then
         cir_protocol_violation_reg <= '1';

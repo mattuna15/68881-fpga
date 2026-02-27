@@ -307,8 +307,12 @@
         <Step Id="place_design"/>
         <Step Id="post_place_power_opt_design"/>
         <Step Id="phys_opt_design"/>
-        <Step Id="route_design"/>
-        <Step Id="post_route_phys_opt_design"/>
+        <Step Id="route_design">
+          <Option Id="Directive">8</Option>
+        </Step>
+        <Step Id="post_route_phys_opt_design" EnableStepBool="1">
+          <Option Id="Directive">1</Option>
+        </Step>
         <Step Id="write_bitstream"/>
       </Strategy>
       <GeneratedRun Dir="$PRUNDIR" File="gen_run.xml"/>

@@ -16,6 +16,13 @@ puts "=== Configuring non-incremental synthesis ==="
 set_property AUTO_INCREMENTAL_CHECKPOINT 0 [get_runs synth_1]
 set_property INCREMENTAL_CHECKPOINT "" [get_runs synth_1]
 
+# Configure implementation for timing closure on near-miss routed runs.
+puts "=== Configuring implementation run settings ==="
+set impl_run [get_runs impl_1]
+set_property STEPS.ROUTE_DESIGN.ARGS.DIRECTIVE AggressiveExplore $impl_run
+set_property STEPS.POST_ROUTE_PHYS_OPT_DESIGN.IS_ENABLED 1 $impl_run
+set_property STEPS.POST_ROUTE_PHYS_OPT_DESIGN.ARGS.DIRECTIVE AggressiveExplore $impl_run
+
 # Reset both runs
 puts "=== Resetting runs ==="
 reset_run synth_1

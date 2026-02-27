@@ -74,6 +74,7 @@ package mc68881_pkg is
     FPU_OP_FBCC,
     FPU_OP_FDBCC,
     FPU_OP_FNOP,
+    FPU_OP_FTRAPCC,
     FPU_OP_FSAVE,
     FPU_OP_FRESTORE
   );
@@ -907,6 +908,13 @@ package body mc68881_pkg is
     FPU_OP_FNOP => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"20",
+      op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
+      exception_policy => EXC_POLICY_NONE,
+      arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
+    ),
+    FPU_OP_FTRAPCC => (
+      legacy_decode_id_valid => false, legacy_decode_id => 0,
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"24",
       op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
       exception_policy => EXC_POLICY_NONE,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO

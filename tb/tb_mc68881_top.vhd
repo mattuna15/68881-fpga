@@ -48,11 +48,12 @@ architecture sim of tb_mc68881_top is
   constant FPSR_CC_NEG      : natural := 27;
   constant FPSR_QUOT_LSB    : natural := 16;
   constant FPSR_QUOT_MSB    : natural := 23;
+  constant FPSR_EXC_LSB     : natural := 8;
+  constant FPSR_EXC_BSUN    : natural := 7;
   constant FPSR_EXC_BASE    : natural := 8;
   constant FPSR_ACCR_BASE   : natural := 0;
   constant FPSR_EXC_DIVZERO : natural := 3;
   constant FPSR_EXC_INVALID : natural := 4;
-  constant FPSR_EXC_BSUN    : natural := 7;
   constant STATUS_CIR_RESPONSE_PENDING : natural := 4;
   constant STATUS_CIR_PROTOCOL_ERROR   : natural := 5;
   constant STATUS_CIR_TRAP_PENDING     : natural := 6;
@@ -1038,6 +1039,9 @@ begin
       report "FScc EQ should report cond_true=1 without BSUN"
       severity failure;
 
+    -- Clear CIR response pending from previous FScc before issuing next conditional op.
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+
     report "FScc EQ test with N=1 and Z=0." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- N set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
@@ -1051,6 +1055,9 @@ begin
     assert rd_lo(0) = '0' and rd_lo(4) = '0'
       report "FScc EQ should report cond_true=0 without BSUN"
       severity failure;
+
+    -- Clear CIR response pending from previous FScc.
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
 
     report "FScc UN test with NAN=1." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
@@ -1357,6 +1364,120 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
     assert rd_hi = fpiar_seed
       report "FScc enabled BSUN should capture FPIAR"
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000");
+
+    -- Clear CIR response pending from previous FScc.
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+
+    -- B7 slice: FSAVE round-trip via opcode dispatch.
+    report "FSAVE round-trip: write known FPCR/FPSR, issue FSAVE, check frame format + words." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000030"); -- RN, double
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"DEADBEEF");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000030"); -- FSAVE
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(18, 5)); -- FRAME_W0
+    report "FSAVE FRAME_W0 (format)=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"00000018"
+      report "FSAVE FRAME_W0 should be idle format $18"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, to_unsigned(19, 5)); -- FRAME_W1
+    report "FSAVE FRAME_W1 (FPCR)=" & to_hstring(rd_hi) severity note;
+    assert rd_hi = x"00000030"
+      report "FSAVE FRAME_W1 should match written FPCR"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, to_unsigned(20, 5)); -- FRAME_W2
+    report "FSAVE FRAME_W2 (FPSR)=" & to_hstring(rd_ex) severity note;
+    assert rd_ex = x"DEADBEEF"
+      report "FSAVE FRAME_W2 should match written FPSR"
+      severity failure;
+
+    -- B7 slice: FRESTORE idle-frame round-trip via opcode dispatch.
+    report "FRESTORE idle-frame round-trip: write frame words, issue FRESTORE, check FPCR/FPSR." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(18, 5), x"00000018"); -- FRAME_W0 = idle format
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(19, 5), x"0000007F"); -- FRAME_W1 = new FPCR
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(20, 5), x"12345678"); -- FRAME_W2 = new FPSR
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000031"); -- FRESTORE
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPCR);
+    report "FRESTORE FPCR=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"0000007F"
+      report "FRESTORE should restore FPCR from FRAME_W1"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPSR);
+    report "FRESTORE FPSR=" & to_hstring(rd_hi) severity note;
+    assert rd_hi = x"12345678"
+      report "FRESTORE should restore FPSR from FRAME_W2"
+      severity failure;
+
+    -- B7 slice: FRESTORE null-frame resets FPU.
+    report "FRESTORE null-frame: write null format, issue FRESTORE, verify FPCR/FPSR zeroed." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(18, 5), x"00000000"); -- FRAME_W0 = null format
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000031"); -- FRESTORE
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPCR);
+    report "FRESTORE null FPCR=" & to_hstring(rd_lo) severity note;
+    assert rd_lo = x"00000000"
+      report "FRESTORE null-frame should zero FPCR"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPSR);
+    report "FRESTORE null FPSR=" & to_hstring(rd_hi) severity note;
+    assert rd_hi = x"00000000"
+      report "FRESTORE null-frame should zero FPSR"
+      severity failure;
+
+    -- B7 slice: FTRAPcc condition true (EQ with Z=1).
+    report "FTRAPcc EQ with Z=1 (condition true, trap requested)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000"); -- clear FPCR
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000024"); -- FTRAPcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '1'
+      report "FTRAPcc EQ with Z=1 should report cond_true=1"
+      severity failure;
+    assert rd_lo(5) = '1'
+      report "FTRAPcc EQ with Z=1 should report trap_requested=1"
+      severity failure;
+    assert rd_lo(4) = '0'
+      report "FTRAPcc EQ with Z=1 should not report BSUN"
+      severity failure;
+
+    -- B7 slice: FTRAPcc condition false (EQ with Z=0).
+    report "FTRAPcc EQ with Z=0 (condition false, no trap)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- all CC clear
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000024"); -- FTRAPcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(0) = '0'
+      report "FTRAPcc EQ with Z=0 should report cond_true=0"
+      severity failure;
+    assert rd_lo(5) = '0'
+      report "FTRAPcc EQ with Z=0 should report trap_requested=0"
+      severity failure;
+
+    -- B7 slice: FTRAPcc BSUN (signaling condition SEQ + NAN=1 + FPCR.BSUN enabled).
+    report "FTRAPcc SEQ with NAN=1 and FPCR.BSUN enabled should request trap." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00008000"); -- enable BSUN
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000011"); -- condition: SEQ (signaling)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000024"); -- FTRAPcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
+    assert rd_lo(4) = '1'
+      report "FTRAPcc SEQ+NAN should report bsun_event=1"
+      severity failure;
+    assert rd_lo(5) = '1'
+      report "FTRAPcc SEQ+NAN+BSUN_EN should report trap_requested=1"
+      severity failure;
+    assert rd_lo(0) = '0'
+      report "FTRAPcc SEQ+NAN should report cond_true=0 (BSUN overrides)"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPSR);
+    assert rd_hi(FPSR_EXC_LSB + FPSR_EXC_BSUN) = '1'
+      report "FTRAPcc BSUN path should set EXC.BSUN"
       severity failure;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000");
 

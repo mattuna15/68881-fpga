@@ -98,9 +98,13 @@ B) Functional Completeness (Core Missing Ops)
       Conditional-response ordering and BSUN trap-gating status are now enforced in the
       register-mapped dialog model (`STATUS`/`CIR_RESPONSE`).
 
-[ ] B7. Implement system-control instruction set (guide section 3.3.5).
+[x] B7. Implement system-control instruction set (guide section 3.3.5).
     - FSAVE, FRESTORE.
     - FTRAPcc (#<data>.W/.L and no-immediate forms).
+    - Done: FSAVE/FRESTORE wired through cross-process request/completion handshake
+      (sys_ctrl_save_req/restore_req → bus_frame_proc frame countdown → result_ready).
+    - Done: FTRAPcc evaluates FPSR CC via shared conditional path (OP_CLASS_PROG_CTRL),
+      requests trap when condition true, participates in BSUN/CIR response protocol.
 
 [ ] B8. Implement packed-decimal and decimal conversion path.
     - Packed-decimal encode/decode and edge cases.
@@ -272,6 +276,28 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - Trig FP micro-ops now run through explicit `fp_exec_start/busy/done` hooks and
     cycle contracts. `ST_FP_DIV` now routes through sequential `mc68881_divrem_unit`;
     remaining heavy combinational paths are `mul_fp80` and `add_sub_fp80`.
+  - Latest rerouted implementation (2026-02-27) reproduced a single setup failure at 10 MHz:
+    `Slack = -0.053ns`, source `alu_inst/trig_inst/add_a_reg_reg[67]/C`,
+    destination `alu_inst/trig_inst/tmp_reg_reg[61]_rep__0/D`, `Logic Levels = 682`,
+    under `MultiCycle Path Setup -end 4` in
+    `project/fpga68881/fpga68881.runs/impl_1/mc68881_top_timing_summary_routed.rpt`.
+  - Route + post-route phys-opt experiment from the same placed checkpoint
+    (`phys_opt_design -directive AggressiveExplore`) recovered the endpoint to
+    `WNS=0.044ns`, `TNS=0.000ns` and reported optimization of net
+    `alu_inst/trig_inst/tmp_reg_reg[61]_rep__0_n_0`
+    (`tmp/timing_route_physopt_summary.rpt`, 2026-02-27).
+  - Route-only experiment from the same placed checkpoint with
+    `route_design -directive AggressiveExplore` closed timing directly
+    (`WNS=1.570ns`, `TNS=0.000ns` in route timing summary;
+    `WNS=1.265ns` after hold-fix iteration in route log),
+    without requiring a separate post-route phys-opt step
+    (`tmp/timing_route_aggr_summary.rpt`, 2026-02-27).
+  - Full `impl_1` rerun with `route_design` directive `AggressiveExplore`
+    now closes timing in run artifacts:
+    `project/fpga68881/fpga68881.runs/impl_1/mc68881_top_timing_summary_routed.rpt`
+    and `..._postroute_physopted.rpt` both report
+    `Setup: 0 failing endpoints`, `WNS=1.570ns`, `TNS=0.000ns`
+    (run completed 2026-02-27 16:27).
   - Latest routed implementation now closes timing at 10 MHz with margin:
     `WNS=1.356ns`, `TNS=0.000ns`, `WHS=0.026ns`, `THS=0.000ns`
     (`reports/timing_summary.rpt`, run completed 2026-02-23).
@@ -282,6 +308,12 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - MCP constraints are applied for trig FP launch/capture contracts:
     - MUL: 2-cycle setup / 1-cycle hold
     - ADD: 4-cycle setup / 3-cycle hold
+  - Implementation flow enables post-route phys-opt with `AggressiveExplore`
+    for `impl_1` (`scripts/run_impl.tcl`, `project/fpga68881/fpga68881.xpr`)
+    to recover near-zero routed slack variation on the trig add MCP path.
+  - Implementation flow sets `route_design` directive to `AggressiveExplore`
+    for `impl_1` (`scripts/run_impl.tcl`, `project/fpga68881/fpga68881.xpr`),
+    which closes the reproduced single failing endpoint in route-phase runs.
 - Fix-exit criteria:
   - Replace combinational FP80 datapaths behind trig FP engine with true pipelined or
     iterative arithmetic stages, remove remaining trig MCP dependence, and close routed setup timing

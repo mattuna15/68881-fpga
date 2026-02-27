@@ -9,6 +9,7 @@ entity tb_mc68881_fmove_fmovem is
 end entity tb_mc68881_fmove_fmovem;
 
 architecture sim of tb_mc68881_fmove_fmovem is
+  subtype packed96_t is std_logic_vector(95 downto 0);
   signal a_in     : std_logic_vector(4 downto 0) := (others => '0');
   signal d_in     : std_logic_vector(31 downto 0) := (others => '0');
   signal d_out    : std_logic_vector(31 downto 0);
@@ -210,6 +211,17 @@ architecture sim of tb_mc68881_fmove_fmovem is
     return encode_move_cfg(cfg);
   end function;
 
+  function make_packed96(
+    ex_word : std_logic_vector(31 downto 0);
+    hi_word : std_logic_vector(31 downto 0);
+    lo_word : std_logic_vector(31 downto 0)
+  ) return packed96_t is
+    variable packed : packed96_t := (others => '0');
+  begin
+    packed := ex_word(31 downto 16) & ex_word(15 downto 0) & hi_word & lo_word;
+    return packed;
+  end function;
+
 begin
   clk <= not clk after CLK_PERIOD/2;
 
@@ -243,6 +255,9 @@ begin
     variable fpiar_word : std_logic_vector(31 downto 0) := (others => '0');
     variable static_packed : fp80_t := (others => '0');
     variable dynamic_packed : fp80_t := (others => '0');
+    variable static_packed96 : packed96_t := (others => '0');
+    variable dynamic_packed96 : packed96_t := (others => '0');
+    variable packed_src96 : packed96_t := (others => '0');
   begin
     reset_n <= '0';
     wait for 2 * CLK_PERIOD;
@@ -813,8 +828,17 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    static_packed96 := make_packed96(rd_ex, rd_hi, rd_lo);
     static_packed := rd_ex(15 downto 0) & rd_hi & rd_lo;
     report "FMOVE.P static k observed=" & to_hstring(static_packed) severity note;
+    assert static_packed96(93 downto 92) = "00"
+      report "FMOVE.P static packed result should be finite (yy=00)"
+      severity failure;
+    assert static_packed96(67 downto 64) = x"1" and
+           static_packed96(63 downto 60) = x"2" and
+           static_packed96(59 downto 56) = x"0"
+      report "FMOVE.P static k should round 1234567 to leading digits 1.20..."
+      severity failure;
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"0000000A");
     cfg_word := make_move_cfg(
@@ -828,11 +852,28 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    dynamic_packed96 := make_packed96(rd_ex, rd_hi, rd_lo);
     dynamic_packed := rd_ex(15 downto 0) & rd_hi & rd_lo;
     report "FMOVE.P dynamic k observed=" & to_hstring(dynamic_packed) severity note;
     assert static_packed /= dynamic_packed
       report "FMOVE.P static and dynamic k-factor should produce distinct packed output"
       severity failure;
+
+    report "FMOVE.P mem->reg packed decode check" severity note;
+    packed_src96 := static_packed96;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, packed_src96(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, packed_src96(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, packed_src96(95 downto 80) & packed_src96(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.P mem->reg observed=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, fp80_from_int(1200000), "FMOVE.P mem->reg decode");
 
     report "FMOVECR constant ROM checks" severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"0000000F");

@@ -26,17 +26,21 @@ end entity mc68881_top;
 architecture rtl of mc68881_top is
   -- Two-slot operand buffer (A/B) used by bus writes before ALU launch.
   type reg_array_t is array (0 to 1) of fp80_t;
+  type reg_hi16_array_t is array (0 to 1) of std_logic_vector(15 downto 0);
 
   signal op_sel_reg    : fpu_op_t := FPU_OP_NOP;
   signal operand_reg   : reg_array_t := (others => (others => '0'));
+  signal operand_hi16_reg : reg_hi16_array_t := (others => (others => '0'));
   signal result    : fp80_t := (others => '0');
   signal aux_result : fp80_t := (others => '0');
   signal result_lo_reg : std_logic_vector(FP80_RESULT_LO_WIDTH-1 downto 0) := (others => '0');
   signal result_hi_reg : std_logic_vector(FP80_RESULT_HI_WIDTH-1 downto 0) := (others => '0');
   signal result_ex_reg : std_logic_vector(FP80_RESULT_EX_WIDTH-1 downto 0) := (others => '0');
+  signal result_ex_hi_reg : std_logic_vector(15 downto 0) := (others => '0');
   signal aux_result_lo_reg : std_logic_vector(FP80_RESULT_LO_WIDTH-1 downto 0) := (others => '0');
   signal aux_result_hi_reg : std_logic_vector(FP80_RESULT_HI_WIDTH-1 downto 0) := (others => '0');
   signal aux_result_ex_reg : std_logic_vector(FP80_RESULT_EX_WIDTH-1 downto 0) := (others => '0');
+  signal aux_result_ex_hi_reg : std_logic_vector(15 downto 0) := (others => '0');
   signal valid     : std_logic := '0';
   signal aux_valid : std_logic := '0';
   signal quotient_valid : std_logic := '0';
@@ -281,13 +285,44 @@ architecture rtl of mc68881_top is
     return FMOVECR_ROM(ccc_index);
   end function;
 
-  function apply_packed_k_factor(value : fp80_t; k_factor : integer) return fp80_t is
+  subtype packed96_t is std_logic_vector(95 downto 0);
+  type dec_digits_t is array (0 to 16) of natural range 0 to 9;
+
+  function bcd_digit(value : natural) return std_logic_vector is
+    variable nibble : std_logic_vector(3 downto 0) := (others => '0');
+  begin
+    nibble := std_logic_vector(to_unsigned(value mod 10, 4));
+    return nibble;
+  end function;
+
+  function bcd_to_natural(nibble : std_logic_vector(3 downto 0)) return integer is
+    variable digit_i : integer := 0;
+  begin
+    digit_i := to_integer(unsigned(nibble));
+    if digit_i >= 0 and digit_i <= 9 then
+      return digit_i;
+    end if;
+    return -1;
+  end function;
+
+  function decimal_digit_count(value : natural) return natural is
+    variable tmp : natural := value;
+    variable count : natural := 1;
+  begin
+    while tmp >= 10 loop
+      tmp := tmp / 10;
+      count := count + 1;
+    end loop;
+    return count;
+  end function;
+
+  function apply_packed_k_factor_fallback(value : fp80_t; k_factor : integer) return fp80_t is
     variable adjusted : fp80_t := value;
     variable k_clamped : integer := 0;
     variable fractional_bits : integer := 0;
     variable bit_count : natural := 0;
   begin
-    -- Placeholder packed-decimal shaping using k-factor; full decimal encode/decode is tracked by B8.
+    -- Legacy fallback shaping retained for unsupported decimal-conversion inputs.
     k_clamped := clamp_integer(k_factor, -64, 17);
     if k_clamped <= 0 then
       fractional_bits := 63 - (-k_clamped / 2);
@@ -300,6 +335,236 @@ architecture rtl of mc68881_top is
       adjusted(bit_count-1 downto 0) := (others => '0');
     end if;
     return adjusted;
+  end function;
+
+  function fp80_to_packed96(value : fp80_t; k_factor : integer) return packed96_t is
+    variable packed : packed96_t := (others => '0');
+    variable k_clamped : integer := 0;
+    variable int_value : integer := 0;
+    variable abs_value : natural := 0;
+    variable tmp_nat : natural := 0;
+    variable digits : dec_digits_t := (others => 0);
+    variable digit_count : natural := 1;
+    variable keep_digits : integer := 17;
+    variable round_digit : natural := 0;
+    variable carry : integer := 0;
+    variable exp10 : integer := 0;
+    variable exp_abs : natural := 0;
+    variable exp0 : natural := 0;
+    variable exp1 : natural := 0;
+    variable exp2 : natural := 0;
+    variable exp3 : natural := 0;
+    variable fallback_value : fp80_t := (others => '0');
+    variable is_exact_int : boolean := false;
+  begin
+    packed(95) := value(FP_WIDTH-1); -- mantissa sign
+
+    if fp80_is_zero(value) then
+      return packed;
+    end if;
+
+    if fp80_is_inf(value) then
+      packed(93 downto 92) := "11";
+      packed(91 downto 88) := x"F";
+      packed(87 downto 84) := x"F";
+      packed(83 downto 80) := x"F";
+      packed(79 downto 76) := x"F";
+      return packed;
+    end if;
+
+    if fp80_is_nan(value) then
+      packed(93 downto 92) := "11";
+      packed(91 downto 88) := x"F";
+      packed(87 downto 84) := x"F";
+      packed(83 downto 80) := x"F";
+      packed(79 downto 76) := x"F";
+      packed(67 downto 64) := x"1";
+      packed(63 downto 0) := (others => '1');
+      return packed;
+    end if;
+
+    int_value := fp80_to_int_trunc(value);
+    is_exact_int := fp80_from_int(int_value) = value;
+    if not is_exact_int then
+      fallback_value := apply_packed_k_factor_fallback(value, k_factor);
+      packed(79 downto 0) := fallback_value;
+      return packed;
+    end if;
+
+    if int_value < 0 then
+      abs_value := natural(-int_value);
+    else
+      abs_value := natural(int_value);
+    end if;
+
+    digit_count := decimal_digit_count(abs_value);
+    exp10 := integer(digit_count) - 1;
+    tmp_nat := abs_value;
+    for idx in 0 to 16 loop
+      digits(idx) := 0;
+    end loop;
+    for idx in 0 to 16 loop
+      exit when idx >= integer(digit_count);
+      digits(integer(digit_count) - 1 - idx) := tmp_nat mod 10;
+      tmp_nat := tmp_nat / 10;
+    end loop;
+
+    k_clamped := clamp_integer(k_factor, -64, 17);
+    if k_clamped > 0 then
+      keep_digits := k_clamped;
+    elsif k_clamped <= 0 then
+      keep_digits := exp10 + 1 + (-k_clamped);
+    end if;
+
+    if keep_digits < 1 then
+      keep_digits := 1;
+    elsif keep_digits > 17 then
+      keep_digits := 17;
+    end if;
+
+    if keep_digits < 17 then
+      round_digit := digits(keep_digits);
+      carry := 0;
+      if round_digit >= 5 then
+        carry := 1;
+      end if;
+      for idx in 16 downto 0 loop
+        if idx < keep_digits then
+          if carry = 1 then
+            if digits(idx) = 9 then
+              digits(idx) := 0;
+              carry := 1;
+            else
+              digits(idx) := digits(idx) + 1;
+              carry := 0;
+            end if;
+          end if;
+        else
+          digits(idx) := 0;
+        end if;
+      end loop;
+      if carry = 1 then
+        for idx in 16 downto 1 loop
+          digits(idx) := digits(idx-1);
+        end loop;
+        digits(0) := 1;
+        exp10 := exp10 + 1;
+      end if;
+    end if;
+
+    if exp10 < 0 then
+      packed(94) := '1';
+      exp_abs := natural(-exp10);
+    else
+      packed(94) := '0';
+      exp_abs := natural(exp10);
+    end if;
+
+    exp0 := exp_abs mod 10;
+    exp1 := (exp_abs / 10) mod 10;
+    exp2 := (exp_abs / 100) mod 10;
+    exp3 := (exp_abs / 1000) mod 10;
+
+    packed(93 downto 92) := "00";
+    packed(91 downto 88) := bcd_digit(exp2);
+    packed(87 downto 84) := bcd_digit(exp1);
+    packed(83 downto 80) := bcd_digit(exp0);
+    packed(79 downto 76) := bcd_digit(exp3);
+    packed(75 downto 68) := (others => '0');
+    packed(67 downto 64) := bcd_digit(digits(0));
+    for idx in 0 to 15 loop
+      packed(63 - idx*4 downto 60 - idx*4) := bcd_digit(digits(idx+1));
+    end loop;
+    return packed;
+  end function;
+
+  function packed96_to_fp80(packed : packed96_t; fallback : fp80_t) return fp80_t is
+    variable decoded_value : fp80_t := fallback;
+    variable mant_digits : dec_digits_t := (others => 0);
+    variable exp0_i : integer := 0;
+    variable exp1_i : integer := 0;
+    variable exp2_i : integer := 0;
+    variable exp3_i : integer := 0;
+    variable exp10 : integer := 0;
+    variable mantissa_i : integer := 0;
+    variable overflow_int : boolean := false;
+    variable scale_exp : integer := 0;
+    variable ten_fp80 : fp80_t := fp80_from_int(10);
+    variable sign_m : std_logic := '0';
+    variable idx : integer := 0;
+  begin
+    sign_m := packed(95);
+
+    if packed(93 downto 92) = "11" then
+      decoded_value := (others => '0');
+      decoded_value(FP_WIDTH-1) := sign_m;
+      decoded_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
+      decoded_value(FP_MANT_WIDTH-1) := '1';
+      if packed(67 downto 0) /= (67 downto 0 => '0') then
+        decoded_value(FP_MANT_WIDTH-2 downto 0) := (others => '1');
+      end if;
+      return decoded_value;
+    end if;
+
+    exp0_i := bcd_to_natural(packed(83 downto 80));
+    exp1_i := bcd_to_natural(packed(87 downto 84));
+    exp2_i := bcd_to_natural(packed(91 downto 88));
+    exp3_i := bcd_to_natural(packed(79 downto 76));
+    if exp0_i < 0 or exp1_i < 0 or exp2_i < 0 or exp3_i < 0 then
+      return fallback;
+    end if;
+    exp10 := exp3_i*1000 + exp2_i*100 + exp1_i*10 + exp0_i;
+    if packed(94) = '1' then
+      exp10 := -exp10;
+    end if;
+
+    idx := bcd_to_natural(packed(67 downto 64));
+    if idx < 0 then
+      return fallback;
+    end if;
+    mant_digits(0) := natural(idx);
+    for nib_idx in 0 to 15 loop
+      idx := bcd_to_natural(packed(63 - nib_idx*4 downto 60 - nib_idx*4));
+      if idx < 0 then
+        return fallback;
+      end if;
+      mant_digits(nib_idx+1) := natural(idx);
+    end loop;
+
+    mantissa_i := 0;
+    overflow_int := false;
+    for digit_idx in 0 to 8 loop
+      if mantissa_i > (integer'high - integer(mant_digits(digit_idx))) / 10 then
+        overflow_int := true;
+        exit;
+      end if;
+      mantissa_i := mantissa_i * 10 + integer(mant_digits(digit_idx));
+    end loop;
+    if overflow_int then
+      return fallback;
+    end if;
+
+    decoded_value := fp80_from_int(mantissa_i);
+    scale_exp := exp10 - 8;
+
+    if scale_exp > 9 or scale_exp < -9 then
+      return fallback;
+    end if;
+
+    if scale_exp > 0 then
+      for step in 1 to 9 loop
+        exit when step > scale_exp;
+        decoded_value := mul_fp80(decoded_value, ten_fp80, FP_RND_NEAREST, FP_PREC_EXTENDED);
+      end loop;
+    elsif scale_exp < 0 then
+      for step in 1 to 9 loop
+        exit when step > -scale_exp;
+        decoded_value := div_fp80(decoded_value, ten_fp80, FP_RND_NEAREST, FP_PREC_EXTENDED);
+      end loop;
+    end if;
+
+    decoded_value(FP_WIDTH-1) := sign_m;
+    return decoded_value;
   end function;
 
   function fp80_from_single(bits : std_logic_vector(31 downto 0)) return fp80_t is
@@ -1011,6 +1276,7 @@ begin
     if reset_n = '0' then
       op_sel_reg <= FPU_OP_NOP;
       operand_reg <= (others => (others => '0'));
+      operand_hi16_reg <= (others => (others => '0'));
       fpcr_reg <= (others => '0');
       fpsr_reg <= (others => '0');
       fpiar_reg <= (others => '0');
@@ -1051,12 +1317,14 @@ begin
             operand_reg(0)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in;
           when ADDR_OPA_E =>
             operand_reg(0)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH) <= d_in(FP80_RESULT_EX_WIDTH-1 downto 0);
+            operand_hi16_reg(0) <= d_in(31 downto 16);
           when ADDR_OPB_L =>
             operand_reg(1)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in;
           when ADDR_OPB_H =>
             operand_reg(1)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in;
           when ADDR_OPB_E =>
             operand_reg(1)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH) <= d_in(FP80_RESULT_EX_WIDTH-1 downto 0);
+            operand_hi16_reg(1) <= d_in(31 downto 16);
           when ADDR_FPCR =>
             fpcr_reg(15 downto 0) <= d_in(15 downto 0);
             fpcr_reg(31 downto 16) <= (others => '0');
@@ -1370,6 +1638,7 @@ begin
     variable mask_bit_idx : integer range 0 to 7 := 0;
     variable single_bits : std_logic_vector(31 downto 0) := (others => '0');
     variable double_bits : std_logic_vector(63 downto 0) := (others => '0');
+    variable packed_word : packed96_t := (others => '0');
     variable ctrl_value : std_logic_vector(31 downto 0) := (others => '0');
     variable int_value : integer := 0;
     variable packed_k : integer := 0;
@@ -1401,9 +1670,11 @@ begin
       result_lo_reg <= (others => '0');
       result_hi_reg <= (others => '0');
       result_ex_reg <= (others => '0');
+      result_ex_hi_reg <= (others => '0');
       aux_result_lo_reg <= (others => '0');
       aux_result_hi_reg <= (others => '0');
       aux_result_ex_reg <= (others => '0');
+      aux_result_ex_hi_reg <= (others => '0');
       op_start_reg <= '0';
       micro_active_reg <= '0';
       micro_remaining_reg <= 0;
@@ -1460,6 +1731,8 @@ begin
 
       if op_issue_pulse = '1' then
         result_ready_reg <= '0';
+        result_ex_hi_reg <= (others => '0');
+        aux_result_ex_hi_reg <= (others => '0');
         last_op_sel_reg <= op_sel_write_decoded;
         fpiar_issue_snapshot_reg <= fpiar_reg;
         micro_active_reg <= '1';
@@ -1540,6 +1813,12 @@ begin
                           move_exc_enable := '1';
                           move_exc_result := move_result;
                           move_exc_opa := move_result;
+                        when "11" =>
+                          packed_word := operand_hi16_reg(0) & operand_reg(0);
+                          move_result := packed96_to_fp80(packed_word, operand_reg(0));
+                          move_exc_enable := '1';
+                          move_exc_result := move_result;
+                          move_exc_opa := move_result;
                         when others =>
                           move_result := operand_reg(0);
                           move_exc_enable := '1';
@@ -1557,12 +1836,13 @@ begin
                       else
                         packed_k := signed8_to_integer(operand_reg(1)(7 downto 0));
                       end if;
-                      move_result := apply_packed_k_factor(move_result, packed_k);
+                      packed_word := fp80_to_packed96(move_result, packed_k);
                       move_exc_enable := '1';
-                      move_exc_result := move_result;
-                      result_lo_reg <= move_result(FP80_RESULT_LO_WIDTH-1 downto 0);
-                      result_hi_reg <= move_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
-                      result_ex_reg <= move_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+                      move_exc_result := packed96_to_fp80(packed_word, move_result);
+                      result_lo_reg <= packed_word(31 downto 0);
+                      result_hi_reg <= packed_word(63 downto 32);
+                      result_ex_reg <= packed_word(79 downto 64);
+                      result_ex_hi_reg <= packed_word(95 downto 80);
                     else
                       case mem_fmt is
                         when "01" =>
@@ -1878,9 +2158,11 @@ begin
     result_lo_reg,
     result_hi_reg,
     result_ex_reg,
+    result_ex_hi_reg,
     aux_result_lo_reg,
     aux_result_hi_reg,
     aux_result_ex_reg,
+    aux_result_ex_hi_reg,
     status_valid_reg,
     status_busy_reg,
     status_frame_valid_reg,
@@ -1919,10 +2201,14 @@ begin
       case addr is
         when ADDR_RES_L => d_out_comb <= result_lo_reg;
         when ADDR_RES_H => d_out_comb <= result_hi_reg;
-        when ADDR_RES_E => d_out_comb(FP80_RESULT_EX_WIDTH-1 downto 0) <= result_ex_reg;
+        when ADDR_RES_E =>
+          d_out_comb(FP80_RESULT_EX_WIDTH-1 downto 0) <= result_ex_reg;
+          d_out_comb(31 downto 16) <= result_ex_hi_reg;
         when ADDR_AUX_RES_L => d_out_comb <= aux_result_lo_reg;
         when ADDR_AUX_RES_H => d_out_comb <= aux_result_hi_reg;
-        when ADDR_AUX_RES_E => d_out_comb(FP80_RESULT_EX_WIDTH-1 downto 0) <= aux_result_ex_reg;
+        when ADDR_AUX_RES_E =>
+          d_out_comb(FP80_RESULT_EX_WIDTH-1 downto 0) <= aux_result_ex_reg;
+          d_out_comb(31 downto 16) <= aux_result_ex_hi_reg;
         when ADDR_STATUS =>
           -- STATUS register layout:
           --   Bit 0: valid (result ready)

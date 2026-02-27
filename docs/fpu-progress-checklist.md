@@ -106,9 +106,19 @@ B) Functional Completeness (Core Missing Ops)
     - Done: FTRAPcc evaluates FPSR CC via shared conditional path (OP_CLASS_PROG_CTRL),
       requests trap when condition true, participates in BSUN/CIR response protocol.
 
-[ ] B8. Implement packed-decimal and decimal conversion path.
+[~] B8. Implement packed-decimal and decimal conversion path.
     - Packed-decimal encode/decode and edge cases.
     - Rounding and k-factor handling per FMOVE .P behavior.
+    - In progress: FMOVE .P now transports a 96-bit packed payload through the
+      existing register interface (`OPA_E`/`RES_E` upper 16 bits carry packed bits 95:80;
+      lower 80 bits remain in `*_H/*_L/*_E[15:0]`).
+    - In progress: FMOVE reg->mem packed path now emits explicit packed metadata
+      fields (SM/SE/YY and exponent nibbles) plus decimal mantissa digits for
+      finite integer sources with static/dynamic k-factor rounding.
+    - In progress: FMOVE mem->reg packed path now decodes packed payloads for
+      supported finite/special cases and preserves infinity/NaN signaling fields.
+    - Remaining: full decimal conversion coverage for non-integer finite sources,
+      wide exponent range handling, and complete OPERR/INEX1 architectural behavior.
 
 C) Exception Handling & Edge Cases
 ----------------------------------
@@ -340,6 +350,27 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - Quiet-NaN propagation behavior may be over-signaled versus 68881/QEMU-compatible policy.
 - Planned fix:
   - Distinguish signaling-NaN vs quiet-NaN handling and raise invalid only where required by policy.
+
+### DEF-PACKED-001: Packed-Decimal Conversion Is Limited To Integer-Centric Subset
+- Status: Open
+- Files: `src/mc68881_top.vhd`, `tb/tb_mc68881_fmove_fmovem.vhd`
+- Evidence:
+  - FMOVE reg->mem packed conversion currently takes the exact-integer fast path and
+    falls back to legacy bit-shaping for non-integer finite inputs.
+  - Repro vector 1 (non-integer fallback):
+    - Source FP80: `x"3FFFA000000000000000"` (+1.25), `FMOVE.P FPm,<ea>{#2}`.
+    - Current behavior: legacy fallback shaping path is used (not full decimal string conversion).
+  - Repro vector 2 (decode range fallback):
+    - Packed decode path currently reconstructs from a bounded leading-digit subset
+      and accepts scale range `[-9,+9]`; wider scale falls back.
+- Impact:
+  - B8 decimal conversion is not yet complete for general packed-decimal operands.
+  - Corner-case parity vs MC68881/QEMU packed `.P` behavior remains incomplete.
+- Fix-exit criteria:
+  - Implement full finite decimal conversion (binary<->packed decimal) for non-integer values,
+    complete exponent-range handling, and remove legacy fallback path for supported `.P` flows.
+  - Add directed regression vectors for non-integer `.P` round-trip and large-exponent packed
+    decode/encode cases, then enforce them in the default test suite.
 
 ## Closed Defects
 

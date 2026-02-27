@@ -234,6 +234,29 @@ begin
       report "FRESTORE should execute through system-control class with zero modeled cycles."
       severity failure;
 
+    -- Clear CIR response pending from previous FScc before issuing next conditional op.
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CIR_RESPONSE);
+
+    -- Program-control class dispatch (FTRAPcc condition evaluation).
+    report "Issuing FTRAPcc opcode through OPSEL (EQ with Z=1)." severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000001"); -- condition: EQ
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000024"); -- FTRAPcc
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FTRAPcc");
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
+    report "FTRAPcc cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
+    assert to_integer(unsigned(cycle_total_word)) = 0
+      report "FTRAPcc should execute through program-control class with zero modeled cycles."
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CIR_RESPONSE);
+    report "FTRAPcc CIR_RESPONSE=" & to_hstring(cycle_total_word) severity note;
+    assert cycle_total_word(0) = '1'
+      report "FTRAPcc EQ with Z=1 should report cond_true=1"
+      severity failure;
+    assert cycle_total_word(5) = '1'
+      report "FTRAPcc EQ with Z=1 should report trap_requested=1"
+      severity failure;
+
     report "TB SUCCESS: opcode class dispatch checks passed." severity note;
     stop;
     wait;

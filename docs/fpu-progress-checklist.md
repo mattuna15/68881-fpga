@@ -98,9 +98,13 @@ B) Functional Completeness (Core Missing Ops)
       Conditional-response ordering and BSUN trap-gating status are now enforced in the
       register-mapped dialog model (`STATUS`/`CIR_RESPONSE`).
 
-[ ] B7. Implement system-control instruction set (guide section 3.3.5).
+[x] B7. Implement system-control instruction set (guide section 3.3.5).
     - FSAVE, FRESTORE.
     - FTRAPcc (#<data>.W/.L and no-immediate forms).
+    - Done: FSAVE/FRESTORE wired through cross-process request/completion handshake
+      (sys_ctrl_save_req/restore_req → bus_frame_proc frame countdown → result_ready).
+    - Done: FTRAPcc evaluates FPSR CC via shared conditional path (OP_CLASS_PROG_CTRL),
+      requests trap when condition true, participates in BSUN/CIR response protocol.
 
 [ ] B8. Implement packed-decimal and decimal conversion path.
     - Packed-decimal encode/decode and edge cases.

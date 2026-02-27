@@ -131,6 +131,11 @@ architecture rtl of mc68881_top is
   signal frame_restore_pending_reg : std_logic := '0';
   signal frame_start_save_reg : std_logic := '0';
   signal frame_start_restore_reg : std_logic := '0';
+  signal fpu_initialized_reg : std_logic := '0';
+
+  signal sys_ctrl_save_req_reg    : std_logic := '0';
+  signal sys_ctrl_restore_req_reg : std_logic := '0';
+  signal frame_op_waiting_reg     : std_logic := '0';
 
   signal op_sel_write_decoded : fpu_op_t := FPU_OP_NOP;
   signal op_class_write_decoded : fpu_op_class_t := OP_CLASS_NONE;
@@ -829,7 +834,7 @@ architecture rtl of mc68881_top is
 
   function is_conditional_prog_op(op_sel : fpu_op_t) return boolean is
   begin
-    return op_sel = FPU_OP_FSCC or op_sel = FPU_OP_FBCC or op_sel = FPU_OP_FDBCC;
+    return op_sel = FPU_OP_FSCC or op_sel = FPU_OP_FBCC or op_sel = FPU_OP_FDBCC or op_sel = FPU_OP_FTRAPCC;
   end function;
 
   function eval_fcc_condition(
@@ -1024,6 +1029,7 @@ begin
       frame_restore_pending_reg <= '0';
       frame_start_save_reg <= '0';
       frame_start_restore_reg <= '0';
+      fpu_initialized_reg <= '0';
       opsel_write_prev_reg <= '0';
     elsif rising_edge(clk) then
       frame_start_save_reg <= '0';
@@ -1211,24 +1217,34 @@ begin
         if exc_policy.update_exc_status then
           -- Datasheet Section 2.3.3: EXC byte is cleared then set per operation.
           exc_status_byte := (others => '0');
-          exc_status_byte := exc_flags;
+          exc_status_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) := exc_flags(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT);
+          exc_status_byte(FPSR_EXC_BSUN) := exc_flags(FPSR_EXC_BSUN);
           fpsr_reg(FPSR_EXC_MSB downto FPSR_EXC_LSB) <= exc_status_byte;
         end if;
 
         if exc_policy.update_accumulated_exc then
           -- Datasheet AEXC combination rules:
-          -- AEXC(UNFL) |= UNFL AND INEX; AEXC(INEX) |= INEX OR OVFL;
-          -- AEXC(BSUN) |= BSUN (direct accumulation, no combination gate).
+          -- AEXC(UNFL) |= UNFL AND INEX; AEXC(INEX) |= INEX OR OVFL.
           aexc_combined := (others => '0');
           aexc_combined(FPSR_EXC_INVALID)   := exc_flags(FPSR_EXC_INVALID);
           aexc_combined(FPSR_EXC_OVERFLOW)  := exc_flags(FPSR_EXC_OVERFLOW);
           aexc_combined(FPSR_EXC_UNDERFLOW) := exc_flags(FPSR_EXC_UNDERFLOW) and exc_flags(FPSR_EXC_INEXACT);
           aexc_combined(FPSR_EXC_DIVZERO)   := exc_flags(FPSR_EXC_DIVZERO);
           aexc_combined(FPSR_EXC_INEXACT)   := exc_flags(FPSR_EXC_INEXACT) or exc_flags(FPSR_EXC_OVERFLOW);
-          aexc_combined(FPSR_EXC_BSUN)      := exc_flags(FPSR_EXC_BSUN);
+          aexc_combined(FPSR_EXC_BSUN)     := exc_flags(FPSR_EXC_BSUN);
           accrued_exc_byte := fpsr_reg(FPSR_AEXC_MSB downto FPSR_AEXC_LSB);
-          accrued_exc_byte := accrued_exc_byte or aexc_combined;
+          accrued_exc_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) :=
+            accrued_exc_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) or aexc_combined(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT);
+          accrued_exc_byte(FPSR_EXC_BSUN) :=
+            accrued_exc_byte(FPSR_EXC_BSUN) or aexc_combined(FPSR_EXC_BSUN);
           fpsr_reg(FPSR_AEXC_MSB downto FPSR_AEXC_LSB) <= accrued_exc_byte;
+        end if;
+
+        -- BSUN updates FPSR EXC byte unconditionally (not gated by exception
+        -- policy, since BSUN applies to program-control ops which use
+        -- EXC_POLICY_NONE).
+        if class_force_bsun = '1' then
+          fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_BSUN) <= '1';
         end if;
 
         if exc_policy.update_cc_from_compare then
@@ -1257,8 +1273,18 @@ begin
         if frame_remaining_reg = 0 then
           frame_busy_reg <= '0';
           if frame_restore_pending_reg = '1' then
-            fpcr_reg <= frame_mem_reg(0);
-            fpsr_reg <= frame_mem_reg(1);
+            if frame_mem_reg(0) = x"00000000" then
+              -- Null frame: reset FPU state
+              fpcr_reg <= (others => '0');
+              fpsr_reg <= (others => '0');
+              fpiar_reg <= (others => '0');
+              fpu_initialized_reg <= '0';
+            else
+              -- Idle frame ($18): restore from W1/W2
+              fpcr_reg <= frame_mem_reg(1);
+              fpsr_reg <= frame_mem_reg(2);
+              fpu_initialized_reg <= '1';
+            end if;
             frame_restore_pending_reg <= '0';
             frame_valid_reg <= '0';
           else
@@ -1275,15 +1301,49 @@ begin
         status_frame_word(1) := status_busy_reg;
         status_frame_word(2) := frame_valid_reg;
         status_frame_word(3) := frame_busy_reg;
-        frame_mem_reg(0) <= fpcr_reg;
-        frame_mem_reg(1) <= fpsr_reg;
-        frame_mem_reg(2) <= status_frame_word;
-        frame_mem_reg(3) <= (others => '0');
+        if fpu_initialized_reg = '0' then
+          frame_mem_reg(0) <= x"00000000";  -- null frame format
+          frame_mem_reg(1) <= (others => '0');
+          frame_mem_reg(2) <= (others => '0');
+          frame_mem_reg(3) <= (others => '0');
+        else
+          frame_mem_reg(0) <= x"00000018";  -- idle frame format
+          frame_mem_reg(1) <= fpcr_reg;
+          frame_mem_reg(2) <= fpsr_reg;
+          frame_mem_reg(3) <= status_frame_word;
+        end if;
+        frame_busy_reg <= '1';
+        frame_remaining_reg <= FRAME_LATENCY - 1;
+        frame_valid_reg <= '0';
+        frame_restore_pending_reg <= '0';
+      elsif sys_ctrl_save_req_reg = '1' and frame_busy_reg = '0' then
+        -- FSAVE opcode path: same capture logic as external FRAME_CMD save
+        status_frame_word := (others => '0');
+        status_frame_word(0) := status_valid_reg;
+        status_frame_word(1) := status_busy_reg;
+        status_frame_word(2) := frame_valid_reg;
+        status_frame_word(3) := frame_busy_reg;
+        if fpu_initialized_reg = '0' then
+          frame_mem_reg(0) <= x"00000000";  -- null frame format
+          frame_mem_reg(1) <= (others => '0');
+          frame_mem_reg(2) <= (others => '0');
+          frame_mem_reg(3) <= (others => '0');
+        else
+          frame_mem_reg(0) <= x"00000018";  -- idle frame format
+          frame_mem_reg(1) <= fpcr_reg;
+          frame_mem_reg(2) <= fpsr_reg;
+          frame_mem_reg(3) <= status_frame_word;
+        end if;
         frame_busy_reg <= '1';
         frame_remaining_reg <= FRAME_LATENCY - 1;
         frame_valid_reg <= '0';
         frame_restore_pending_reg <= '0';
       elsif frame_start_restore_reg = '1' and frame_busy_reg = '0' and micro_active_reg = '0' then
+        frame_busy_reg <= '1';
+        frame_remaining_reg <= FRAME_LATENCY - 1;
+        frame_restore_pending_reg <= '1';
+      elsif sys_ctrl_restore_req_reg = '1' and frame_busy_reg = '0' then
+        -- FRESTORE opcode path
         frame_busy_reg <= '1';
         frame_remaining_reg <= FRAME_LATENCY - 1;
         frame_restore_pending_reg <= '1';
@@ -1364,6 +1424,9 @@ begin
       exc_event_force_overflow_reg <= '0';
       exc_event_force_underflow_reg <= '0';
       exc_event_force_bsun_reg <= '0';
+      sys_ctrl_save_req_reg <= '0';
+      sys_ctrl_restore_req_reg <= '0';
+      frame_op_waiting_reg <= '0';
     elsif rising_edge(clk) then
       op_start_reg <= '0';
       ctrl_move_write_req_reg <= '0';
@@ -1372,6 +1435,8 @@ begin
       exc_event_force_overflow_reg <= '0';
       exc_event_force_underflow_reg <= '0';
       exc_event_force_bsun_reg <= '0';
+      sys_ctrl_save_req_reg <= '0';
+      sys_ctrl_restore_req_reg <= '0';
 
       if bus_read = '1' and addr = ADDR_CIR_RESPONSE then
         cir_response_pending_reg <= '0';
@@ -1394,6 +1459,7 @@ begin
         last_op_sel_reg <= op_sel_write_decoded;
         fpiar_issue_snapshot_reg <= fpiar_reg;
         micro_active_reg <= '1';
+        fpu_initialized_reg <= '1';
         total_cycles := op_cycle_count(
           op_sel_write_decoded,
           src_kind_reg,
@@ -1627,11 +1693,11 @@ begin
             result_ex_reg <= (others => '0');
             prog_result := (others => '0');
             cir_response_word := (others => '0');
+            bsun_event := '0';
+            trap_requested := '0';
             branch_taken := '0';
             decrement_taken := '0';
             counter_expired := '0';
-            bsun_event := '0';
-            trap_requested := '0';
 
             if op_sel_write_decoded = FPU_OP_FSCC then
               cc_field := fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN);
@@ -1688,11 +1754,26 @@ begin
               cir_response_word(4) := bsun_event;
               cir_response_word(31 downto 16) := std_logic_vector(fdb_count_after);
               prog_result := cir_response_word;
+            elsif op_sel_write_decoded = FPU_OP_FTRAPCC then
+              cc_field := fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN);
+              signaling_cond := is_signaling_fcc_condition(operand_reg(0)(5 downto 0));
+              cond_true := eval_fcc_condition(operand_reg(0)(5 downto 0), cc_field);
+              if signaling_cond and cc_field(0) = '1' then
+                bsun_event := '1';
+                cond_true := '0';
+              end if;
+              -- FTRAPcc: trap when condition is true (primary action)
+              if cond_true = '1' then
+                trap_requested := '1';
+              end if;
+              cir_response_word(0) := cond_true;
+              cir_response_word(4) := bsun_event;
             end if;
 
             if op_sel_write_decoded = FPU_OP_FSCC or
                op_sel_write_decoded = FPU_OP_FBCC or
-               op_sel_write_decoded = FPU_OP_FDBCC then
+               op_sel_write_decoded = FPU_OP_FDBCC or
+               op_sel_write_decoded = FPU_OP_FTRAPCC then
               if bsun_event = '1' and fpcr_reg(FPCR_EXC_EN_BSUN) = '1' then
                 trap_requested := '1';
               end if;
@@ -1717,8 +1798,15 @@ begin
             result_lo_reg <= prog_result;
             result_ready_reg <= '1';
           when OP_CLASS_SYS_CTRL =>
-            -- System-control opcodes are class-routed here for future FSAVE/FRESTORE plumbing.
-            result_ready_reg <= '1';
+            if op_sel_write_decoded = FPU_OP_FSAVE then
+              sys_ctrl_save_req_reg <= '1';
+              frame_op_waiting_reg <= '1';
+            elsif op_sel_write_decoded = FPU_OP_FRESTORE then
+              sys_ctrl_restore_req_reg <= '1';
+              frame_op_waiting_reg <= '1';
+            else
+              result_ready_reg <= '1';
+            end if;
           when others =>
             result_ready_reg <= '1';
         end case;
@@ -1734,6 +1822,17 @@ begin
           aux_result_ex_reg <= aux_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
         end if;
         result_ready_reg <= '1';
+      end if;
+
+      -- Frame-op completion: wait for frame_busy to go high then return low.
+      -- The sys_ctrl_*_req guard prevents false completion before bus_frame_proc
+      -- has started the frame op (see timing proof in plan).
+      if frame_op_waiting_reg = '1'
+         and frame_busy_reg = '0'
+         and sys_ctrl_save_req_reg = '0'
+         and sys_ctrl_restore_req_reg = '0' then
+        result_ready_reg <= '1';
+        frame_op_waiting_reg <= '0';
       end if;
 
       if micro_active_reg = '1' then
@@ -1827,9 +1926,9 @@ begin
           --   Bit 1: busy (engine active)
           --   Bit 2: frame_valid (save frame ready)
           --   Bit 3: frame_busy (save/restore in progress)
-          --   Bit 4: cir_response_pending (conditional response awaiting read)
-          --   Bit 5: cir_protocol_violation (conditional issued before response consumed)
-          --   Bit 6: cir_trap_pending (BSUN trap requested, cleared on CIR_RESPONSE read)
+          --   Bit 4: cir_response_pending
+          --   Bit 5: cir_protocol_violation
+          --   Bit 6: cir_trap_pending
           d_out_comb(0) <= status_valid_reg;
           d_out_comb(1) <= status_busy_reg;
           d_out_comb(2) <= status_frame_valid_reg;
@@ -1837,6 +1936,8 @@ begin
           d_out_comb(4) <= cir_response_pending_reg;
           d_out_comb(5) <= cir_protocol_violation_reg;
           d_out_comb(6) <= cir_trap_pending_reg;
+        when ADDR_CIR_RESPONSE =>
+          d_out_comb <= cir_response_reg;
         when ADDR_FPCR =>
           d_out_comb <= fpcr_reg;
         when ADDR_FPSR =>
@@ -1851,8 +1952,6 @@ begin
           d_out_comb <= cfg1;
         when ADDR_CYCLE_TOTAL =>
           d_out_comb <= micro_total_reg;
-        when ADDR_CIR_RESPONSE =>
-          d_out_comb <= cir_response_reg;
         when ADDR_FRAME_W0 =>
           d_out_comb <= frame_mem_reg(0);
         when ADDR_FRAME_W1 =>

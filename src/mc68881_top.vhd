@@ -1269,6 +1269,10 @@ begin
         end if;
       end if;
 
+      if op_issue_pulse = '1' then
+        fpu_initialized_reg <= '1';
+      end if;
+
       if frame_busy_reg = '1' then
         if frame_remaining_reg = 0 then
           frame_busy_reg <= '0';
@@ -1459,7 +1463,6 @@ begin
         last_op_sel_reg <= op_sel_write_decoded;
         fpiar_issue_snapshot_reg <= fpiar_reg;
         micro_active_reg <= '1';
-        fpu_initialized_reg <= '1';
         total_cycles := op_cycle_count(
           op_sel_write_decoded,
           src_kind_reg,

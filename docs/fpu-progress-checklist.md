@@ -220,8 +220,12 @@ D) Verification / Testbench Coverage
 E) Bus Interface & Timing (Confirmations)
 -----------------------------------------
 [x] E1. DSACK behavior per Table 10.
+    - Single-shot encoding tests cover 32-bit (A4=0 and A4=1), 16-bit, 8-bit, and wait-state responses.
+    - Multi-beat sequencing tests verify DSACK state machine cycles IDLE→WAIT_ASSERT→ASSERTED→IDLE
+      for 2-beat (16-bit) and 4-beat (8-bit) read/write transfers with data integrity readback.
 [x] E2. Address decoding for all register spaces.
 [x] E3. Access size handling for 8/16/32-bit.
+    - Multi-beat write+readback tests confirm correct register capture across repeated narrow bus cycles.
 [x] E4. Microsequencer for cycle-accurate timing.
 
 F) Datasheet Conformance (MC68881UM Review Findings)
@@ -513,6 +517,8 @@ Legend:
 - `[~]` S7-E1. Preserve DSACK/addressing correctness while adding CIR semantics.
   - Map: `E1`, `E2`, `E3`.
   - Keep existing DSACK tests green while introducing dialog behavior.
+  - Multi-beat DSACK cycling tests (16-bit x2, 8-bit x4) now verify repeated handshake
+    sequencing and data integrity across narrow bus transfers (`tb/tb_mc68881_top.vhd`).
 - `[ ]` S7-E2. Add CIR-specific access timing checks.
   - Map: `E1`, `D4`.
   - Extend `tb/tb_mc68881_ac_timing.vhd` with explicit save/response-CIR access timing assertions.

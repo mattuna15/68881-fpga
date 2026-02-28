@@ -125,6 +125,12 @@ B) Functional Completeness (Core Missing Ops)
       `exc_event_force_invalid_reg` signal.
     - Done: INEX1 detection on packed reg->mem (round-trip compare mirrors
       single/double pattern, sets `move_exc_force_inexact`).
+    - Done: 17-digit precision-limit inexact detection — residual check
+      after digit extraction catches FP80 values with >17 significant
+      decimal digits (previously only k-factor truncation was detected).
+    - Done: subnormal pre-normalization — leading mantissa zeros are
+      counted to correct the exp10 estimate before digit extraction,
+      preventing all-zero mantissa output for subnormal inputs.
     - Done: `result_ex_hi_reg` explicitly cleared on single/double/extended
       reg->mem paths to prevent stale packed metadata leakage.
     - Done: test coverage for zero, negative (-42), infinity round-trips,
@@ -382,7 +388,14 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - `packed_encode_is_inexact` rewritten to mirror new encoder logic.
   - Test coverage added: 1.25 encode/decode round-trip, invalid BCD OPERR,
     round-to-nearest-even for exact-halfway cases (1500 k=1 odd rounds up,
-    2500 k=1 even stays).
+    2500 k=1 even stays), pi k=17 EXC.INEXACT assertion.
+  - 17-digit precision-limit inexact detection added: residual check
+    after digit extraction catches FP80 values with >17 significant
+    decimal digits.
+  - Subnormal pre-normalization added: leading mantissa zeros counted
+    to correct exp10 estimate, preventing all-zero mantissa for
+    subnormal inputs.
+  - Dead `decimal_digit_count` function removed.
 - Remaining (tracked elsewhere):
   - NaN payload/SNaN distinction not preserved (tracked in C2).
 

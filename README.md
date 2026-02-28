@@ -34,7 +34,9 @@ Based on `docs/fpu-progress-checklist.md`:
 - Done:
   - B8 packed-decimal conversion: full FP80 digit-extraction encoder,
     17-digit FP80 accumulation decoder, round-to-nearest-even, OPERR for
-    invalid BCD, test coverage for non-integer/OPERR/banker's rounding.
+    invalid BCD, subnormal pre-normalization for accurate exp10 estimation,
+    17-digit precision-limit inexact detection (residual check), test
+    coverage for non-integer/OPERR/banker's rounding/pi k=17 INEXACT.
     `DEF-PACKED-001` closed.
 
 ## Implementation baseline (2026-02-26)

@@ -109,18 +109,29 @@ B) Functional Completeness (Core Missing Ops)
 [~] B8. Implement packed-decimal and decimal conversion path.
     - Packed-decimal encode/decode and edge cases.
     - Rounding and k-factor handling per FMOVE .P behavior.
-    - In progress: FMOVE .P now transports a 96-bit packed payload through the
-      existing register interface (`OPA_E`/`RES_E` upper 16 bits carry packed bits 95:80;
+    - Done: FMOVE .P transports a 96-bit packed payload through the existing
+      register interface (`OPA_E`/`RES_E` upper 16 bits carry packed bits 95:80;
       lower 80 bits remain in `*_H/*_L/*_E[15:0]`).
-    - In progress: FMOVE reg->mem packed path now emits explicit packed metadata
-      fields (SM/SE/YY and exponent nibbles) plus decimal mantissa digits for
-      finite integer sources with static/dynamic k-factor rounding.
-    - In progress: FMOVE mem->reg packed path now decodes packed payloads for
-      supported finite/special cases and distinguishes infinity from NaN
-      (producing canonical QNaN for NaN inputs; payload preservation not yet
-      implemented).
-    - Remaining: full decimal conversion coverage for non-integer finite sources,
-      wide exponent range handling, and complete OPERR/INEX1 architectural behavior.
+    - Done: FMOVE reg->mem packed path emits explicit packed metadata fields
+      (SM/SE/YY and exponent nibbles) plus decimal mantissa digits for finite
+      integer sources with static/dynamic k-factor rounding.
+    - Done: FMOVE mem->reg packed path decodes packed payloads for supported
+      finite/special cases and distinguishes infinity from NaN (producing
+      canonical QNaN for NaN inputs; payload preservation not yet implemented).
+    - Done: INEX1 detection on packed reg->mem (round-trip compare mirrors
+      single/double pattern, sets `move_exc_force_inexact`).
+    - Done: `result_ex_hi_reg` explicitly cleared on single/double/extended
+      reg->mem paths to prevent stale packed metadata leakage.
+    - Done: `integer'low` guard before `fp80_from_int` in encode path to
+      prevent natural overflow on saturated negative inputs.
+    - Done: `bcd_digit` range assertion; `bcd_to_natural` clarifying comment;
+      header comments on both conversion functions.
+    - Done: test coverage for zero, negative (-42), and infinity round-trips
+      through full bus encode/decode path; dynamic k-factor digit-level
+      assertion (all 7 digits verified for k=10).
+    - Remaining: full decimal conversion for non-integer finite sources, wide
+      exponent range handling, OPERR for invalid BCD, round-to-nearest-even
+      (currently half-up). See DEF-PACKED-001.
 
 C) Exception Handling & Edge Cases
 ----------------------------------
@@ -356,21 +367,34 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 ### DEF-PACKED-001: Packed-Decimal Conversion Is Limited To Integer-Centric Subset
 - Status: Open
 - Files: `src/mc68881_top.vhd`, `tb/tb_mc68881_fmove_fmovem.vhd`
-- Evidence:
-  - FMOVE reg->mem packed conversion currently takes the exact-integer fast path and
+- Hardened (2026-02-28):
+  - INEX1 now fires for packed reg->mem when round-tripped value differs from source.
+  - `result_ex_hi_reg` explicitly cleared on all non-packed reg->mem paths.
+  - `integer'low` guard prevents natural overflow on saturated negative inputs.
+  - `bcd_digit` has range assertion; conversion functions have header comments.
+  - Test coverage added: zero, negative (-42), infinity round-trips; dynamic
+    k-factor digit-level verification (k=10, all 7 digits).
+- Evidence (remaining limitations):
+  - FMOVE reg->mem packed conversion takes the exact-integer fast path and
     falls back to legacy bit-shaping for non-integer finite inputs.
   - Repro vector 1 (non-integer fallback):
     - Source FP80: `x"3FFFA000000000000000"` (+1.25), `FMOVE.P FPm,<ea>{#2}`.
     - Current behavior: legacy fallback shaping path is used (not full decimal string conversion).
   - Repro vector 2 (decode range fallback):
-    - Packed decode path currently reconstructs from a bounded leading-digit subset
-      and accepts scale range `[-9,+9]`; wider scale falls back.
+    - Packed decode path reconstructs from a bounded leading-digit subset (9 of
+      17 mantissa digits) and accepts scale range `[-9,+9]`; wider scale falls back.
+  - Rounding uses half-up instead of MC68881-specified round-to-nearest-even.
+  - Invalid BCD nibbles (A-F) silently return fallback; no OPERR raised.
+  - NaN decode produces canonical QNaN; payload/SNaN distinction not preserved.
 - Impact:
   - B8 decimal conversion is not yet complete for general packed-decimal operands.
   - Corner-case parity vs MC68881/QEMU packed `.P` behavior remains incomplete.
 - Fix-exit criteria:
-  - Implement full finite decimal conversion (binary<->packed decimal) for non-integer values,
-    complete exponent-range handling, and remove legacy fallback path for supported `.P` flows.
+  - Implement full finite decimal conversion (binary<->packed decimal) for non-integer values.
+  - Extend decode to accumulate all 17 mantissa digits (use wider arithmetic).
+  - Extend scale exponent range beyond `[-9,+9]`.
+  - Raise OPERR for invalid BCD nibbles instead of silent fallback.
+  - Implement round-to-nearest-even for k-factor truncation.
   - Add directed regression vectors for non-integer `.P` round-trip and large-exponent packed
     decode/encode cases, then enforce them in the default test suite.
 

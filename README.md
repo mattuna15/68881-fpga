@@ -28,7 +28,14 @@ Based on `docs/fpu-progress-checklist.md`:
   - B5 transcendental set implemented (`FSIN/FCOS/FTAN/FSINCOS`, inverse trig, exp/log families,
     hyperbolic families, `FTENTOX/FTWOTOX`).
   - B6 conditional dialog ordering (`FScc`, `FBcc`, `FDBcc`) with BSUN trap gating.
+  - B7 system-control instructions: `FSAVE`/`FRESTORE` frame handshake, `FTRAPcc`
+    with condition evaluation and CIR trap response.
   - Bus/timing confirmations E1-E4.
+- In progress:
+  - B8 packed-decimal conversion: 96-bit transport, integer-centric BCD
+    encode/decode with k-factor rounding, INEX1 detection, zero/negative/infinity
+    round-trip coverage. Remaining: full non-integer decimal conversion, wide
+    exponent range, OPERR signaling. See `DEF-PACKED-001`.
 
 ## Implementation baseline (2026-02-26)
 - Clean non-incremental batch flow (`scripts/run_impl.tcl`) meets routed timing:
@@ -79,6 +86,7 @@ covering:
     - `DEF-TIMING-001`
     - `DEF-DIVREM-001`
     - `DEF-DIVREM-002`
+    - `DEF-PACKED-001` (packed-decimal limited to integer-centric subset)
   - `DEF-TRIG-001` is closed; see `docs/fpu-progress-checklist.md` for closure notes.
 
 ## Running simulations

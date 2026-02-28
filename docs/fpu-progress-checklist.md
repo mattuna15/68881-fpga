@@ -116,7 +116,9 @@ B) Functional Completeness (Core Missing Ops)
       fields (SM/SE/YY and exponent nibbles) plus decimal mantissa digits for
       finite integer sources with static/dynamic k-factor rounding.
     - In progress: FMOVE mem->reg packed path now decodes packed payloads for
-      supported finite/special cases and preserves infinity/NaN signaling fields.
+      supported finite/special cases and distinguishes infinity from NaN
+      (producing canonical QNaN for NaN inputs; payload preservation not yet
+      implemented).
     - Remaining: full decimal conversion coverage for non-integer finite sources,
       wide exponent range handling, and complete OPERR/INEX1 architectural behavior.
 

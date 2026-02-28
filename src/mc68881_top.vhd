@@ -291,10 +291,12 @@ architecture rtl of mc68881_top is
   function bcd_digit(value : natural) return std_logic_vector is
     variable nibble : std_logic_vector(3 downto 0) := (others => '0');
   begin
+    assert value <= 9 report "bcd_digit: value out of range" severity failure;
     nibble := std_logic_vector(to_unsigned(value mod 10, 4));
     return nibble;
   end function;
 
+  -- Returns 0..9 for valid BCD, -1 for invalid (non-decimal nibble A-F).
   function bcd_to_natural(nibble : std_logic_vector(3 downto 0)) return integer is
     variable digit_i : integer := 0;
   begin
@@ -337,6 +339,13 @@ architecture rtl of mc68881_top is
     return adjusted;
   end function;
 
+  -- Encode fp80 to MC68881 96-bit packed-decimal format.
+  -- Layout: SM(95) SE(94) YY(93:92) exp2(91:88) exp1(87:84) exp0(83:80)
+  --         exp3(79:76) reserved(75:68) int_digit(67:64) frac_digits(63:0)
+  -- Handles zero, infinity (YY=11, 0xF exponent nibbles), and NaN (YY=11
+  -- plus non-zero mantissa). Finite values: exact-integer inputs only;
+  -- non-integers fall back to raw fp80 bit shaping (see DEF-PACKED-001).
+  -- Applies half-up rounding when truncating to k significant digits.
   function fp80_to_packed96(value : fp80_t; k_factor : integer) return packed96_t is
     variable packed : packed96_t := (others => '0');
     variable k_clamped : integer := 0;
@@ -384,7 +393,12 @@ architecture rtl of mc68881_top is
     end if;
 
     int_value := fp80_to_int_trunc(value);
-    is_exact_int := fp80_from_int(int_value) = value;
+    if int_value = integer'low then
+      -- Saturation sentinel: -integer'low overflows natural, route to fallback
+      is_exact_int := false;
+    else
+      is_exact_int := fp80_from_int(int_value) = value;
+    end if;
     if not is_exact_int then
       fallback_value := apply_packed_k_factor_fallback(value, k_factor);
       packed(79 downto 0) := fallback_value;
@@ -478,6 +492,13 @@ architecture rtl of mc68881_top is
     return packed;
   end function;
 
+  -- Decode MC68881 96-bit packed-decimal to fp80.
+  -- Detects infinity/NaN via YY=11 (produces canonical QNaN for NaN;
+  -- payload preservation not yet implemented). For finite values,
+  -- accumulates the first 9 of 17 mantissa digits into a VHDL integer
+  -- (avoids overflow since 10^9 < integer'high), then scales by 10^exp
+  -- within [-9,+9]. Returns fallback for invalid BCD nibbles, integer
+  -- overflow, or out-of-range scale exponents (see DEF-PACKED-001).
   function packed96_to_fp80(packed : packed96_t; fallback : fp80_t) return fp80_t is
     variable decoded_value : fp80_t := fallback;
     variable mant_digits : dec_digits_t := (others => 0);
@@ -1839,6 +1860,11 @@ begin
                       packed_word := fp80_to_packed96(move_result, packed_k);
                       move_exc_enable := '1';
                       move_exc_result := packed96_to_fp80(packed_word, move_result);
+                      if not fp80_is_nan(move_result) and not fp80_is_inf(move_result) and not fp80_is_zero(move_result) then
+                        if move_exc_result /= move_result then
+                          move_exc_force_inexact := '1';
+                        end if;
+                      end if;
                       result_lo_reg <= packed_word(31 downto 0);
                       result_hi_reg <= packed_word(63 downto 32);
                       result_ex_reg <= packed_word(79 downto 64);
@@ -1866,6 +1892,7 @@ begin
                           result_lo_reg <= single_bits;
                           result_hi_reg <= (others => '0');
                           result_ex_reg <= (others => '0');
+                          result_ex_hi_reg <= (others => '0');
                         when "10" =>
                           double_bits := fp80_to_double(move_result, round_mode);
                           move_exc_enable := '1';
@@ -1887,10 +1914,12 @@ begin
                           result_lo_reg <= double_bits(31 downto 0);
                           result_hi_reg <= double_bits(63 downto 32);
                           result_ex_reg <= (others => '0');
+                          result_ex_hi_reg <= (others => '0');
                         when others =>
                           result_lo_reg <= move_result(FP80_RESULT_LO_WIDTH-1 downto 0);
                           result_hi_reg <= move_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
                           result_ex_reg <= move_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+                          result_ex_hi_reg <= (others => '0');
                       end case;
                     end if;
                   when MOVE_CFG_MODE_CONTROL =>

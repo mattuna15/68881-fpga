@@ -474,10 +474,12 @@ architecture rtl of mc68881_top is
       elsif round_digit = 5 then
         -- Check for trailing non-zero digits (above halfway)
         has_trailing := false;
-        for idx in keep_digits + 1 to 16 loop
-          if digits(idx) /= 0 then
-            has_trailing := true;
-            exit;
+        for idx in 1 to 16 loop
+          if idx > keep_digits then
+            if digits(idx) /= 0 then
+              has_trailing := true;
+              exit;
+            end if;
           end if;
         end loop;
         if has_trailing then
@@ -633,9 +635,11 @@ architecture rtl of mc68881_top is
     end if;
 
     if keep_digits < 17 then
-      for idx in keep_digits to 16 loop
-        if digits(idx) /= 0 then
-          return true;
+      for idx in 0 to 16 loop
+        if idx >= keep_digits then
+          if digits(idx) /= 0 then
+            return true;
+          end if;
         end if;
       end loop;
     end if;

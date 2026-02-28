@@ -106,32 +106,30 @@ B) Functional Completeness (Core Missing Ops)
     - Done: FTRAPcc evaluates FPSR CC via shared conditional path (OP_CLASS_PROG_CTRL),
       requests trap when condition true, participates in BSUN/CIR response protocol.
 
-[~] B8. Implement packed-decimal and decimal conversion path.
+[x] B8. Implement packed-decimal and decimal conversion path.
     - Packed-decimal encode/decode and edge cases.
     - Rounding and k-factor handling per FMOVE .P behavior.
     - Done: FMOVE .P transports a 96-bit packed payload through the existing
       register interface (`OPA_E`/`RES_E` upper 16 bits carry packed bits 95:80;
       lower 80 bits remain in `*_H/*_L/*_E[15:0]`).
     - Done: FMOVE reg->mem packed path emits explicit packed metadata fields
-      (SM/SE/YY and exponent nibbles) plus decimal mantissa digits for finite
-      integer sources with static/dynamic k-factor rounding.
-    - Done: FMOVE mem->reg packed path decodes packed payloads for supported
-      finite/special cases and distinguishes infinity from NaN (producing
-      canonical QNaN for NaN inputs; payload preservation not yet implemented).
+      (SM/SE/YY and exponent nibbles) plus decimal mantissa digits for all
+      finite sources (integer and non-integer) with static/dynamic k-factor
+      rounding using round-to-nearest-even.
+    - Done: FMOVE mem->reg packed path decodes all 17 BCD mantissa digits via
+      FP80 arithmetic accumulation with unbounded exponent scaling (+/-9999).
+      Distinguishes infinity from NaN (producing canonical QNaN for NaN inputs;
+      payload preservation tracked in C2).
+    - Done: OPERR exception raised for invalid BCD nibbles (A-F) in packed
+      mem->reg decode via `packed96_has_invalid_bcd` checker and
+      `exc_event_force_invalid_reg` signal.
     - Done: INEX1 detection on packed reg->mem (round-trip compare mirrors
       single/double pattern, sets `move_exc_force_inexact`).
     - Done: `result_ex_hi_reg` explicitly cleared on single/double/extended
       reg->mem paths to prevent stale packed metadata leakage.
-    - Done: `integer'low` guard before `fp80_from_int` in encode path to
-      prevent natural overflow on saturated negative inputs.
-    - Done: `bcd_digit` range assertion; `bcd_to_natural` clarifying comment;
-      header comments on both conversion functions.
-    - Done: test coverage for zero, negative (-42), and infinity round-trips
-      through full bus encode/decode path; dynamic k-factor digit-level
-      assertion (all 7 digits verified for k=10).
-    - Remaining: full decimal conversion for non-integer finite sources, wide
-      exponent range handling, OPERR for invalid BCD, round-to-nearest-even
-      (currently half-up). See DEF-PACKED-001.
+    - Done: test coverage for zero, negative (-42), infinity round-trips,
+      non-integer (1.25) encode/decode round-trip, invalid BCD OPERR, and
+      round-to-nearest-even (banker's rounding for exact-halfway cases).
 
 C) Exception Handling & Edge Cases
 ----------------------------------
@@ -368,41 +366,25 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 - Planned fix:
   - Distinguish signaling-NaN vs quiet-NaN handling and raise invalid only where required by policy.
 
-### DEF-PACKED-001: Packed-Decimal Conversion Is Limited To Integer-Centric Subset
-- Status: Open
-- Files: `src/mc68881_top.vhd`, `tb/tb_mc68881_fmove_fmovem.vhd`
-- Hardened (2026-02-28):
-  - INEX1 now fires for packed reg->mem when round-tripped value differs from source.
-  - `result_ex_hi_reg` explicitly cleared on all non-packed reg->mem paths.
-  - `integer'low` guard prevents natural overflow on saturated negative inputs.
-  - `bcd_digit` has range assertion; conversion functions have header comments.
-  - Test coverage added: zero, negative (-42), infinity round-trips; dynamic
-    k-factor digit-level verification (k=10, all 7 digits).
-- Evidence (remaining limitations):
-  - FMOVE reg->mem packed conversion takes the exact-integer fast path and
-    falls back to legacy bit-shaping for non-integer finite inputs.
-  - Repro vector 1 (non-integer fallback):
-    - Source FP80: `x"3FFFA000000000000000"` (+1.25), `FMOVE.P FPm,<ea>{#2}`.
-    - Current behavior: legacy fallback shaping path is used (not full decimal string conversion).
-  - Repro vector 2 (decode range fallback):
-    - Packed decode path reconstructs from a bounded leading-digit subset (9 of
-      17 mantissa digits) and accepts scale range `[-9,+9]`; wider scale falls back.
-  - Rounding uses half-up instead of MC68881-specified round-to-nearest-even.
-  - Invalid BCD nibbles (A-F) silently return fallback; no OPERR raised.
-  - NaN decode produces canonical QNaN; payload/SNaN distinction not preserved.
-- Impact:
-  - B8 decimal conversion is not yet complete for general packed-decimal operands.
-  - Corner-case parity vs MC68881/QEMU packed `.P` behavior remains incomplete.
-- Fix-exit criteria:
-  - Implement full finite decimal conversion (binary<->packed decimal) for non-integer values.
-  - Extend decode to accumulate all 17 mantissa digits (use wider arithmetic).
-  - Extend scale exponent range beyond `[-9,+9]`.
-  - Raise OPERR for invalid BCD nibbles instead of silent fallback.
-  - Implement round-to-nearest-even for k-factor truncation.
-  - Add directed regression vectors for non-integer `.P` round-trip and large-exponent packed
-    decode/encode cases, then enforce them in the default test suite.
-
 ## Closed Defects
+
+### DEF-PACKED-001: Packed-Decimal Conversion Is Limited To Integer-Centric Subset
+- Status: Closed (2026-02-28)
+- Files: `src/mc68881_top.vhd`, `tb/tb_mc68881_fmove_fmovem.vhd`
+- Resolution summary:
+  - Full FP80 digit-extraction encoder replaces integer-only fast path:
+    unified multiply-and-truncate loop handles all finite values.
+  - Full 17-digit FP80 accumulation decoder replaces 9-digit integer path:
+    unbounded exponent scaling handles full MC68881 range (+/-9999).
+  - OPERR exception wired for invalid BCD nibbles (A-F) via
+    `packed96_has_invalid_bcd` and `exc_event_force_invalid_reg`.
+  - Round-to-nearest-even (banker's rounding) replaces half-up.
+  - `packed_encode_is_inexact` rewritten to mirror new encoder logic.
+  - Test coverage added: 1.25 encode/decode round-trip, invalid BCD OPERR,
+    round-to-nearest-even for exact-halfway cases (1500 k=1 odd rounds up,
+    2500 k=1 even stays).
+- Remaining (tracked elsewhere):
+  - NaN payload/SNaN distinction not preserved (tracked in C2).
 
 ### DEF-TRIG-001: FCOS(-40.75) Sign Check
 - Status: Closed (2026-02-15)

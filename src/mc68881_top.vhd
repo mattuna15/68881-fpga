@@ -170,6 +170,7 @@ architecture rtl of mc68881_top is
   signal exc_event_force_overflow_reg : std_logic := '0';
   signal exc_event_force_underflow_reg : std_logic := '0';
   signal exc_event_force_inexact_reg : std_logic := '0';
+  signal exc_event_force_invalid_reg : std_logic := '0';
   signal exc_event_force_bsun_reg : std_logic := '0';
 
   constant FRAME_LATENCY : natural := 6;
@@ -401,7 +402,7 @@ architecture rtl of mc68881_top is
     end if;
 
     -- Fine-tune: ensure scaled is in [1.0, 10.0)
-    for i in 0 to 2 loop
+    for i in 0 to 5 loop
       if compare_fp80(scaled, ten) >= 0 then
         scaled := div_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
         exp10 := exp10 + 1;
@@ -478,6 +479,7 @@ architecture rtl of mc68881_top is
         for idx in keep_digits + 1 to 16 loop
           if digits(idx) /= 0 then
             has_trailing := true;
+            exit;
           end if;
         end loop;
         if has_trailing then
@@ -540,46 +542,71 @@ architecture rtl of mc68881_top is
   -- and k-factor. Avoids the lossy packed96_to_fp80 decoder: checks the
   -- digit array directly to determine if any non-zero digit is truncated.
   function packed_encode_is_inexact(value : fp80_t; k_factor : integer) return boolean is
-    variable int_value : integer := 0;
-    variable abs_value : natural := 0;
-    variable tmp_nat : natural := 0;
-    variable digit_count : natural := 1;
     variable digits : dec_digits_t := (others => 0);
     variable k_clamped : integer := 0;
     variable keep_digits : integer := 17;
     variable exp10 : integer := 0;
+    variable abs_val : fp80_t := (others => '0');
+    variable scaled : fp80_t := (others => '0');
+    variable ten : fp80_t := fp80_from_int(10);
+    variable one : fp80_t := fp80_from_int(1);
+    variable digit_int : integer := 0;
+    variable digit_fp : fp80_t := (others => '0');
+    variable bin_exp : integer := 0;
   begin
-    -- Non-integer inputs always take the fallback path (inexact)
-    int_value := fp80_to_int_trunc(value);
-    if int_value = integer'low then
-      if value /= x"C01E8000000000000000" then
-        return true;
-      end if;
-    elsif fp80_from_int(int_value) /= value then
-      return true;
+    if fp80_is_zero(value) or fp80_is_inf(value) or fp80_is_nan(value) then
+      return false;
     end if;
 
-    -- Extract decimal digits
-    if int_value = integer'low then
-      abs_value := natural(integer'high);
-    elsif int_value < 0 then
-      abs_value := natural(-int_value);
+    abs_val := value;
+    abs_val(FP_WIDTH-1) := '0';
+
+    -- Estimate decimal exponent (mirrors encoder)
+    bin_exp := to_integer(unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH))) - FP_EXP_BIAS;
+    if bin_exp >= 0 then
+      exp10 := (bin_exp * 77) / 256;
     else
-      abs_value := natural(int_value);
-    end if;
-    digit_count := decimal_digit_count(abs_value);
-    exp10 := integer(digit_count) - 1;
-    tmp_nat := abs_value;
-    for idx in 0 to 16 loop
-      exit when idx >= integer(digit_count);
-      digits(integer(digit_count) - 1 - idx) := tmp_nat mod 10;
-      tmp_nat := tmp_nat / 10;
-    end loop;
-    if int_value = integer'low then
-      digits(integer(digit_count) - 1) := digits(integer(digit_count) - 1) + 1;
+      exp10 := -(((-bin_exp) * 77 + 255) / 256);
     end if;
 
-    -- Compute keep_digits (mirrors encoder logic)
+    scaled := abs_val;
+    if exp10 > 0 then
+      for i in 1 to 5000 loop
+        exit when i > exp10;
+        scaled := div_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
+      end loop;
+    elsif exp10 < 0 then
+      for i in 1 to 5000 loop
+        exit when i > -exp10;
+        scaled := mul_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
+      end loop;
+    end if;
+
+    for i in 0 to 5 loop
+      if compare_fp80(scaled, ten) >= 0 then
+        scaled := div_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        exp10 := exp10 + 1;
+      elsif compare_fp80(scaled, one) < 0 then
+        scaled := mul_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        exp10 := exp10 - 1;
+      else
+        exit;
+      end if;
+    end loop;
+
+    -- Extract 17 digits (mirrors encoder)
+    for d in 0 to 16 loop
+      digit_int := fp80_to_int_trunc(scaled);
+      if digit_int < 0 then digit_int := 0; end if;
+      if digit_int > 9 then digit_int := 9; end if;
+      digits(d) := digit_int;
+      digit_fp := fp80_from_int(digit_int);
+      scaled := mul_fp80(
+        add_sub_fp80(scaled, digit_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED),
+        ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    end loop;
+
+    -- Check if k-factor truncation loses non-zero digits
     k_clamped := clamp_integer(k_factor, -64, 17);
     if k_clamped > 0 then
       keep_digits := k_clamped;
@@ -592,7 +619,6 @@ architecture rtl of mc68881_top is
       keep_digits := 17;
     end if;
 
-    -- If any truncated digit is non-zero, encoding loses precision
     if keep_digits < 17 then
       for idx in keep_digits to 16 loop
         if digits(idx) /= 0 then
@@ -606,11 +632,9 @@ architecture rtl of mc68881_top is
 
   -- Decode MC68881 96-bit packed-decimal to fp80.
   -- Detects infinity/NaN via YY=11 (produces canonical QNaN for NaN;
-  -- payload preservation not yet implemented). For finite values,
-  -- accumulates the first 9 of 17 mantissa digits into a VHDL integer
-  -- (avoids overflow since 10^9 < integer'high), then scales by 10^exp
-  -- within [-9,+9]. Returns fallback for invalid BCD nibbles, integer
-  -- overflow, or out-of-range scale exponents (see DEF-PACKED-001).
+  -- payload preservation not yet implemented). Accumulates all 17 BCD
+  -- mantissa digits via FP80 arithmetic and scales by 10^(exp10-16).
+  -- Returns fallback for invalid BCD nibbles.
   function packed96_to_fp80(packed : packed96_t; fallback : fp80_t) return fp80_t is
     variable decoded_value : fp80_t := fallback;
     variable mant_digits : dec_digits_t := (others => 0);
@@ -619,15 +643,16 @@ architecture rtl of mc68881_top is
     variable exp2_i : integer := 0;
     variable exp3_i : integer := 0;
     variable exp10 : integer := 0;
-    variable mantissa_i : integer := 0;
-    variable overflow_int : boolean := false;
     variable scale_exp : integer := 0;
     variable ten_fp80 : fp80_t := fp80_from_int(10);
+    variable digit_fp : fp80_t := (others => '0');
     variable sign_m : std_logic := '0';
     variable idx : integer := 0;
+    variable all_zero : boolean := true;
   begin
     sign_m := packed(95);
 
+    -- Infinity/NaN: YY=11
     if packed(93 downto 92) = "11" then
       decoded_value := (others => '0');
       decoded_value(FP_WIDTH-1) := sign_m;
@@ -639,6 +664,7 @@ architecture rtl of mc68881_top is
       return decoded_value;
     end if;
 
+    -- Extract and validate exponent BCD nibbles
     exp0_i := bcd_to_natural(packed(83 downto 80));
     exp1_i := bcd_to_natural(packed(87 downto 84));
     exp2_i := bcd_to_natural(packed(91 downto 88));
@@ -651,6 +677,7 @@ architecture rtl of mc68881_top is
       exp10 := -exp10;
     end if;
 
+    -- Extract and validate all 17 mantissa digits
     idx := bcd_to_natural(packed(67 downto 64));
     if idx < 0 then
       return fallback;
@@ -664,33 +691,38 @@ architecture rtl of mc68881_top is
       mant_digits(nib_idx+1) := natural(idx);
     end loop;
 
-    mantissa_i := 0;
-    overflow_int := false;
-    for digit_idx in 0 to 8 loop
-      if mantissa_i > (integer'high - integer(mant_digits(digit_idx))) / 10 then
-        overflow_int := true;
+    -- Check for all-zero mantissa (packed zero)
+    all_zero := true;
+    for d in 0 to 16 loop
+      if mant_digits(d) /= 0 then
+        all_zero := false;
         exit;
       end if;
-      mantissa_i := mantissa_i * 10 + integer(mant_digits(digit_idx));
     end loop;
-    if overflow_int then
-      return fallback;
+    if all_zero then
+      decoded_value := (others => '0');
+      decoded_value(FP_WIDTH-1) := sign_m;
+      return decoded_value;
     end if;
 
-    decoded_value := fp80_from_int(mantissa_i);
-    scale_exp := exp10 - 8;
+    -- Accumulate all 17 digits via FP80 arithmetic
+    decoded_value := fp80_from_int(mant_digits(0));
+    for d in 1 to 16 loop
+      digit_fp := fp80_from_int(mant_digits(d));
+      decoded_value := add_sub_fp80(
+        mul_fp80(decoded_value, ten_fp80, FP_RND_NEAREST, FP_PREC_EXTENDED),
+        digit_fp, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    end loop;
 
-    if scale_exp > 9 or scale_exp < -9 then
-      return fallback;
-    end if;
-
+    -- Scale by 10^(exp10 - 16) to position the decimal point
+    scale_exp := exp10 - 16;
     if scale_exp > 0 then
-      for step in 1 to 9 loop
+      for step in 1 to 10000 loop
         exit when step > scale_exp;
         decoded_value := mul_fp80(decoded_value, ten_fp80, FP_RND_NEAREST, FP_PREC_EXTENDED);
       end loop;
     elsif scale_exp < 0 then
-      for step in 1 to 9 loop
+      for step in 1 to 10000 loop
         exit when step > -scale_exp;
         decoded_value := div_fp80(decoded_value, ten_fp80, FP_RND_NEAREST, FP_PREC_EXTENDED);
       end loop;
@@ -698,6 +730,28 @@ architecture rtl of mc68881_top is
 
     decoded_value(FP_WIDTH-1) := sign_m;
     return decoded_value;
+  end function;
+
+  -- Check if a packed-96 word contains invalid BCD nibbles (A-F).
+  -- Skips check for YY=11 (infinity/NaN use non-BCD nibble encoding).
+  function packed96_has_invalid_bcd(packed : packed96_t) return boolean is
+  begin
+    if packed(93 downto 92) = "11" then
+      return false;
+    end if;
+    -- Check 4 exponent nibbles
+    if bcd_to_natural(packed(91 downto 88)) < 0 then return true; end if;
+    if bcd_to_natural(packed(87 downto 84)) < 0 then return true; end if;
+    if bcd_to_natural(packed(83 downto 80)) < 0 then return true; end if;
+    if bcd_to_natural(packed(79 downto 76)) < 0 then return true; end if;
+    -- Check 17 mantissa nibbles
+    if bcd_to_natural(packed(67 downto 64)) < 0 then return true; end if;
+    for nib_idx in 0 to 15 loop
+      if bcd_to_natural(packed(63 - nib_idx*4 downto 60 - nib_idx*4)) < 0 then
+        return true;
+      end if;
+    end loop;
+    return false;
   end function;
 
   function fp80_from_single(bits : std_logic_vector(31 downto 0)) return fp80_t is
@@ -1404,6 +1458,7 @@ begin
     variable class_force_overflow : std_logic := '0';
     variable class_force_underflow : std_logic := '0';
     variable class_force_inexact : std_logic := '0';
+    variable class_force_invalid : std_logic := '0';
     variable class_force_bsun : std_logic := '0';
   begin
     if reset_n = '0' then
@@ -1527,6 +1582,7 @@ begin
           class_force_overflow := '0';
           class_force_underflow := '0';
           class_force_inexact := '0';
+          class_force_invalid := '0';
           class_force_bsun := '0';
         else
           class_opa := exc_event_opa_reg;
@@ -1536,6 +1592,7 @@ begin
           class_force_overflow := exc_event_force_overflow_reg;
           class_force_underflow := exc_event_force_underflow_reg;
           class_force_inexact := exc_event_force_inexact_reg;
+          class_force_invalid := exc_event_force_invalid_reg;
           class_force_bsun := exc_event_force_bsun_reg;
         end if;
         a_zero := fp80_is_zero(class_opa);
@@ -1609,6 +1666,10 @@ begin
              or class_force_inexact = '1' then
             exc_flags(FPSR_EXC_INEXACT) := '1';
           end if;
+        end if;
+
+        if class_force_invalid = '1' then
+          exc_flags(FPSR_EXC_INVALID) := '1';
         end if;
 
         if class_force_bsun = '1' then
@@ -1783,6 +1844,7 @@ begin
     variable move_exc_force_overflow : std_logic := '0';
     variable move_exc_force_underflow : std_logic := '0';
     variable move_exc_force_inexact : std_logic := '0';
+    variable move_exc_force_invalid : std_logic := '0';
     variable move_src_abs : fp80_t := (others => '0');
     variable single_max_abs : fp80_t := (others => '0');
     variable double_max_abs : fp80_t := (others => '0');
@@ -1831,6 +1893,7 @@ begin
       exc_event_divzero_reg <= '0';
       exc_event_force_overflow_reg <= '0';
       exc_event_force_underflow_reg <= '0';
+      exc_event_force_invalid_reg <= '0';
       exc_event_force_bsun_reg <= '0';
       sys_ctrl_save_req_reg <= '0';
       sys_ctrl_restore_req_reg <= '0';
@@ -1842,6 +1905,7 @@ begin
       exc_event_divzero_reg <= '0';
       exc_event_force_overflow_reg <= '0';
       exc_event_force_underflow_reg <= '0';
+      exc_event_force_invalid_reg <= '0';
       exc_event_force_bsun_reg <= '0';
       sys_ctrl_save_req_reg <= '0';
       sys_ctrl_restore_req_reg <= '0';
@@ -1905,6 +1969,7 @@ begin
               move_exc_force_overflow := '0';
               move_exc_force_underflow := '0';
               move_exc_force_inexact := '0';
+              move_exc_force_invalid := '0';
 
               if move_cfg.fmovecr_enable = '1' then
                 move_result := fmovecr_constant(operand_reg(0)(6 downto 0));
@@ -1948,6 +2013,9 @@ begin
                           move_exc_opa := move_result;
                         when "11" =>
                           packed_word := operand_hi16_reg(0) & operand_reg(0);
+                          if packed96_has_invalid_bcd(packed_word) then
+                            move_exc_force_invalid := '1';
+                          end if;
                           move_result := packed96_to_fp80(packed_word, operand_reg(0));
                           move_exc_enable := '1';
                           move_exc_result := move_result;
@@ -2066,6 +2134,7 @@ begin
                 exc_event_force_overflow_reg <= move_exc_force_overflow;
                 exc_event_force_underflow_reg <= move_exc_force_underflow;
                 exc_event_force_inexact_reg <= move_exc_force_inexact;
+                exc_event_force_invalid_reg <= move_exc_force_invalid;
               end if;
               result_ready_reg <= '1';
             elsif op_sel_write_decoded = FPU_OP_MOVEM then

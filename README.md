@@ -31,11 +31,11 @@ Based on `docs/fpu-progress-checklist.md`:
   - B7 system-control instructions: `FSAVE`/`FRESTORE` frame handshake, `FTRAPcc`
     with condition evaluation and CIR trap response.
   - Bus/timing confirmations E1-E4.
-- In progress:
-  - B8 packed-decimal conversion: 96-bit transport, integer-centric BCD
-    encode/decode with k-factor rounding, INEX1 detection, zero/negative/infinity
-    round-trip coverage. Remaining: full non-integer decimal conversion, wide
-    exponent range, OPERR signaling. See `DEF-PACKED-001`.
+- Done:
+  - B8 packed-decimal conversion: full FP80 digit-extraction encoder,
+    17-digit FP80 accumulation decoder, round-to-nearest-even, OPERR for
+    invalid BCD, test coverage for non-integer/OPERR/banker's rounding.
+    `DEF-PACKED-001` closed.
 
 ## Implementation baseline (2026-02-26)
 - Clean non-incremental batch flow (`scripts/run_impl.tcl`) meets routed timing:
@@ -86,8 +86,7 @@ covering:
     - `DEF-TIMING-001`
     - `DEF-DIVREM-001`
     - `DEF-DIVREM-002`
-    - `DEF-PACKED-001` (packed-decimal limited to integer-centric subset)
-  - `DEF-TRIG-001` is closed; see `docs/fpu-progress-checklist.md` for closure notes.
+  - `DEF-TRIG-001` and `DEF-PACKED-001` are closed; see `docs/fpu-progress-checklist.md` for closure notes.
 
 ## Running simulations
 Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). The repo includes a test

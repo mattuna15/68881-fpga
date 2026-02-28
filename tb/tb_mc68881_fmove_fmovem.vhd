@@ -1016,6 +1016,138 @@ begin
     report "FMOVE.P inf decoded=" & to_hstring(rd_full) severity note;
     check_fp80(rd_full, x"7FFF8000000000000000", "FMOVE.P infinity round-trip");
 
+    -- Non-integer packed encode: 1.25 with k=4
+    report "FMOVE.P non-integer 1.25 encode" severity note;
+    fp_val_a := x"3FFFA000000000000000"; -- FP80 1.25
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000004"); -- static k=4
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P 1.25 packed=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    -- Expect: exp=0, digits 1.250 (k=4 keeps 4 digits)
+    assert packed_src96(93 downto 92) = "00"
+      report "FMOVE.P 1.25 should be finite (YY=00)"
+      severity failure;
+    assert packed_src96(67 downto 64) = x"1"
+      report "FMOVE.P 1.25 int digit should be 1, got " &
+             to_hstring(packed_src96(67 downto 64))
+      severity failure;
+    assert packed_src96(63 downto 60) = x"2" and
+           packed_src96(59 downto 56) = x"5" and
+           packed_src96(55 downto 52) = x"0"
+      report "FMOVE.P 1.25 k=4 should produce digits 1.250"
+      severity failure;
+
+    -- Non-integer packed decode round-trip: decode 1.25 packed result
+    report "FMOVE.P 1.25 decode round-trip" severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, packed_src96(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, packed_src96(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, packed_src96(95 downto 80) & packed_src96(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.P 1.25 decoded=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, x"3FFFA000000000000000", "FMOVE.P 1.25 round-trip");
+
+    -- Invalid BCD OPERR test: nibble=0xA in mantissa
+    report "FMOVE.P invalid BCD OPERR test" severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- clear FPSR
+    -- Construct packed word with invalid nibble: int_digit=0xA
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000000");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, x"00000000");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & x"000A"); -- int_digit=A (invalid)
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FMOVE.P invalid BCD FPSR=" & to_hstring(rd_lo) severity note;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
+      report "FMOVE.P invalid BCD should set EXC.INVALID, FPSR=" & to_hstring(rd_lo)
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- clean up
+
+    -- Round-to-nearest-even: 1500 with k=1
+    -- digit0=1 (odd), digit1=5, trailing=00 -> banker's rounds UP to 2, exp=3
+    report "FMOVE.P round-to-nearest-even test" severity note;
+    fp_val_a := fp80_from_int(1500);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000001"); -- static k=1
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P 1500 k=1 packed=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    -- 1500 k=1: keep 1 digit, halfway. digit0=1 (odd) -> round up to 2, exp=3
+    assert packed_src96(67 downto 64) = x"2"
+      report "FMOVE.P 1500 k=1 RTE: odd digit should round up to 2, got " &
+             to_hstring(packed_src96(67 downto 64))
+      severity failure;
+
+    -- 2500 with k=1: digit0=2 (even), halfway -> no round
+    fp_val_a := fp80_from_int(2500);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000001"); -- static k=1
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P 2500 k=1 packed=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    -- 2500 k=1: keep 1 digit, halfway. digit0=2 (even) -> no round, stays 2, exp=3
+    assert packed_src96(67 downto 64) = x"2"
+      report "FMOVE.P 2500 k=1 RTE: even digit should stay 2, got " &
+             to_hstring(packed_src96(67 downto 64))
+      severity failure;
+
     report "FMOVECR constant ROM checks" severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"0000000F");
     cfg_word := make_move_cfg("00", 0, 6, "00", '0', "00", (others => '0'), '0', fmovecr_enable => '1');

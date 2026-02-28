@@ -394,8 +394,9 @@ architecture rtl of mc68881_top is
 
     int_value := fp80_to_int_trunc(value);
     if int_value = integer'low then
-      -- Saturation sentinel: -integer'low overflows natural, route to fallback
-      is_exact_int := false;
+      -- fp80_from_int cannot negate integer'low; compare against the known
+      -- fp80 pattern for -2^31 directly (32-bit VHDL integer assumption).
+      is_exact_int := value = x"C01E8000000000000000";
     else
       is_exact_int := fp80_from_int(int_value) = value;
     end if;
@@ -405,7 +406,10 @@ architecture rtl of mc68881_top is
       return packed;
     end if;
 
-    if int_value < 0 then
+    if int_value = integer'low then
+      -- natural(-integer'low) overflows; use integer'high and fixup last digit
+      abs_value := natural(integer'high);
+    elsif int_value < 0 then
       abs_value := natural(-int_value);
     else
       abs_value := natural(int_value);
@@ -422,6 +426,11 @@ architecture rtl of mc68881_top is
       digits(integer(digit_count) - 1 - idx) := tmp_nat mod 10;
       tmp_nat := tmp_nat / 10;
     end loop;
+    if int_value = integer'low then
+      -- Fixup: abs(integer'low) = integer'high + 1; increment last digit.
+      -- Safe: integer'high ends in 7 for all power-of-2 word sizes.
+      digits(integer(digit_count) - 1) := digits(integer(digit_count) - 1) + 1;
+    end if;
 
     k_clamped := clamp_integer(k_factor, -64, 17);
     if k_clamped > 0 then
@@ -490,6 +499,74 @@ architecture rtl of mc68881_top is
       packed(63 - idx*4 downto 60 - idx*4) := bcd_digit(digits(idx+1));
     end loop;
     return packed;
+  end function;
+
+  -- Check whether fp80_to_packed96 would lose precision for the given value
+  -- and k-factor. Avoids the lossy packed96_to_fp80 decoder: checks the
+  -- digit array directly to determine if any non-zero digit is truncated.
+  function packed_encode_is_inexact(value : fp80_t; k_factor : integer) return boolean is
+    variable int_value : integer := 0;
+    variable abs_value : natural := 0;
+    variable tmp_nat : natural := 0;
+    variable digit_count : natural := 1;
+    variable digits : dec_digits_t := (others => 0);
+    variable k_clamped : integer := 0;
+    variable keep_digits : integer := 17;
+    variable exp10 : integer := 0;
+  begin
+    -- Non-integer inputs always take the fallback path (inexact)
+    int_value := fp80_to_int_trunc(value);
+    if int_value = integer'low then
+      if value /= x"C01E8000000000000000" then
+        return true;
+      end if;
+    elsif fp80_from_int(int_value) /= value then
+      return true;
+    end if;
+
+    -- Extract decimal digits
+    if int_value = integer'low then
+      abs_value := natural(integer'high);
+    elsif int_value < 0 then
+      abs_value := natural(-int_value);
+    else
+      abs_value := natural(int_value);
+    end if;
+    digit_count := decimal_digit_count(abs_value);
+    exp10 := integer(digit_count) - 1;
+    tmp_nat := abs_value;
+    for idx in 0 to 16 loop
+      exit when idx >= integer(digit_count);
+      digits(integer(digit_count) - 1 - idx) := tmp_nat mod 10;
+      tmp_nat := tmp_nat / 10;
+    end loop;
+    if int_value = integer'low then
+      digits(integer(digit_count) - 1) := digits(integer(digit_count) - 1) + 1;
+    end if;
+
+    -- Compute keep_digits (mirrors encoder logic)
+    k_clamped := clamp_integer(k_factor, -64, 17);
+    if k_clamped > 0 then
+      keep_digits := k_clamped;
+    elsif k_clamped <= 0 then
+      keep_digits := exp10 + 1 + (-k_clamped);
+    end if;
+    if keep_digits < 1 then
+      keep_digits := 1;
+    elsif keep_digits > 17 then
+      keep_digits := 17;
+    end if;
+
+    -- If any truncated digit is non-zero, encoding loses precision
+    if keep_digits < 17 then
+      for idx in keep_digits to 16 loop
+        if digits(idx) /= 0 then
+          return true;
+        end if;
+      end loop;
+    end if;
+
+    return false;
   end function;
 
   -- Decode MC68881 96-bit packed-decimal to fp80.
@@ -1861,7 +1938,7 @@ begin
                       move_exc_enable := '1';
                       move_exc_result := packed96_to_fp80(packed_word, move_result);
                       if not fp80_is_nan(move_result) and not fp80_is_inf(move_result) and not fp80_is_zero(move_result) then
-                        if move_exc_result /= move_result then
+                        if packed_encode_is_inexact(move_result, packed_k) then
                           move_exc_force_inexact := '1';
                         end if;
                       end if;

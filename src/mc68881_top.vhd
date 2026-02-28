@@ -318,44 +318,18 @@ architecture rtl of mc68881_top is
     return count;
   end function;
 
-  function apply_packed_k_factor_fallback(value : fp80_t; k_factor : integer) return fp80_t is
-    variable adjusted : fp80_t := value;
-    variable k_clamped : integer := 0;
-    variable fractional_bits : integer := 0;
-    variable bit_count : natural := 0;
-  begin
-    -- Legacy fallback shaping retained for unsupported decimal-conversion inputs.
-    k_clamped := clamp_integer(k_factor, -64, 17);
-    if k_clamped <= 0 then
-      fractional_bits := 63 - (-k_clamped / 2);
-    else
-      fractional_bits := (k_clamped * 3) + 6;
-    end if;
-    fractional_bits := clamp_integer(fractional_bits, 0, 63);
-    bit_count := natural(63 - fractional_bits);
-    if bit_count > 0 then
-      adjusted(bit_count-1 downto 0) := (others => '0');
-    end if;
-    return adjusted;
-  end function;
-
   -- Encode fp80 to MC68881 96-bit packed-decimal format.
   -- Layout: SM(95) SE(94) YY(93:92) exp2(91:88) exp1(87:84) exp0(83:80)
   --         exp3(79:76) reserved(75:68) int_digit(67:64) frac_digits(63:0)
   -- Handles zero, infinity (YY=11, 0xF exponent nibbles), and NaN (YY=11
-  -- plus non-zero mantissa). Finite values: exact-integer inputs only;
-  -- non-integers fall back to raw fp80 bit shaping (see DEF-PACKED-001).
-  -- Applies half-up rounding when truncating to k significant digits.
+  -- plus non-zero mantissa). Finite values use a unified FP80
+  -- multiply-and-truncate digit-extraction loop.
+  -- Applies round-to-nearest-even when truncating to k significant digits.
   function fp80_to_packed96(value : fp80_t; k_factor : integer) return packed96_t is
     variable packed : packed96_t := (others => '0');
-    variable k_clamped : integer := 0;
-    variable int_value : integer := 0;
-    variable abs_value : natural := 0;
-    variable tmp_nat : natural := 0;
     variable digits : dec_digits_t := (others => 0);
-    variable digit_count : natural := 1;
+    variable k_clamped : integer := 0;
     variable keep_digits : integer := 17;
-    variable round_digit : natural := 0;
     variable carry : integer := 0;
     variable exp10 : integer := 0;
     variable exp_abs : natural := 0;
@@ -363,10 +337,17 @@ architecture rtl of mc68881_top is
     variable exp1 : natural := 0;
     variable exp2 : natural := 0;
     variable exp3 : natural := 0;
-    variable fallback_value : fp80_t := (others => '0');
-    variable is_exact_int : boolean := false;
+    variable abs_val : fp80_t := (others => '0');
+    variable scaled : fp80_t := (others => '0');
+    variable ten : fp80_t := fp80_from_int(10);
+    variable digit_int : integer := 0;
+    variable digit_fp : fp80_t := (others => '0');
+    variable bin_exp : integer := 0;
+    variable has_trailing : boolean := false;
+    variable round_digit : natural := 0;
+    variable one : fp80_t := fp80_from_int(1);
   begin
-    packed(95) := value(FP_WIDTH-1); -- mantissa sign
+    packed(95) := value(FP_WIDTH-1);
 
     if fp80_is_zero(value) then
       return packed;
@@ -392,53 +373,94 @@ architecture rtl of mc68881_top is
       return packed;
     end if;
 
-    int_value := fp80_to_int_trunc(value);
-    if int_value = integer'low then
-      -- fp80_from_int cannot negate integer'low; compare against the known
-      -- fp80 pattern for -2^31 directly (32-bit VHDL integer assumption).
-      is_exact_int := value = x"C01E8000000000000000";
+    -- Take absolute value
+    abs_val := value;
+    abs_val(FP_WIDTH-1) := '0';
+
+    -- Estimate decimal exponent from binary exponent
+    -- log10(2) ~= 77/256 = 0.30078 (close enough for initial estimate)
+    bin_exp := to_integer(unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH))) - FP_EXP_BIAS;
+    if bin_exp >= 0 then
+      exp10 := (bin_exp * 77) / 256;
     else
-      is_exact_int := fp80_from_int(int_value) = value;
-    end if;
-    if not is_exact_int then
-      fallback_value := apply_packed_k_factor_fallback(value, k_factor);
-      packed(79 downto 0) := fallback_value;
-      return packed;
+      exp10 := -(((-bin_exp) * 77 + 255) / 256);
     end if;
 
-    if int_value = integer'low then
-      -- natural(-integer'low) overflows; use integer'high and fixup last digit
-      abs_value := natural(integer'high);
-    elsif int_value < 0 then
-      abs_value := natural(-int_value);
-    else
-      abs_value := natural(int_value);
+    -- Scale into [1.0, 10.0) by dividing/multiplying by 10
+    scaled := abs_val;
+    if exp10 > 0 then
+      for i in 1 to 5000 loop
+        exit when i > exp10;
+        scaled := div_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
+      end loop;
+    elsif exp10 < 0 then
+      for i in 1 to 5000 loop
+        exit when i > -exp10;
+        scaled := mul_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
+      end loop;
     end if;
 
-    digit_count := decimal_digit_count(abs_value);
-    exp10 := integer(digit_count) - 1;
-    tmp_nat := abs_value;
-    for idx in 0 to 16 loop
-      digits(idx) := 0;
+    -- Fine-tune: ensure scaled is in [1.0, 10.0)
+    for i in 0 to 2 loop
+      if compare_fp80(scaled, ten) >= 0 then
+        scaled := div_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        exp10 := exp10 + 1;
+      elsif compare_fp80(scaled, one) < 0 then
+        scaled := mul_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        exp10 := exp10 - 1;
+      else
+        exit;
+      end if;
     end loop;
-    for idx in 0 to 16 loop
-      exit when idx >= integer(digit_count);
-      digits(integer(digit_count) - 1 - idx) := tmp_nat mod 10;
-      tmp_nat := tmp_nat / 10;
-    end loop;
-    if int_value = integer'low then
-      -- Fixup: abs(integer'low) = integer'high + 1; increment last digit.
-      -- Safe: integer'high ends in 7 for all power-of-2 word sizes.
-      digits(integer(digit_count) - 1) := digits(integer(digit_count) - 1) + 1;
-    end if;
 
+    -- Extract 17 decimal digits via multiply-and-truncate.
+    -- After extraction, propagate any trailing 9999... overflow caused
+    -- by FP rounding errors in the scaling step.
+    for d in 0 to 16 loop
+      digit_int := fp80_to_int_trunc(scaled);
+      if digit_int < 0 then digit_int := 0; end if;
+      if digit_int > 9 then digit_int := 9; end if;
+      digits(d) := digit_int;
+      digit_fp := fp80_from_int(digit_int);
+      scaled := mul_fp80(
+        add_sub_fp80(scaled, digit_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED),
+        ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
+    end loop;
+    -- Fix trailing 9-overflow: if the last digit position would have
+    -- rounded up (residual scaled >= 5), propagate a carry through
+    -- trailing 9s.  This corrects e.g. 4.1999999... -> 4.2000000...
+    digit_int := fp80_to_int_trunc(scaled);
+    if digit_int >= 5 then
+      carry := 1;
+      for idx in 16 downto 0 loop
+        if carry = 0 then
+          exit;
+        end if;
+        if digits(idx) = 9 then
+          digits(idx) := 0;
+        else
+          digits(idx) := digits(idx) + 1;
+          carry := 0;
+        end if;
+      end loop;
+      if carry = 1 then
+        -- Overflow from MSD: shift digits right, set MSD=1, bump exp
+        for idx in 16 downto 1 loop
+          digits(idx) := digits(idx-1);
+        end loop;
+        digits(0) := 1;
+        exp10 := exp10 + 1;
+      end if;
+    end if;
+    carry := 0; -- reset for k-factor rounding below
+
+    -- Apply k-factor rounding (round-to-nearest-even)
     k_clamped := clamp_integer(k_factor, -64, 17);
     if k_clamped > 0 then
       keep_digits := k_clamped;
     elsif k_clamped <= 0 then
       keep_digits := exp10 + 1 + (-k_clamped);
     end if;
-
     if keep_digits < 1 then
       keep_digits := 1;
     elsif keep_digits > 17 then
@@ -448,15 +470,27 @@ architecture rtl of mc68881_top is
     if keep_digits < 17 then
       round_digit := digits(keep_digits);
       carry := 0;
-      if round_digit >= 5 then
+      if round_digit > 5 then
         carry := 1;
+      elsif round_digit = 5 then
+        -- Check for trailing non-zero digits (above halfway)
+        has_trailing := false;
+        for idx in keep_digits + 1 to 16 loop
+          if digits(idx) /= 0 then
+            has_trailing := true;
+          end if;
+        end loop;
+        if has_trailing then
+          carry := 1;
+        elsif digits(keep_digits - 1) mod 2 = 1 then
+          carry := 1; -- exact halfway: round to even
+        end if;
       end if;
       for idx in 16 downto 0 loop
         if idx < keep_digits then
           if carry = 1 then
             if digits(idx) = 9 then
               digits(idx) := 0;
-              carry := 1;
             else
               digits(idx) := digits(idx) + 1;
               carry := 0;
@@ -475,6 +509,7 @@ architecture rtl of mc68881_top is
       end if;
     end if;
 
+    -- Encode exponent
     if exp10 < 0 then
       packed(94) := '1';
       exp_abs := natural(-exp10);

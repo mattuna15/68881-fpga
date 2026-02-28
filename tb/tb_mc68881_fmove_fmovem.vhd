@@ -1148,6 +1148,34 @@ begin
              to_hstring(packed_src96(67 downto 64))
       severity failure;
 
+    -- Pi encode k=17: FP80 has ~18.96 decimal digits, so encoding pi
+    -- (infinite decimal expansion) into 17 packed digits must set INEXACT.
+    report "FMOVE.P pi k=17 inexact test" severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- clear FPSR
+    fp_val_a := FMOVECR_PI;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000011"); -- static k=17
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FMOVE.P pi k=17 FPSR=" & to_hstring(rd_lo) severity note;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+      report "FMOVE.P pi k=17 should set EXC.INEXACT, FPSR=" & to_hstring(rd_lo)
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- clean up
+
     report "FMOVECR constant ROM checks" severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"0000000F");
     cfg_word := make_move_cfg("00", 0, 6, "00", '0', "00", (others => '0'), '0', fmovecr_enable => '1');

@@ -308,17 +308,6 @@ architecture rtl of mc68881_top is
     return -1;
   end function;
 
-  function decimal_digit_count(value : natural) return natural is
-    variable tmp : natural := value;
-    variable count : natural := 1;
-  begin
-    while tmp >= 10 loop
-      tmp := tmp / 10;
-      count := count + 1;
-    end loop;
-    return count;
-  end function;
-
   -- Encode fp80 to MC68881 96-bit packed-decimal format.
   -- Layout: SM(95) SE(94) YY(93:92) exp2(91:88) exp1(87:84) exp0(83:80)
   --         exp3(79:76) reserved(75:68) int_digit(67:64) frac_digits(63:0)
@@ -381,6 +370,15 @@ architecture rtl of mc68881_top is
     -- Estimate decimal exponent from binary exponent
     -- log10(2) ~= 77/256 = 0.30078 (close enough for initial estimate)
     bin_exp := to_integer(unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH))) - FP_EXP_BIAS;
+    -- For subnormals (biased exponent = 0), adjust bin_exp by counting
+    -- leading mantissa zeros so the exp10 estimate is accurate.
+    if unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH)) = 0 then
+      bin_exp := 1 - FP_EXP_BIAS;
+      for bit_idx in FP_MANT_WIDTH-1 downto 0 loop
+        exit when abs_val(bit_idx) = '1';
+        bin_exp := bin_exp - 1;
+      end loop;
+    end if;
     if bin_exp >= 0 then
       exp10 := (bin_exp * 77) / 256;
     else
@@ -563,6 +561,15 @@ architecture rtl of mc68881_top is
 
     -- Estimate decimal exponent (mirrors encoder)
     bin_exp := to_integer(unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH))) - FP_EXP_BIAS;
+    -- For subnormals (biased exponent = 0), adjust bin_exp by counting
+    -- leading mantissa zeros so the exp10 estimate is accurate.
+    if unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH)) = 0 then
+      bin_exp := 1 - FP_EXP_BIAS;
+      for bit_idx in FP_MANT_WIDTH-1 downto 0 loop
+        exit when abs_val(bit_idx) = '1';
+        bin_exp := bin_exp - 1;
+      end loop;
+    end if;
     if bin_exp >= 0 then
       exp10 := (bin_exp * 77) / 256;
     else
@@ -605,6 +612,12 @@ architecture rtl of mc68881_top is
         add_sub_fp80(scaled, digit_fp, true, FP_RND_NEAREST, FP_PREC_EXTENDED),
         ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
     end loop;
+
+    -- FP80 has ~18.96 significant decimal digits.  If the residual after
+    -- extracting 17 digits is non-zero, the packed format inherently rounds.
+    if not fp80_is_zero(scaled) then
+      return true;
+    end if;
 
     -- Check if k-factor truncation loses non-zero digits
     k_clamped := clamp_integer(k_factor, -64, 17);

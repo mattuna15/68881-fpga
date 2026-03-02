@@ -78,6 +78,20 @@ set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_op_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
 set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_op_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
 
+# --- Packed decimal FP helper paths (5-cycle MCP = 500ns) ---
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_mul_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_mul_res_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_mul_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_mul_res_reg_reg*/D}]
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_mul_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_mul_res_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_mul_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_mul_res_reg_reg*/D}]
+
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_add_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_add_res_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_add_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_add_res_reg_reg*/D}]
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_add_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_add_res_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_add_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_add_res_reg_reg*/D}]
+
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_int_arg_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_int_res_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_int_arg_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_int_res_reg_reg*/D}]
+
 # --- operand_reg -> result (4-cycle MCP = 400ns) ---
 set_multicycle_path -setup 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
 set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]

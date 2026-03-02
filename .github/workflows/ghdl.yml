@@ -21,6 +21,7 @@ jobs:
             src/mc68881_trig_unit.vhd \
             src/mc68881_sgl_ops_unit.vhd \
             src/mc68881_alu.vhd \
+            src/mc68881_packed_decimal_unit.vhd \
             src/mc68881_top.vhd \
             tb/mc68881_golden_vectors_pkg.vhd \
             tb/tb_mc68881_alu.vhd \

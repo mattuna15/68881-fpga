@@ -1481,7 +1481,12 @@ begin
       severity failure;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000");
 
-    -- DSACK behavior coverage
+    -- =========================================================
+    -- DSACK behavior coverage: single-shot encoding + multi-beat
+    -- =========================================================
+    report "DSACK single-shot encoding tests" severity note;
+
+    -- Single-shot: 32-bit A4=1 → dsack0='0', dsack1='0'
     size_n <= "11";
     a_in   <= "10000";
     cs_n   <= '0';
@@ -1495,12 +1500,12 @@ begin
     assert dsack0_n = '0' and dsack1_n = '0'
       report "DSACK mismatch for 32-bit with A4=1"
       severity failure;
-
     cs_n <= '1';
     as_n <= '1';
     ds_n <= '1';
     wait for CLK_PERIOD;
 
+    -- Single-shot: 32-bit A4=0 → dsack0='1', dsack1='0'
     a_in <= "00000";
     cs_n <= '0';
     as_n <= '0';
@@ -1513,66 +1518,172 @@ begin
     assert dsack0_n = '1' and dsack1_n = '0'
       report "DSACK mismatch for 32-bit with A4=0"
       severity failure;
-
     cs_n <= '1';
     as_n <= '1';
     ds_n <= '1';
     wait for CLK_PERIOD;
 
-    size_n <= "10";
-    cs_n <= '0';
-    as_n <= '0';
-    ds_n <= '0';
+    -- =========================================================
+    -- Multi-beat DSACK transfer tests (uses FPIAR: addr 24, A4=1)
+    -- =========================================================
+    report "Multi-beat DSACK transfer tests" severity note;
+
+    -- Seed FPIAR with known value for read-back tests
+    size_n <= "11";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, x"DEADBEEF");
+
+    -- Test 1: 32-bit read — 1 beat
+    -- FPIAR A4=1, size_n="11" → dsack0='0', dsack1='0' (32-bit port)
+    report "DSACK multi-beat test 1: 32-bit read, 1 beat" severity note;
+    size_n <= "11";
+    a_in   <= std_logic_vector(ADDR_FPIAR);
+    rw     <= '1';
+    cs_n   <= '0';
+    as_n   <= '0';
+    ds_n   <= '0';
     wait until (dsack0_n = '0') or (dsack1_n = '0');
-    report "DSACK 16-bit: dsack1_n=" & std_logic'image(dsack1_n) &
-           " dsack0_n=" & std_logic'image(dsack0_n) &
-           " cycle=" & integer'image(cycle_cnt)
-      severity note;
-    assert dsack0_n = '1' and dsack1_n = '0'
-      report "DSACK mismatch for 16-bit access"
+    assert dsack0_n = '0' and dsack1_n = '0'
+      report "DSACK mismatch for 32-bit read (A4=1): dsack0_n=" &
+             std_logic'image(dsack0_n) & " dsack1_n=" & std_logic'image(dsack1_n)
+      severity failure;
+    assert d_out = x"DEADBEEF"
+      report "Data mismatch on 32-bit read: expected DEADBEEF got " & to_hstring(d_out)
+      severity failure;
+    cs_n <= '1';
+    as_n <= '1';
+    ds_n <= '1';
+    wait for CLK_PERIOD;
+
+    -- Test 2: 16-bit read — 2 consecutive beats
+    -- size_n="10" → dsack0='1', dsack1='0' (16-bit port)
+    -- Confirms state machine returns to IDLE and re-responds on each beat.
+    report "DSACK multi-beat test 2: 16-bit read, 2 beats" severity note;
+    for beat in 0 to 1 loop
+      size_n <= "10";
+      a_in   <= std_logic_vector(ADDR_FPIAR);
+      rw     <= '1';
+      cs_n   <= '0';
+      as_n   <= '0';
+      ds_n   <= '0';
+      wait until (dsack0_n = '0') or (dsack1_n = '0');
+      assert dsack0_n = '1' and dsack1_n = '0'
+        report "DSACK mismatch for 16-bit read beat " & integer'image(beat) &
+               ": dsack0_n=" & std_logic'image(dsack0_n) &
+               " dsack1_n=" & std_logic'image(dsack1_n)
+        severity failure;
+      assert d_out = x"DEADBEEF"
+        report "Data mismatch on 16-bit read beat " & integer'image(beat) &
+               ": expected DEADBEEF got " & to_hstring(d_out)
+        severity failure;
+      cs_n <= '1';
+      as_n <= '1';
+      ds_n <= '1';
+      wait for CLK_PERIOD;
+    end loop;
+
+    -- Test 3: 8-bit read — 4 consecutive beats
+    -- size_n="01" → dsack0='0', dsack1='1' (8-bit port)
+    -- Confirms 4 independent DSACK handshakes complete without stalling.
+    report "DSACK multi-beat test 3: 8-bit read, 4 beats" severity note;
+    for beat in 0 to 3 loop
+      size_n <= "01";
+      a_in   <= std_logic_vector(ADDR_FPIAR);
+      rw     <= '1';
+      cs_n   <= '0';
+      as_n   <= '0';
+      ds_n   <= '0';
+      wait until (dsack0_n = '0') or (dsack1_n = '0');
+      assert dsack0_n = '0' and dsack1_n = '1'
+        report "DSACK mismatch for 8-bit read beat " & integer'image(beat) &
+               ": dsack0_n=" & std_logic'image(dsack0_n) &
+               " dsack1_n=" & std_logic'image(dsack1_n)
+        severity failure;
+      assert d_out = x"DEADBEEF"
+        report "Data mismatch on 8-bit read beat " & integer'image(beat) &
+               ": expected DEADBEEF got " & to_hstring(d_out)
+        severity failure;
+      cs_n <= '1';
+      as_n <= '1';
+      ds_n <= '1';
+      wait for CLK_PERIOD;
+    end loop;
+
+    -- Test 4: 16-bit write — 2 beats + 32-bit readback
+    -- FPU captures full 32-bit d_in each cycle; last write wins.
+    report "DSACK multi-beat test 4: 16-bit write, 2 beats + readback" severity note;
+    for beat in 0 to 1 loop
+      size_n <= "10";
+      a_in   <= std_logic_vector(ADDR_FPIAR);
+      d_in   <= x"CAFEBABE";
+      rw     <= '0';
+      cs_n   <= '0';
+      as_n   <= '0';
+      ds_n   <= '0';
+      wait until (dsack0_n = '0') or (dsack1_n = '0');
+      assert dsack0_n = '1' and dsack1_n = '0'
+        report "DSACK mismatch for 16-bit write beat " & integer'image(beat) &
+               ": dsack0_n=" & std_logic'image(dsack0_n) &
+               " dsack1_n=" & std_logic'image(dsack1_n)
+        severity failure;
+      cs_n <= '1';
+      as_n <= '1';
+      ds_n <= '1';
+      rw   <= '1';
+      wait for CLK_PERIOD;
+    end loop;
+    size_n <= "11";
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPIAR);
+    assert rd_lo = x"CAFEBABE"
+      report "Readback mismatch after 16-bit writes: expected CAFEBABE got " & to_hstring(rd_lo)
       severity failure;
 
-    cs_n <= '1';
-    as_n <= '1';
-    ds_n <= '1';
-    wait for CLK_PERIOD;
-
-    size_n <= "01";
-    cs_n <= '0';
-    as_n <= '0';
-    ds_n <= '0';
-    wait until (dsack0_n = '0') or (dsack1_n = '0');
-    report "DSACK 8-bit: dsack1_n=" & std_logic'image(dsack1_n) &
-           " dsack0_n=" & std_logic'image(dsack0_n) &
-           " cycle=" & integer'image(cycle_cnt)
-      severity note;
-    assert dsack0_n = '0' and dsack1_n = '1'
-      report "DSACK mismatch for 8-bit access"
+    -- Test 5: 8-bit write — 4 beats + 32-bit readback
+    report "DSACK multi-beat test 5: 8-bit write, 4 beats + readback" severity note;
+    for beat in 0 to 3 loop
+      size_n <= "01";
+      a_in   <= std_logic_vector(ADDR_FPIAR);
+      d_in   <= x"12345678";
+      rw     <= '0';
+      cs_n   <= '0';
+      as_n   <= '0';
+      ds_n   <= '0';
+      wait until (dsack0_n = '0') or (dsack1_n = '0');
+      assert dsack0_n = '0' and dsack1_n = '1'
+        report "DSACK mismatch for 8-bit write beat " & integer'image(beat) &
+               ": dsack0_n=" & std_logic'image(dsack0_n) &
+               " dsack1_n=" & std_logic'image(dsack1_n)
+        severity failure;
+      cs_n <= '1';
+      as_n <= '1';
+      ds_n <= '1';
+      rw   <= '1';
+      wait for CLK_PERIOD;
+    end loop;
+    size_n <= "11";
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPIAR);
+    assert rd_lo = x"12345678"
+      report "Readback mismatch after 8-bit writes: expected 12345678 got " & to_hstring(rd_lo)
       severity failure;
 
-    cs_n <= '1';
-    as_n <= '1';
-    ds_n <= '1';
-    wait for CLK_PERIOD;
-
+    -- Test 6: Wait-state (size_n="00") — no DSACK
+    report "DSACK multi-beat test 6: wait-state, no DSACK" severity note;
     size_n <= "00";
-    cs_n <= '0';
-    as_n <= '0';
-    ds_n <= '0';
+    cs_n   <= '0';
+    as_n   <= '0';
+    ds_n   <= '0';
     wait for CLK_PERIOD;
-    report "DSACK wait: dsack1_n=" & std_logic'image(dsack1_n) &
-           " dsack0_n=" & std_logic'image(dsack0_n) &
-           " cycle=" & integer'image(cycle_cnt)
-      severity note;
     assert dsack0_n = '1' and dsack1_n = '1'
-      report "DSACK mismatch for wait state insertion"
+      report "DSACK mismatch for wait state insertion: dsack0_n=" &
+             std_logic'image(dsack0_n) & " dsack1_n=" & std_logic'image(dsack1_n)
       severity failure;
-
     cs_n <= '1';
     as_n <= '1';
     ds_n <= '1';
     wait for CLK_PERIOD;
-    assert_idle_outputs(dsack0_n, dsack1_n, sense_n, "post-DSACK tests idle");
+
+    -- Restore default size and verify idle
+    size_n <= "11";
+    assert_idle_outputs(dsack0_n, dsack1_n, sense_n, "post-DSACK multi-beat tests idle");
 
     report "TB SUCCESS: all checks passed"
       severity note;

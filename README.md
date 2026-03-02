@@ -28,7 +28,16 @@ Based on `docs/fpu-progress-checklist.md`:
   - B5 transcendental set implemented (`FSIN/FCOS/FTAN/FSINCOS`, inverse trig, exp/log families,
     hyperbolic families, `FTENTOX/FTWOTOX`).
   - B6 conditional dialog ordering (`FScc`, `FBcc`, `FDBcc`) with BSUN trap gating.
+  - B7 system-control instructions: `FSAVE`/`FRESTORE` frame handshake, `FTRAPcc`
+    with condition evaluation and CIR trap response.
   - Bus/timing confirmations E1-E4.
+- Done:
+  - B8 packed-decimal conversion: full FP80 digit-extraction encoder,
+    17-digit FP80 accumulation decoder, round-to-nearest-even, OPERR for
+    invalid BCD, subnormal pre-normalization for accurate exp10 estimation,
+    17-digit precision-limit inexact detection (residual check), test
+    coverage for non-integer/OPERR/banker's rounding/pi k=17 INEXACT.
+    `DEF-PACKED-001` closed.
 
 ## Implementation baseline (2026-02-26)
 - Clean non-incremental batch flow (`scripts/run_impl.tcl`) meets routed timing:
@@ -79,7 +88,7 @@ covering:
     - `DEF-TIMING-001`
     - `DEF-DIVREM-001`
     - `DEF-DIVREM-002`
-  - `DEF-TRIG-001` is closed; see `docs/fpu-progress-checklist.md` for closure notes.
+  - `DEF-TRIG-001` and `DEF-PACKED-001` are closed; see `docs/fpu-progress-checklist.md` for closure notes.
 
 ## Running simulations
 Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). The repo includes a test

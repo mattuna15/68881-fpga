@@ -106,9 +106,45 @@ B) Functional Completeness (Core Missing Ops)
     - Done: FTRAPcc evaluates FPSR CC via shared conditional path (OP_CLASS_PROG_CTRL),
       requests trap when condition true, participates in BSUN/CIR response protocol.
 
-[ ] B8. Implement packed-decimal and decimal conversion path.
+[x] B8. Implement packed-decimal and decimal conversion path.
     - Packed-decimal encode/decode and edge cases.
     - Rounding and k-factor handling per FMOVE .P behavior.
+    - Done: FMOVE .P transports a 96-bit packed payload through the existing
+      register interface (`OPA_E`/`RES_E` upper 16 bits carry packed bits 95:80;
+      lower 80 bits remain in `*_H/*_L/*_E[15:0]`).
+    - Done: FMOVE reg->mem packed path emits explicit packed metadata fields
+      (SM/SE/YY and exponent nibbles) plus decimal mantissa digits for all
+      finite sources (integer and non-integer) with static/dynamic k-factor
+      rounding using round-to-nearest-even.
+    - Done: FMOVE mem->reg packed path decodes all 17 BCD mantissa digits via
+      FP80 arithmetic accumulation with unbounded exponent scaling (+/-9999).
+      Distinguishes infinity from NaN (producing canonical QNaN for NaN inputs;
+      payload preservation tracked in C2).
+    - Done: OPERR exception raised for invalid BCD nibbles (A-F) in packed
+      mem->reg decode via `packed96_has_invalid_bcd` checker and
+      `exc_event_force_invalid_reg` signal.
+    - Done: INEX1 detection on packed reg->mem (round-trip compare mirrors
+      single/double pattern, sets `move_exc_force_inexact`).
+    - Done: 17-digit precision-limit inexact detection — residual check
+      after digit extraction catches FP80 values with >17 significant
+      decimal digits (previously only k-factor truncation was detected).
+    - Done: subnormal pre-normalization — leading mantissa zeros are
+      counted to correct the exp10 estimate before digit extraction,
+      preventing all-zero mantissa output for subnormal inputs.
+    - Done: full packed conversion moved into dedicated
+      `mc68881_packed_decimal_unit` (single in-flight request, sequential
+      micro-state flow, integer/BCD decode accumulation via `fp80_from_u64`,
+      and bounded variable-latency completion).
+    - Done: top-level default restored to full packed behavior
+      (`packed_decimal_full_g=true`) with fallback path retained only for
+      debug (`packed_decimal_full_g=false`) synthesis bisect builds.
+    - Done: packed testbenches now run against the default configuration
+      (no testbench-only generic override required to force full packed mode).
+    - Done: `result_ex_hi_reg` explicitly cleared on single/double/extended
+      reg->mem paths to prevent stale packed metadata leakage.
+    - Done: test coverage for zero, negative (-42), infinity round-trips,
+      non-integer (1.25) encode/decode round-trip, invalid BCD OPERR, and
+      round-to-nearest-even (banker's rounding for exact-halfway cases).
 
 C) Exception Handling & Edge Cases
 ----------------------------------
@@ -197,8 +233,12 @@ D) Verification / Testbench Coverage
 E) Bus Interface & Timing (Confirmations)
 -----------------------------------------
 [x] E1. DSACK behavior per Table 10.
+    - Single-shot encoding tests cover 32-bit (A4=0 and A4=1), 16-bit, 8-bit, and wait-state responses.
+    - Multi-beat sequencing tests verify DSACK state machine cycles IDLE→WAIT_ASSERT→ASSERTED→IDLE
+      for 2-beat (16-bit) and 4-beat (8-bit) read/write transfers with data integrity readback.
 [x] E2. Address decoding for all register spaces.
 [x] E3. Access size handling for 8/16/32-bit.
+    - Multi-beat write+readback tests confirm correct register capture across repeated narrow bus cycles.
 [x] E4. Microsequencer for cycle-accurate timing.
 
 F) Datasheet Conformance (MC68881UM Review Findings)
@@ -343,6 +383,55 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Closed Defects
 
+### DEF-PACKED-002: Full Packed-Decimal Default QoR Still Above Release Gate
+- Status: Closed (2026-03-02)
+- Files: `src/mc68881_packed_decimal_unit.vhd`, `src/mc68881_top.xdc`,
+  `project/fpga68881/fpga68881.runs/impl_1/runme.log`,
+  `project/fpga68881/fpga68881.runs/impl_1/mc68881_top_utilization_placed.rpt`,
+  `project/fpga68881/fpga68881.runs/impl_1/mc68881_top_timing_summary_routed.rpt`
+- Resolution summary:
+  - Added dedicated packed arithmetic staging in `mc68881_packed_decimal_unit`
+    (`AR_ST_IDLE -> AR_ST_WAIT -> AR_ST_COMMIT`) with registered operand/result
+    boundaries for `mul_fp80`, `add_sub_fp80`, and `fp80_to_int_trunc`.
+  - Split packed encode digit application into distinct subtract and scale
+    micro-states to avoid add+mul combinational chaining in one cycle.
+  - Added packed-unit multicycle constraints in `mc68881_top.xdc`
+    (setup 5 / hold 4) for staged packed helper paths.
+  - Functional regressions pass with default full-packed mode:
+    `powershell -ExecutionPolicy Bypass -File scripts/run_tests.ps1`.
+- Closure evidence:
+  - Implementation run closes timing:
+    `WNS=4.751ns`, `TNS=0.000ns`, `WHS=0.009ns`, `THS=0.000ns`
+    (`.../impl_1/runme.log`, `.../mc68881_top_timing_summary_routed.rpt`).
+  - Post-place implementation utilization reports:
+    `Slice LUTs = 85354 / 133800 (63.79%)`
+    (`.../impl_1/mc68881_top_utilization_placed.rpt`).
+
+### DEF-PACKED-001: Packed-Decimal Conversion Is Limited To Integer-Centric Subset
+- Status: Closed (2026-02-28)
+- Files: `src/mc68881_top.vhd`, `tb/tb_mc68881_fmove_fmovem.vhd`
+- Resolution summary:
+  - Full FP80 digit-extraction encoder replaces integer-only fast path:
+    unified multiply-and-truncate loop handles all finite values.
+  - Full 17-digit FP80 accumulation decoder replaces 9-digit integer path:
+    unbounded exponent scaling handles full MC68881 range (+/-9999).
+  - OPERR exception wired for invalid BCD nibbles (A-F) via
+    `packed96_has_invalid_bcd` and `exc_event_force_invalid_reg`.
+  - Round-to-nearest-even (banker's rounding) replaces half-up.
+  - `packed_encode_is_inexact` rewritten to mirror new encoder logic.
+  - Test coverage added: 1.25 encode/decode round-trip, invalid BCD OPERR,
+    round-to-nearest-even for exact-halfway cases (1500 k=1 odd rounds up,
+    2500 k=1 even stays), pi k=17 EXC.INEXACT assertion.
+  - 17-digit precision-limit inexact detection added: residual check
+    after digit extraction catches FP80 values with >17 significant
+    decimal digits.
+  - Subnormal pre-normalization added: leading mantissa zeros counted
+    to correct exp10 estimate, preventing all-zero mantissa for
+    subnormal inputs.
+  - Dead `decimal_digit_count` function removed.
+- Remaining (tracked elsewhere):
+  - NaN payload/SNaN distinction not preserved (tracked in C2).
+
 ### DEF-TRIG-001: FCOS(-40.75) Sign Check
 - Status: Closed (2026-02-15)
 - Resolution summary:
@@ -456,6 +545,8 @@ Legend:
 - `[~]` S7-E1. Preserve DSACK/addressing correctness while adding CIR semantics.
   - Map: `E1`, `E2`, `E3`.
   - Keep existing DSACK tests green while introducing dialog behavior.
+  - Multi-beat DSACK cycling tests (16-bit x2, 8-bit x4) now verify repeated handshake
+    sequencing and data integrity across narrow bus transfers (`tb/tb_mc68881_top.vhd`).
 - `[ ]` S7-E2. Add CIR-specific access timing checks.
   - Map: `E1`, `D4`.
   - Extend `tb/tb_mc68881_ac_timing.vhd` with explicit save/response-CIR access timing assertions.

@@ -9,6 +9,7 @@ entity tb_mc68881_fmove_fmovem is
 end entity tb_mc68881_fmove_fmovem;
 
 architecture sim of tb_mc68881_fmove_fmovem is
+  subtype packed96_t is std_logic_vector(95 downto 0);
   signal a_in     : std_logic_vector(4 downto 0) := (others => '0');
   signal d_in     : std_logic_vector(31 downto 0) := (others => '0');
   signal d_out    : std_logic_vector(31 downto 0);
@@ -166,13 +167,16 @@ architecture sim of tb_mc68881_fmove_fmovem is
     variable status_s : out std_logic_vector(31 downto 0)
   ) is
   begin
-    loop
+    for poll_idx in 0 to 4095 loop
       bus_read(a_in_s, rw_s, cs_n_s, as_n_s, ds_n_s, dsack0_n_s, dsack1_n_s, d_out_s, status_s, ADDR_STATUS);
       report "FMOVE status poll valid=" & std_logic'image(status_s(0)) &
              " busy=" & std_logic'image(status_s(1))
         severity note;
       exit when status_s(0) = '1';
     end loop;
+    assert status_s(0) = '1'
+      report "Timeout waiting for STATUS.valid in FMOVE testbench"
+      severity error;
   end procedure;
 
   function make_move_cfg(
@@ -210,6 +214,17 @@ architecture sim of tb_mc68881_fmove_fmovem is
     return encode_move_cfg(cfg);
   end function;
 
+  function make_packed96(
+    ex_word : std_logic_vector(31 downto 0);
+    hi_word : std_logic_vector(31 downto 0);
+    lo_word : std_logic_vector(31 downto 0)
+  ) return packed96_t is
+    variable packed : packed96_t := (others => '0');
+  begin
+    packed := ex_word(31 downto 16) & ex_word(15 downto 0) & hi_word & lo_word;
+    return packed;
+  end function;
+
 begin
   clk <= not clk after CLK_PERIOD/2;
 
@@ -243,6 +258,9 @@ begin
     variable fpiar_word : std_logic_vector(31 downto 0) := (others => '0');
     variable static_packed : fp80_t := (others => '0');
     variable dynamic_packed : fp80_t := (others => '0');
+    variable static_packed96 : packed96_t := (others => '0');
+    variable dynamic_packed96 : packed96_t := (others => '0');
+    variable packed_src96 : packed96_t := (others => '0');
   begin
     reset_n <= '0';
     wait for 2 * CLK_PERIOD;
@@ -813,8 +831,17 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    static_packed96 := make_packed96(rd_ex, rd_hi, rd_lo);
     static_packed := rd_ex(15 downto 0) & rd_hi & rd_lo;
     report "FMOVE.P static k observed=" & to_hstring(static_packed) severity note;
+    assert static_packed96(93 downto 92) = "00"
+      report "FMOVE.P static packed result should be finite (yy=00)"
+      severity failure;
+    assert static_packed96(67 downto 64) = x"1" and
+           static_packed96(63 downto 60) = x"2" and
+           static_packed96(59 downto 56) = x"0"
+      report "FMOVE.P static k=2 should truncate 1234567 to leading digits 1.20..."
+      severity failure;
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"0000000A");
     cfg_word := make_move_cfg(
@@ -828,11 +855,482 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    dynamic_packed96 := make_packed96(rd_ex, rd_hi, rd_lo);
     dynamic_packed := rd_ex(15 downto 0) & rd_hi & rd_lo;
     report "FMOVE.P dynamic k observed=" & to_hstring(dynamic_packed) severity note;
     assert static_packed /= dynamic_packed
       report "FMOVE.P static and dynamic k-factor should produce distinct packed output"
       severity failure;
+    assert dynamic_packed96(67 downto 64) = x"1" and
+           dynamic_packed96(63 downto 60) = x"2" and
+           dynamic_packed96(59 downto 56) = x"3" and
+           dynamic_packed96(55 downto 52) = x"4" and
+           dynamic_packed96(51 downto 48) = x"5" and
+           dynamic_packed96(47 downto 44) = x"6" and
+           dynamic_packed96(43 downto 40) = x"7"
+      report "FMOVE.P dynamic k=10 should preserve all 7 digits of 1234567"
+      severity failure;
+
+    report "FMOVE.P mem->reg packed decode check" severity note;
+    packed_src96 := static_packed96;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, packed_src96(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, packed_src96(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, packed_src96(95 downto 80) & packed_src96(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.P mem->reg observed=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, fp80_from_int(1200000), "FMOVE.P mem->reg decode");
+
+    -- Zero round-trip: encode zero to packed, then decode back
+    report "FMOVE.P zero round-trip" severity note;
+    fp_val_a := fp80_from_int(0);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000011");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P zero encoded=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    assert packed_src96 = (packed_src96'range => '0')
+      report "FMOVE.P zero should encode to all-zero packed word"
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, packed_src96(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, packed_src96(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, packed_src96(95 downto 80) & packed_src96(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.P zero decoded=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, fp80_from_int(0), "FMOVE.P zero round-trip");
+
+    -- Negative round-trip: encode -42 to packed, check sign, decode back
+    report "FMOVE.P negative round-trip" severity note;
+    fp_val_a := fp80_from_int(-42);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000011");
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P neg encoded=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    assert packed_src96(95) = '1'
+      report "FMOVE.P negative value should have sign bit set in packed word"
+      severity failure;
+    assert packed_src96(67 downto 64) = x"4" and packed_src96(63 downto 60) = x"2"
+      report "FMOVE.P -42 should encode mantissa digits 4.2..."
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, packed_src96(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, packed_src96(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, packed_src96(95 downto 80) & packed_src96(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.P neg decoded=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, fp80_from_int(-42), "FMOVE.P negative round-trip");
+
+    -- Infinity round-trip: encode +inf to packed, check YY=11, decode back
+    report "FMOVE.P infinity round-trip" severity note;
+    fp_val_a := x"7FFF8000000000000000";
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000011");
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P inf encoded=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    assert packed_src96(93 downto 92) = "11"
+      report "FMOVE.P infinity should encode with YY=11"
+      severity failure;
+    assert packed_src96(95) = '0'
+      report "FMOVE.P +infinity should have sign bit clear"
+      severity failure;
+    assert packed_src96(67 downto 0) = (67 downto 0 => '0')
+      report "FMOVE.P infinity should have zero mantissa payload"
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, packed_src96(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, packed_src96(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, packed_src96(95 downto 80) & packed_src96(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.P inf decoded=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, x"7FFF8000000000000000", "FMOVE.P infinity round-trip");
+
+    -- Negative infinity round-trip: encode -inf to packed, decode back
+    report "FMOVE.P negative infinity round-trip" severity note;
+    fp_val_a := x"FFFF8000000000000000"; -- FP80 -inf
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000011");
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P -inf encoded=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    assert packed_src96(95) = '1'
+      report "FMOVE.P -infinity should have sign bit set"
+      severity failure;
+    assert packed_src96(93 downto 92) = "11"
+      report "FMOVE.P -infinity should encode with YY=11"
+      severity failure;
+    assert packed_src96(67 downto 0) = (67 downto 0 => '0')
+      report "FMOVE.P -infinity should have zero mantissa payload"
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, packed_src96(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, packed_src96(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, packed_src96(95 downto 80) & packed_src96(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.P -inf decoded=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, x"FFFF8000000000000000", "FMOVE.P -infinity round-trip");
+
+    -- NaN round-trip: encode QNaN to packed, verify YY=11 with non-zero
+    -- mantissa payload (distinguishes NaN from infinity), decode back
+    report "FMOVE.P NaN round-trip" severity note;
+    fp_val_a := x"7FFFC000000000000000"; -- FP80 canonical QNaN
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000011");
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P NaN encoded=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    assert packed_src96(93 downto 92) = "11"
+      report "FMOVE.P NaN should encode with YY=11"
+      severity failure;
+    assert packed_src96(67 downto 0) /= (67 downto 0 => '0')
+      report "FMOVE.P NaN should have non-zero mantissa payload (distinguishes from inf)"
+      severity failure;
+    assert packed_src96(95) = '0'
+      report "FMOVE.P +NaN should have sign bit clear"
+      severity failure;
+    -- Decode the packed NaN back
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, packed_src96(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, packed_src96(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, packed_src96(95 downto 80) & packed_src96(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.P NaN decoded=" & to_hstring(rd_full) severity note;
+    -- Decoded NaN: exponent all-ones, mantissa non-zero (not infinity)
+    assert rd_full(78 downto 64) = (78 downto 64 => '1')
+      report "FMOVE.P NaN decoded should have all-ones exponent"
+      severity failure;
+    assert rd_full(62 downto 0) /= (62 downto 0 => '0')
+      report "FMOVE.P NaN decoded should have non-zero mantissa (not infinity)"
+      severity failure;
+
+    -- Negative exponent (SE=1) round-trip: encode 0.125 (= 1/8, exp10 = -1)
+    -- Verifies the SE (sign-of-exponent) bit at packed(94) is set for values < 1.0
+    report "FMOVE.P negative exponent (SE=1) round-trip" severity note;
+    fp_val_a := x"3FFC8000000000000000"; -- FP80 0.125 = 1/8
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000004"); -- static k=4
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P 0.125 packed=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    assert packed_src96(93 downto 92) = "00"
+      report "FMOVE.P 0.125 should be finite (YY=00)"
+      severity failure;
+    assert packed_src96(94) = '1'
+      report "FMOVE.P 0.125 should have SE=1 (negative exponent)"
+      severity failure;
+    assert packed_src96(67 downto 64) = x"1"
+      report "FMOVE.P 0.125 int digit should be 1 (1.250e-1), got " &
+             to_hstring(packed_src96(67 downto 64))
+      severity failure;
+    -- Decode the packed 0.125 back
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, packed_src96(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, packed_src96(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, packed_src96(95 downto 80) & packed_src96(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.P 0.125 decoded=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, x"3FFC8000000000000000", "FMOVE.P 0.125 round-trip");
+
+    -- Non-integer packed encode: 1.25 with k=4
+    report "FMOVE.P non-integer 1.25 encode" severity note;
+    fp_val_a := x"3FFFA000000000000000"; -- FP80 1.25
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000004"); -- static k=4
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P 1.25 packed=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    -- Expect: exp=0, digits 1.250 (k=4 keeps 4 digits)
+    assert packed_src96(93 downto 92) = "00"
+      report "FMOVE.P 1.25 should be finite (YY=00)"
+      severity failure;
+    assert packed_src96(67 downto 64) = x"1"
+      report "FMOVE.P 1.25 int digit should be 1, got " &
+             to_hstring(packed_src96(67 downto 64))
+      severity failure;
+    assert packed_src96(63 downto 60) = x"2" and
+           packed_src96(59 downto 56) = x"5" and
+           packed_src96(55 downto 52) = x"0"
+      report "FMOVE.P 1.25 k=4 should produce digits 1.250"
+      severity failure;
+
+    -- Non-integer packed decode round-trip: decode 1.25 packed result
+    report "FMOVE.P 1.25 decode round-trip" severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, packed_src96(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, packed_src96(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, packed_src96(95 downto 80) & packed_src96(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    rd_full := rd_ex(15 downto 0) & rd_hi & rd_lo;
+    report "FMOVE.P 1.25 decoded=" & to_hstring(rd_full) severity note;
+    check_fp80(rd_full, x"3FFFA000000000000000", "FMOVE.P 1.25 round-trip");
+
+    -- Invalid BCD OPERR test: nibble=0xA in mantissa
+    report "FMOVE.P invalid BCD OPERR test" severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- clear FPSR
+    -- Construct packed word with invalid nibble: int_digit=0xA
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000000");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, x"00000000");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & x"000A"); -- int_digit=A (invalid)
+    cfg_word := make_move_cfg("01", 0, 3, "11", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FMOVE.P invalid BCD FPSR=" & to_hstring(rd_lo) severity note;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
+      report "FMOVE.P invalid BCD should set EXC.INVALID, FPSR=" & to_hstring(rd_lo)
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- clean up
+
+    -- Round-to-nearest-even: 1500 with k=1
+    -- digit0=1 (odd), digit1=5, trailing=00 -> banker's rounds UP to 2, exp=3
+    report "FMOVE.P round-to-nearest-even test" severity note;
+    fp_val_a := fp80_from_int(1500);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000001"); -- static k=1
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P 1500 k=1 packed=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    -- 1500 k=1: keep 1 digit, halfway. digit0=1 (odd) -> round up to 2, exp=3
+    assert packed_src96(67 downto 64) = x"2"
+      report "FMOVE.P 1500 k=1 RTE: odd digit should round up to 2, got " &
+             to_hstring(packed_src96(67 downto 64))
+      severity failure;
+
+    -- 2500 with k=1: digit0=2 (even), halfway -> no round
+    fp_val_a := fp80_from_int(2500);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000001"); -- static k=1
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_RES_L);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_RES_H);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_RES_E);
+    packed_src96 := make_packed96(rd_ex, rd_hi, rd_lo);
+    report "FMOVE.P 2500 k=1 packed=" & to_hstring(rd_ex(15 downto 0) & rd_hi & rd_lo) severity note;
+    -- 2500 k=1: keep 1 digit, halfway. digit0=2 (even) -> no round, stays 2, exp=3
+    assert packed_src96(67 downto 64) = x"2"
+      report "FMOVE.P 2500 k=1 RTE: even digit should stay 2, got " &
+             to_hstring(packed_src96(67 downto 64))
+      severity failure;
+
+    -- Pi encode k=17: FP80 has ~19.27 significant decimal digits (log10(2^64)),
+    -- so encoding pi (infinite decimal expansion) into 17 packed digits must
+    -- set INEXACT.
+    report "FMOVE.P pi k=17 inexact test" severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- clear FPSR
+    fp_val_a := FMOVECR_PI;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, fp_val_a(31 downto 0));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_H, fp_val_a(63 downto 32));
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_E, x"0000" & fp_val_a(79 downto 64));
+    cfg_word := make_move_cfg("01", 0, 5, "00", '0', "00", (others => '0'), '0');
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000011"); -- static k=17
+    cfg_word := make_move_cfg(
+      "10", 5, 0, "00", '0', "00", (others => '0'), '0',
+      packed_k_from_opa => '0',
+      reg_to_mem_packed => '1'
+    );
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_MOVE_CFG, cfg_word);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, OP_FMOVE);
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FMOVE.P pi k=17 FPSR=" & to_hstring(rd_lo) severity note;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+      report "FMOVE.P pi k=17 should set EXC.INEXACT, FPSR=" & to_hstring(rd_lo)
+      severity failure;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- clean up
 
     report "FMOVECR constant ROM checks" severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"0000000F");

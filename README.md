@@ -86,9 +86,8 @@ covering:
 - Current status:
   - Open:
     - `DEF-TIMING-001`
-    - `DEF-DIVREM-001`
     - `DEF-DIVREM-002`
-  - `DEF-TRIG-001` and `DEF-PACKED-001` are closed; see `docs/fpu-progress-checklist.md` for closure notes.
+  - Closed: `DEF-TRIG-001`, `DEF-PACKED-001`, `DEF-DIVREM-001`; see `docs/fpu-progress-checklist.md` for closure notes.
 
 ## Running simulations
 Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). The repo includes a test

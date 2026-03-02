@@ -164,6 +164,10 @@ architecture sim of tb_mc68881_alu is
   constant DIV_1_10_MANT_DOUBLE : unsigned(FP_MANT_WIDTH-1 downto 0) := x"CCCCCCCCCCCCD000";
   constant DIV_1_10_SINGLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_SINGLE);
   constant DIV_1_10_DOUBLE_EXPECTED : fp80_t := make_fp80('0', DIV_1_10_EXP, DIV_1_10_MANT_DOUBLE);
+  -- DIV subnormal: min_normal / 2.0 = subnormal (exp=0, mant=0.5)
+  constant FP80_MIN_NORMAL : fp80_t := x"00018000000000000000"; -- exp=1, mant=1.0
+  constant FP80_TWO : fp80_t := x"40008000000000000000"; -- 2.0
+  constant DIV_SUBNORMAL_EXPECTED : fp80_t := x"00004000000000000000"; -- exp=0, mant=0.5
   constant LARGE_MOD_A : fp80_t := x"40278000000001800000"; -- 2^40 + 3
   constant LARGE_MOD_B : fp80_t := x"40008000000000000000"; -- 2
   constant FREM_BOUNDARY_A : fp80_t := x"401DFFFFFFFF80000000"; -- (integer'high + 0.75) for 32-bit integer
@@ -607,6 +611,27 @@ begin
     report "DIV 1/10 double result: " & to_hstring(result)
       severity note;
     check_result(DIV_1_10_DOUBLE_EXPECTED, "DIV 1/10 double");
+
+    -- DIV subnormal: min_normal / 2.0 should produce subnormal result
+    round_prec <= FP_PREC_EXTENDED;
+    round_mode <= FP_RND_NEAREST;
+    op_sel <= FPU_OP_DIV;
+    a_in   <= FP80_MIN_NORMAL;
+    b_in   <= FP80_TWO;
+    report "DIV subnormal expected: " & to_hstring(DIV_SUBNORMAL_EXPECTED)
+      severity note;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    start_cycle := cycle_cnt;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "DIV subnormal latency cycles: " & integer'image(cycle_cnt - start_cycle)
+      severity note;
+    report "DIV subnormal result: " & to_hstring(result)
+      severity note;
+    check_result(DIV_SUBNORMAL_EXPECTED, "DIV subnormal");
 
     -- Arithmetic sweeps across non-trivial operands.
     run_binary_close(

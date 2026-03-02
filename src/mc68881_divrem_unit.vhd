@@ -642,7 +642,6 @@ begin
           if exp_res_i <= 0 then
             mant_ext := shift_right_with_sticky(mant_ext, 1 - exp_res_i);
             exp_res_i := 0;
-            flag_underflow_reg <= '1';
           end if;
 
           apply_rounding('0', mant_ext, exp_res_i, rm_reg, rp_reg, mant_main, exp_res_i, inexact_local);
@@ -719,7 +718,6 @@ begin
           if exp_res_i <= 0 then
             mant_ext := shift_right_with_sticky(mant_ext, 1 - exp_res_i);
             exp_res_i := 0;
-            flag_underflow_reg <= '1';
           end if;
 
           apply_rounding(div_sign_reg, mant_ext, exp_res_i, div_round_mode, div_round_prec, mant_main, exp_res_i, inexact_local);

@@ -715,10 +715,19 @@ begin
 
           if is_legacy_trig(op_reg) then
             exp_bits := unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
-              if exp_bits = to_unsigned(32767, FP_EXP_WIDTH) then
-                result_reg <= canonical_nan(a_reg);
+              if exp_bits = to_unsigned(32767, FP_EXP_WIDTH) and fp80_is_nan(a_reg) then
+                -- NaN input: quiet and preserve payload
+                result_reg <= fp80_quiet_nan(a_reg);
                 if op_reg = FPU_OP_SINCOS then
-                  aux_result_reg <= canonical_nan(a_reg);
+                  aux_result_reg <= fp80_quiet_nan(a_reg);
+                  aux_valid_reg <= '1';
+                end if;
+                state_reg <= ST_DONE;
+              elsif exp_bits = to_unsigned(32767, FP_EXP_WIDTH) then
+                -- Infinity input: domain error, canonical QNaN
+                result_reg <= canonical_nan(FP80_ZERO);
+                if op_reg = FPU_OP_SINCOS then
+                  aux_result_reg <= canonical_nan(FP80_ZERO);
                   aux_valid_reg <= '1';
                 end if;
                 state_reg <= ST_DONE;
@@ -757,7 +766,7 @@ begin
                 state_reg <= ST_TRIG_REDUCE;
               end if;
           elsif fp80_is_nan(a_reg) then
-            result_reg <= canonical_nan(a_reg);
+            result_reg <= fp80_quiet_nan(a_reg);
             state_reg <= ST_DONE;
           else
             coeff0_reg <= FP80_ZERO;

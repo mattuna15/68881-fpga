@@ -231,6 +231,15 @@ package mc68881_pkg is
   function fp80_is_zero(value : fp80_t) return boolean;
   function fp80_is_inf(value : fp80_t) return boolean;
   function fp80_is_nan(value : fp80_t) return boolean;
+  function fp80_is_snan(value : fp80_t) return boolean;
+  function fp80_is_qnan(value : fp80_t) return boolean;
+  function fp80_quiet_nan(x : fp80_t) return fp80_t;
+  function fp80_propagate_nan(
+    a     : fp80_t;  -- destination
+    b     : fp80_t;  -- source
+    a_nan : boolean;
+    b_nan : boolean
+  ) return std_logic_vector;  -- 81 bits: bit 80 = invalid flag, bits 79..0 = result
   function abs_fp80(value : fp80_t) return fp80_t;
   function neg_fp80(value : fp80_t) return fp80_t;
   function fint_fp80(value : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
@@ -1859,6 +1868,75 @@ package body mc68881_pkg is
     variable value_u : fp_unpacked_t := unpack_fp80(value);
   begin
     return value_u.exp = FP_EXP_ALL_ONES and not fp80_is_inf(value);
+  end function;
+
+  -- SNaN: exp=all-ones, J-bit(mant[63])=0, payload(mant[62:0]) /= 0
+  function fp80_is_snan(value : fp80_t) return boolean is
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+  begin
+    return value_u.exp = FP_EXP_ALL_ONES and
+           value_u.mant(FP_MANT_WIDTH-1) = '0' and
+           value_u.mant(FP_MANT_WIDTH-2 downto 0) /= 0;
+  end function;
+
+  -- QNaN: exp=all-ones, J-bit(mant[63])=1, not infinity
+  function fp80_is_qnan(value : fp80_t) return boolean is
+    variable value_u : fp_unpacked_t := unpack_fp80(value);
+    variable canonical_mant : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+  begin
+    canonical_mant(FP_MANT_WIDTH-1) := '1';
+    return value_u.exp = FP_EXP_ALL_ONES and
+           value_u.mant(FP_MANT_WIDTH-1) = '1' and
+           value_u.mant /= canonical_mant and
+           value_u.mant /= 0;
+  end function;
+
+  -- Quiet a NaN: set J-bit to 1, preserve sign and payload
+  function fp80_quiet_nan(x : fp80_t) return fp80_t is
+    variable result : fp80_t := x;
+  begin
+    result(FP_MANT_WIDTH-1) := '1';
+    return result;
+  end function;
+
+  -- Two-operand NaN propagation (MC68881: dest priority, SNaN->INVALID)
+  -- Returns 81-bit vector: bit 80 = invalid flag, bits 79..0 = result NaN
+  function fp80_propagate_nan(
+    a     : fp80_t;
+    b     : fp80_t;
+    a_nan : boolean;
+    b_nan : boolean
+  ) return std_logic_vector is
+    variable chosen   : fp80_t;
+    variable invalid  : std_logic := '0';
+    variable a_is_snan : boolean := fp80_is_snan(a);
+    variable b_is_snan : boolean := fp80_is_snan(b);
+    variable result : std_logic_vector(80 downto 0);
+  begin
+    if a_is_snan or b_is_snan then
+      invalid := '1';
+    end if;
+
+    if a_nan and b_nan then
+      -- Both NaN: prefer SNaN over QNaN; if same type, prefer a (destination)
+      if a_is_snan then
+        chosen := a;
+      elsif b_is_snan then
+        chosen := b;
+      else
+        chosen := a;  -- both QNaN: destination wins
+      end if;
+    elsif a_nan then
+      chosen := a;
+    else
+      chosen := b;
+    end if;
+
+    -- Quiet the chosen NaN
+    chosen(FP_MANT_WIDTH-1) := '1';
+
+    result := invalid & chosen;
+    return result;
   end function;
 
   function neg_fp80(value : fp80_t) return fp80_t is

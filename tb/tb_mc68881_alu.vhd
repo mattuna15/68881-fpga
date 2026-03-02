@@ -196,6 +196,17 @@ architecture sim of tb_mc68881_alu is
   constant FP80_POS_INF : fp80_t := x"7FFF8000000000000000";
   constant FP80_NEG_INF : fp80_t := x"FFFF8000000000000000";
   constant FP80_QNAN : fp80_t := x"7FFFC000000000000001";
+  -- NaN discrimination test vectors (DEF-DIVREM-002)
+  constant QNAN_PAYLOAD_123 : fp80_t := x"7FFF8000000000000123"; -- QNaN, payload=0x123
+  constant SNAN_PAYLOAD_456 : fp80_t := x"7FFF0000000000000456"; -- SNaN, payload=0x456
+  constant QNAN_PAYLOAD_456 : fp80_t := x"7FFF8000000000000456"; -- QNaN, payload=0x456 (quieted SNaN)
+  constant QNAN_PAYLOAD_AAA : fp80_t := x"7FFF8000000000000AAA"; -- QNaN, payload=0xAAA
+  constant QNAN_PAYLOAD_BBB : fp80_t := x"7FFF8000000000000BBB"; -- QNaN, payload=0xBBB
+  constant QNAN_PAYLOAD_CCC : fp80_t := x"7FFF8000000000000CCC"; -- QNaN, payload=0xCCC
+  constant SNAN_PAYLOAD_DDD : fp80_t := x"7FFF0000000000000DDD"; -- SNaN, payload=0xDDD
+  constant QNAN_PAYLOAD_DDD : fp80_t := x"7FFF8000000000000DDD"; -- QNaN, payload=0xDDD (quieted)
+  constant SNAN_NEG_789     : fp80_t := x"FFFF0000000000000789"; -- negative SNaN, payload=0x789
+  constant QNAN_NEG_789     : fp80_t := x"FFFF8000000000000789"; -- negative QNaN, payload=0x789 (quieted)
   constant SUBNORMAL_POS : fp80_t := make_fp80('0', (others => '0'), to_unsigned(1, FP_MANT_WIDTH));
   constant SUBNORMAL_NEG : fp80_t := make_fp80('1', (others => '0'), to_unsigned(1, FP_MANT_WIDTH));
   constant FP80_TOL_1E3 : fp80_t := x"3FF583126E978D4FE000"; -- 1e-3
@@ -708,6 +719,191 @@ begin
       severity note;
     check_result(DIV_DEEP_SUBNORMAL_EXPECTED, "DIV deep subnormal");
 
+    -- ===== NaN discrimination tests (DEF-DIVREM-002) =====
+
+    -- Test 1: QNaN input propagates with payload preserved
+    op_sel <= FPU_OP_DIV;
+    a_in   <= QNAN_PAYLOAD_123;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T1: QNaN propagation got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "DIV QNaN payload preserved");
+
+    -- Test 2: SNaN input gets quieted with payload preserved
+    op_sel <= FPU_OP_DIV;
+    a_in   <= SNAN_PAYLOAD_456;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T2: SNaN quieting got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "DIV SNaN quieted, payload preserved");
+
+    -- Test 3: Two QNaN — destination (a) wins
+    op_sel <= FPU_OP_DIV;
+    a_in   <= QNAN_PAYLOAD_AAA;
+    b_in   <= QNAN_PAYLOAD_BBB;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T3: two-QNaN priority got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_AAA, "DIV two-QNaN dest priority");
+
+    -- Test 4: SNaN beats QNaN regardless of position
+    op_sel <= FPU_OP_DIV;
+    a_in   <= QNAN_PAYLOAD_CCC;
+    b_in   <= SNAN_PAYLOAD_DDD;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T4: SNaN-beats-QNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_DDD, "DIV SNaN beats QNaN (quieted)");
+
+    -- Test 5: SQRT NaN — single operand, payload preserved
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= QNAN_PAYLOAD_123;
+    b_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T5: SQRT QNaN payload got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "SQRT QNaN payload preserved");
+
+    -- Test 6: MOD NaN — two-operand propagation
+    op_sel <= FPU_OP_MOD;
+    a_in   <= SNAN_PAYLOAD_456;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T6: MOD SNaN quieting got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "MOD SNaN quieted, payload preserved");
+
+    -- Test 7: Negative SNaN — sign preserved through quieting
+    op_sel <= FPU_OP_DIV;
+    a_in   <= SNAN_NEG_789;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T7: neg SNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_NEG_789, "DIV negative SNaN sign preserved");
+
+    -- Infinity domain-error regression (canonical inf must NOT enter NaN path)
+    -- DIV(+inf, +inf) → canonical QNaN (domain error, not NaN propagation)
+    op_sel <= FPU_OP_DIV;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T1: DIV inf/inf got=" & to_hstring(result) severity note;
+    check_result_nan("DIV +inf/+inf domain error => NaN");
+
+    -- SQRT(-inf) → canonical QNaN (domain error)
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= FP80_NEG_INF;
+    b_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T2: SQRT(-inf) got=" & to_hstring(result) severity note;
+    check_result_nan("SQRT -inf domain error => NaN");
+
+    -- SQRT(+inf) → +inf (NOT an error)
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T3: SQRT(+inf) got=" & to_hstring(result) severity note;
+    check_result(FP80_POS_INF, "SQRT +inf => +inf (no error)");
+
+    -- MOD(+inf, 1.0) → canonical QNaN (domain error)
+    op_sel <= FPU_OP_MOD;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T4: MOD(inf,1) got=" & to_hstring(result) severity note;
+    check_result_nan("MOD +inf mod 1 domain error => NaN");
+
+    -- REM(+inf, 1.0) → canonical QNaN (domain error)
+    op_sel <= FPU_OP_REM;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T5: REM(inf,1) got=" & to_hstring(result) severity note;
+    check_result_nan("REM +inf rem 1 domain error => NaN");
+
+    -- SGLMUL(0, +inf) → canonical QNaN (0*inf domain error)
+    op_sel <= FPU_OP_SGLMUL;
+    a_in   <= FP80_ZERO;
+    b_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T6: SGLMUL(0,inf) got=" & to_hstring(result) severity note;
+    check_result_nan("SGLMUL 0*inf domain error => NaN");
+
+    -- SGLDIV(+inf, +inf) → canonical QNaN (domain error)
+    op_sel <= FPU_OP_SGLDIV;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T7: SGLDIV(inf,inf) got=" & to_hstring(result) severity note;
+    check_result_nan("SGLDIV inf/inf domain error => NaN");
+
     -- Arithmetic sweeps across non-trivial operands.
     run_binary_close(
       FPU_OP_ADD, FP80_ARG_1P1, FP80_ARG_M0P7,
@@ -1069,6 +1265,32 @@ begin
       severity failure;
     check_result(fp80_from_int(-1), "REM (2^40+3) rem 2");
 
+    -- REM QNaN propagation (payload preserved)
+    op_sel <= FPU_OP_REM;
+    a_in   <= QNAN_PAYLOAD_123;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "REM QNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "REM QNaN payload preserved");
+
+    -- REM two-NaN: SNaN beats QNaN
+    op_sel <= FPU_OP_REM;
+    a_in   <= QNAN_PAYLOAD_AAA;
+    b_in   <= SNAN_PAYLOAD_DDD;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "REM two-NaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_DDD, "REM SNaN beats QNaN");
+
     -- SCALE
     op_sel <= FPU_OP_SCALE;
     a_in   <= fp80_from_int(2);
@@ -1122,6 +1344,103 @@ begin
       report "SGLMUL latency below minimum model"
       severity failure;
     check_result(fp80_from_int(63), "SGLMUL 7*9");
+
+    -- ===== SGLMUL NaN discrimination =====
+
+    -- SGLMUL QNaN propagation (payload preserved)
+    op_sel <= FPU_OP_SGLMUL;
+    a_in   <= QNAN_PAYLOAD_123;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "SGLMUL QNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "SGLMUL QNaN payload preserved");
+
+    -- SGLMUL SNaN quieted, payload preserved
+    op_sel <= FPU_OP_SGLMUL;
+    a_in   <= SNAN_PAYLOAD_456;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "SGLMUL SNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "SGLMUL SNaN quieted");
+
+    -- SGLMUL two-NaN: SNaN in source beats QNaN in dest
+    op_sel <= FPU_OP_SGLMUL;
+    a_in   <= QNAN_PAYLOAD_CCC;
+    b_in   <= SNAN_PAYLOAD_DDD;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "SGLMUL two-NaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_DDD, "SGLMUL SNaN beats QNaN");
+
+    -- ===== SGLDIV NaN discrimination =====
+
+    -- SGLDIV QNaN propagation
+    op_sel <= FPU_OP_SGLDIV;
+    a_in   <= QNAN_PAYLOAD_123;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "SGLDIV QNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "SGLDIV QNaN payload preserved");
+
+    -- SGLDIV SNaN quieted
+    op_sel <= FPU_OP_SGLDIV;
+    a_in   <= SNAN_PAYLOAD_456;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "SGLDIV SNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "SGLDIV SNaN quieted");
+
+    -- ===== SCALE NaN discrimination =====
+
+    -- SCALE QNaN propagation (NaN in scale factor)
+    op_sel <= FPU_OP_SCALE;
+    a_in   <= QNAN_PAYLOAD_123;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "SCALE QNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "SCALE QNaN payload preserved");
+
+    -- SCALE SNaN quieted (NaN in value operand)
+    op_sel <= FPU_OP_SCALE;
+    a_in   <= fp80_from_int(2);
+    b_in   <= SNAN_PAYLOAD_456;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "SCALE SNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "SCALE SNaN quieted");
 
     -- SIN(0) = +0
     op_sel <= FPU_OP_SIN;
@@ -1255,6 +1574,56 @@ begin
     wait for 0 ns;
     check_result_nan("TAN QNaN -> NaN");
 
+    -- ===== Legacy trig SNaN: payload preserved, quieted =====
+
+    -- COS(SNaN) -> QNaN with preserved payload
+    op_sel <= FPU_OP_COS;
+    a_in   <= SNAN_PAYLOAD_456;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "COS SNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "COS SNaN quieted, payload preserved");
+
+    -- SIN(SNaN) -> QNaN with preserved payload
+    op_sel <= FPU_OP_SIN;
+    a_in   <= SNAN_PAYLOAD_456;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "SIN SNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "SIN SNaN quieted, payload preserved");
+
+    -- TAN(SNaN) -> QNaN with preserved payload
+    op_sel <= FPU_OP_TAN;
+    a_in   <= SNAN_PAYLOAD_456;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "TAN SNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "TAN SNaN quieted, payload preserved");
+
+    -- COS(QNaN) payload preserved (not just "is NaN" check)
+    op_sel <= FPU_OP_COS;
+    a_in   <= QNAN_PAYLOAD_123;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "COS QNaN payload got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "COS QNaN payload preserved");
+
     -- TAN(0) = 0
     op_sel <= FPU_OP_TAN;
     a_in   <= FP80_ZERO;
@@ -1314,6 +1683,39 @@ begin
     check_result(FP80_ZERO, "SINCOS sine lane");
     assert aux_valid = '1' report "SINCOS aux lane missing" severity failure;
     assert aux_result = FP80_ONE report "SINCOS cosine lane mismatch" severity failure;
+
+    -- SINCOS SNaN: both sine and cosine lanes get quieted NaN
+    op_sel <= FPU_OP_SINCOS;
+    a_in   <= SNAN_PAYLOAD_456;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "SINCOS SNaN sine got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "SINCOS SNaN sine lane quieted");
+    assert aux_valid = '1' report "SINCOS SNaN aux lane missing" severity failure;
+    report "SINCOS SNaN cosine got=" & to_hstring(aux_result) severity note;
+    assert aux_result = QNAN_PAYLOAD_456
+      report "SINCOS SNaN cosine lane mismatch: got=" & to_hstring(aux_result)
+      severity failure;
+
+    -- SINCOS QNaN: payload preserved in both lanes
+    op_sel <= FPU_OP_SINCOS;
+    a_in   <= QNAN_PAYLOAD_123;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "SINCOS QNaN sine got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "SINCOS QNaN sine lane payload");
+    assert aux_valid = '1' report "SINCOS QNaN aux lane missing" severity failure;
+    assert aux_result = QNAN_PAYLOAD_123
+      report "SINCOS QNaN cosine payload mismatch: got=" & to_hstring(aux_result)
+      severity failure;
 
     -- FETOX/ETOXM1 family.
     op_sel <= FPU_OP_ETOX;
@@ -1630,6 +2032,68 @@ begin
     wait until valid = '1';
     wait for 0 ns;
     check_result(FP80_ZERO, "FTANH 0");
+
+    -- ===== Non-legacy transcendental NaN: payload preserved =====
+
+    -- LOGN(QNaN) -> QNaN payload preserved
+    op_sel <= FPU_OP_LOGN;
+    a_in   <= QNAN_PAYLOAD_123;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "LOGN QNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "LOGN QNaN payload preserved");
+
+    -- LOGN(SNaN) -> QNaN quieted, payload preserved
+    op_sel <= FPU_OP_LOGN;
+    a_in   <= SNAN_PAYLOAD_456;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "LOGN SNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "LOGN SNaN quieted, payload preserved");
+
+    -- ETOX(QNaN) -> QNaN payload preserved
+    op_sel <= FPU_OP_ETOX;
+    a_in   <= QNAN_PAYLOAD_123;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "ETOX QNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "ETOX QNaN payload preserved");
+
+    -- ETOX(SNaN) -> QNaN quieted, payload preserved
+    op_sel <= FPU_OP_ETOX;
+    a_in   <= SNAN_PAYLOAD_456;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "ETOX SNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "ETOX SNaN quieted, payload preserved");
+
+    -- ATAN(SNaN) -> QNaN quieted, payload preserved
+    op_sel <= FPU_OP_ATAN;
+    a_in   <= SNAN_PAYLOAD_456;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "ATAN SNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "ATAN SNaN quieted, payload preserved");
 
     -- Extended transcendental/trig accuracy vectors (realistic non-trivial operands).
     op_sel <= FPU_OP_SIN;

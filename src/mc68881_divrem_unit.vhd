@@ -232,16 +232,19 @@ architecture rtl of mc68881_divrem_unit is
 
   function fp80_is_inf(value : fp80_t) return boolean is
     variable u : fp_unpacked_t := unpack_fp80(value);
+    variable canonical_mant : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
-    return u.exp = FP_EXP_ALL_ONES and u.mant = 0;
+    canonical_mant(FP_MANT_WIDTH-1) := '1';
+    return u.exp = FP_EXP_ALL_ONES and
+      (u.mant = 0 or u.mant = canonical_mant);
   end function;
 
   function fp80_is_nan(value : fp80_t) return boolean is
-    variable u : fp_unpacked_t := unpack_fp80(value);
   begin
-    return u.exp = FP_EXP_ALL_ONES and u.mant /= 0;
+    return unpack_fp80(value).exp = FP_EXP_ALL_ONES and not fp80_is_inf(value);
   end function;
 
+  -- Canonical QNaN for domain errors (0/0, inf/inf, sqrt(neg), etc.)
   function canonical_qnan return fp80_t is
     variable res : fp_unpacked_t;
   begin
@@ -402,6 +405,7 @@ begin
     variable div_round_prec : fp_round_prec_t := FP_PREC_EXTENDED;
     variable mantissa_even : unsigned(SQRT_MANT_EVEN_WIDTH-1 downto 0) := (others => '0');
     variable sqrt_norm_shift : natural := 0;
+    variable nan_prop : std_logic_vector(80 downto 0) := (others => '0');
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -443,8 +447,10 @@ begin
 
           if op_reg = FPU_OP_DIV then
             if fp80_is_nan(a_reg) or fp80_is_nan(b_reg) then
-              result_reg <= canonical_qnan;
-              flag_invalid_reg <= '1';
+              nan_prop := fp80_propagate_nan(a_reg, b_reg,
+                            fp80_is_nan(a_reg), fp80_is_nan(b_reg));
+              result_reg <= nan_prop(79 downto 0);
+              flag_invalid_reg <= nan_prop(80);
               state_reg <= ST_DONE;
             elsif b_u.exp = 0 and b_u.mant = 0 then
               div_res_u.sign := a_u.sign xor b_u.sign;
@@ -470,12 +476,16 @@ begin
               result_reg <= pack_fp80(div_res_u);
               state_reg <= ST_DONE;
             elsif a_u.exp = FP_EXP_ALL_ONES or b_u.exp = FP_EXP_ALL_ONES then
-              div_res_u.sign := a_u.sign xor b_u.sign;
-              div_res_u.exp := FP_EXP_ALL_ONES;
-              div_res_u.mant := (others => '0');
-              result_reg <= pack_fp80(div_res_u);
               if a_u.exp = FP_EXP_ALL_ONES and b_u.exp = FP_EXP_ALL_ONES then
+                -- inf/inf domain error: canonical QNaN + INVALID
+                result_reg <= canonical_qnan;
                 flag_invalid_reg <= '1';
+              else
+                -- inf/finite: result is signed infinity
+                div_res_u.sign := a_u.sign xor b_u.sign;
+                div_res_u.exp := FP_EXP_ALL_ONES;
+                div_res_u.mant := (others => '0');
+                result_reg <= pack_fp80(div_res_u);
               end if;
               state_reg <= ST_DONE;
             else
@@ -490,8 +500,10 @@ begin
             end if;
           elsif op_reg = FPU_OP_SQRT then
             if fp80_is_nan(a_reg) then
-              result_reg <= canonical_qnan;
-              flag_invalid_reg <= '1';
+              result_reg <= fp80_quiet_nan(a_reg);
+              if fp80_is_snan(a_reg) then
+                flag_invalid_reg <= '1';
+              end if;
               state_reg <= ST_DONE;
             elsif fp80_is_inf(a_reg) then
               if a_u.sign = '1' then
@@ -542,7 +554,13 @@ begin
               state_reg <= ST_SQRT_ITER;
             end if;
           else
-            if fp80_is_nan(a_reg) or fp80_is_nan(b_reg) or fp80_is_inf(a_reg) or (b_u.exp = 0 and b_u.mant = 0) then
+            if fp80_is_nan(a_reg) or fp80_is_nan(b_reg) then
+              nan_prop := fp80_propagate_nan(a_reg, b_reg,
+                            fp80_is_nan(a_reg), fp80_is_nan(b_reg));
+              result_reg <= nan_prop(79 downto 0);
+              flag_invalid_reg <= nan_prop(80);
+              state_reg <= ST_DONE;
+            elsif fp80_is_inf(a_reg) or (b_u.exp = 0 and b_u.mant = 0) then
               result_reg <= canonical_qnan;
               flag_invalid_reg <= '1';
               state_reg <= ST_DONE;

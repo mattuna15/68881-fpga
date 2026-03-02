@@ -89,14 +89,16 @@ architecture rtl of mc68881_sgl_ops_unit is
 
   function fp80_is_inf_local(value : fp80_t) return boolean is
     variable u : fp_unpacked_t := unpack_fp80(value);
+    variable canonical_mant : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
-    return u.exp = FP_EXP_ALL_ONES and u.mant = 0;
+    canonical_mant(FP_MANT_WIDTH-1) := '1';
+    return u.exp = FP_EXP_ALL_ONES and
+      (u.mant = 0 or u.mant = canonical_mant);
   end function;
 
   function fp80_is_nan_local(value : fp80_t) return boolean is
-    variable u : fp_unpacked_t := unpack_fp80(value);
   begin
-    return u.exp = FP_EXP_ALL_ONES and u.mant /= 0;
+    return unpack_fp80(value).exp = FP_EXP_ALL_ONES and not fp80_is_inf_local(value);
   end function;
 
   function canonical_qnan return fp80_t is
@@ -154,6 +156,7 @@ begin
     variable div_next_rem : unsigned(24 downto 0);
     variable div_next_rem2 : unsigned(24 downto 0);
     variable div_is_zero : boolean := false;
+    variable nan_prop : std_logic_vector(80 downto 0) := (others => '0');
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -195,7 +198,9 @@ begin
             state_reg <= ST_SCALE_EXEC;
           elsif op_reg = FPU_OP_SGLMUL then
             if fp80_is_nan_local(a_reg) or fp80_is_nan_local(b_reg) then
-              result_reg <= canonical_qnan;
+              nan_prop := fp80_propagate_nan(a_reg, b_reg,
+                            fp80_is_nan_local(a_reg), fp80_is_nan_local(b_reg));
+              result_reg <= nan_prop(79 downto 0);
               state_reg <= ST_DONE;
             elsif fp80_is_inf_local(a_reg) or fp80_is_inf_local(b_reg) then
               if fp80_is_zero_local(a_reg) or fp80_is_zero_local(b_reg) then
@@ -221,7 +226,9 @@ begin
             end if;
           elsif op_reg = FPU_OP_SGLDIV then
             if fp80_is_nan_local(a_reg) or fp80_is_nan_local(b_reg) then
-              result_reg <= canonical_qnan;
+              nan_prop := fp80_propagate_nan(a_reg, b_reg,
+                            fp80_is_nan_local(a_reg), fp80_is_nan_local(b_reg));
+              result_reg <= nan_prop(79 downto 0);
               state_reg <= ST_DONE;
             elsif fp80_is_zero_local(b_reg) then
               if fp80_is_zero_local(a_reg) then
@@ -275,7 +282,9 @@ begin
           a_u := unpack_fp80(a_reg);
           b_u := unpack_fp80(b_reg);
           if fp80_is_nan_local(a_reg) or fp80_is_nan_local(b_reg) then
-            result_reg <= canonical_qnan;
+            nan_prop := fp80_propagate_nan(a_reg, b_reg,
+                          fp80_is_nan_local(a_reg), fp80_is_nan_local(b_reg));
+            result_reg <= nan_prop(79 downto 0);
           elsif b_u.exp = 0 or fp80_is_inf_local(b_reg) then
             result_reg <= b_reg;
           else

@@ -1830,7 +1830,8 @@ begin
         res_nan := fp80_is_nan(class_result);
         res_subnormal := fp80_exp_is_zero_nonzero_mant(class_result);
 
-        if exc_policy.invalid_on_nan_inputs and (a_nan or b_nan) then
+        if exc_policy.invalid_on_nan_inputs and
+           (fp80_is_snan(class_opa) or fp80_is_snan(class_opb)) then
           exc_flags(FPSR_EXC_INVALID) := '1';
         end if;
 

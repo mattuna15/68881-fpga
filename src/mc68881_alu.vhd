@@ -143,7 +143,6 @@ architecture rtl of mc68881_alu is
   signal divrem_result : fp80_t := (others => '0');
   signal divrem_quotient_byte : std_logic_vector(7 downto 0) := (others => '0');
   signal divrem_quotient_valid : std_logic := '0';
-  signal divrem_flag_invalid : std_logic := '0';
   signal divrem_flag_divzero : std_logic := '0';
   signal divrem_flag_overflow : std_logic := '0';
   signal divrem_flag_underflow : std_logic := '0';
@@ -215,7 +214,7 @@ begin
       result  => divrem_result,
       quotient_byte  => divrem_quotient_byte,
       quotient_valid => divrem_quotient_valid,
-      flag_invalid   => divrem_flag_invalid,
+      flag_invalid   => open,
       flag_divzero   => divrem_flag_divzero,
       flag_overflow  => divrem_flag_overflow,
       flag_underflow => divrem_flag_underflow,

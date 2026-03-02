@@ -638,7 +638,18 @@ begin
             inexact_local := '1';
           end if;
 
+          -- Gradual underflow: shift mantissa right to form subnormal
+          if exp_res_i <= 0 then
+            mant_ext := shift_right_with_sticky(mant_ext, 1 - exp_res_i);
+            exp_res_i := 0;
+          end if;
+
           apply_rounding('0', mant_ext, exp_res_i, rm_reg, rp_reg, mant_main, exp_res_i, inexact_local);
+
+          -- Promote to minimum normal if rounding set the integer bit
+          if exp_res_i = 0 and mant_main(mant_main'left) = '1' then
+            exp_res_i := 1;
+          end if;
 
           div_res_u.sign := '0';
           if mant_main = 0 then
@@ -647,7 +658,7 @@ begin
             div_final_result := pack_fp80(div_res_u);
           elsif exp_res_i <= 0 then
             div_res_u.exp := (others => '0');
-            div_res_u.mant := (others => '0');
+            div_res_u.mant := mant_main;
             div_final_result := pack_fp80(div_res_u);
             flag_underflow_reg <= '1';
           elsif exp_res_i >= FP_EXP_MAX then
@@ -703,7 +714,18 @@ begin
             div_round_prec := FP_PREC_EXTENDED;
           end if;
 
+          -- Gradual underflow: shift mantissa right to form subnormal
+          if exp_res_i <= 0 then
+            mant_ext := shift_right_with_sticky(mant_ext, 1 - exp_res_i);
+            exp_res_i := 0;
+          end if;
+
           apply_rounding(div_sign_reg, mant_ext, exp_res_i, div_round_mode, div_round_prec, mant_main, exp_res_i, inexact_local);
+
+          -- Promote to minimum normal if rounding set the integer bit
+          if exp_res_i = 0 and mant_main(mant_main'left) = '1' then
+            exp_res_i := 1;
+          end if;
 
           div_res_u.sign := div_sign_reg;
           if mant_main = 0 then
@@ -712,9 +734,8 @@ begin
             div_res_u.mant := (others => '0');
             div_final_result := pack_fp80(div_res_u);
           elsif exp_res_i <= 0 then
-            div_res_u.sign := '0';
             div_res_u.exp := (others => '0');
-            div_res_u.mant := (others => '0');
+            div_res_u.mant := mant_main;
             div_final_result := pack_fp80(div_res_u);
             flag_underflow_reg <= '1';
           elsif exp_res_i >= FP_EXP_MAX then

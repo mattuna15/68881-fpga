@@ -359,18 +359,6 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
     iterative arithmetic stages, remove remaining trig MCP dependence, and close routed setup timing
     on those paths with single-cycle constraints at target frequency.
 
-### DEF-DIVREM-001: DIV/SQRT Underflow Flushes Tiny Results To Zero
-- Status: Open
-- File: `src/mc68881_divrem_unit.vhd`
-- Evidence:
-  - Underflow paths in post-round stages force zero when `exp_res_i <= 0`:
-    - `ST_SQRT_POST` (`src/mc68881_divrem_unit.vhd:604` vicinity)
-    - `ST_POST_DIV` (`src/mc68881_divrem_unit.vhd:670` vicinity)
-- Impact:
-  - Tiny finite results are flushed instead of emitting gradual-underflow subnormals.
-- Planned fix:
-  - Implement subnormal packing/rounding path for `exp_res_i <= 0` rather than hard zero.
-
 ### DEF-DIVREM-002: DIV NaN Policy Marks All NaN Inputs Invalid
 - Status: Open
 - File: `src/mc68881_divrem_unit.vhd`
@@ -382,6 +370,19 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - Distinguish signaling-NaN vs quiet-NaN handling and raise invalid only where required by policy.
 
 ## Closed Defects
+
+### DEF-DIVREM-001: DIV/SQRT Underflow Flushes Tiny Results To Zero
+- Status: Closed (2026-03-02)
+- File: `src/mc68881_divrem_unit.vhd`
+- Resolution summary:
+  - Implemented IEEE 754 gradual underflow for DIV and SQRT paths.
+  - When `exp_res_i <= 0`, mantissa is right-shifted by `1 - exp_res_i` via
+    `shift_right_with_sticky` before rounding, preserving precision in the sticky bit.
+  - Post-rounding `exp_res_i <= 0` branch now packs subnormal (exp=0, mant=mant_main)
+    instead of flushing to zero.
+  - Fixed sign-clearing bug in ST_POST_DIV that discarded the correct sign for
+    negative underflow results (`div_res_u.sign := '0'` removed).
+  - Added DIV subnormal regression test (min_normal / 2.0 → subnormal).
 
 ### DEF-PACKED-002: Full Packed-Decimal Default QoR Still Above Release Gate
 - Status: Closed (2026-03-02)

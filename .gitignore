@@ -22,3 +22,5 @@ __synthesis_is_complete__
 .claude/settings.local.json
 /.claude
 project/fpga68881/utilization_report.txt
+/validation
+/build

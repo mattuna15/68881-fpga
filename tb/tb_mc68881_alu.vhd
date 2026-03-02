@@ -812,6 +812,98 @@ begin
     report "NaN T7: neg SNaN got=" & to_hstring(result) severity note;
     check_result(QNAN_NEG_789, "DIV negative SNaN sign preserved");
 
+    -- Infinity domain-error regression (canonical inf must NOT enter NaN path)
+    -- DIV(+inf, +inf) → canonical QNaN (domain error, not NaN propagation)
+    op_sel <= FPU_OP_DIV;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T1: DIV inf/inf got=" & to_hstring(result) severity note;
+    check_result_nan("DIV +inf/+inf domain error => NaN");
+
+    -- SQRT(-inf) → canonical QNaN (domain error)
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= FP80_NEG_INF;
+    b_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T2: SQRT(-inf) got=" & to_hstring(result) severity note;
+    check_result_nan("SQRT -inf domain error => NaN");
+
+    -- SQRT(+inf) → +inf (NOT an error)
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T3: SQRT(+inf) got=" & to_hstring(result) severity note;
+    check_result(FP80_POS_INF, "SQRT +inf => +inf (no error)");
+
+    -- MOD(+inf, 1.0) → canonical QNaN (domain error)
+    op_sel <= FPU_OP_MOD;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T4: MOD(inf,1) got=" & to_hstring(result) severity note;
+    check_result_nan("MOD +inf mod 1 domain error => NaN");
+
+    -- REM(+inf, 1.0) → canonical QNaN (domain error)
+    op_sel <= FPU_OP_REM;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T5: REM(inf,1) got=" & to_hstring(result) severity note;
+    check_result_nan("REM +inf rem 1 domain error => NaN");
+
+    -- SGLMUL(0, +inf) → canonical QNaN (0*inf domain error)
+    op_sel <= FPU_OP_SGLMUL;
+    a_in   <= FP80_ZERO;
+    b_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T6: SGLMUL(0,inf) got=" & to_hstring(result) severity note;
+    check_result_nan("SGLMUL 0*inf domain error => NaN");
+
+    -- SGLDIV(+inf, +inf) → canonical QNaN (domain error)
+    op_sel <= FPU_OP_SGLDIV;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_POS_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "INF T7: SGLDIV(inf,inf) got=" & to_hstring(result) severity note;
+    check_result_nan("SGLDIV inf/inf domain error => NaN");
+
     -- Arithmetic sweeps across non-trivial operands.
     run_binary_close(
       FPU_OP_ADD, FP80_ARG_1P1, FP80_ARG_M0P7,

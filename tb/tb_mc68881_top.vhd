@@ -738,8 +738,8 @@ begin
     report "DIV inf,inf result: " & to_hstring(rd_full)
       severity note;
     split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
-    assert rd_sign = '0' and rd_exp = (rd_exp'range => '1') and rd_mant = 0
-      report "DIV inf/inf raw result should encode as +infinity in current ALU behavior"
+    assert rd_exp = (rd_exp'range => '1') and rd_mant /= 0
+      report "DIV inf/inf should produce NaN (domain error)"
       severity failure;
 
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);

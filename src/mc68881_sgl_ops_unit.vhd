@@ -89,14 +89,16 @@ architecture rtl of mc68881_sgl_ops_unit is
 
   function fp80_is_inf_local(value : fp80_t) return boolean is
     variable u : fp_unpacked_t := unpack_fp80(value);
+    variable canonical_mant : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
-    return u.exp = FP_EXP_ALL_ONES and u.mant = 0;
+    canonical_mant(FP_MANT_WIDTH-1) := '1';
+    return u.exp = FP_EXP_ALL_ONES and
+      (u.mant = 0 or u.mant = canonical_mant);
   end function;
 
   function fp80_is_nan_local(value : fp80_t) return boolean is
-    variable u : fp_unpacked_t := unpack_fp80(value);
   begin
-    return u.exp = FP_EXP_ALL_ONES and u.mant /= 0;
+    return unpack_fp80(value).exp = FP_EXP_ALL_ONES and not fp80_is_inf_local(value);
   end function;
 
   function canonical_qnan return fp80_t is

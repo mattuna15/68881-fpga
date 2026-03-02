@@ -1685,6 +1685,58 @@ begin
     size_n <= "11";
     assert_idle_outputs(dsack0_n, dsack1_n, sense_n, "post-DSACK multi-beat tests idle");
 
+    -- ===== DEF-DIVREM-002: SNaN vs QNaN FPSR INVALID discrimination =====
+    -- Use FCMP which has invalid_on_nan_inputs=true, invalid_on_nan_result=false.
+    -- This isolates the SNaN vs QNaN check from the result-is-NaN path.
+
+    -- FCMP with QNaN: should NOT raise INVALID (QNaN propagates silently)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := x"7FFF8000000000000123";  -- QNaN, payload=0x123
+    op_b := fp80_from_int(1);
+    write_binary_operands(a_in, d_in, rw, cs_n, as_n, ds_n, op_a, op_b);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000007"); -- FCMP
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after FCMP QNaN,1: " & to_hstring(rd_lo) severity note;
+    assert rd_lo(FPSR_CC_NAN) = '1'
+      report "FCMP QNaN should set CC NAN"
+      severity failure;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '0'
+      report "FCMP QNaN should NOT raise INVALID (only SNaN does)"
+      severity failure;
+
+    -- FCMP with SNaN: SHOULD raise INVALID
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := x"7FFF0000000000000456";  -- SNaN, payload=0x456
+    op_b := fp80_from_int(1);
+    write_binary_operands(a_in, d_in, rw, cs_n, as_n, ds_n, op_a, op_b);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000007"); -- FCMP
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after FCMP SNaN,1: " & to_hstring(rd_lo) severity note;
+    assert rd_lo(FPSR_CC_NAN) = '1'
+      report "FCMP SNaN should set CC NAN"
+      severity failure;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
+      report "FCMP SNaN should raise INVALID"
+      severity failure;
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
+      report "FCMP SNaN should accrue INVALID"
+      severity failure;
+
+    -- FCMP with SNaN in source (b operand): also raises INVALID
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
+    op_a := fp80_from_int(1);
+    op_b := x"7FFF0000000000000789";  -- SNaN, payload=0x789
+    write_binary_operands(a_in, d_in, rw, cs_n, as_n, ds_n, op_a, op_b);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000007"); -- FCMP
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
+    report "FPSR after FCMP 1,SNaN: " & to_hstring(rd_lo) severity note;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
+      report "FCMP with SNaN in source should raise INVALID"
+      severity failure;
+
     report "TB SUCCESS: all checks passed"
       severity note;
     std.env.stop;

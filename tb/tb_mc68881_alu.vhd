@@ -196,6 +196,15 @@ architecture sim of tb_mc68881_alu is
   constant FP80_POS_INF : fp80_t := x"7FFF8000000000000000";
   constant FP80_NEG_INF : fp80_t := x"FFFF8000000000000000";
   constant FP80_QNAN : fp80_t := x"7FFFC000000000000001";
+  -- NaN discrimination test vectors (DEF-DIVREM-002)
+  constant QNAN_PAYLOAD_123 : fp80_t := x"7FFF8000000000000123"; -- QNaN, payload=0x123
+  constant SNAN_PAYLOAD_456 : fp80_t := x"7FFF0000000000000456"; -- SNaN, payload=0x456
+  constant QNAN_PAYLOAD_456 : fp80_t := x"7FFF8000000000000456"; -- QNaN, payload=0x456 (quieted SNaN)
+  constant QNAN_PAYLOAD_AAA : fp80_t := x"7FFF8000000000000AAA"; -- QNaN, payload=0xAAA
+  constant QNAN_PAYLOAD_BBB : fp80_t := x"7FFF8000000000000BBB"; -- QNaN, payload=0xBBB
+  constant QNAN_PAYLOAD_CCC : fp80_t := x"7FFF8000000000000CCC"; -- QNaN, payload=0xCCC
+  constant SNAN_PAYLOAD_DDD : fp80_t := x"7FFF0000000000000DDD"; -- SNaN, payload=0xDDD
+  constant QNAN_PAYLOAD_DDD : fp80_t := x"7FFF8000000000000DDD"; -- QNaN, payload=0xDDD (quieted)
   constant SUBNORMAL_POS : fp80_t := make_fp80('0', (others => '0'), to_unsigned(1, FP_MANT_WIDTH));
   constant SUBNORMAL_NEG : fp80_t := make_fp80('1', (others => '0'), to_unsigned(1, FP_MANT_WIDTH));
   constant FP80_TOL_1E3 : fp80_t := x"3FF583126E978D4FE000"; -- 1e-3
@@ -707,6 +716,86 @@ begin
     report "DIV deep subnormal result: " & to_hstring(result)
       severity note;
     check_result(DIV_DEEP_SUBNORMAL_EXPECTED, "DIV deep subnormal");
+
+    -- ===== NaN discrimination tests (DEF-DIVREM-002) =====
+
+    -- Test 1: QNaN input propagates with payload preserved
+    op_sel <= FPU_OP_DIV;
+    a_in   <= QNAN_PAYLOAD_123;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T1: QNaN propagation got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "DIV QNaN payload preserved");
+
+    -- Test 2: SNaN input gets quieted with payload preserved
+    op_sel <= FPU_OP_DIV;
+    a_in   <= SNAN_PAYLOAD_456;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T2: SNaN quieting got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "DIV SNaN quieted, payload preserved");
+
+    -- Test 3: Two QNaN — destination (a) wins
+    op_sel <= FPU_OP_DIV;
+    a_in   <= QNAN_PAYLOAD_AAA;
+    b_in   <= QNAN_PAYLOAD_BBB;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T3: two-QNaN priority got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_AAA, "DIV two-QNaN dest priority");
+
+    -- Test 4: SNaN beats QNaN regardless of position
+    op_sel <= FPU_OP_DIV;
+    a_in   <= QNAN_PAYLOAD_CCC;
+    b_in   <= SNAN_PAYLOAD_DDD;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T4: SNaN-beats-QNaN got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_DDD, "DIV SNaN beats QNaN (quieted)");
+
+    -- Test 5: SQRT NaN — single operand, payload preserved
+    op_sel <= FPU_OP_SQRT;
+    a_in   <= QNAN_PAYLOAD_123;
+    b_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T5: SQRT QNaN payload got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_123, "SQRT QNaN payload preserved");
+
+    -- Test 6: MOD NaN — two-operand propagation
+    op_sel <= FPU_OP_MOD;
+    a_in   <= SNAN_PAYLOAD_456;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    report "NaN T6: MOD SNaN quieting got=" & to_hstring(result) severity note;
+    check_result(QNAN_PAYLOAD_456, "MOD SNaN quieted, payload preserved");
 
     -- Arithmetic sweeps across non-trivial operands.
     run_binary_close(

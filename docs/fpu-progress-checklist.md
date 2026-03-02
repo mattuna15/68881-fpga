@@ -119,7 +119,7 @@ B) Functional Completeness (Core Missing Ops)
     - Done: FMOVE mem->reg packed path decodes all 17 BCD mantissa digits via
       FP80 arithmetic accumulation with unbounded exponent scaling (+/-9999).
       Distinguishes infinity from NaN (producing canonical QNaN for NaN inputs;
-      payload preservation tracked in C2).
+      payload preservation resolved in C2 / DEF-DIVREM-002).
     - Done: OPERR exception raised for invalid BCD nibbles (A-F) in packed
       mem->reg decode via `packed96_has_invalid_bcd` checker and
       `exc_event_force_invalid_reg` signal.
@@ -152,13 +152,13 @@ C) Exception Handling & Edge Cases
     - Define flush/denormal rules per MC68881 behavior.
     - In progress: subnormal input/output checks exist for sqrt/trig/trans and integer-conversion paths.
 
-[~] C2. Improve NaN propagation details.
-    - Ensure quiet/signaling NaN behavior is correct for each op.
-    - In progress: broad NaN-class propagation checks exist for monadic/trig/trans ops.
-    - REVIEW FINDING (critical): No SNaN vs QNaN discrimination anywhere in codebase.
-      No fp80_is_snan/fp80_is_qnan function exists. invalid_on_nan_inputs fires
-      for ALL NaN inputs; per datasheet only SNaN should set SNAN exception, QNaN
-      should propagate silently with no exception.
+[x] C2. Improve NaN propagation details.
+    - SNaN vs QNaN discrimination implemented (DEF-DIVREM-002, closed).
+    - fp80_is_snan/fp80_is_qnan/fp80_quiet_nan/fp80_propagate_nan added to pkg.
+    - INVALID fires only for SNaN inputs; QNaN propagates silently with payload preserved.
+    - Two-NaN priority: SNaN over QNaN, destination over source for same type.
+    - Divrem, sgl_ops, trig units all use payload-preserving NaN propagation.
+    - Domain errors (0/0, inf/inf, sqrt(neg), trig(inf)) still produce canonical QNaN.
     - REVIEW FINDING (critical): NaN payloads destroyed. All units return canonical_qnan()
       with a fixed pattern instead of propagating the input NaN payload. Datasheet
       Section 4.5.4 requires input NaN payload preservation (with SNaN quieted by
@@ -359,17 +359,20 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
     iterative arithmetic stages, remove remaining trig MCP dependence, and close routed setup timing
     on those paths with single-cycle constraints at target frequency.
 
-### DEF-DIVREM-002: DIV NaN Policy Marks All NaN Inputs Invalid
-- Status: Open
-- File: `src/mc68881_divrem_unit.vhd`
-- Evidence:
-  - DIV classify sets `flag_invalid_reg <= '1'` for any NaN input.
-- Impact:
-  - Quiet-NaN propagation behavior may be over-signaled versus 68881/QEMU-compatible policy.
-- Planned fix:
-  - Distinguish signaling-NaN vs quiet-NaN handling and raise invalid only where required by policy.
-
 ## Closed Defects
+
+### DEF-DIVREM-002: DIV NaN Policy Marks All NaN Inputs Invalid
+- Status: Closed (2026-03-02)
+- Files: `src/mc68881_pkg.vhd`, `src/mc68881_divrem_unit.vhd`, `src/mc68881_sgl_ops_unit.vhd`,
+  `src/mc68881_trig_unit.vhd`, `src/mc68881_top.vhd`, `src/mc68881_alu.vhd`
+- Resolution summary:
+  - Added `fp80_is_snan`, `fp80_is_qnan`, `fp80_quiet_nan`, `fp80_propagate_nan` to pkg.
+  - Top-level exception classifier fires INVALID only for SNaN inputs, not all NaN.
+  - Divrem, sgl_ops, trig units use payload-preserving NaN propagation.
+  - Two-NaN priority: SNaN over QNaN; same type prefers destination operand.
+  - Domain errors (0/0, inf/inf, sqrt(neg), trig(inf)) unchanged: canonical QNaN + INVALID.
+  - Removed dead `divrem_flag_invalid` signal from ALU.
+  - Added 6 NaN discrimination regression tests to `tb/tb_mc68881_alu.vhd`.
 
 ### DEF-DIVREM-001: DIV/SQRT Underflow Flushes Tiny Results To Zero
 - Status: Closed (2026-03-02)
@@ -431,7 +434,7 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
     subnormal inputs.
   - Dead `decimal_digit_count` function removed.
 - Remaining (tracked elsewhere):
-  - NaN payload/SNaN distinction not preserved (tracked in C2).
+  - NaN payload/SNaN distinction: resolved in C2 / DEF-DIVREM-002.
 
 ### DEF-TRIG-001: FCOS(-40.75) Sign Check
 - Status: Closed (2026-02-15)

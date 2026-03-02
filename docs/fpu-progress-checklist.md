@@ -131,6 +131,15 @@ B) Functional Completeness (Core Missing Ops)
     - Done: subnormal pre-normalization — leading mantissa zeros are
       counted to correct the exp10 estimate before digit extraction,
       preventing all-zero mantissa output for subnormal inputs.
+    - Done: full packed conversion moved into dedicated
+      `mc68881_packed_decimal_unit` (single in-flight request, sequential
+      micro-state flow, integer/BCD decode accumulation via `fp80_from_u64`,
+      and bounded variable-latency completion).
+    - Done: top-level default restored to full packed behavior
+      (`packed_decimal_full_g=true`) with fallback path retained only for
+      debug (`packed_decimal_full_g=false`) synthesis bisect builds.
+    - Done: packed testbenches now run against the default configuration
+      (no testbench-only generic override required to force full packed mode).
     - Done: `result_ex_hi_reg` explicitly cleared on single/double/extended
       reg->mem paths to prevent stale packed metadata leakage.
     - Done: test coverage for zero, negative (-42), infinity round-trips,
@@ -373,6 +382,30 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - Distinguish signaling-NaN vs quiet-NaN handling and raise invalid only where required by policy.
 
 ## Closed Defects
+
+### DEF-PACKED-002: Full Packed-Decimal Default QoR Still Above Release Gate
+- Status: Closed (2026-03-02)
+- Files: `src/mc68881_packed_decimal_unit.vhd`, `src/mc68881_top.xdc`,
+  `project/fpga68881/fpga68881.runs/impl_1/runme.log`,
+  `project/fpga68881/fpga68881.runs/impl_1/mc68881_top_utilization_placed.rpt`,
+  `project/fpga68881/fpga68881.runs/impl_1/mc68881_top_timing_summary_routed.rpt`
+- Resolution summary:
+  - Added dedicated packed arithmetic staging in `mc68881_packed_decimal_unit`
+    (`AR_ST_IDLE -> AR_ST_WAIT -> AR_ST_COMMIT`) with registered operand/result
+    boundaries for `mul_fp80`, `add_sub_fp80`, and `fp80_to_int_trunc`.
+  - Split packed encode digit application into distinct subtract and scale
+    micro-states to avoid add+mul combinational chaining in one cycle.
+  - Added packed-unit multicycle constraints in `mc68881_top.xdc`
+    (setup 5 / hold 4) for staged packed helper paths.
+  - Functional regressions pass with default full-packed mode:
+    `powershell -ExecutionPolicy Bypass -File scripts/run_tests.ps1`.
+- Closure evidence:
+  - Implementation run closes timing:
+    `WNS=4.751ns`, `TNS=0.000ns`, `WHS=0.009ns`, `THS=0.000ns`
+    (`.../impl_1/runme.log`, `.../mc68881_top_timing_summary_routed.rpt`).
+  - Post-place implementation utilization reports:
+    `Slice LUTs = 85354 / 133800 (63.79%)`
+    (`.../impl_1/mc68881_top_utilization_placed.rpt`).
 
 ### DEF-PACKED-001: Packed-Decimal Conversion Is Limited To Integer-Centric Subset
 - Status: Closed (2026-02-28)

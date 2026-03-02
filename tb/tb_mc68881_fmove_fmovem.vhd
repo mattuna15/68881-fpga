@@ -167,13 +167,16 @@ architecture sim of tb_mc68881_fmove_fmovem is
     variable status_s : out std_logic_vector(31 downto 0)
   ) is
   begin
-    loop
+    for poll_idx in 0 to 4095 loop
       bus_read(a_in_s, rw_s, cs_n_s, as_n_s, ds_n_s, dsack0_n_s, dsack1_n_s, d_out_s, status_s, ADDR_STATUS);
       report "FMOVE status poll valid=" & std_logic'image(status_s(0)) &
              " busy=" & std_logic'image(status_s(1))
         severity note;
       exit when status_s(0) = '1';
     end loop;
+    assert status_s(0) = '1'
+      report "Timeout waiting for STATUS.valid in FMOVE testbench"
+      severity error;
   end procedure;
 
   function make_move_cfg(

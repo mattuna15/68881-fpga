@@ -5,6 +5,11 @@ use ieee.numeric_std.all;
 use work.mc68881_pkg.all;
 
 entity mc68881_top is
+  generic (
+    -- `true`: full packed-decimal conversion path.
+    -- `false`: synthesis-safe packed-decimal fallback for debug/triage builds.
+    packed_decimal_full_g : boolean := true
+  );
   port (
     -- Bus interface
     a_in    : in  std_logic_vector(4 downto 0);
@@ -173,6 +178,25 @@ architecture rtl of mc68881_top is
   signal exc_event_force_invalid_reg : std_logic := '0';
   signal exc_event_force_bsun_reg : std_logic := '0';
 
+  type packed_req_mode_t is (PACKED_REQ_NONE, PACKED_REQ_ENCODE, PACKED_REQ_DECODE);
+
+  signal packed_pending_reg : std_logic := '0';
+  signal packed_req_start_reg : std_logic := '0';
+  signal packed_req_mode_reg : packed_req_mode_t := PACKED_REQ_NONE;
+  signal packed_req_fp_reg : fp80_t := (others => '0');
+  signal packed_req_word_reg : std_logic_vector(95 downto 0) := (others => '0');
+  signal packed_req_fallback_reg : fp80_t := (others => '0');
+  signal packed_req_k_reg : integer range -64 to 17 := 0;
+  signal packed_req_dst_idx_reg : natural range 0 to 7 := 0;
+  signal packed_req_is_encode : std_logic := '0';
+  signal packed_unit_busy : std_logic := '0';
+
+  signal packed_result_valid_reg : std_logic := '0';
+  signal packed_result_word_reg : std_logic_vector(95 downto 0) := (others => '0');
+  signal packed_result_fp_reg : fp80_t := (others => '0');
+  signal packed_result_inexact_reg : std_logic := '0';
+  signal packed_result_invalid_reg : std_logic := '0';
+
   constant FRAME_LATENCY : natural := 6;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
   constant FP80_CLASSIFY_ONE : fp80_t := x"3FFF8000000000000000";
@@ -288,6 +312,25 @@ architecture rtl of mc68881_top is
 
   subtype packed96_t is std_logic_vector(95 downto 0);
   type dec_digits_t is array (0 to 16) of natural range 0 to 9;
+  type natural12_t is array (0 to 11) of natural;
+
+  constant POW2_SMALL : natural12_t := (
+    1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048
+  );
+  constant FP80_ONE : fp80_t := x"3FFF8000000000000000";
+  constant FP80_TEN_POW_1 : fp80_t := x"4002A000000000000000";
+  constant FP80_TEN_POW_2 : fp80_t := x"4005C800000000000000";
+  constant FP80_TEN_POW_4 : fp80_t := x"400C9C40000000000000";
+  constant FP80_TEN_POW_8 : fp80_t := x"4019BEBC200000000000";
+  constant FP80_TEN_POW_16 : fp80_t := x"40348E1BC9BF04000000";
+  constant FP80_TEN_POW_32 : fp80_t := x"40699DC5ADA82B70B59E";
+  constant FP80_TEN_POW_64 : fp80_t := x"40D3C2781F49FFCFA6D5";
+  constant FP80_TEN_POW_128 : fp80_t := x"41A893BA47C980E98CE0";
+  constant FP80_TEN_POW_256 : fp80_t := x"4351AA7EEBFB9DF9DE8E";
+  constant FP80_TEN_POW_512 : fp80_t := x"46A3E319A0AEA60E91C7";
+  constant FP80_TEN_POW_1024 : fp80_t := x"4D48C976758681750C17";
+  constant FP80_TEN_POW_2048 : fp80_t := x"5A929E8B3B5DC53D5DE5";
+  constant FP80_TEN_POW_4096 : fp80_t := x"7525C46052028A20979B";
 
   function bcd_digit(value : natural) return std_logic_vector is
     variable nibble : std_logic_vector(3 downto 0) := (others => '0');
@@ -306,6 +349,204 @@ architecture rtl of mc68881_top is
       return digit_i;
     end if;
     return -1;
+  end function;
+
+  function fp80_pow10_pow2(bit_idx : natural) return fp80_t is
+  begin
+    case bit_idx is
+      when 0 => return FP80_TEN_POW_1;
+      when 1 => return FP80_TEN_POW_2;
+      when 2 => return FP80_TEN_POW_4;
+      when 3 => return FP80_TEN_POW_8;
+      when 4 => return FP80_TEN_POW_16;
+      when 5 => return FP80_TEN_POW_32;
+      when 6 => return FP80_TEN_POW_64;
+      when 7 => return FP80_TEN_POW_128;
+      when 8 => return FP80_TEN_POW_256;
+      when 9 => return FP80_TEN_POW_512;
+      when 10 => return FP80_TEN_POW_1024;
+      when others => return FP80_TEN_POW_2048;
+    end case;
+  end function;
+
+  -- Scale by 10^exp10 using bounded chunking/decomposition to avoid
+  -- synthesis-unfriendly long linear loops.
+  function scale_fp80_by_pow10(value : fp80_t; exp10 : integer) return fp80_t is
+    variable scaled : fp80_t := value;
+    variable abs_exp : natural := 0;
+    variable bit_value : natural := 0;
+  begin
+    if exp10 = 0 or fp80_is_zero(value) then
+      return value;
+    end if;
+
+    if exp10 > 0 then
+      abs_exp := natural(exp10);
+      for chunk_idx in 0 to 3 loop
+        exit when abs_exp < 4096;
+        scaled := mul_fp80(scaled, FP80_TEN_POW_4096, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        abs_exp := abs_exp - 4096;
+      end loop;
+      for bit_idx in 0 to 11 loop
+        bit_value := (abs_exp / POW2_SMALL(bit_idx)) mod 2;
+        if bit_value = 1 then
+          scaled := mul_fp80(scaled, fp80_pow10_pow2(bit_idx), FP_RND_NEAREST, FP_PREC_EXTENDED);
+        end if;
+      end loop;
+    else
+      abs_exp := natural(-exp10);
+      for chunk_idx in 0 to 3 loop
+        exit when abs_exp < 4096;
+        scaled := div_fp80(scaled, FP80_TEN_POW_4096, FP_RND_NEAREST, FP_PREC_EXTENDED);
+        abs_exp := abs_exp - 4096;
+      end loop;
+      for bit_idx in 0 to 11 loop
+        bit_value := (abs_exp / POW2_SMALL(bit_idx)) mod 2;
+        if bit_value = 1 then
+          scaled := div_fp80(scaled, fp80_pow10_pow2(bit_idx), FP_RND_NEAREST, FP_PREC_EXTENDED);
+        end if;
+      end loop;
+    end if;
+
+    return scaled;
+  end function;
+
+  -- Lightweight packed encoder used when packed_decimal_full_g = false.
+  -- Encodes special classes exactly; finite values keep only MSD/exponent from
+  -- the truncated integer magnitude as a synthesis-safe fallback.
+  function fp80_to_packed96_fast(value : fp80_t) return packed96_t is
+    variable packed : packed96_t := (others => '0');
+    variable abs_val : fp80_t := (others => '0');
+    variable int_mag : integer := 0;
+    variable mag_n : natural := 0;
+    variable exp10 : natural range 0 to 9 := 0;
+    variable exp0 : natural := 0;
+    variable exp1 : natural := 0;
+    variable exp2 : natural := 0;
+    variable exp3 : natural := 0;
+  begin
+    packed(95) := value(FP_WIDTH-1);
+
+    if fp80_is_zero(value) then
+      return packed;
+    end if;
+
+    if fp80_is_inf(value) then
+      packed(93 downto 92) := "11";
+      packed(91 downto 88) := x"F";
+      packed(87 downto 84) := x"F";
+      packed(83 downto 80) := x"F";
+      packed(79 downto 76) := x"F";
+      return packed;
+    end if;
+
+    if fp80_is_nan(value) then
+      packed(93 downto 92) := "11";
+      packed(91 downto 88) := x"F";
+      packed(87 downto 84) := x"F";
+      packed(83 downto 80) := x"F";
+      packed(79 downto 76) := x"F";
+      packed(67 downto 64) := x"1";
+      packed(63 downto 0) := (others => '1');
+      return packed;
+    end if;
+
+    abs_val := value;
+    abs_val(FP_WIDTH-1) := '0';
+    int_mag := fp80_to_int_trunc(abs_val);
+    if int_mag < 0 then
+      int_mag := integer'high;
+    end if;
+    mag_n := natural(int_mag);
+
+    if mag_n = 0 then
+      return packed;
+    end if;
+
+    for idx in 0 to 8 loop
+      exit when mag_n < 10;
+      mag_n := mag_n / 10;
+      exp10 := exp10 + 1;
+    end loop;
+
+    exp0 := exp10 mod 10;
+    exp1 := (exp10 / 10) mod 10;
+    exp2 := (exp10 / 100) mod 10;
+    exp3 := (exp10 / 1000) mod 10;
+
+    packed(94) := '0';
+    packed(93 downto 92) := "00";
+    packed(91 downto 88) := bcd_digit(exp2);
+    packed(87 downto 84) := bcd_digit(exp1);
+    packed(83 downto 80) := bcd_digit(exp0);
+    packed(79 downto 76) := bcd_digit(exp3);
+    packed(75 downto 68) := (others => '0');
+    packed(67 downto 64) := bcd_digit(mag_n mod 10);
+
+    return packed;
+  end function;
+
+  -- Lightweight packed decoder used when packed_decimal_full_g = false.
+  -- Decodes only leading digit + exponent into an integer-magnitude result.
+  function packed96_to_fp80_fast(packed : packed96_t; fallback : fp80_t) return fp80_t is
+    variable decoded_value : fp80_t := (others => '0');
+    variable sign_m : std_logic := '0';
+    variable exp0_i : integer := 0;
+    variable exp1_i : integer := 0;
+    variable exp2_i : integer := 0;
+    variable exp3_i : integer := 0;
+    variable exp10 : integer := 0;
+    variable lead_digit : integer := 0;
+    variable value_n : natural := 0;
+    variable pos_scale : natural := 0;
+  begin
+    sign_m := packed(95);
+
+    if packed(93 downto 92) = "11" then
+      decoded_value(FP_WIDTH-1) := sign_m;
+      decoded_value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := (others => '1');
+      decoded_value(FP_MANT_WIDTH-1) := '1';
+      if packed(67 downto 0) /= (67 downto 0 => '0') then
+        decoded_value(FP_MANT_WIDTH-2 downto 0) := (others => '1');
+      end if;
+      return decoded_value;
+    end if;
+
+    exp0_i := bcd_to_natural(packed(83 downto 80));
+    exp1_i := bcd_to_natural(packed(87 downto 84));
+    exp2_i := bcd_to_natural(packed(91 downto 88));
+    exp3_i := bcd_to_natural(packed(79 downto 76));
+    lead_digit := bcd_to_natural(packed(67 downto 64));
+    if exp0_i < 0 or exp1_i < 0 or exp2_i < 0 or exp3_i < 0 or lead_digit < 0 then
+      return fallback;
+    end if;
+
+    exp10 := exp3_i*1000 + exp2_i*100 + exp1_i*10 + exp0_i;
+    if packed(94) = '1' then
+      exp10 := -exp10;
+    end if;
+
+    value_n := natural(lead_digit);
+    if exp10 > 0 then
+      pos_scale := natural(exp10);
+      for idx in 1 to 9 loop
+        exit when idx > pos_scale;
+        if value_n > natural(integer'high / 10) then
+          value_n := natural(integer'high);
+          exit;
+        end if;
+        value_n := value_n * 10;
+      end loop;
+      if pos_scale > 9 then
+        value_n := natural(integer'high);
+      end if;
+    elsif exp10 < 0 then
+      value_n := 0;
+    end if;
+
+    decoded_value := fp80_from_int(integer(value_n));
+    decoded_value(FP_WIDTH-1) := sign_m;
+    return decoded_value;
   end function;
 
   -- Encode fp80 to MC68881 96-bit packed-decimal format.
@@ -335,7 +576,6 @@ architecture rtl of mc68881_top is
     variable bin_exp : integer := 0;
     variable has_trailing : boolean := false;
     variable round_digit : natural := 0;
-    variable one : fp80_t := fp80_from_int(1);
   begin
     packed(95) := value(FP_WIDTH-1);
 
@@ -385,26 +625,15 @@ architecture rtl of mc68881_top is
       exp10 := -(((-bin_exp) * 77 + 255) / 256);
     end if;
 
-    -- Scale into [1.0, 10.0) by dividing/multiplying by 10
-    scaled := abs_val;
-    if exp10 > 0 then
-      for i in 1 to 5000 loop
-        exit when i > exp10;
-        scaled := div_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
-      end loop;
-    elsif exp10 < 0 then
-      for i in 1 to 5000 loop
-        exit when i > -exp10;
-        scaled := mul_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
-      end loop;
-    end if;
+    -- Scale into [1.0, 10.0) from estimated decimal exponent.
+    scaled := scale_fp80_by_pow10(abs_val, -exp10);
 
     -- Fine-tune: ensure scaled is in [1.0, 10.0)
     for i in 0 to 5 loop
       if compare_fp80(scaled, ten) >= 0 then
         scaled := div_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
         exp10 := exp10 + 1;
-      elsif compare_fp80(scaled, one) < 0 then
+      elsif compare_fp80(scaled, FP80_ONE) < 0 then
         scaled := mul_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
         exp10 := exp10 - 1;
       else
@@ -549,7 +778,6 @@ architecture rtl of mc68881_top is
     variable abs_val : fp80_t := (others => '0');
     variable scaled : fp80_t := (others => '0');
     variable ten : fp80_t := fp80_from_int(10);
-    variable one : fp80_t := fp80_from_int(1);
     variable digit_int : integer := 0;
     variable digit_fp : fp80_t := (others => '0');
     variable bin_exp : integer := 0;
@@ -578,24 +806,13 @@ architecture rtl of mc68881_top is
       exp10 := -(((-bin_exp) * 77 + 255) / 256);
     end if;
 
-    scaled := abs_val;
-    if exp10 > 0 then
-      for i in 1 to 5000 loop
-        exit when i > exp10;
-        scaled := div_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
-      end loop;
-    elsif exp10 < 0 then
-      for i in 1 to 5000 loop
-        exit when i > -exp10;
-        scaled := mul_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
-      end loop;
-    end if;
+    scaled := scale_fp80_by_pow10(abs_val, -exp10);
 
     for i in 0 to 5 loop
       if compare_fp80(scaled, ten) >= 0 then
         scaled := div_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
         exp10 := exp10 + 1;
-      elsif compare_fp80(scaled, one) < 0 then
+      elsif compare_fp80(scaled, FP80_ONE) < 0 then
         scaled := mul_fp80(scaled, ten, FP_RND_NEAREST, FP_PREC_EXTENDED);
         exp10 := exp10 - 1;
       else
@@ -733,17 +950,7 @@ architecture rtl of mc68881_top is
 
     -- Scale by 10^(exp10 - 16) to position the decimal point
     scale_exp := exp10 - 16;
-    if scale_exp > 0 then
-      for step in 1 to 10000 loop
-        exit when step > scale_exp;
-        decoded_value := mul_fp80(decoded_value, ten_fp80, FP_RND_NEAREST, FP_PREC_EXTENDED);
-      end loop;
-    elsif scale_exp < 0 then
-      for step in 1 to 10000 loop
-        exit when step > -scale_exp;
-        decoded_value := div_fp80(decoded_value, ten_fp80, FP_RND_NEAREST, FP_PREC_EXTENDED);
-      end loop;
-    end if;
+    decoded_value := scale_fp80_by_pow10(decoded_value, scale_exp);
 
     decoded_value(FP_WIDTH-1) := sign_m;
     return decoded_value;
@@ -1834,6 +2041,39 @@ begin
     end if;
   end process;
 
+  packed_req_is_encode <= '1' when packed_req_mode_reg = PACKED_REQ_ENCODE else '0';
+
+  packed_engine_full_g : if packed_decimal_full_g generate
+  begin
+    packed_unit_inst : entity work.mc68881_packed_decimal_unit
+      port map (
+        clk             => clk,
+        reset_n         => reset_n,
+        req_valid       => packed_req_start_reg,
+        req_encode      => packed_req_is_encode,
+        req_fp          => packed_req_fp_reg,
+        req_word        => packed_req_word_reg,
+        req_fallback_fp => packed_req_fallback_reg,
+        req_k           => packed_req_k_reg,
+        busy            => packed_unit_busy,
+        rsp_valid       => packed_result_valid_reg,
+        rsp_word        => packed_result_word_reg,
+        rsp_fp          => packed_result_fp_reg,
+        rsp_inexact     => packed_result_inexact_reg,
+        rsp_invalid     => packed_result_invalid_reg
+      );
+  end generate;
+
+  packed_engine_bypass_g : if not packed_decimal_full_g generate
+  begin
+    packed_unit_busy <= '0';
+    packed_result_valid_reg <= '0';
+    packed_result_word_reg <= (others => '0');
+    packed_result_fp_reg <= (others => '0');
+    packed_result_inexact_reg <= '0';
+    packed_result_invalid_reg <= '0';
+  end generate;
+
   -- Operation scheduler and MOVE/MOVEM datapath handling.
   -- For ALU ops it starts the ALU and tracks modeled microcycle latency.
   alu_control_proc : process(clk, reset_n)
@@ -1877,6 +2117,7 @@ begin
     variable counter_expired : std_logic := '0';
     variable fdb_count_before : unsigned(15 downto 0) := (others => '0');
     variable fdb_count_after : unsigned(15 downto 0) := (others => '0');
+    variable move_deferred : std_logic := '0';
   begin
     if reset_n = '0' then
       result_lo_reg <= (others => '0');
@@ -1910,22 +2151,67 @@ begin
       exc_event_divzero_reg <= '0';
       exc_event_force_overflow_reg <= '0';
       exc_event_force_underflow_reg <= '0';
+      exc_event_force_inexact_reg <= '0';
       exc_event_force_invalid_reg <= '0';
       exc_event_force_bsun_reg <= '0';
       sys_ctrl_save_req_reg <= '0';
       sys_ctrl_restore_req_reg <= '0';
       frame_op_waiting_reg <= '0';
+      packed_pending_reg <= '0';
+      packed_req_start_reg <= '0';
+      packed_req_mode_reg <= PACKED_REQ_NONE;
+      packed_req_fp_reg <= (others => '0');
+      packed_req_word_reg <= (others => '0');
+      packed_req_fallback_reg <= (others => '0');
+      packed_req_k_reg <= 0;
+      packed_req_dst_idx_reg <= 0;
     elsif rising_edge(clk) then
       op_start_reg <= '0';
       ctrl_move_write_req_reg <= '0';
+      packed_req_start_reg <= '0';
+      packed_req_mode_reg <= packed_req_mode_reg;
+      packed_req_fp_reg <= packed_req_fp_reg;
+      packed_req_word_reg <= packed_req_word_reg;
+      packed_req_fallback_reg <= packed_req_fallback_reg;
+      packed_req_k_reg <= packed_req_k_reg;
+      packed_req_dst_idx_reg <= packed_req_dst_idx_reg;
       exc_event_valid_reg <= '0';
       exc_event_divzero_reg <= '0';
       exc_event_force_overflow_reg <= '0';
       exc_event_force_underflow_reg <= '0';
+      exc_event_force_inexact_reg <= '0';
       exc_event_force_invalid_reg <= '0';
       exc_event_force_bsun_reg <= '0';
       sys_ctrl_save_req_reg <= '0';
       sys_ctrl_restore_req_reg <= '0';
+
+      if packed_result_valid_reg = '1' and packed_pending_reg = '1' then
+        if packed_req_mode_reg = PACKED_REQ_DECODE then
+          fp_reg_file_reg(packed_req_dst_idx_reg) <= packed_result_fp_reg;
+          result_lo_reg <= packed_result_fp_reg(FP80_RESULT_LO_WIDTH-1 downto 0);
+          result_hi_reg <= packed_result_fp_reg(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
+          result_ex_reg <= packed_result_fp_reg(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+          result_ex_hi_reg <= (others => '0');
+          exc_event_valid_reg <= '1';
+          exc_event_result_reg <= packed_result_fp_reg;
+          exc_event_opa_reg <= packed_result_fp_reg;
+          exc_event_opb_reg <= FP80_CLASSIFY_ONE;
+          exc_event_force_invalid_reg <= packed_result_invalid_reg;
+          result_ready_reg <= '1';
+        else
+          result_lo_reg <= packed_result_word_reg(31 downto 0);
+          result_hi_reg <= packed_result_word_reg(63 downto 32);
+          result_ex_reg <= packed_result_word_reg(79 downto 64);
+          result_ex_hi_reg <= packed_result_word_reg(95 downto 80);
+          exc_event_valid_reg <= '1';
+          exc_event_result_reg <= packed_result_fp_reg;
+          exc_event_opa_reg <= packed_req_fp_reg;
+          exc_event_opb_reg <= FP80_CLASSIFY_ONE;
+          exc_event_force_inexact_reg <= packed_result_inexact_reg;
+          result_ready_reg <= '1';
+        end if;
+        packed_pending_reg <= '0';
+      end if;
 
       if bus_read = '1' and addr = ADDR_CIR_RESPONSE then
         cir_response_pending_reg <= '0';
@@ -1987,6 +2273,7 @@ begin
               move_exc_force_underflow := '0';
               move_exc_force_inexact := '0';
               move_exc_force_invalid := '0';
+              move_deferred := '0';
 
               if move_cfg.fmovecr_enable = '1' then
                 move_result := fmovecr_constant(operand_reg(0)(6 downto 0));
@@ -2030,13 +2317,23 @@ begin
                           move_exc_opa := move_result;
                         when "11" =>
                           packed_word := operand_hi16_reg(0) & operand_reg(0);
-                          if packed96_has_invalid_bcd(packed_word) then
-                            move_exc_force_invalid := '1';
+                          if packed_decimal_full_g then
+                            packed_req_mode_reg <= PACKED_REQ_DECODE;
+                            packed_req_word_reg <= packed_word;
+                            packed_req_fallback_reg <= operand_reg(0);
+                            packed_req_dst_idx_reg <= dst_idx;
+                            packed_req_start_reg <= '1';
+                            packed_pending_reg <= '1';
+                            move_deferred := '1';
+                          else
+                            if packed96_has_invalid_bcd(packed_word) then
+                              move_exc_force_invalid := '1';
+                            end if;
+                            move_result := packed96_to_fp80_fast(packed_word, operand_reg(0));
+                            move_exc_enable := '1';
+                            move_exc_result := move_result;
+                            move_exc_opa := move_result;
                           end if;
-                          move_result := packed96_to_fp80(packed_word, operand_reg(0));
-                          move_exc_enable := '1';
-                          move_exc_result := move_result;
-                          move_exc_opa := move_result;
                         when others =>
                           move_result := operand_reg(0);
                           move_exc_enable := '1';
@@ -2044,28 +2341,35 @@ begin
                           move_exc_opa := move_result;
                       end case;
                     end if;
-                    fp_reg_file_reg(dst_idx) <= move_result;
+                    if move_deferred = '0' then
+                      fp_reg_file_reg(dst_idx) <= move_result;
+                    end if;
                   when MOVE_CFG_MODE_REG_TO_MEM =>
                     move_result := fp_reg_file_reg(src_idx);
                     move_exc_opa := move_result;
                     if move_cfg.reg_to_mem_packed = '1' then
-                      if move_cfg.packed_k_from_opa = '1' then
-                        packed_k := signed8_to_integer(operand_reg(0)(7 downto 0));
-                      else
-                        packed_k := signed8_to_integer(operand_reg(1)(7 downto 0));
-                      end if;
-                      packed_word := fp80_to_packed96(move_result, packed_k);
-                      move_exc_enable := '1';
-                      move_exc_result := packed96_to_fp80(packed_word, move_result);
-                      if not fp80_is_nan(move_result) and not fp80_is_inf(move_result) and not fp80_is_zero(move_result) then
-                        if packed_encode_is_inexact(move_result, packed_k) then
-                          move_exc_force_inexact := '1';
+                      if packed_decimal_full_g then
+                        if move_cfg.packed_k_from_opa = '1' then
+                          packed_k := signed8_to_integer(operand_reg(0)(7 downto 0));
+                        else
+                          packed_k := signed8_to_integer(operand_reg(1)(7 downto 0));
                         end if;
+                        packed_req_mode_reg <= PACKED_REQ_ENCODE;
+                        packed_req_fp_reg <= move_result;
+                        packed_req_k_reg <= clamp_integer(packed_k, -64, 17);
+                        packed_req_start_reg <= '1';
+                        packed_pending_reg <= '1';
+                        move_deferred := '1';
+                      else
+                        packed_word := fp80_to_packed96_fast(move_result);
+                        move_exc_enable := '0';
                       end if;
-                      result_lo_reg <= packed_word(31 downto 0);
-                      result_hi_reg <= packed_word(63 downto 32);
-                      result_ex_reg <= packed_word(79 downto 64);
-                      result_ex_hi_reg <= packed_word(95 downto 80);
+                      if move_deferred = '0' then
+                        result_lo_reg <= packed_word(31 downto 0);
+                        result_hi_reg <= packed_word(63 downto 32);
+                        result_ex_reg <= packed_word(79 downto 64);
+                        result_ex_hi_reg <= packed_word(95 downto 80);
+                      end if;
                     else
                       case mem_fmt is
                         when "01" =>
@@ -2138,7 +2442,7 @@ begin
                 end case;
               end if;
 
-              if mode /= MOVE_CFG_MODE_REG_TO_MEM then
+              if mode /= MOVE_CFG_MODE_REG_TO_MEM and move_deferred = '0' then
                 result_lo_reg <= move_result(FP80_RESULT_LO_WIDTH-1 downto 0);
                 result_hi_reg <= move_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
                 result_ex_reg <= move_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
@@ -2153,7 +2457,9 @@ begin
                 exc_event_force_inexact_reg <= move_exc_force_inexact;
                 exc_event_force_invalid_reg <= move_exc_force_invalid;
               end if;
-              result_ready_reg <= '1';
+              if move_deferred = '0' then
+                result_ready_reg <= '1';
+              end if;
             elsif op_sel_write_decoded = FPU_OP_MOVEM then
               move_cfg := move_cfg_decoded_reg;
               if move_cfg.movem_mask_from_dn = '1' then

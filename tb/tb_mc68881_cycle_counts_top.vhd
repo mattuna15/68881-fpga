@@ -149,7 +149,7 @@ architecture sim of tb_mc68881_cycle_counts_top is
     variable status_word_s : out std_logic_vector(31 downto 0)
   ) is
   begin
-    loop
+    for poll_idx in 0 to 4095 loop
       bus_read(a_in_s, rw_s, cs_n_s, as_n_s, ds_n_s, dsack0_n_s, dsack1_n_s, d_out_s, ADDR_STATUS, status_word_s);
       report "STATUS poll: valid=" & std_logic'image(status_word_s(0)) &
              " busy=" & std_logic'image(status_word_s(1)) &
@@ -158,6 +158,9 @@ architecture sim of tb_mc68881_cycle_counts_top is
       exit when status_word_s(0) = '1';
       wait for CLK_PERIOD;
     end loop;
+    assert status_word_s(0) = '1'
+      report "Timeout waiting for STATUS.valid in cycle-count testbench"
+      severity error;
   end procedure;
 
   procedure write_operands(

@@ -227,6 +227,7 @@ package mc68881_pkg is
 
   function to_fp80(value : unsigned) return fp80_t;
   function fp80_from_int(value : integer) return fp80_t;
+  function fp80_from_u64(value : unsigned(63 downto 0)) return fp80_t;
   function fp80_is_zero(value : fp80_t) return boolean;
   function fp80_is_inf(value : fp80_t) return boolean;
   function fp80_is_nan(value : fp80_t) return boolean;
@@ -1492,6 +1493,33 @@ package body mc68881_pkg is
     mant := resize(to_unsigned(abs_val, FP_MANT_WIDTH), FP_MANT_WIDTH) sll (FP_MANT_WIDTH-1-msb_pos);
 
     result(FP_WIDTH-1) := sign;
+    result(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := std_logic_vector(exp);
+    result(FP_MANT_WIDTH-1 downto 0) := std_logic_vector(mant);
+    return result;
+  end function;
+
+  function fp80_from_u64(value : unsigned(63 downto 0)) return fp80_t is
+    variable result : fp80_t := (others => '0');
+    variable exp    : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable mant   : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable msb_pos : integer := 0;
+  begin
+    if value = 0 then
+      return result;
+    end if;
+
+    msb_pos := 63;
+    for idx in 63 downto 0 loop
+      if value(idx) = '1' then
+        msb_pos := idx;
+        exit;
+      end if;
+    end loop;
+
+    exp := to_unsigned(FP_EXP_BIAS + msb_pos, FP_EXP_WIDTH);
+    mant := resize(value, FP_MANT_WIDTH) sll (FP_MANT_WIDTH-1-msb_pos);
+
+    result(FP_WIDTH-1) := '0';
     result(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) := std_logic_vector(exp);
     result(FP_MANT_WIDTH-1 downto 0) := std_logic_vector(mant);
     return result;

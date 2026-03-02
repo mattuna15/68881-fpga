@@ -135,7 +135,7 @@ architecture rtl of mc68881_packed_decimal_unit is
   signal arith_int_arg_reg : fp80_t := (others => '0');
   signal arith_mul_res_reg : fp80_t := (others => '0');
   signal arith_add_res_reg : fp80_t := (others => '0');
-  signal arith_int_res_reg : integer := 0;
+  signal arith_int_res_reg : integer range -1 to 15 := 0;
 
   function bcd_digit(value : natural) return std_logic_vector is
     variable nibble : std_logic_vector(3 downto 0) := (others => '0');
@@ -215,7 +215,7 @@ begin
     variable digit_nat : natural := 0;
     variable bin_exp : integer := 0;
     variable exp10_local : integer := 0;
-    variable exp_abs : natural := 0;
+    variable exp_abs : natural range 0 to 10000 := 0;
     variable exp0 : natural := 0;
     variable exp1 : natural := 0;
     variable exp2 : natural := 0;
@@ -314,7 +314,7 @@ begin
                 FP_PREC_EXTENDED
               );
             when AR_ENC_DIGIT_INT | AR_ENC_POSTROUND =>
-              arith_int_res_reg <= fp80_to_int_trunc(arith_int_arg_reg);
+              arith_int_res_reg <= clamp_integer(fp80_to_int_trunc(arith_int_arg_reg), -1, 15);
             when others =>
               null;
           end case;

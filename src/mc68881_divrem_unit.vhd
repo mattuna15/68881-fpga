@@ -647,6 +647,11 @@ begin
 
           apply_rounding('0', mant_ext, exp_res_i, rm_reg, rp_reg, mant_main, exp_res_i, inexact_local);
 
+          -- Promote to minimum normal if rounding set the integer bit
+          if exp_res_i = 0 and mant_main(mant_main'left) = '1' then
+            exp_res_i := 1;
+          end if;
+
           div_res_u.sign := '0';
           if mant_main = 0 then
             div_res_u.exp := (others => '0');
@@ -718,6 +723,11 @@ begin
           end if;
 
           apply_rounding(div_sign_reg, mant_ext, exp_res_i, div_round_mode, div_round_prec, mant_main, exp_res_i, inexact_local);
+
+          -- Promote to minimum normal if rounding set the integer bit
+          if exp_res_i = 0 and mant_main(mant_main'left) = '1' then
+            exp_res_i := 1;
+          end if;
 
           div_res_u.sign := div_sign_reg;
           if mant_main = 0 then

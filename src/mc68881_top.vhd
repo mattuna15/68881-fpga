@@ -167,6 +167,29 @@ architecture rtl of mc68881_top is
   signal cir_response_pending_reg : std_logic := '0';
   signal cir_trap_pending_reg : std_logic := '0';
   signal cir_protocol_violation_reg : std_logic := '0';
+
+  -- CIR dialog state machine signals (Section 7 coprocessor interface).
+  signal cir_state_reg         : cir_dialog_state_t := CIR_IDLE;
+  signal cir_opword_reg        : std_logic_vector(15 downto 0) := (others => '0');
+  signal cir_command_reg       : std_logic_vector(15 downto 0) := (others => '0');
+  signal cir_condition_reg     : std_logic_vector(5 downto 0) := (others => '0');
+  signal cir_instr_type        : std_logic_vector(2 downto 0) := (others => '0');
+  signal cir_src_fmt           : std_logic_vector(2 downto 0) := (others => '0');
+  signal cir_dst_reg_idx       : natural range 0 to 7 := 0;
+  signal cir_src_reg_idx       : natural range 0 to 7 := 0;
+  signal cir_reg_to_reg        : std_logic := '0';
+  signal cir_xfer_word_idx     : natural range 0 to 44 := 0;
+  signal cir_xfer_word_count   : natural range 0 to 45 := 0;
+  signal cir_response_prim     : std_logic_vector(15 downto 0) := CIR_PRIM_NULL;
+  signal cir_opword_written    : std_logic := '0';
+  signal cir_command_written   : std_logic := '0';
+  signal cir_exc_vector        : std_logic_vector(9 downto 0) := (others => '0');
+  signal cir_control_ack       : std_logic := '0';
+  signal frame_format_word_reg : std_logic_vector(15 downto 0) := (others => '0');
+  signal cir_operand_read_data : std_logic_vector(31 downto 0) := (others => '0');
+  signal cir_regselect_word    : std_logic_vector(15 downto 0) := (others => '0');
+  signal cir_operand_addr_reg  : std_logic_vector(31 downto 0) := (others => '0');
+
   signal exc_event_valid_reg : std_logic := '0';
   signal exc_event_result_reg : fp80_t := (others => '0');
   signal exc_event_opa_reg : fp80_t := (others => '0');

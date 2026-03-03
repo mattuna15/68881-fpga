@@ -2942,6 +2942,201 @@ begin
     end if;
   end process;
 
+  -- =====================================================================
+  -- Section 7 CIR Dialog Processes
+  -- =====================================================================
+
+  -- CIR register write handler — latches OpWord, Command, Condition, etc.
+  cir_write_proc : process(clk, reset_n)
+  begin
+    if reset_n = '0' then
+      cir_opword_reg <= (others => '0');
+      cir_command_reg <= (others => '0');
+      cir_condition_reg <= (others => '0');
+      cir_instr_type <= (others => '0');
+      cir_src_fmt <= (others => '0');
+      cir_dst_reg_idx <= 0;
+      cir_reg_to_reg <= '0';
+      cir_opword_written <= '0';
+      cir_command_written <= '0';
+      cir_control_ack <= '0';
+    elsif rising_edge(clk) then
+      -- Clear one-shot flags
+      cir_control_ack <= '0';
+
+      if bus_write = '1' then
+        case addr is
+          when CIR_ADDR_OPWORD =>
+            cir_opword_reg <= d_in(15 downto 0);
+            cir_instr_type <= d_in(8 downto 6);
+            cir_opword_written <= '1';
+
+          when CIR_ADDR_COMMAND =>
+            cir_command_reg <= d_in(15 downto 0);
+            cir_src_fmt <= d_in(12 downto 10);
+            cir_dst_reg_idx <= to_integer(unsigned(d_in(9 downto 7)));
+            cir_reg_to_reg <= d_in(14);
+            cir_command_written <= '1';
+
+          when CIR_ADDR_CONDITION =>
+            cir_condition_reg <= d_in(5 downto 0);
+
+          when CIR_ADDR_INSTADDR =>
+            -- FPIAR capture from Instruction Address CIR
+            -- (fpiar_reg is written in existing process, so just note this)
+            null;
+
+          when CIR_ADDR_CONTROL =>
+            cir_control_ack <= d_in(0);
+
+          when others =>
+            null;
+        end case;
+      end if;
+
+      -- Clear written flags when FSM consumes them (transitions out of IDLE)
+      if cir_state_reg /= CIR_IDLE and cir_state_reg /= CIR_DECODE then
+        cir_opword_written <= '0';
+        cir_command_written <= '0';
+      end if;
+    end if;
+  end process;
+
+  -- CIR dialog state machine — drives FSM state transitions.
+  cir_dialog_proc : process(clk, reset_n)
+  begin
+    if reset_n = '0' then
+      cir_state_reg <= CIR_IDLE;
+      cir_xfer_word_idx <= 0;
+      cir_xfer_word_count <= 0;
+    elsif rising_edge(clk) then
+      case cir_state_reg is
+
+        when CIR_IDLE =>
+          -- cpGEN: wait for both OpWord + Command
+          if cir_opword_written = '1' and cir_command_written = '1' and
+             (cir_instr_type = CIR_TYPE_CPGEN) then
+            cir_state_reg <= CIR_DECODE;
+          end if;
+          -- cpBcc/cpScc: wait for OpWord + Condition write
+          -- (Condition CIR write is the trigger for conditional ops)
+          if cir_opword_written = '1' and
+             (cir_instr_type = CIR_TYPE_CPCOND or
+              cir_instr_type = CIR_TYPE_CPBCC_W or
+              cir_instr_type = CIR_TYPE_CPBCC_L) then
+            -- For conditional ops, the condition selector comes via Condition CIR.
+            -- We transition when both opword and a condition write have occurred.
+            -- For now, transition immediately (condition may already be written).
+            cir_state_reg <= CIR_COND_EVAL;
+          end if;
+          -- cpSAVE/cpRESTORE: triggered by Save/Restore CIR writes
+          -- (handled separately, not via OpWord)
+
+        when CIR_DECODE =>
+          if cir_src_fmt = CIR_SRC_FPN then
+            -- Register-to-register: go to execute (Task 4 wires ALU)
+            cir_state_reg <= CIR_EXECUTE;
+          else
+            -- Memory source: request operand transfer
+            cir_xfer_word_count <= cir_src_word_count(cir_src_fmt);
+            cir_xfer_word_idx <= 0;
+            cir_state_reg <= CIR_XFER_SRC;
+          end if;
+
+        when CIR_XFER_SRC =>
+          -- Wait for host to write operand words via Operand CIR
+          -- (Task 6 adds the actual operand write handling)
+          if cir_xfer_word_idx >= cir_xfer_word_count then
+            cir_state_reg <= CIR_EXECUTE;
+          end if;
+
+        when CIR_XFER_SRC_WAIT =>
+          null;  -- Reserved for multi-cycle format conversion
+
+        when CIR_EXECUTE =>
+          -- Wait for ALU completion (Task 4 wires this)
+          -- For now, stub: stay in execute state
+          null;
+
+        when CIR_XFER_DST =>
+          -- Task 7: destination transfer
+          null;
+
+        when CIR_XFER_DST_WAIT =>
+          null;
+
+        when CIR_COND_EVAL =>
+          -- Task 9-11: conditional evaluation
+          cir_state_reg <= CIR_IDLE;
+
+        when CIR_EXCEPT_PRE =>
+          if cir_control_ack = '1' then
+            cir_state_reg <= CIR_IDLE;
+          end if;
+
+        when CIR_EXCEPT_MID =>
+          if cir_control_ack = '1' then
+            cir_state_reg <= CIR_IDLE;
+          end if;
+
+        when CIR_EXCEPT_POST =>
+          if cir_control_ack = '1' then
+            cir_state_reg <= CIR_IDLE;
+          end if;
+
+        when CIR_SAVE_FORMAT =>
+          null;  -- Task 12
+
+        when CIR_SAVE_FRAME =>
+          null;  -- Task 12
+
+        when CIR_RESTORE_FORMAT =>
+          null;  -- Task 13
+
+        when CIR_RESTORE_FRAME =>
+          null;  -- Task 13
+
+      end case;
+    end if;
+  end process;
+
+  -- Combinational response primitive generation from FSM state.
+  cir_response_gen : process(cir_state_reg, cir_xfer_word_count, cir_exc_vector)
+  begin
+    case cir_state_reg is
+      when CIR_IDLE =>
+        cir_response_prim <= CIR_PRIM_NULL;
+      when CIR_DECODE =>
+        cir_response_prim <= CIR_PRIM_BUSY;
+      when CIR_EXECUTE =>
+        cir_response_prim <= CIR_PRIM_BUSY;
+      when CIR_XFER_SRC =>
+        -- Transfer Operand to-CP: [15:13]=011, [12]=1, [7:0]=byte count
+        cir_response_prim <= "0111" & "0000" &
+          std_logic_vector(to_unsigned(cir_xfer_word_count * 4, 8));
+      when CIR_XFER_SRC_WAIT =>
+        cir_response_prim <= CIR_PRIM_BUSY;
+      when CIR_XFER_DST =>
+        -- Transfer Operand from-CP: [15:13]=011, [12]=0, [7:0]=byte count
+        cir_response_prim <= "0110" & "0000" &
+          std_logic_vector(to_unsigned(cir_xfer_word_count * 4, 8));
+      when CIR_XFER_DST_WAIT =>
+        cir_response_prim <= CIR_PRIM_BUSY;
+      when CIR_COND_EVAL =>
+        cir_response_prim <= CIR_PRIM_NULL;  -- Task 9 refines this
+      when CIR_EXCEPT_PRE =>
+        cir_response_prim <= CIR_RESP_EXCEPT_PRE & "0" & "00" & cir_exc_vector;
+      when CIR_EXCEPT_MID =>
+        cir_response_prim <= CIR_RESP_EXCEPT_MID & "0" & "00" & cir_exc_vector;
+      when CIR_EXCEPT_POST =>
+        cir_response_prim <= CIR_RESP_EXCEPT_POST & "0" & "00" & cir_exc_vector;
+      when CIR_SAVE_FORMAT | CIR_SAVE_FRAME =>
+        cir_response_prim <= CIR_PRIM_BUSY;  -- Task 12 refines
+      when CIR_RESTORE_FORMAT | CIR_RESTORE_FRAME =>
+        cir_response_prim <= CIR_PRIM_BUSY;  -- Task 13 refines
+    end case;
+  end process;
+
   -- CIR reads use a registered data path; other reads are combinational.
   d_out <= d_out_reg when sync_read = '1' else d_out_comb;
   dsack0_n <= dsack0_i;

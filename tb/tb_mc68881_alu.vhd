@@ -29,12 +29,12 @@ architecture sim of tb_mc68881_alu is
   signal cycle_cnt : natural := 0;
 
   constant CLK_PERIOD : time := 10 ns;
-  constant ADD_LATENCY : natural := 5;  -- MCP 4 hold cycles
-  constant SUB_LATENCY : natural := 5;  -- MCP 4 hold cycles
-  constant MUL_LATENCY : natural := 5;  -- MCP 4 hold cycles
+  constant ADD_LATENCY : natural := 7;  -- sequential addsub unit (6 stages + 1 start delay)
+  constant SUB_LATENCY : natural := 7;  -- sequential addsub unit (6 stages + 1 start delay)
+  constant MUL_LATENCY : natural := 5;  -- sequential mul unit (4 stages + 1 start delay)
   constant DIV_LATENCY : natural := op_alu_latency(FPU_OP_DIV);
   constant SQRT_LATENCY : natural := op_alu_latency(FPU_OP_SQRT);
-  constant CMP_LATENCY : natural := 5;  -- MCP 4 hold cycles (registered dispatch)
+  constant CMP_LATENCY : natural := 5;  -- lightweight combinational, bounded by op_alu_latency countdown
   constant MOD_LATENCY : natural := op_alu_latency(FPU_OP_MOD);
   constant REM_LATENCY : natural := op_alu_latency(FPU_OP_REM);
   constant SCALE_MIN_LATENCY : natural := 2;
@@ -312,7 +312,18 @@ begin
       quotient_valid => quotient_valid,
       aux_result => aux_result,
       aux_valid => aux_valid,
-      flag_divzero => flag_divzero
+      flag_divzero => flag_divzero,
+      packed_fp_mul_start  => '0',
+      packed_fp_mul_a      => (others => '0'),
+      packed_fp_mul_b      => (others => '0'),
+      packed_fp_mul_done   => open,
+      packed_fp_mul_result => open,
+      packed_fp_add_start  => '0',
+      packed_fp_add_a      => (others => '0'),
+      packed_fp_add_b      => (others => '0'),
+      packed_fp_add_sub    => false,
+      packed_fp_add_done   => open,
+      packed_fp_add_result => open
     );
 
   process

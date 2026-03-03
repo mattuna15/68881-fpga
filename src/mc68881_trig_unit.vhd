@@ -472,9 +472,18 @@ architecture rtl of mc68881_trig_unit is
   signal trig_div_result : fp80_t := (others => '0');
   signal trig_div_flag_divzero : std_logic := '0';
 
+  signal trig_mul_start_reg : std_logic := '0';
+  signal trig_mul_busy      : std_logic;
+  signal trig_mul_done      : std_logic;
+  signal trig_mul_result    : fp80_t;
+
+  signal trig_add_start_reg : std_logic := '0';
+  signal trig_add_busy      : std_logic;
+  signal trig_add_done      : std_logic;
+  signal trig_add_result    : fp80_t;
+
   -- Serialized FP execution control for shared trig FP micro-ops.
   signal fp_exec_busy_reg : std_logic := '0';
-  signal fp_exec_cycles_left_reg : integer range 0 to 7 := 0;
 
   function canonical_nan(value : fp80_t) return fp80_t is
     variable res : fp80_t := value;
@@ -597,7 +606,49 @@ begin
       flag_divzero   => trig_div_flag_divzero,
       flag_overflow  => open,
       flag_underflow => open,
-      flag_inexact   => open
+      flag_inexact   => open,
+      modrem_fp_mul_start  => open,
+      modrem_fp_mul_a      => open,
+      modrem_fp_mul_b      => open,
+      modrem_fp_mul_done   => '0',
+      modrem_fp_mul_result => (others => '0'),
+      modrem_fp_add_start  => open,
+      modrem_fp_add_a      => open,
+      modrem_fp_add_b      => open,
+      modrem_fp_add_sub    => open,
+      modrem_fp_add_rm     => open,
+      modrem_fp_add_rp     => open,
+      modrem_fp_add_done   => '0',
+      modrem_fp_add_result => (others => '0')
+    );
+
+  trig_mul_inst : entity work.mc68881_fp80_mul_unit
+    port map (
+      clk        => clk,
+      reset_n    => reset_n,
+      start      => trig_mul_start_reg,
+      a_in       => mul_a_reg,
+      b_in       => mul_b_reg,
+      round_mode => mul_rm_reg,
+      round_prec => mul_rp_reg,
+      busy       => trig_mul_busy,
+      done       => trig_mul_done,
+      result     => trig_mul_result
+    );
+
+  trig_add_inst : entity work.mc68881_fp80_addsub_unit
+    port map (
+      clk        => clk,
+      reset_n    => reset_n,
+      start      => trig_add_start_reg,
+      a_in       => add_a_reg,
+      b_in       => add_b_reg,
+      subtract   => add_sub_reg,
+      round_mode => add_rm_reg,
+      round_prec => add_rp_reg,
+      busy       => trig_add_busy,
+      done       => trig_add_done,
+      result     => trig_add_result
     );
 
   trig_seed_read_proc : process(clk)
@@ -675,12 +726,15 @@ begin
       div_a_reg <= (others => '0');
       div_b_reg <= (others => '0');
       fp_exec_busy_reg <= '0';
-      fp_exec_cycles_left_reg <= 0;
       trig_div_start_reg <= '0';
+      trig_mul_start_reg <= '0';
+      trig_add_start_reg <= '0';
     elsif rising_edge(clk) then
       done_reg <= '0';
       aux_valid_reg <= '0';
       trig_div_start_reg <= '0';
+      trig_mul_start_reg <= '0';
+      trig_add_start_reg <= '0';
       case state_reg is
         when ST_IDLE =>
           if start = '1' then
@@ -1914,25 +1968,21 @@ begin
         when ST_FP_MUL =>
           if fp_exec_busy_reg = '0' then
             fp_exec_busy_reg <= '1';
-            fp_exec_cycles_left_reg <= 0; -- 2-cycle launch->capture contract
-          elsif fp_exec_cycles_left_reg = 0 then
-            tmp_reg <= mul_fp80(mul_a_reg, mul_b_reg, mul_rm_reg, mul_rp_reg);
+            trig_mul_start_reg <= '1';
+          elsif trig_mul_done = '1' then
+            tmp_reg <= trig_mul_result;
             state_reg <= cont_state_reg;
             fp_exec_busy_reg <= '0';
-          else
-            fp_exec_cycles_left_reg <= fp_exec_cycles_left_reg - 1;
           end if;
 
         when ST_FP_ADD =>
           if fp_exec_busy_reg = '0' then
             fp_exec_busy_reg <= '1';
-            fp_exec_cycles_left_reg <= 2; -- 4-cycle launch->capture contract
-          elsif fp_exec_cycles_left_reg = 0 then
-            tmp_reg <= add_sub_fp80(add_a_reg, add_b_reg, add_sub_reg, add_rm_reg, add_rp_reg);
+            trig_add_start_reg <= '1';
+          elsif trig_add_done = '1' then
+            tmp_reg <= trig_add_result;
             state_reg <= cont_state_reg;
             fp_exec_busy_reg <= '0';
-          else
-            fp_exec_cycles_left_reg <= fp_exec_cycles_left_reg - 1;
           end if;
 
         when ST_FP_DIV =>

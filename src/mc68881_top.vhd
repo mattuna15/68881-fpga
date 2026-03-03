@@ -197,6 +197,19 @@ architecture rtl of mc68881_top is
   signal packed_result_inexact_reg : std_logic := '0';
   signal packed_result_invalid_reg : std_logic := '0';
 
+  -- Packed decimal <-> ALU shared FP unit routing
+  signal packed_fp_mul_start  : std_logic;
+  signal packed_fp_mul_a      : fp80_t;
+  signal packed_fp_mul_b      : fp80_t;
+  signal packed_fp_mul_done   : std_logic;
+  signal packed_fp_mul_result : fp80_t;
+  signal packed_fp_add_start  : std_logic;
+  signal packed_fp_add_a      : fp80_t;
+  signal packed_fp_add_b      : fp80_t;
+  signal packed_fp_add_sub    : boolean;
+  signal packed_fp_add_done   : std_logic;
+  signal packed_fp_add_result : fp80_t;
+
   constant FRAME_LATENCY : natural := 6;
   constant FP_EXP_ALL_ONES : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '1');
   constant FP80_CLASSIFY_ONE : fp80_t := x"3FFF8000000000000000";
@@ -1650,7 +1663,18 @@ begin
       quotient_valid => quotient_valid,
       aux_result => aux_result,
       aux_valid  => aux_valid,
-      flag_divzero => alu_flag_divzero
+      flag_divzero => alu_flag_divzero,
+      packed_fp_mul_start  => packed_fp_mul_start,
+      packed_fp_mul_a      => packed_fp_mul_a,
+      packed_fp_mul_b      => packed_fp_mul_b,
+      packed_fp_mul_done   => packed_fp_mul_done,
+      packed_fp_mul_result => packed_fp_mul_result,
+      packed_fp_add_start  => packed_fp_add_start,
+      packed_fp_add_a      => packed_fp_add_a,
+      packed_fp_add_b      => packed_fp_add_b,
+      packed_fp_add_sub    => packed_fp_add_sub,
+      packed_fp_add_done   => packed_fp_add_done,
+      packed_fp_add_result => packed_fp_add_result
     );
 
   -- Bus/register process:
@@ -2061,7 +2085,18 @@ begin
         rsp_word        => packed_result_word_reg,
         rsp_fp          => packed_result_fp_reg,
         rsp_inexact     => packed_result_inexact_reg,
-        rsp_invalid     => packed_result_invalid_reg
+        rsp_invalid     => packed_result_invalid_reg,
+        fp_mul_start    => packed_fp_mul_start,
+        fp_mul_a_out    => packed_fp_mul_a,
+        fp_mul_b_out    => packed_fp_mul_b,
+        fp_mul_done     => packed_fp_mul_done,
+        fp_mul_result   => packed_fp_mul_result,
+        fp_add_start    => packed_fp_add_start,
+        fp_add_a_out    => packed_fp_add_a,
+        fp_add_b_out    => packed_fp_add_b,
+        fp_add_sub_out  => packed_fp_add_sub,
+        fp_add_done     => packed_fp_add_done,
+        fp_add_result   => packed_fp_add_result
       );
   end generate;
 
@@ -2073,6 +2108,13 @@ begin
     packed_result_fp_reg <= (others => '0');
     packed_result_inexact_reg <= '0';
     packed_result_invalid_reg <= '0';
+    packed_fp_mul_start <= '0';
+    packed_fp_mul_a <= (others => '0');
+    packed_fp_mul_b <= (others => '0');
+    packed_fp_add_start <= '0';
+    packed_fp_add_a <= (others => '0');
+    packed_fp_add_b <= (others => '0');
+    packed_fp_add_sub <= false;
   end generate;
 
   -- Operation scheduler and MOVE/MOVEM datapath handling.

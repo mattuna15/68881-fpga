@@ -307,59 +307,71 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Open Defects
 
-### DEF-TIMING-001: Trig FP Engine Uses MCP-Guarded Combinational FP80 Datapaths
-- Status: Open
-- Files: `src/mc68881_trig_unit.vhd`, `src/mc68881_top.xdc`
-- Evidence:
-  - Routed timing report showed extreme setup path depth in trig `div_fp80` launch/capture cone
-    without matching MCP (`div_b_reg -> tmp_reg`, >2000 logic levels in latest failing run).
-  - Trig FP micro-ops now run through explicit `fp_exec_start/busy/done` hooks and
-    cycle contracts. `ST_FP_DIV` now routes through sequential `mc68881_divrem_unit`;
-    remaining heavy combinational paths are `mul_fp80` and `add_sub_fp80`.
-  - Latest rerouted implementation (2026-02-27) reproduced a single setup failure at 10 MHz:
-    `Slack = -0.053ns`, source `alu_inst/trig_inst/add_a_reg_reg[67]/C`,
-    destination `alu_inst/trig_inst/tmp_reg_reg[61]_rep__0/D`, `Logic Levels = 682`,
-    under `MultiCycle Path Setup -end 4` in
-    `project/fpga68881/fpga68881.runs/impl_1/mc68881_top_timing_summary_routed.rpt`.
-  - Route + post-route phys-opt experiment from the same placed checkpoint
-    (`phys_opt_design -directive AggressiveExplore`) recovered the endpoint to
-    `WNS=0.044ns`, `TNS=0.000ns` and reported optimization of net
-    `alu_inst/trig_inst/tmp_reg_reg[61]_rep__0_n_0`
-    (`tmp/timing_route_physopt_summary.rpt`, 2026-02-27).
-  - Route-only experiment from the same placed checkpoint with
-    `route_design -directive AggressiveExplore` closed timing directly
-    (`WNS=1.570ns`, `TNS=0.000ns` in route timing summary;
-    `WNS=1.265ns` after hold-fix iteration in route log),
-    without requiring a separate post-route phys-opt step
-    (`tmp/timing_route_aggr_summary.rpt`, 2026-02-27).
-  - Full `impl_1` rerun with `route_design` directive `AggressiveExplore`
-    now closes timing in run artifacts:
-    `project/fpga68881/fpga68881.runs/impl_1/mc68881_top_timing_summary_routed.rpt`
-    and `..._postroute_physopted.rpt` both report
-    `Setup: 0 failing endpoints`, `WNS=1.570ns`, `TNS=0.000ns`
-    (run completed 2026-02-27 16:27).
-  - Latest routed implementation now closes timing at 10 MHz with margin:
-    `WNS=1.356ns`, `TNS=0.000ns`, `WHS=0.026ns`, `THS=0.000ns`
-    (`reports/timing_summary.rpt`, run completed 2026-02-23).
-  - Post-implementation LUT utilization is below 50%:
-    `Slice LUTs = 66523 / 134600 (49.42%)`
-    (`reports/post_impl_util.rpt`, 2026-02-23).
-- Current mitigation:
-  - MCP constraints are applied for trig FP launch/capture contracts:
-    - MUL: 2-cycle setup / 1-cycle hold
-    - ADD: 4-cycle setup / 3-cycle hold
-  - Implementation flow enables post-route phys-opt with `AggressiveExplore`
-    for `impl_1` (`scripts/run_impl.tcl`, `project/fpga68881/fpga68881.xpr`)
-    to recover near-zero routed slack variation on the trig add MCP path.
-  - Implementation flow sets `route_design` directive to `AggressiveExplore`
-    for `impl_1` (`scripts/run_impl.tcl`, `project/fpga68881/fpga68881.xpr`),
-    which closes the reproduced single failing endpoint in route-phase runs.
-- Fix-exit criteria:
-  - Replace combinational FP80 datapaths behind trig FP engine with true pipelined or
-    iterative arithmetic stages, remove remaining trig MCP dependence, and close routed setup timing
-    on those paths with single-cycle constraints at target frequency.
+(none)
 
 ## Closed Defects
+
+### DEF-LUT-002: Further LUT Reduction via FP Unit Sharing
+- Status: Closed (2026-03-03)
+- Files: `src/mc68881_alu.vhd`, `src/mc68881_divrem_unit.vhd`,
+  `src/mc68881_modrem_post_unit.vhd`, `src/mc68881_packed_decimal_unit.vhd`,
+  `src/mc68881_top.vhd`, `src/mc68881_trig_unit.vhd`, `src/mc68881_fp80_mul_unit.vhd`,
+  `tb/tb_mc68881_alu.vhd`, `tb/tb_mc68881_known_defects.vhd`
+- Description: Post-DEF-LUT-001 utilization was ~66K LUTs (49%) with 65 DSPs.
+  The ALU, modrem post, and packed decimal units each had their own dedicated
+  `mc68881_fp80_mul_unit` and `mc68881_fp80_addsub_unit` instances, but these
+  consumers are mutually exclusive (ALU dispatches to exactly one at a time).
+- Resolution summary:
+  - Removed local FP mul/add instances from `mc68881_modrem_post_unit` and
+    `mc68881_packed_decimal_unit`. Added shared FP operation ports instead.
+  - Added passthrough FP ports to `mc68881_divrem_unit` for modrem post requests.
+  - Added operand mux in `mc68881_alu` to route FP requests from ALU's own ops,
+    modrem post, or packed decimal to the single shared mul/add instance pair.
+  - Done/result signals broadcast to all consumers (only active consumer checks).
+  - Converted `mc68881_fp80_mul_unit` from async to sync reset for DSP48E1
+    pipeline register packing (A1/A2, B1/B2, P registers absorbed into DSP).
+  - Updated trig unit's divrem instance and testbenches for new port signatures.
+  - Result: 60,688 LUTs (45.09%), 33 DSPs (4.46%) — down from ~66K LUTs, 65 DSPs.
+  - Savings: ~5,300 LUTs, 32 DSPs freed. All GHDL regression tests pass.
+
+### DEF-LUT-001: Reduce LUT Usage via Sequential FP Unit Reuse
+- Status: Closed (2026-03-03)
+- Files: `src/mc68881_alu.vhd`, `src/mc68881_modrem_post_unit.vhd`,
+  `src/mc68881_packed_decimal_unit.vhd`, `src/mc68881_top.xdc`
+- Description: Post-synth utilization after DEF-TIMING-001 was 88,138 LUTs (65.48%).
+  Three units besides trig still inlined combinational `mul_fp80` and `add_sub_fp80`,
+  each creating massive LUT cones for unpack/multiply/add/normalize/round logic.
+- Resolution summary:
+  - Instantiated `mc68881_fp80_mul_unit` and `mc68881_fp80_addsub_unit` in ALU,
+    modrem post, and packed decimal units, replacing combinational FP calls with
+    start/busy/done handshake.
+  - ALU: ADD/SUB/MUL now use sequential units; CMP/ABS/NEG/INT/INTRZ/GETEXP/GETMAN/TST
+    remain lightweight combinational with reduced 2-cycle MCP (from 5-cycle).
+  - Modrem post: ST_FP_ADD and ST_FP_MUL use sequential units; removed `mod_fp_wait_count_reg`
+    and `DONT_TOUCH` attributes on result registers.
+  - Packed decimal: AR_ST_WAIT mul/add commits use sequential units;
+    `fp80_to_int_trunc` kept combinational with reduced 2-cycle MCP.
+  - XDC: Removed old 5-cycle MCP constraints for ALU simple ops, packed mul/add,
+    and modpost add/mul. Replaced with 2-cycle MCPs for remaining lightweight paths.
+  - Result: ~66K LUTs (49%), 65 DSPs — down from 88,138 LUTs (65.48%).
+
+### DEF-TIMING-001: Trig FP Engine Uses MCP-Guarded Combinational FP80 Datapaths
+- Status: Closed (2026-03-02)
+- Files: `src/mc68881_fp80_mul_unit.vhd` (new), `src/mc68881_fp80_addsub_unit.vhd` (new),
+  `src/mc68881_trig_unit.vhd`, `src/mc68881_top.xdc`
+- Resolution summary:
+  - Created sequential `mc68881_fp80_mul_unit` (4-cycle: IDLE->UNPACK->MULTIPLY->NORM_ROUND)
+    and `mc68881_fp80_addsub_unit` (5-cycle: IDLE->UNPACK->ALIGN->ADDSUB->NORM_ROUND)
+    with start/busy/done handshake matching the existing `trig_div_inst` pattern.
+  - Replaced combinational `mul_fp80` / `add_sub_fp80` calls in trig unit's
+    `ST_FP_MUL` and `ST_FP_ADD` case arms with sequential unit delegation.
+  - Removed all trig MUL/ADD MCP constraints from XDC (mul_a/b_reg->tmp_reg,
+    add_a/b/rm/rp_reg->tmp_reg, a/x_reg->tmp_reg 4-cycle paths).
+  - `tmp_reg` is now only written from registered sequential unit outputs
+    (trig_mul_result, trig_add_result, trig_div_result) and reset.
+  - Removed dead `fp_exec_cycles_left_reg` signal.
+  - Latency impact: MUL +2 cycles, ADD +1 cycle per micro-op (~10-15% trig op increase).
+  - All trig paths should close timing under single-cycle 100ns constraints.
 
 ### DEF-DIVREM-002: DIV NaN Policy Marks All NaN Inputs Invalid
 - Status: Closed (2026-03-02)
@@ -445,6 +457,19 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - DUT result (`x"BFFEFEF297A2A2085F69"`) is same sign and within configured tolerance.
 - Follow-up:
   - Keep `tb/tb_mc68881_known_defects.vhd` as a persistent recheck for this vector.
+
+## Implementation Snapshot (2026-03-03)
+- Milestone:
+  - Post-synth LUT usage at 44% after DEF-LUT-001 + DEF-LUT-002 + review fixes
+    (NaN/infinity early-exit in sequential FP units allows dead-code pruning).
+  - DSP usage reduced from 65 to 33 via FP unit sharing and sync reset DSP packing.
+  - Design now fits on smaller FPGAs: Artix-7 100T, Zynq UltraScale+ ZU3EG,
+    Cyclone V 5CEBA7.
+- Run data (non-incremental synthesis):
+  - Utilization (post-synth): `Slice LUTs = 59304 / 134600 (44.06%)`
+  - DSPs: 33 / 740 (4.46%)
+  - Registers: 11736 / 269200 (4.36%)
+  - BRAM: 5 tiles / 365 (1.37%)
 
 ## Implementation Snapshot (2026-02-23)
 - Milestone:

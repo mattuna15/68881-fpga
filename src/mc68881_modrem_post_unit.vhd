@@ -19,7 +19,22 @@ entity mc68881_modrem_post_unit is
     done    : out std_logic;
     result  : out fp80_t;
     quotient_byte  : out std_logic_vector(7 downto 0);
-    quotient_valid : out std_logic
+    quotient_valid : out std_logic;
+    -- FP multiply interface (shared with ALU)
+    fp_mul_start   : out std_logic;
+    fp_mul_a_out   : out fp80_t;
+    fp_mul_b_out   : out fp80_t;
+    fp_mul_done    : in  std_logic;
+    fp_mul_result  : in  fp80_t;
+    -- FP add/sub interface (shared with ALU)
+    fp_add_start   : out std_logic;
+    fp_add_a_out   : out fp80_t;
+    fp_add_b_out   : out fp80_t;
+    fp_add_sub_out : out boolean;
+    fp_add_rm_out  : out fp_round_mode_t;
+    fp_add_rp_out  : out fp_round_prec_t;
+    fp_add_done    : in  std_logic;
+    fp_add_result  : in  fp80_t
   );
 end entity mc68881_modrem_post_unit;
 
@@ -70,16 +85,11 @@ architecture rtl of mc68881_modrem_post_unit is
   signal mod_add_result_reg : fp80_t := (others => '0');
   signal mod_mul_result_reg : fp80_t := (others => '0');
 
-  -- Prevent Vivado from folding add/mul result registers into result_reg,
-  -- which pulls the add_sub_fp80/mul_fp80 carry-chain logic into the
-  -- result_reg data cone and creates synthesis combinational loops (TIMING-23).
-  attribute DONT_TOUCH : string;
-  attribute DONT_TOUCH of mod_add_result_reg : signal is "TRUE";
-  attribute DONT_TOUCH of mod_mul_result_reg : signal is "TRUE";
-
   signal mod_fp_cont_state_reg : state_t := ST_IDLE;
-  signal mod_fp_wait_count_reg : integer range 0 to 3 := 0;
   signal fp_hold_loaded_reg    : std_logic := '0';
+
+  signal modpost_mul_start_reg : std_logic := '0';
+  signal modpost_add_start_reg : std_logic := '0';
 
   function unpack_fp80(value : fp80_t) return fp_unpacked_t is
     variable unpacked : fp_unpacked_t;
@@ -185,6 +195,17 @@ architecture rtl of mc68881_modrem_post_unit is
   end function;
 
 begin
+  -- Drive shared FP unit ports
+  fp_mul_start <= modpost_mul_start_reg;
+  fp_mul_a_out <= mod_fp_mul_a;
+  fp_mul_b_out <= mod_fp_mul_b;
+  fp_add_start <= modpost_add_start_reg;
+  fp_add_a_out <= mod_fp_add_a;
+  fp_add_b_out <= mod_fp_add_b;
+  fp_add_sub_out <= mod_fp_add_is_sub;
+  fp_add_rm_out <= mod_fp_add_rm;
+  fp_add_rp_out <= mod_fp_add_rp;
+
   process(clk, reset_n)
     variable quotient_fp : fp80_t := (others => '0');
     variable quotient_trunc : fp80_t := (others => '0');
@@ -206,12 +227,15 @@ begin
       quotient_valid_reg <= '0';
       done_reg <= '0';
       mod_fp_cont_state_reg <= ST_IDLE;
-      mod_fp_wait_count_reg <= 0;
       fp_hold_loaded_reg <= '0';
       mod_add_result_reg <= (others => '0');
       mod_mul_result_reg <= (others => '0');
+      modpost_mul_start_reg <= '0';
+      modpost_add_start_reg <= '0';
     elsif rising_edge(clk) then
       done_reg <= '0';
+      modpost_mul_start_reg <= '0';
+      modpost_add_start_reg <= '0';
 
       case state_reg is
         when ST_IDLE =>
@@ -248,32 +272,24 @@ begin
             state_reg <= ST_FP_ADD;
           end if;
 
-        -- Registered FP add: 1 load + 3 hold + 1 compute = MCP 5 (500ns budget)
         when ST_FP_ADD =>
           if fp_hold_loaded_reg = '0' then
             fp_hold_loaded_reg <= '1';
-            mod_fp_wait_count_reg <= 3;
-          elsif mod_fp_wait_count_reg = 0 then
-            mod_add_result_reg <= add_sub_fp80(mod_fp_add_a, mod_fp_add_b,
-                                               mod_fp_add_is_sub, mod_fp_add_rm, mod_fp_add_rp);
+            modpost_add_start_reg <= '1';
+          elsif fp_add_done = '1' then
+            mod_add_result_reg <= fp_add_result;
             state_reg <= mod_fp_cont_state_reg;
             fp_hold_loaded_reg <= '0';
-          else
-            mod_fp_wait_count_reg <= mod_fp_wait_count_reg - 1;
           end if;
 
-        -- Registered FP mul: 1 load + 0 hold + 1 compute = MCP 2 (200ns budget)
         when ST_FP_MUL =>
           if fp_hold_loaded_reg = '0' then
             fp_hold_loaded_reg <= '1';
-            mod_fp_wait_count_reg <= 0;
-          elsif mod_fp_wait_count_reg = 0 then
-            mod_mul_result_reg <= mul_fp80(mod_fp_mul_a, mod_fp_mul_b,
-                                           FP_RND_NEAREST, FP_PREC_EXTENDED);
+            modpost_mul_start_reg <= '1';
+          elsif fp_mul_done = '1' then
+            mod_mul_result_reg <= fp_mul_result;
             state_reg <= mod_fp_cont_state_reg;
             fp_hold_loaded_reg <= '0';
-          else
-            mod_fp_wait_count_reg <= mod_fp_wait_count_reg - 1;
           end if;
 
         when ST_FRAC =>

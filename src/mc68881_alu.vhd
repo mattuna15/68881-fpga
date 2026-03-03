@@ -21,7 +21,20 @@ entity mc68881_alu is
     quotient_valid : out std_logic;
     aux_result : out fp80_t;
     aux_valid  : out std_logic;
-    flag_divzero : out std_logic
+    flag_divzero : out std_logic;
+    -- Packed decimal FP multiply interface (shared FP unit)
+    packed_fp_mul_start   : in  std_logic;
+    packed_fp_mul_a       : in  fp80_t;
+    packed_fp_mul_b       : in  fp80_t;
+    packed_fp_mul_done    : out std_logic;
+    packed_fp_mul_result  : out fp80_t;
+    -- Packed decimal FP add interface (shared FP unit)
+    packed_fp_add_start   : in  std_logic;
+    packed_fp_add_a       : in  fp80_t;
+    packed_fp_add_b       : in  fp80_t;
+    packed_fp_add_sub     : in  boolean;
+    packed_fp_add_done    : out std_logic;
+    packed_fp_add_result  : out fp80_t
   );
 end entity mc68881_alu;
 
@@ -85,12 +98,6 @@ architecture rtl of mc68881_alu is
   ) return fp80_t is
   begin
     case op is
-      when FPU_OP_ADD =>
-        return add_sub_fp80(a, b, false, rm, rp);
-      when FPU_OP_SUB =>
-        return add_sub_fp80(a, b, true, rm, rp);
-      when FPU_OP_MUL =>
-        return mul_fp80(a, b, rm, rp);
       when FPU_OP_INT =>
         return fint_fp80(a, rm);
       when FPU_OP_CMP =>
@@ -176,7 +183,46 @@ architecture rtl of mc68881_alu is
   signal simple_op_reg : fpu_op_t := FPU_OP_NOP;
   signal simple_rm_reg : fp_round_mode_t := FP_RND_NEAREST;
   signal simple_rp_reg : fp_round_prec_t := FP_PREC_EXTENDED;
-  signal simple_hold_count_reg : integer range 0 to 4 := 0;  -- multi-cycle hold for FP settle
+  signal simple_hold_count_reg : integer range 0 to 1 := 0;  -- multi-cycle hold for FP settle (lightweight ops only)
+
+  -- Sequential FP units for ADD/SUB/MUL (replaces combinational mul_fp80/add_sub_fp80)
+  signal alu_mul_start_reg  : std_logic := '0';
+  signal alu_mul_busy       : std_logic;
+  signal alu_mul_done       : std_logic;
+  signal alu_mul_result     : fp80_t;
+
+  signal alu_add_start_reg  : std_logic := '0';
+  signal alu_add_busy       : std_logic;
+  signal alu_add_done       : std_logic;
+  signal alu_add_result     : fp80_t;
+
+  signal alu_fp_seq_pending_reg : std_logic := '0';
+  signal alu_fp_is_mul_reg  : std_logic := '0';
+  signal alu_fp_subtract_reg : boolean := false;
+
+  -- Divrem modrem FP passthrough (internal to ALU)
+  signal modrem_mul_start  : std_logic;
+  signal modrem_mul_a      : fp80_t;
+  signal modrem_mul_b      : fp80_t;
+  signal modrem_add_start  : std_logic;
+  signal modrem_add_a      : fp80_t;
+  signal modrem_add_b      : fp80_t;
+  signal modrem_add_sub    : boolean;
+  signal modrem_add_rm     : fp_round_mode_t;
+  signal modrem_add_rp     : fp_round_prec_t;
+
+  -- Shared FP unit operand mux outputs
+  signal shared_mul_start : std_logic;
+  signal shared_mul_a     : fp80_t;
+  signal shared_mul_b     : fp80_t;
+  signal shared_mul_rm    : fp_round_mode_t;
+  signal shared_mul_rp    : fp_round_prec_t;
+  signal shared_add_start : std_logic;
+  signal shared_add_a     : fp80_t;
+  signal shared_add_b     : fp80_t;
+  signal shared_add_sub   : boolean;
+  signal shared_add_rm    : fp_round_mode_t;
+  signal shared_add_rp    : fp_round_prec_t;
 
 begin
   trig_inst : entity work.mc68881_trig_unit
@@ -218,7 +264,20 @@ begin
       flag_divzero   => divrem_flag_divzero,
       flag_overflow  => divrem_flag_overflow,
       flag_underflow => divrem_flag_underflow,
-      flag_inexact   => divrem_flag_inexact
+      flag_inexact   => divrem_flag_inexact,
+      modrem_fp_mul_start  => modrem_mul_start,
+      modrem_fp_mul_a      => modrem_mul_a,
+      modrem_fp_mul_b      => modrem_mul_b,
+      modrem_fp_mul_done   => alu_mul_done,
+      modrem_fp_mul_result => alu_mul_result,
+      modrem_fp_add_start  => modrem_add_start,
+      modrem_fp_add_a      => modrem_add_a,
+      modrem_fp_add_b      => modrem_add_b,
+      modrem_fp_add_sub    => modrem_add_sub,
+      modrem_fp_add_rm     => modrem_add_rm,
+      modrem_fp_add_rp     => modrem_add_rp,
+      modrem_fp_add_done   => alu_add_done,
+      modrem_fp_add_result => alu_add_result
     );
 
   sglops_inst : entity work.mc68881_sgl_ops_unit
@@ -234,6 +293,82 @@ begin
       done       => sglops_done,
       result     => sglops_result
     );
+
+  -- Shared FP multiply operand mux (mutually exclusive: ALU own vs modrem vs packed)
+  -- pragma translate_off
+  assert not (alu_mul_start_reg = '1' and modrem_mul_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: ALU and modrem both requesting mul" severity failure;
+  assert not (alu_mul_start_reg = '1' and packed_fp_mul_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: ALU and packed both requesting mul" severity failure;
+  assert not (modrem_mul_start = '1' and packed_fp_mul_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: modrem and packed both requesting mul" severity failure;
+  -- pragma translate_on
+  shared_mul_start <= alu_mul_start_reg or modrem_mul_start or packed_fp_mul_start;
+  shared_mul_a <= modrem_mul_a when modrem_mul_start = '1' else
+                  packed_fp_mul_a when packed_fp_mul_start = '1' else
+                  simple_a_reg;
+  shared_mul_b <= modrem_mul_b when modrem_mul_start = '1' else
+                  packed_fp_mul_b when packed_fp_mul_start = '1' else
+                  simple_b_reg;
+  shared_mul_rm <= FP_RND_NEAREST when modrem_mul_start = '1' else
+                   FP_RND_NEAREST when packed_fp_mul_start = '1' else
+                   simple_rm_reg;
+  shared_mul_rp <= FP_PREC_EXTENDED when modrem_mul_start = '1' else
+                   FP_PREC_EXTENDED when packed_fp_mul_start = '1' else
+                   simple_rp_reg;
+
+  -- Shared FP add/sub operand mux
+  -- pragma translate_off
+  assert not (alu_add_start_reg = '1' and modrem_add_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: ALU and modrem both requesting add" severity failure;
+  assert not (alu_add_start_reg = '1' and packed_fp_add_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: ALU and packed both requesting add" severity failure;
+  assert not (modrem_add_start = '1' and packed_fp_add_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: modrem and packed both requesting add" severity failure;
+  -- pragma translate_on
+  shared_add_start <= alu_add_start_reg or modrem_add_start or packed_fp_add_start;
+  shared_add_a <= modrem_add_a when modrem_add_start = '1' else
+                  packed_fp_add_a when packed_fp_add_start = '1' else
+                  simple_a_reg;
+  shared_add_b <= modrem_add_b when modrem_add_start = '1' else
+                  packed_fp_add_b when packed_fp_add_start = '1' else
+                  simple_b_reg;
+  shared_add_sub <= modrem_add_sub when modrem_add_start = '1' else
+                    packed_fp_add_sub when packed_fp_add_start = '1' else
+                    alu_fp_subtract_reg;
+  shared_add_rm <= modrem_add_rm when modrem_add_start = '1' else
+                   FP_RND_NEAREST when packed_fp_add_start = '1' else
+                   simple_rm_reg;
+  shared_add_rp <= modrem_add_rp when modrem_add_start = '1' else
+                   FP_PREC_EXTENDED when packed_fp_add_start = '1' else
+                   simple_rp_reg;
+
+  alu_mul_inst : entity work.mc68881_fp80_mul_unit
+    port map (
+      clk => clk, reset_n => reset_n,
+      start => shared_mul_start,
+      a_in => shared_mul_a, b_in => shared_mul_b,
+      round_mode => shared_mul_rm, round_prec => shared_mul_rp,
+      busy => alu_mul_busy, done => alu_mul_done,
+      result => alu_mul_result
+    );
+
+  alu_add_inst : entity work.mc68881_fp80_addsub_unit
+    port map (
+      clk => clk, reset_n => reset_n,
+      start => shared_add_start,
+      a_in => shared_add_a, b_in => shared_add_b,
+      subtract => shared_add_sub,
+      round_mode => shared_add_rm, round_prec => shared_add_rp,
+      busy => alu_add_busy, done => alu_add_done,
+      result => alu_add_result
+    );
+
+  -- Broadcast done/result to packed decimal consumer
+  packed_fp_mul_done   <= alu_mul_done;
+  packed_fp_mul_result <= alu_mul_result;
+  packed_fp_add_done   <= alu_add_done;
+  packed_fp_add_result <= alu_add_result;
 
   op_pending_is_trig <= '1' when is_trig_op(op_pending_reg) else '0';
   op_pending_is_divrem <= '1' when is_divrem_op(op_pending_reg) else '0';
@@ -287,6 +422,11 @@ begin
       simple_rm_reg <= FP_RND_NEAREST;
       simple_rp_reg <= FP_PREC_EXTENDED;
       simple_hold_count_reg <= 0;
+      alu_mul_start_reg <= '0';
+      alu_add_start_reg <= '0';
+      alu_fp_seq_pending_reg <= '0';
+      alu_fp_is_mul_reg <= '0';
+      alu_fp_subtract_reg <= false;
     elsif rising_edge(clk) then
       valid <= '0';
       aux_valid <= '0';
@@ -294,6 +434,8 @@ begin
       trig_start_reg <= '0';
       divrem_start_reg <= '0';
       sglops_start_reg <= '0';
+      alu_mul_start_reg <= '0';
+      alu_add_start_reg <= '0';
       if busy_reg = '1' and op_pending_is_divrem = '1' and divrem_complete_reg = '1' then
         valid <= '1';
         quotient_valid_reg <= divrem_quotient_valid_latched_reg;
@@ -389,7 +531,26 @@ begin
             sglops_done_seen_reg <= '0';
           end if;
         else
-          -- Simple ops path: compute heavy ops from registered operands
+          -- Sequential FP unit completion (ADD/SUB/MUL)
+          if alu_fp_seq_pending_reg = '1' then
+            if (alu_fp_is_mul_reg = '1' and alu_mul_done = '1') or
+               (alu_fp_is_mul_reg = '0' and alu_add_done = '1') then
+              if alu_fp_is_mul_reg = '1' then
+                result_reg <= alu_mul_result;
+              else
+                result_reg <= alu_add_result;
+              end if;
+              alu_fp_seq_pending_reg <= '0';
+              -- Complete immediately if latency already expired
+              if latency_count_reg = 0 then
+                valid <= '1';
+                busy_reg <= '0';
+                op_pending_reg <= FPU_OP_NOP;
+              end if;
+            end if;
+          end if;
+
+          -- Lightweight simple ops path: compute from registered operands
           -- Multi-cycle hold: wait configured cycles to let combinational FP settle.
           if simple_compute_pending_reg = '1' then
             if simple_hold_count_reg > 0 then
@@ -400,11 +561,15 @@ begin
             end if;
           end if;
 
-          if latency_count_reg = 0 then
-            valid <= '1';
-            busy_reg <= '0';
-            op_pending_reg <= FPU_OP_NOP;
-          else
+          if alu_fp_seq_pending_reg = '0' then
+            if latency_count_reg = 0 then
+              valid <= '1';
+              busy_reg <= '0';
+              op_pending_reg <= FPU_OP_NOP;
+            elsif latency_count_reg /= 0 then
+              latency_count_reg <= latency_count_reg - 1;
+            end if;
+          elsif latency_count_reg /= 0 then
             latency_count_reg <= latency_count_reg - 1;
           end if;
         end if;
@@ -429,19 +594,38 @@ begin
             latency_count_reg <= op_alu_latency(op_sel) - 2;
           end if;
         elsif is_simple_op(op_sel) then
-          -- All simple ops: register operands, compute after hold cycles
-          simple_a_reg <= a_in;
-          simple_b_reg <= b_in;
-          simple_op_reg <= op_sel;
-          simple_rm_reg <= round_mode;
-          simple_rp_reg <= round_prec;
-          simple_compute_pending_reg <= '1';
-          simple_hold_count_reg <= 4;  -- 4 skip cycles + compute = MCP 5 (budget 500ns)
-          busy_reg <= '1';
-          if op_alu_latency(op_sel) <= 1 then
-            latency_count_reg <= 1;
-          else
+          if op_sel = FPU_OP_ADD or op_sel = FPU_OP_SUB or op_sel = FPU_OP_MUL then
+            -- Sequential FP path: register operands, launch unit
+            simple_a_reg <= a_in;
+            simple_b_reg <= b_in;
+            simple_rm_reg <= round_mode;
+            simple_rp_reg <= round_prec;
+            alu_fp_seq_pending_reg <= '1';
+            if op_sel = FPU_OP_MUL then
+              alu_fp_is_mul_reg <= '1';
+              alu_mul_start_reg <= '1';
+            else
+              alu_fp_is_mul_reg <= '0';
+              alu_fp_subtract_reg <= (op_sel = FPU_OP_SUB);
+              alu_add_start_reg <= '1';
+            end if;
+            busy_reg <= '1';
             latency_count_reg <= op_alu_latency(op_sel) - 1;
+          else
+            -- Lightweight combinational path (CMP/ABS/NEG/INT/INTRZ/GETEXP/GETMAN/TST)
+            simple_a_reg <= a_in;
+            simple_b_reg <= b_in;
+            simple_op_reg <= op_sel;
+            simple_rm_reg <= round_mode;
+            simple_rp_reg <= round_prec;
+            simple_compute_pending_reg <= '1';
+            simple_hold_count_reg <= 1;  -- reduced: heaviest remaining op is FINT (~30ns)
+            busy_reg <= '1';
+            if op_alu_latency(op_sel) <= 1 then
+              latency_count_reg <= 1;
+            else
+              latency_count_reg <= op_alu_latency(op_sel) - 1;
+            end if;
           end if;
         elsif is_divrem_op(op_sel) then
           divrem_op_reg <= op_sel;
@@ -485,7 +669,9 @@ begin
   end process;
 
   result <= result_reg;
-  busy <= busy_reg or trig_busy or divrem_busy or sglops_busy;
+  busy <= busy_reg or trig_busy or divrem_busy or sglops_busy or
+          (alu_mul_busy and alu_fp_seq_pending_reg) or
+          (alu_add_busy and alu_fp_seq_pending_reg);
   quotient_byte <= quotient_byte_reg;
   quotient_valid <= quotient_valid_reg;
   aux_result <= aux_result_reg;

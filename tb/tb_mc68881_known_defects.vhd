@@ -48,7 +48,18 @@ begin
       quotient_byte => quotient_byte,
       quotient_valid => quotient_valid,
       aux_result => aux_result,
-      aux_valid => aux_valid
+      aux_valid => aux_valid,
+      packed_fp_mul_start  => '0',
+      packed_fp_mul_a      => (others => '0'),
+      packed_fp_mul_b      => (others => '0'),
+      packed_fp_mul_done   => open,
+      packed_fp_mul_result => open,
+      packed_fp_add_start  => '0',
+      packed_fp_add_a      => (others => '0'),
+      packed_fp_add_b      => (others => '0'),
+      packed_fp_add_sub    => false,
+      packed_fp_add_done   => open,
+      packed_fp_add_result => open
     );
 
   process

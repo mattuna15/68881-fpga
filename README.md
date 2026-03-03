@@ -32,11 +32,11 @@ The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
 
 | Resource | Used | Available | Util% |
 |----------|------|-----------|-------|
-| Slice LUTs | 60,688 | 134,600 | 45.09% |
-| Registers | 11,603 | 269,200 | 4.31% |
+| Slice LUTs | 59,304 | 134,600 | 44.06% |
+| Registers | 11,736 | 269,200 | 4.36% |
 | Block RAM | 5 tiles | 365 | 1.37% |
 | DSP48E1 | 33 | 740 | 4.46% |
-| F7 Muxes | 656 | 67,300 | 0.97% |
+| F7 Muxes | 692 | 67,300 | 1.03% |
 
 *Non-incremental synthesis, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-03.*
 

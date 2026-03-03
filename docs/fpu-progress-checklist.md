@@ -460,14 +460,15 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Implementation Snapshot (2026-03-03)
 - Milestone:
-  - Post-synth LUT usage at 45% after DEF-LUT-001 + DEF-LUT-002.
+  - Post-synth LUT usage at 44% after DEF-LUT-001 + DEF-LUT-002 + review fixes
+    (NaN/infinity early-exit in sequential FP units allows dead-code pruning).
   - DSP usage reduced from 65 to 33 via FP unit sharing and sync reset DSP packing.
   - Design now fits on smaller FPGAs: Artix-7 100T, Zynq UltraScale+ ZU3EG,
     Cyclone V 5CEBA7.
 - Run data (non-incremental synthesis):
-  - Utilization (post-synth): `Slice LUTs = 60688 / 134600 (45.09%)`
+  - Utilization (post-synth): `Slice LUTs = 59304 / 134600 (44.06%)`
   - DSPs: 33 / 740 (4.46%)
-  - Registers: 11603 / 269200 (4.31%)
+  - Registers: 11736 / 269200 (4.36%)
   - BRAM: 5 tiles / 365 (1.37%)
 
 ## Implementation Snapshot (2026-02-23)

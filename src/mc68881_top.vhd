@@ -190,6 +190,11 @@ architecture rtl of mc68881_top is
   signal cir_regselect_word    : std_logic_vector(15 downto 0) := (others => '0');
   signal cir_operand_addr_reg  : std_logic_vector(31 downto 0) := (others => '0');
 
+  -- CIR ALU launch handshake signals.
+  signal cir_launch_alu        : std_logic := '0';           -- One-cycle pulse from cir_dialog_proc
+  signal cir_decoded_op        : fpu_op_t := FPU_OP_NOP;     -- Combinational decode of command word
+  signal cir_arith_active_reg  : std_logic := '0';           -- Tracks CIR-launched arith op in alu_control_proc
+
   signal exc_event_valid_reg : std_logic := '0';
   signal exc_event_result_reg : fp80_t := (others => '0');
   signal exc_event_opa_reg : fp80_t := (others => '0');
@@ -1655,18 +1660,22 @@ begin
   op_sel_write_decoded <= decode_op_sel_word(d_in);
   op_class_write_decoded <= op_class(op_sel_write_decoded);
   conditional_prog_op_write <= '1' when is_conditional_prog_op(op_sel_write_decoded) else '0';
+  -- CIR: combinational decode of command word opcode bits [6:0] to fpu_op_t.
+  cir_decoded_op <= cir_decode_cpgen_opcode(cir_command_reg);
   -- One-cycle launch pulse on the rising edge of an OPSEL write when engines
   -- are idle.  The opsel_write_prev_reg guard ensures sustained bus_write
   -- levels do not re-fire the pulse on subsequent clocks.
   op_issue_pulse <= '1' when (
-    bus_write = '1' and
-    addr = ADDR_OPSEL and
-    opsel_write_prev_reg = '0' and
-    op_class_write_decoded /= OP_CLASS_NONE and
-    micro_active_reg = '0' and
-    frame_busy_reg = '0' and
-    busy = '0' and
-    not (conditional_prog_op_write = '1' and cir_response_pending_reg = '1')
+    (bus_write = '1' and
+     addr = ADDR_OPSEL and
+     opsel_write_prev_reg = '0' and
+     op_class_write_decoded /= OP_CLASS_NONE and
+     micro_active_reg = '0' and
+     frame_busy_reg = '0' and
+     busy = '0' and
+     not (conditional_prog_op_write = '1' and cir_response_pending_reg = '1'))
+    or
+    (cir_launch_alu = '1')
   ) else '0';
 
   alu_inst : entity work.mc68881_alu
@@ -1826,6 +1835,13 @@ begin
           when others =>
             null;
         end case;
+      end if;
+
+      -- CIR reg-to-reg launch: load op_sel and operands from register file.
+      if cir_launch_alu = '1' then
+        op_sel_reg <= cir_decoded_op;
+        operand_reg(0) <= fp_reg_file_reg(cir_dst_reg_idx);  -- Dest = operand A
+        operand_reg(1) <= fp_reg_file_reg(cir_src_reg_idx);  -- Source = operand B
       end if;
 
       if ctrl_move_write_req_reg = '1' then
@@ -2220,6 +2236,7 @@ begin
       exc_event_force_inexact_reg <= '0';
       exc_event_force_invalid_reg <= '0';
       exc_event_force_bsun_reg <= '0';
+      cir_arith_active_reg <= '0';
       sys_ctrl_save_req_reg <= '0';
       sys_ctrl_restore_req_reg <= '0';
       frame_op_waiting_reg <= '0';
@@ -2299,18 +2316,36 @@ begin
         result_ready_reg <= '0';
         result_ex_hi_reg <= (others => '0');
         aux_result_ex_hi_reg <= (others => '0');
-        last_op_sel_reg <= op_sel_write_decoded;
         fpiar_issue_snapshot_reg <= fpiar_reg;
         micro_active_reg <= '1';
-        total_cycles := op_cycle_count(
-          op_sel_write_decoded,
-          src_kind_reg,
-          ea_mode_reg,
-          cycle_case_reg,
-          mc68020_src_reg = '1',
-          mc68020_dst_reg = '1',
-          packed_dynamic_k_reg = '1'
-        );
+
+        if cir_launch_alu = '1' then
+          -- CIR reg-to-reg path: use decoded command word opcode.
+          last_op_sel_reg <= cir_decoded_op;
+          total_cycles := op_cycle_count(
+            cir_decoded_op,
+            FPU_SRC_FPM,
+            EA_MODE_DN_AN,
+            EA_CYCLE_BEST,
+            false,
+            false,
+            false
+          );
+          cir_arith_active_reg <= '1';
+        else
+          -- Legacy bus-write path: use d_in-decoded opcode.
+          last_op_sel_reg <= op_sel_write_decoded;
+          total_cycles := op_cycle_count(
+            op_sel_write_decoded,
+            src_kind_reg,
+            ea_mode_reg,
+            cycle_case_reg,
+            mc68020_src_reg = '1',
+            mc68020_dst_reg = '1',
+            packed_dynamic_k_reg = '1'
+          );
+        end if;
+
         micro_total_reg <= std_logic_vector(to_unsigned(total_cycles, 32));
         if total_cycles = 0 then
           micro_remaining_reg <= 0;
@@ -2319,6 +2354,10 @@ begin
         end if;
 
         -- Dispatch uses operation classes to keep execution paths scalable.
+        if cir_launch_alu = '1' then
+          -- CIR path always launches ALU for arithmetic operations.
+          op_start_reg <= '1';
+        else
         case op_class_write_decoded is
           when OP_CLASS_ARITH =>
             op_start_reg <= '1';
@@ -2692,12 +2731,23 @@ begin
           when others =>
             result_ready_reg <= '1';
         end case;
+        end if;  -- cir_launch_alu guard
       end if;
 
       if valid = '1' then
         result_lo_reg <= result(FP80_RESULT_LO_WIDTH-1 downto 0);
         result_hi_reg <= result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
         result_ex_reg <= result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+        -- CIR: write ALU result to destination FP register.
+        if cir_arith_active_reg = '1' then
+          fp_reg_file_reg(cir_dst_reg_idx) <= result;
+          cir_arith_active_reg <= '0';
+          -- Trigger exception classification for the CIR operation.
+          exc_event_valid_reg <= '1';
+          exc_event_result_reg <= result;
+          exc_event_opa_reg <= result;
+          exc_event_opb_reg <= FP80_CLASSIFY_ONE;
+        end if;
         if aux_valid = '1' then
           aux_result_lo_reg <= aux_result(FP80_RESULT_LO_WIDTH-1 downto 0);
           aux_result_hi_reg <= aux_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
@@ -2956,6 +3006,7 @@ begin
       cir_instr_type <= (others => '0');
       cir_src_fmt <= (others => '0');
       cir_dst_reg_idx <= 0;
+      cir_src_reg_idx <= 0;
       cir_reg_to_reg <= '0';
       cir_opword_written <= '0';
       cir_command_written <= '0';
@@ -2975,6 +3026,7 @@ begin
             cir_command_reg <= d_in(15 downto 0);
             cir_src_fmt <= d_in(12 downto 10);
             cir_dst_reg_idx <= to_integer(unsigned(d_in(9 downto 7)));
+            cir_src_reg_idx <= to_integer(unsigned(d_in(12 downto 10)));
             cir_reg_to_reg <= d_in(14);
             cir_command_written <= '1';
 
@@ -3009,7 +3061,10 @@ begin
       cir_state_reg <= CIR_IDLE;
       cir_xfer_word_idx <= 0;
       cir_xfer_word_count <= 0;
+      cir_launch_alu <= '0';
     elsif rising_edge(clk) then
+      cir_launch_alu <= '0';  -- default: clear one-shot pulse
+
       case cir_state_reg is
 
         when CIR_IDLE =>
@@ -3034,7 +3089,8 @@ begin
 
         when CIR_DECODE =>
           if cir_src_fmt = CIR_SRC_FPN then
-            -- Register-to-register: go to execute (Task 4 wires ALU)
+            -- Register-to-register: launch ALU and go to execute
+            cir_launch_alu <= '1';
             cir_state_reg <= CIR_EXECUTE;
           else
             -- Memory source: request operand transfer
@@ -3054,9 +3110,10 @@ begin
           null;  -- Reserved for multi-cycle format conversion
 
         when CIR_EXECUTE =>
-          -- Wait for ALU completion (Task 4 wires this)
-          -- For now, stub: stay in execute state
-          null;
+          -- Wait for ALU completion, then return to idle.
+          if valid = '1' then
+            cir_state_reg <= CIR_IDLE;
+          end if;
 
         when CIR_XFER_DST =>
           -- Task 7: destination transfer

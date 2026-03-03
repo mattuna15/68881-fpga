@@ -136,22 +136,31 @@ begin
           -- Result sign.
           res_sign_reg <= a_reg(FP_WIDTH-1) xor b_reg(FP_WIDTH-1);
 
-          -- Check for early-exit cases (zero, infinity/NaN).
+          -- Check for early-exit special cases: NaN, infinity, zero.
+          -- Order: NaN first, then infinity (checks zero×inf), then zero.
           early_exit_reg <= '0';
-          if (unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) = 0 and
-              unsigned(a_reg(FP_MANT_WIDTH-1 downto 0)) = 0) or
-             (unsigned(b_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) = 0 and
-              unsigned(b_reg(FP_MANT_WIDTH-1 downto 0)) = 0) then
-            -- Zero * anything = +0.
+          if fp80_is_nan(a_reg) or fp80_is_nan(b_reg) then
+            -- NaN propagation (MC68881: dest priority, SNaN quieted).
+            early_exit_reg <= '1';
+            early_result_reg <= fp80_propagate_nan(
+              a_reg, b_reg, fp80_is_nan(a_reg), fp80_is_nan(b_reg))(FP_WIDTH-1 downto 0);
+          elsif fp80_is_inf(a_reg) or fp80_is_inf(b_reg) then
+            early_exit_reg <= '1';
+            if fp80_is_zero(a_reg) or fp80_is_zero(b_reg) then
+              -- 0 * inf or inf * 0: canonical QNaN (invalid operation).
+              early_result_reg(FP_WIDTH-1) <= '0';
+              early_result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '1');
+              early_result_reg(FP_MANT_WIDTH-1 downto 0) <= (others => '1');
+            else
+              -- inf * finite or inf * inf: signed infinity.
+              early_result_reg(FP_WIDTH-1) <= a_reg(FP_WIDTH-1) xor b_reg(FP_WIDTH-1);
+              early_result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '1');
+              early_result_reg(FP_MANT_WIDTH-1 downto 0) <= (others => '0');
+            end if;
+          elsif fp80_is_zero(a_reg) or fp80_is_zero(b_reg) then
+            -- Zero * finite = +0.
             early_exit_reg <= '1';
             early_result_reg <= (others => '0');
-          elsif unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) = FP_EXP_ALL_ONES or
-                unsigned(b_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) = FP_EXP_ALL_ONES then
-            -- Infinity/NaN passthrough: return infinity with computed sign.
-            early_exit_reg <= '1';
-            early_result_reg(FP_WIDTH-1) <= a_reg(FP_WIDTH-1) xor b_reg(FP_WIDTH-1);
-            early_result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '1');
-            early_result_reg(FP_MANT_WIDTH-1 downto 0) <= (others => '0');
           end if;
 
           -- Biased exponent sum.
@@ -235,9 +244,7 @@ begin
           if increment = '1' then
             mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH + 1) sll drop_bits);
             if mant_round(mant_round'left) = '1' then
-              -- Rounding overflow: shift right, increment exponent.
-              mant_main := unsigned(std_logic_vector(mant_round(mant_round'left-1 downto 1))) & (mant_round(0));
-              -- Manual shift_right_with_sticky for 1-bit shift on mant_round lower bits.
+              -- Rounding overflow: shift right with sticky, increment exponent.
               mant_main := shift_right(mant_round(mant_round'left-1 downto 0), 1);
               if mant_round(0) = '1' then
                 mant_main(0) := '1';

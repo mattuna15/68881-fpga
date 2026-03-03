@@ -160,7 +160,9 @@ architecture rtl of mc68881_fp80_addsub_unit is
 
 begin
 
-  process(clk, reset_n)
+  -- Synchronous reset: consistent with mc68881_fp80_mul_unit and allows
+  -- Vivado to pack extended mantissa registers into DSP48E1 pipeline stages.
+  process(clk)
     -- Variables for ST_ALIGN.
     variable a_ext_v    : unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
     variable b_ext_v    : unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
@@ -189,6 +191,7 @@ begin
     variable lsb_keep   : integer;
     variable exp_out    : unsigned(FP_EXP_WIDTH-1 downto 0);
   begin
+    if rising_edge(clk) then
     if reset_n = '0' then
       state_reg <= ST_IDLE;
       done_reg <= '0';
@@ -211,7 +214,7 @@ begin
       res_sign_reg <= '0';
       same_sign_reg <= false;
       need_normalize_reg <= '0';
-    elsif rising_edge(clk) then
+    else
       done_reg <= '0';
 
       case state_reg is
@@ -242,10 +245,45 @@ begin
           mant_a_ext_reg <= unsigned(a_reg(FP_MANT_WIDTH-1 downto 0)) & (FP_GRS_BITS-1 downto 0 => '0');
           mant_b_ext_reg <= unsigned(b_reg(FP_MANT_WIDTH-1 downto 0)) & (FP_GRS_BITS-1 downto 0 => '0');
 
-          -- Check for early-exit zero cases.
+          -- Check for early-exit special cases: NaN, infinity, zero.
+          -- Order: NaN first (propagate), then infinity, then zero.
           early_exit_reg <= '0';
-          if unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) = 0 and
-             unsigned(a_reg(FP_MANT_WIDTH-1 downto 0)) = 0 then
+          if fp80_is_nan(a_reg) or fp80_is_nan(b_reg) then
+            -- NaN propagation (MC68881: dest priority, SNaN quieted).
+            early_exit_reg <= '1';
+            early_result_reg <= fp80_propagate_nan(
+              a_reg, b_reg, fp80_is_nan(a_reg), fp80_is_nan(b_reg))(FP_WIDTH-1 downto 0);
+          elsif fp80_is_inf(a_reg) or fp80_is_inf(b_reg) then
+            early_exit_reg <= '1';
+            if fp80_is_inf(a_reg) and fp80_is_inf(b_reg) then
+              -- Both infinity: check effective signs (compute inline,
+              -- sign_b_reg is not yet updated this cycle).
+              if (not sub_reg and a_reg(FP_WIDTH-1) = b_reg(FP_WIDTH-1)) or
+                 (sub_reg and a_reg(FP_WIDTH-1) /= b_reg(FP_WIDTH-1)) then
+                -- Same effective sign: result is infinity with that sign.
+                early_result_reg(FP_WIDTH-1) <= a_reg(FP_WIDTH-1);
+                early_result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '1');
+                early_result_reg(FP_MANT_WIDTH-1 downto 0) <= (others => '0');
+              else
+                -- Opposite effective signs (inf - inf): canonical QNaN.
+                early_result_reg(FP_WIDTH-1) <= '0';
+                early_result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '1');
+                early_result_reg(FP_MANT_WIDTH-1 downto 0) <= (others => '1');
+              end if;
+            elsif fp80_is_inf(a_reg) then
+              -- a is inf, b is finite: return a.
+              early_result_reg <= a_reg;
+            else
+              -- b is inf, a is finite: return b (negate if subtract).
+              if sub_reg then
+                early_result_reg(FP_WIDTH-1) <= not b_reg(FP_WIDTH-1);
+                early_result_reg(FP_WIDTH-2 downto 0) <= b_reg(FP_WIDTH-2 downto 0);
+              else
+                early_result_reg <= b_reg;
+              end if;
+            end if;
+          elsif unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) = 0 and
+                unsigned(a_reg(FP_MANT_WIDTH-1 downto 0)) = 0 then
             -- a is zero: return b (negate if subtract).
             early_exit_reg <= '1';
             if sub_reg then
@@ -441,6 +479,7 @@ begin
           done_reg <= '1';
           state_reg <= ST_IDLE;
       end case;
+    end if;
     end if;
   end process;
 

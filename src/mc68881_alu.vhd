@@ -295,6 +295,14 @@ begin
     );
 
   -- Shared FP multiply operand mux (mutually exclusive: ALU own vs modrem vs packed)
+  -- pragma translate_off
+  assert not (alu_mul_start_reg = '1' and modrem_mul_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: ALU and modrem both requesting mul" severity failure;
+  assert not (alu_mul_start_reg = '1' and packed_fp_mul_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: ALU and packed both requesting mul" severity failure;
+  assert not (modrem_mul_start = '1' and packed_fp_mul_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: modrem and packed both requesting mul" severity failure;
+  -- pragma translate_on
   shared_mul_start <= alu_mul_start_reg or modrem_mul_start or packed_fp_mul_start;
   shared_mul_a <= modrem_mul_a when modrem_mul_start = '1' else
                   packed_fp_mul_a when packed_fp_mul_start = '1' else
@@ -310,6 +318,14 @@ begin
                    simple_rp_reg;
 
   -- Shared FP add/sub operand mux
+  -- pragma translate_off
+  assert not (alu_add_start_reg = '1' and modrem_add_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: ALU and modrem both requesting add" severity failure;
+  assert not (alu_add_start_reg = '1' and packed_fp_add_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: ALU and packed both requesting add" severity failure;
+  assert not (modrem_add_start = '1' and packed_fp_add_start = '1')
+    report "MUTUAL EXCLUSION VIOLATION: modrem and packed both requesting add" severity failure;
+  -- pragma translate_on
   shared_add_start <= alu_add_start_reg or modrem_add_start or packed_fp_add_start;
   shared_add_a <= modrem_add_a when modrem_add_start = '1' else
                   packed_fp_add_a when packed_fp_add_start = '1' else

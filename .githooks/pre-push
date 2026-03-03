@@ -13,6 +13,8 @@ echo "Running GHDL tests before push..."
 
 "$GHDL_EXE" -a --std=08 \
   src/mc68881_pkg.vhd \
+  src/mc68881_fp80_mul_unit.vhd \
+  src/mc68881_fp80_addsub_unit.vhd \
   src/mc68881_modrem_post_unit.vhd \
   src/mc68881_divrem_unit.vhd \
   src/mc68881_trig_unit.vhd \
@@ -22,6 +24,7 @@ echo "Running GHDL tests before push..."
   src/mc68881_top.vhd \
   tb/mc68881_golden_vectors_pkg.vhd \
   tb/tb_mc68881_alu.vhd \
+  tb/tb_mc68881_known_defects.vhd \
   tb/tb_mc68881_top.vhd
 
 "$GHDL_EXE" -e --std=08 tb_mc68881_alu

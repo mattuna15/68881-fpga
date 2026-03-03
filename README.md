@@ -1,138 +1,137 @@
 # MC68881 FPGA Core
 
 ## Overview
-This repository contains a VHDL-2008 implementation of an MC68881-compatible
-floating-point unit targeting Xilinx Artix-7 devices. The focus is on cycle-accurate
-external behavior (bus timing, DSACK sequencing) while using DSP-friendly pipelines
-for the core arithmetic datapath. The current plan and progress tracking live in
-`docs/fpu-progress-checklist.md`.
+A VHDL-2008 implementation of a Motorola MC68881-compatible floating-point
+coprocessor targeting Xilinx 7-series FPGAs. The design implements the full
+MC68881 instruction set including all arithmetic, transcendental, program-control,
+system-control, and packed-decimal operations. It uses DSP-pipelined sequential
+FP units for the core arithmetic datapath with multi-cycle path constraints for
+timing closure.
+
+The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
+
+## Features
+- **Full instruction set**: FADD, FSUB, FMUL, FDIV, FSQRT, FMOD, FREM, FSCALE,
+  FSGLDIV, FSGLMUL, FABS, FNEG, FINT, FINTRZ, FGETEXP, FGETMAN, FTST, FCMP.
+- **Transcendental engine**: FSIN, FCOS, FTAN, FSINCOS, FASIN, FACOS, FATAN,
+  FATANH, FSINH, FCOSH, FTANH, FETOX, FETOXM1, FTWOTOX, FTENTOX, FLOGN,
+  FLOGNP1, FLOG2, FLOG10. BRAM-based seed tables with Taylor/CORDIC iteration.
+- **Data movement**: FMOVE (all formats including packed decimal `.P`),
+  FMOVEM (register lists and control registers), FMOVECR (ROM constants).
+- **Program control**: FScc, FBcc, FDBcc, FTRAPcc, FNOP with BSUN trap gating.
+- **System control**: FSAVE/FRESTORE frame handshake.
+- **IEEE 754 compliance**: NaN propagation (SNaN/QNaN discrimination, payload
+  preservation), infinity handling, signed zero, gradual underflow, all four
+  rounding modes (nearest, zero, +inf, -inf), single/double/extended precision.
+- **Exception handling**: Per-operation FPSR exception policies, FPCR trap
+  enable, accrued exception accumulation.
+- **Peripheral interface**: Register-mapped bus interface with DSACK handshake,
+  suitable for M68000/M68010 peripheral-mode operation.
+
+## Utilization (Xilinx Artix-7 200T, post-synth)
+
+| Resource | Used | Available | Util% |
+|----------|------|-----------|-------|
+| Slice LUTs | 60,688 | 134,600 | 45.09% |
+| Registers | 11,603 | 269,200 | 4.31% |
+| Block RAM | 5 tiles | 365 | 1.37% |
+| DSP48E1 | 33 | 740 | 4.46% |
+| F7 Muxes | 656 | 67,300 | 0.97% |
+
+*Non-incremental synthesis, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-03.*
+
+### Timing
+- Target clock: 10 MHz (100 ns period) — matches MC68881 bus timing.
+- Multi-cycle path constraints on sequential FP units (mul: 4 cycles, addsub: 6 cycles,
+  div: 6 cycles) and trig engine hold states.
+- Routed timing met with positive WNS on the Artix-7 200T.
+
+### Target device compatibility
+The design fits on several FPGA families:
+
+| Device | LUTs | DSPs | Fit? |
+|--------|------|------|------|
+| Xilinx Artix-7 200T | 134,600 | 740 | Yes (45%) |
+| Xilinx Artix-7 100T | 63,400 | 240 | Tight (~96%) |
+| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~85%) |
+| Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes |
+
+All RTL is vendor-portable (inferred DSP/BRAM, no Xilinx IP cores). Porting to
+Intel/Quartus requires XDC-to-SDC constraint conversion and minor DSP inference
+adjustments.
+
+## Architecture
+
+```
+mc68881_top                     Bus interface, format converters, FMOVECR ROM
+├── alu_inst (mc68881_alu)      Opcode dispatch, shared FP unit mux
+│   ├── trig_inst               Transcendental engine (own mul/add/div — runs concurrently)
+│   ├── divrem_inst             Radix-4 SRT division, FSQRT, FMOD/FREM
+│   │   └── modrem_post         Post-processing (uses shared mul/add)
+│   ├── sglops_inst             FSCALE, FSGLDIV, FSGLMUL
+│   ├── alu_mul_inst            Shared 64×64 sequential multiplier (DSP48E1 cascade)
+│   └── alu_add_inst            Shared 67-bit sequential adder/subtractor
+└── packed_unit_inst            Packed-decimal BCD encode/decode (uses shared mul/add)
+```
+
+The ALU dispatches to **exactly one** consumer at a time. The trig unit runs
+concurrently and has its own dedicated FP units. The ALU's mul and add instances
+are **shared** between the ALU's own FADD/FSUB/FMUL path, the modrem post-processing
+path, and the packed-decimal unit — saving ~5,300 LUTs and 32 DSPs vs. dedicated
+instances per consumer.
 
 ## Repository layout
-- `src/`: RTL sources for the MC68881-compatible core.
-- `tb/`: VHDL-2008 self-checking testbenches.
-- `docs/`: Implementation plan, timing notes, and related documentation.
-- `mc68881_codex_exports/`: Datasheet-derived CSV/JSON reference material used by the plan.
-- `AN-0947_MC68881_Floating-Point_Coprocessor_as_a_Peripheral_in_a_M68000_System_[Motorola_1987_37p].pdf`
-  and `MC68881.PDF`: Reference documentation.
-
-## Progress snapshot
-Based on `docs/fpu-progress-checklist.md`:
-- Completed highlights:
-  - Top-level cleanup/refactor items A1-A8, including explicit operation-class
-    dispatch, centralized opcode descriptors, typed MOVE decode records, and
-    per-op FPSR/FPCR exception-policy handling.
-  - FMOVE/FMOVEM family implementation (including packed-decimal `.P` and `FMOVECR`).
-  - Dyadic arithmetic set: `FADD`, `FSUB`, `FMUL`, `FDIV`, `FCMP`, `FMOD`, `FREM`,
-    `FSCALE`, `FSGLDIV`, `FSGLMUL`.
-  - Monadic arithmetic/data ops: `FSQRT`, `FABS`, `FNEG`, `FINT`, `FINTRZ`, `FGETEXP`, `FGETMAN`, `FTST`.
-  - B5 transcendental set implemented (`FSIN/FCOS/FTAN/FSINCOS`, inverse trig, exp/log families,
-    hyperbolic families, `FTENTOX/FTWOTOX`).
-  - B6 conditional dialog ordering (`FScc`, `FBcc`, `FDBcc`) with BSUN trap gating.
-  - B7 system-control instructions: `FSAVE`/`FRESTORE` frame handshake, `FTRAPcc`
-    with condition evaluation and CIR trap response.
-  - Bus/timing confirmations E1-E4.
-- Done:
-  - B8 packed-decimal conversion: full FP80 digit-extraction encoder,
-    17-digit FP80 accumulation decoder, round-to-nearest-even, OPERR for
-    invalid BCD, subnormal pre-normalization for accurate exp10 estimation,
-    17-digit precision-limit inexact detection (residual check), test
-    coverage for non-integer/OPERR/banker's rounding/pi k=17 INEXACT.
-    `DEF-PACKED-001` closed.
-
-## Implementation baseline (2026-02-26)
-- Clean non-incremental batch flow (`scripts/run_impl.tcl`) meets routed timing:
-  - `WNS = 3.985 ns`
-  - `TNS = 0.000 ns`
-  - `WHS = 0.067 ns`
-  - `THS = 0.000 ns`
-- Worst setup path: `trig_inst/add_b_reg_reg -> trig_inst/tmp_reg_reg` (4-cycle MCP, 400 ns budget).
-- Post-implementation utilization:
-  - `Slice LUTs  = 72,610 / 133,800 (54.27%)`
-  - `Registers   =  8,305 / 267,600 ( 3.10%)`
-  - `Block RAM   =      5 /     365 ( 1.37%)`
-  - `DSP48E1     =     48 /     740 ( 6.49%)`
-
-## Transcendental architecture guardrails
-- The B5 implementation uses a shared serialized transcendental engine (`src/mc68881_trig_unit.vhd`)
-  and is dispatched from ALU via `table_impl => TABLE_IMPL_BRAM` (`src/mc68881_alu.vhd`).
-- Trig seed tables are intentionally synchronous BRAM-style reads using the
-  `ST_SEED_READ -> ST_SEED_READ_WAIT -> ST_SEED_READ_LATCH` path.
-- Avoid replacing this with combinational table indexing for trig seeds in BRAM mode; that can
-  break BRAM inference and increase LUT usage sharply.
-- Validate architecture changes with non-incremental synth utilization reports, including
-  hierarchical reports (`trig_inst` focus).
-
-## Plan and milestones
-The implementation plan is tracked as a checklist in `docs/fpu-progress-checklist.md`,
-covering:
-- External interface and bus timing behavior.
-- Instruction cycle accounting and effective address additions.
-- Core microarchitecture and datapath pipelines for ADD/SUB/MUL/DIV.
-- Verification goals for arithmetic, bus behavior, and cycle counts.
-- Exception-path behavior for FPSR condition codes/accrued flags and FPIAR capture hooks.
-
-## Key documentation
-- Master checklist: `docs/fpu-progress-checklist.md`
-- Programming reference: `docs/68881-programming.txt`
-- FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`
-- Defect tracking: `docs/fpu-progress-checklist.md`
-- Technical summary: `docs/68881-tech-summary.pdf`
-- Motorola references:
-  - `docs/MC68881.PDF`
-  - `docs/AN-0947_MC68881_Floating-Point_Coprocessor_as_a_Peripheral_in_a_M68000_System_[Motorola_1987_37p].pdf`
-
-## Known defects
-- Open defect tracking is maintained in `docs/fpu-progress-checklist.md`.
-- Current status:
-  - Open:
-    - `DEF-TIMING-001`
-  - Closed: `DEF-TRIG-001`, `DEF-PACKED-001`, `DEF-DIVREM-001`, `DEF-DIVREM-002`; see `docs/fpu-progress-checklist.md` for closure notes.
+- `src/` — RTL sources (10 files, ~11.4K lines)
+  - `mc68881_pkg.vhd` — Types, constants, FP80 utility functions
+  - `mc68881_top.vhd` — Top-level bus interface, format converters
+  - `mc68881_alu.vhd` — ALU dispatcher, shared FP unit routing
+  - `mc68881_trig_unit.vhd` — Transcendental engine (BRAM seed tables)
+  - `mc68881_divrem_unit.vhd` — Division, square root, mod/rem
+  - `mc68881_modrem_post_unit.vhd` — FMOD/FREM post-processing
+  - `mc68881_fp80_mul_unit.vhd` — Sequential 64×64-bit FP80 multiplier
+  - `mc68881_fp80_addsub_unit.vhd` — Sequential 67-bit FP80 adder/subtractor
+  - `mc68881_sgl_ops_unit.vhd` — FSCALE, FSGLDIV, FSGLMUL
+  - `mc68881_packed_decimal_unit.vhd` — Packed-decimal BCD conversion
+- `tb/` — VHDL-2008 self-checking testbenches (13 files, ~8K lines)
+- `docs/` — Implementation plan, timing notes, reference documentation
+- `scripts/` — Test runner, golden vector generator, implementation TCL
+- `.github/workflows/ghdl.yml` — CI: GHDL analysis + 4 testbench runs
+- `.githooks/pre-push` — Pre-push GHDL regression gate
 
 ## Running simulations
-Use a VHDL-2008 capable simulator (such as GHDL or ModelSim). The repo includes a test
-script that runs the regression suite (ALU/top/cycle-count/FPCR-FPSR/FMOVE-FMOVEM/FMOVECR/
-timing plus opcode decode/class and class-dispatch benches):
+Use a VHDL-2008 capable simulator (GHDL 5.1.1+ recommended). The repo includes
+a test script that runs the full regression suite:
 
 ```powershell
 scripts/run_tests.ps1
 ```
 
-The script uses `GHDL_EXE` if set, otherwise it defaults to
+The script uses `GHDL_EXE` if set, otherwise defaults to
 `C:\code\ghdl-mcode-5.1.1-mingw64\bin\ghdl.exe` and finally `ghdl` on PATH.
 
-Golden vectors:
+### CI testbenches
+The GitHub Actions workflow runs these testbenches on every push:
+- `tb_mc68881_alu` — Arithmetic, NaN/infinity, transcendental, special values
+- `tb_mc68881_top` — Bus interface, format conversions, FPSR/exception checks
+- `tb_mc68881_ea_cycles` — Effective address cycle count tables
+- `tb_mc68881_cycle_counts` — Instruction cycle timing verification
+
+### Golden vectors
 - Generator: `scripts/gen_golden_vectors.py` (mpmath-based FP80 rounded constants).
 - Checked-in package: `tb/mc68881_golden_vectors_pkg.vhd`.
-- Keep compile order correct in CI/hooks/scripts:
-  `tb/mc68881_golden_vectors_pkg.vhd` must be analyzed before `tb/tb_mc68881_alu.vhd`.
+- Compile order: `mc68881_golden_vectors_pkg.vhd` must be analyzed before `tb_mc68881_alu.vhd`.
 
-Known-defect status checks (non-gating, currently includes `DEF-TRIG-001`) can be run with:
-
-```powershell
-scripts/run_known_defects.ps1
-```
-
-The pre-push hook in `.githooks/pre-push` runs the same tests. To enable hooks locally:
+### Pre-push hook
+The pre-push hook in `.githooks/pre-push` runs GHDL analysis and the ALU/top
+testbenches. To enable hooks locally:
 
 ```sh
 git config core.hooksPath .githooks
 ```
 
-Example direct GHDL usage:
-
-```sh
-ghdl -a --std=08 src/mc68881_pkg.vhd src/mc68881_alu.vhd tb/tb_mc68881_alu.vhd
-ghdl -e --std=08 tb_mc68881_alu
-ghdl -r --std=08 tb_mc68881_alu
-```
-
-Adjust the compilation list as new RTL/testbench files are added.
-
-## Synthesis And LUT Reporting
-Use non-incremental synthesis for area/LUT comparisons. Incremental reuse can mask RTL
-changes and produce stale utilization numbers.
-
-- In Vivado Tcl console, disable incremental synthesis for `synth_1`:
+## Synthesis and LUT reporting
+Use non-incremental synthesis for area/LUT comparisons. Incremental reuse can mask
+RTL changes and produce stale utilization numbers.
 
 ```tcl
 set_property AUTO_INCREMENTAL_CHECKPOINT 0 [get_runs synth_1]
@@ -141,11 +140,48 @@ reset_run synth_1
 launch_runs synth_1
 ```
 
-- Confirm in Project Summary that `Incremental synthesis` is `None`.
-- Treat LUT regression numbers as valid only when derived from a non-incremental run.
-- For hotspot analysis, generate hierarchical utilization from the synthesized checkpoint:
+For hotspot analysis, generate hierarchical utilization from the synthesized checkpoint:
 
 ```tcl
 open_checkpoint mc68881_top.dcp
 report_utilization -hierarchical -hierarchical_depth 10 -file mc68881_top_util_hier.rpt
 ```
+
+## Transcendental architecture guardrails
+- The transcendental engine uses BRAM-style synchronous reads via
+  `ST_SEED_READ -> ST_SEED_READ_WAIT -> ST_SEED_READ_LATCH`.
+- Do **not** replace this with combinational table indexing — it breaks BRAM
+  inference and increases LUT usage sharply.
+- Validate architecture changes with non-incremental synth utilization reports.
+
+## Remaining work
+- **Section 7 coprocessor interface**: Full M68020/M68030 coprocessor primitive-dialog
+  protocol (CIR-based instruction/data/status transactions). The current peripheral-mode
+  register-mapped interface is complete and functional.
+- **Test coverage**: Denormal handling (C1), exception detection expansion (C3),
+  FPCR/FPSR architectural field completeness (C4), FPIAR tracking (C5),
+  per-opcode self-checking testbenches (D1), cycle-count verification (D4),
+  opcode matrix coverage (D5), format-specific FMOVE tests (D6).
+
+## Defect tracking
+All defects are currently closed. History is maintained in `docs/fpu-progress-checklist.md`:
+- `DEF-LUT-002` — FP unit sharing (closed 2026-03-03)
+- `DEF-LUT-001` — Sequential FP unit reuse (closed 2026-03-03)
+- `DEF-TIMING-001` — MCP-guarded combinational FP80 datapaths (closed 2026-03-02)
+- `DEF-DIVREM-002` — DIV NaN policy (closed 2026-03-02)
+- `DEF-DIVREM-001` — DIV/SQRT gradual underflow (closed 2026-03-02)
+- `DEF-PACKED-002` — Packed-decimal QoR (closed 2026-03-02)
+- `DEF-PACKED-001` — Packed-decimal integer subset (closed 2026-02-28)
+- `DEF-TRIG-001` — FCOS sign check (closed 2026-02-15)
+
+## Key documentation
+- Master checklist: `docs/fpu-progress-checklist.md`
+- Programming reference: `docs/68881-programming.txt`
+- FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`
+- Technical summary: `docs/68881-tech-summary.pdf`
+- Motorola references:
+  - `docs/MC68881.PDF`
+  - `docs/AN-0947_MC68881_Floating-Point_Coprocessor_as_a_Peripheral_in_a_M68000_System_[Motorola_1987_37p].pdf`
+
+## License
+See repository for license terms.

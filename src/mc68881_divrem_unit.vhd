@@ -26,7 +26,22 @@ entity mc68881_divrem_unit is
     flag_divzero   : out std_logic;
     flag_overflow  : out std_logic;
     flag_underflow : out std_logic;
-    flag_inexact   : out std_logic
+    flag_inexact   : out std_logic;
+    -- Modrem FP multiply passthrough
+    modrem_fp_mul_start  : out std_logic;
+    modrem_fp_mul_a      : out fp80_t;
+    modrem_fp_mul_b      : out fp80_t;
+    modrem_fp_mul_done   : in  std_logic;
+    modrem_fp_mul_result : in  fp80_t;
+    -- Modrem FP add passthrough
+    modrem_fp_add_start  : out std_logic;
+    modrem_fp_add_a      : out fp80_t;
+    modrem_fp_add_b      : out fp80_t;
+    modrem_fp_add_sub    : out boolean;
+    modrem_fp_add_rm     : out fp_round_mode_t;
+    modrem_fp_add_rp     : out fp_round_prec_t;
+    modrem_fp_add_done   : in  std_logic;
+    modrem_fp_add_result : in  fp80_t
   );
 end entity mc68881_divrem_unit;
 
@@ -369,7 +384,20 @@ begin
         done    => modrem_done,
         result  => modrem_result,
         quotient_byte  => modrem_quotient_byte,
-        quotient_valid => modrem_quotient_valid
+        quotient_valid => modrem_quotient_valid,
+        fp_mul_start   => modrem_fp_mul_start,
+        fp_mul_a_out   => modrem_fp_mul_a,
+        fp_mul_b_out   => modrem_fp_mul_b,
+        fp_mul_done    => modrem_fp_mul_done,
+        fp_mul_result  => modrem_fp_mul_result,
+        fp_add_start   => modrem_fp_add_start,
+        fp_add_a_out   => modrem_fp_add_a,
+        fp_add_b_out   => modrem_fp_add_b,
+        fp_add_sub_out => modrem_fp_add_sub,
+        fp_add_rm_out  => modrem_fp_add_rm,
+        fp_add_rp_out  => modrem_fp_add_rp,
+        fp_add_done    => modrem_fp_add_done,
+        fp_add_result  => modrem_fp_add_result
       );
   end generate;
 
@@ -379,6 +407,15 @@ begin
     modrem_result <= (others => '0');
     modrem_quotient_byte <= (others => '0');
     modrem_quotient_valid <= '0';
+    modrem_fp_mul_start <= '0';
+    modrem_fp_mul_a <= (others => '0');
+    modrem_fp_mul_b <= (others => '0');
+    modrem_fp_add_start <= '0';
+    modrem_fp_add_a <= (others => '0');
+    modrem_fp_add_b <= (others => '0');
+    modrem_fp_add_sub <= false;
+    modrem_fp_add_rm <= FP_RND_NEAREST;
+    modrem_fp_add_rp <= FP_PREC_EXTENDED;
   end generate;
 
   process(clk, reset_n)

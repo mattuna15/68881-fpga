@@ -19,7 +19,20 @@ entity mc68881_packed_decimal_unit is
     rsp_word        : out std_logic_vector(95 downto 0);
     rsp_fp          : out fp80_t;
     rsp_inexact     : out std_logic;
-    rsp_invalid     : out std_logic
+    rsp_invalid     : out std_logic;
+    -- FP multiply interface (shared with ALU)
+    fp_mul_start   : out std_logic;
+    fp_mul_a_out   : out fp80_t;
+    fp_mul_b_out   : out fp80_t;
+    fp_mul_done    : in  std_logic;
+    fp_mul_result  : in  fp80_t;
+    -- FP add/sub interface (shared with ALU)
+    fp_add_start   : out std_logic;
+    fp_add_a_out   : out fp80_t;
+    fp_add_b_out   : out fp80_t;
+    fp_add_sub_out : out boolean;
+    fp_add_done    : in  std_logic;
+    fp_add_result  : in  fp80_t
   );
 end entity mc68881_packed_decimal_unit;
 
@@ -137,6 +150,9 @@ architecture rtl of mc68881_packed_decimal_unit is
   signal arith_add_res_reg : fp80_t := (others => '0');
   signal arith_int_res_reg : integer range -1 to 15 := 0;
 
+  signal packed_mul_start_reg : std_logic := '0';
+  signal packed_add_start_reg : std_logic := '0';
+
   function bcd_digit(value : natural) return std_logic_vector is
     variable nibble : std_logic_vector(3 downto 0) := (others => '0');
   begin
@@ -200,6 +216,15 @@ architecture rtl of mc68881_packed_decimal_unit is
     end case;
   end function;
 begin
+  -- Drive shared FP unit ports
+  fp_mul_start <= packed_mul_start_reg;
+  fp_mul_a_out <= arith_mul_a_reg;
+  fp_mul_b_out <= arith_mul_b_reg;
+  fp_add_start <= packed_add_start_reg;
+  fp_add_a_out <= arith_add_a_reg;
+  fp_add_b_out <= arith_add_b_reg;
+  fp_add_sub_out <= (arith_add_sub_reg = '1');
+
   busy <= '1' when state_reg /= ST_IDLE else '0';
   rsp_valid <= rsp_valid_reg;
   rsp_word <= rsp_word_reg;
@@ -284,8 +309,12 @@ begin
       arith_mul_res_reg <= (others => '0');
       arith_add_res_reg <= (others => '0');
       arith_int_res_reg <= 0;
+      packed_mul_start_reg <= '0';
+      packed_add_start_reg <= '0';
     elsif rising_edge(clk) then
       rsp_valid_reg <= '0';
+      packed_mul_start_reg <= '0';
+      packed_add_start_reg <= '0';
       do_mul := false;
       do_add := false;
       do_int := false;
@@ -299,27 +328,36 @@ begin
       arith_commit := AR_NONE;
 
       if arith_stage_reg = AR_ST_WAIT then
-        if arith_hold_count_reg /= 0 then
-          arith_hold_count_reg <= arith_hold_count_reg - 1;
-        else
-          case arith_commit_reg is
-            when AR_SCALE_CHUNK | AR_SCALE_BITS | AR_ENC_TUNE | AR_ENC_DIGIT_SCALE =>
-              arith_mul_res_reg <= mul_fp80(arith_mul_a_reg, arith_mul_b_reg, FP_RND_NEAREST, FP_PREC_EXTENDED);
-            when AR_ENC_DIGIT_SUB =>
-              arith_add_res_reg <= add_sub_fp80(
-                arith_add_a_reg,
-                arith_add_b_reg,
-                arith_add_sub_reg = '1',
-                FP_RND_NEAREST,
-                FP_PREC_EXTENDED
-              );
-            when AR_ENC_DIGIT_INT | AR_ENC_POSTROUND =>
+        case arith_commit_reg is
+          when AR_SCALE_CHUNK | AR_SCALE_BITS | AR_ENC_TUNE | AR_ENC_DIGIT_SCALE =>
+            -- Sequential mul unit (shared with ALU)
+            if arith_hold_count_reg = 0 then
+              packed_mul_start_reg <= '1';
+              arith_hold_count_reg <= 1;  -- mark as launched
+            elsif fp_mul_done = '1' then
+              arith_mul_res_reg <= fp_mul_result;
+              arith_stage_reg <= AR_ST_COMMIT;
+            end if;
+          when AR_ENC_DIGIT_SUB =>
+            -- Sequential add/sub unit (shared with ALU)
+            if arith_hold_count_reg = 0 then
+              packed_add_start_reg <= '1';
+              arith_hold_count_reg <= 1;  -- mark as launched
+            elsif fp_add_done = '1' then
+              arith_add_res_reg <= fp_add_result;
+              arith_stage_reg <= AR_ST_COMMIT;
+            end if;
+          when AR_ENC_DIGIT_INT | AR_ENC_POSTROUND =>
+            -- Keep combinational fp80_to_int_trunc (cheap, ~10ns)
+            if arith_hold_count_reg /= 0 then
+              arith_hold_count_reg <= arith_hold_count_reg - 1;
+            else
               arith_int_res_reg <= clamp_integer(fp80_to_int_trunc(arith_int_arg_reg), -1, 15);
-            when others =>
-              null;
-          end case;
-          arith_stage_reg <= AR_ST_COMMIT;
-        end if;
+              arith_stage_reg <= AR_ST_COMMIT;
+            end if;
+          when others =>
+            arith_stage_reg <= AR_ST_COMMIT;
+        end case;
       elsif arith_stage_reg = AR_ST_COMMIT then
         case arith_commit_reg is
           when AR_SCALE_CHUNK =>
@@ -802,7 +840,13 @@ begin
           arith_add_sub_reg <= '0';
         end if;
         arith_int_arg_reg <= int_arg_v;
-        arith_hold_count_reg <= 4;
+        -- For mul/add commits: 0 = not launched (sequential unit starts in AR_ST_WAIT)
+        -- For int commits: 1 hold cycle for fp80_to_int_trunc settle
+        if arith_commit = AR_ENC_DIGIT_INT or arith_commit = AR_ENC_POSTROUND then
+          arith_hold_count_reg <= 1;
+        else
+          arith_hold_count_reg <= 0;
+        end if;
         arith_stage_reg <= AR_ST_WAIT;
       end if;
       end if;

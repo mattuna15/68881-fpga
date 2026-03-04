@@ -25,10 +25,10 @@ entity mc68881_trig_unit is
     -- Save/restore interface for FSAVE/FRESTORE Busy frame.
     save_req     : in  std_logic;
     save_data    : out std_logic_vector(31 downto 0);
-    save_addr    : in  natural range 0 to 8;
+    save_addr    : in  natural range 0 to 10;
     restore_req  : in  std_logic;
     restore_data : in  std_logic_vector(31 downto 0);
-    restore_addr : in  natural range 0 to 8;
+    restore_addr : in  natural range 0 to 10;
     restore_wr   : in  std_logic
   );
 end entity mc68881_trig_unit;
@@ -594,8 +594,8 @@ architecture rtl of mc68881_trig_unit is
     return unbiased_exp;
   end function;
 
-  -- Save/restore shadow register array (9 words).
-  type save_array_t is array (0 to 8) of std_logic_vector(31 downto 0);
+  -- Save/restore shadow register array (11 words: full tmp_reg needs 3 words).
+  type save_array_t is array (0 to 10) of std_logic_vector(31 downto 0);
   signal shadow_regs : save_array_t := (others => (others => '0'));
 
 begin
@@ -2070,9 +2070,11 @@ begin
   -- ----------------------------------------------------------------
   -- Save / Restore process for FSAVE/FRESTORE Busy frame support.
   -- ----------------------------------------------------------------
-  p_save_restore : process(clk)
+  p_save_restore : process(clk, reset_n)
   begin
-    if rising_edge(clk) then
+    if reset_n = '0' then
+      shadow_regs <= (others => (others => '0'));
+    elsif rising_edge(clk) then
       if save_req = '1' then
         -- Snapshot internal state into shadow registers.
         shadow_regs(0) <= std_logic_vector(to_unsigned(trig_state_t'pos(state_reg), 16))
@@ -2089,6 +2091,8 @@ begin
         shadow_regs(6) <= poly_reg(31 downto 0);
         shadow_regs(7) <= poly_reg(63 downto 32);
         shadow_regs(8) <= tmp_reg(31 downto 0);
+        shadow_regs(9) <= tmp_reg(63 downto 32);
+        shadow_regs(10) <= tmp_reg(79 downto 64) & x"0000";
       end if;
 
       if restore_req = '1' and restore_wr = '1' then

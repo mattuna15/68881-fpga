@@ -36,14 +36,13 @@ entity mc68881_alu is
     packed_fp_add_done    : out std_logic;
     packed_fp_add_result  : out fp80_t;
     -- Save/restore interface for FSAVE/FRESTORE Busy frame.
-    -- Save/restore interface for FSAVE/FRESTORE Busy frame.
-    -- Addr 0..4: ALU state, 5..13: trig unit, 14..19: divrem unit.
+    -- Addr 0..4: ALU state, 5..15: trig (11), 16..25: divrem+modrem_post (6+4).
     save_req     : in  std_logic;
     save_data    : out std_logic_vector(31 downto 0);
-    save_addr    : in  natural range 0 to 19;
+    save_addr    : in  natural range 0 to 25;
     restore_req  : in  std_logic;
     restore_data : in  std_logic_vector(31 downto 0);
-    restore_addr : in  natural range 0 to 19;
+    restore_addr : in  natural range 0 to 25;
     restore_wr   : in  std_logic
   );
 end entity mc68881_alu;
@@ -195,11 +194,11 @@ architecture rtl of mc68881_alu is
 
   -- Sub-unit save/restore routing signals.
   signal trig_save_data    : std_logic_vector(31 downto 0);
-  signal trig_save_addr    : natural range 0 to 8 := 0;
+  signal trig_save_addr    : natural range 0 to 10 := 0;
   signal divrem_save_data  : std_logic_vector(31 downto 0);
-  signal divrem_save_addr  : natural range 0 to 5 := 0;
-  signal trig_restore_addr : natural range 0 to 8 := 0;
-  signal divrem_restore_addr : natural range 0 to 5 := 0;
+  signal divrem_save_addr  : natural range 0 to 9 := 0;
+  signal trig_restore_addr : natural range 0 to 10 := 0;
+  signal divrem_restore_addr : natural range 0 to 9 := 0;
   signal trig_restore_wr   : std_logic := '0';
   signal divrem_restore_wr : std_logic := '0';
 
@@ -737,19 +736,20 @@ begin
   end process p_save_restore;
 
   -- Sub-unit save address routing (combinational).
-  trig_save_addr   <= save_addr - 5  when save_addr >= 5 and save_addr <= 13 else 0;
-  divrem_save_addr <= save_addr - 14 when save_addr >= 14 and save_addr <= 19 else 0;
+  -- ALU: 0-4, trig: 5-15 (11 words), divrem+modrem_post: 16-25 (6+4 words).
+  trig_save_addr   <= save_addr - 5  when save_addr >= 5 and save_addr <= 15 else 0;
+  divrem_save_addr <= save_addr - 16 when save_addr >= 16 and save_addr <= 25 else 0;
 
   -- Sub-unit restore address and write-enable routing (combinational).
-  trig_restore_addr   <= restore_addr - 5  when restore_addr >= 5 and restore_addr <= 13 else 0;
-  divrem_restore_addr <= restore_addr - 14 when restore_addr >= 14 and restore_addr <= 19 else 0;
-  trig_restore_wr     <= restore_wr when restore_addr >= 5 and restore_addr <= 13 else '0';
-  divrem_restore_wr   <= restore_wr when restore_addr >= 14 and restore_addr <= 19 else '0';
+  trig_restore_addr   <= restore_addr - 5  when restore_addr >= 5 and restore_addr <= 15 else 0;
+  divrem_restore_addr <= restore_addr - 16 when restore_addr >= 16 and restore_addr <= 25 else 0;
+  trig_restore_wr     <= restore_wr when restore_addr >= 5 and restore_addr <= 15 else '0';
+  divrem_restore_wr   <= restore_wr when restore_addr >= 16 and restore_addr <= 25 else '0';
 
   -- Read-side mux for save_data: route to ALU shadow regs or sub-unit data.
   save_data <= shadow_regs(save_addr) when save_addr <= 4 else
-               trig_save_data          when save_addr >= 5 and save_addr <= 13 else
-               divrem_save_data        when save_addr >= 14 and save_addr <= 19 else
+               trig_save_data          when save_addr >= 5 and save_addr <= 15 else
+               divrem_save_data        when save_addr >= 16 and save_addr <= 25 else
                (others => '0');
 
 end architecture rtl;

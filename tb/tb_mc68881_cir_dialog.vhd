@@ -683,6 +683,8 @@ begin
     variable cmd_word : std_logic_vector(31 downto 0) := (others => '0');
     variable cir_resp : std_logic_vector(31 downto 0) := (others => '0');
     variable fpsr_val : std_logic_vector(31 downto 0) := (others => '0');
+    type frame_buf_t is array (0 to CIR_FRAME_BUSY_WORDS-1) of std_logic_vector(31 downto 0);
+    variable save_buf : frame_buf_t := (others => (others => '0'));
   begin
     -- Reset.
     reset_n <= '0';
@@ -1828,15 +1830,33 @@ begin
       report "FAIL TEST 37: Expected Busy FW $00B4, got $" & to_hstring(fpsr_val(15 downto 0))
       severity failure;
 
-    -- Read all 45 frame data words.
+    -- Read all 45 frame data words into save_buf.
     for i in 0 to CIR_FRAME_BUSY_WORDS - 1 loop
       bus_read(a_in, rw, cs_n, as_n, ds_n,
                dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_RES_H);
-      if i < 6 then
-        report "TEST 37 frame_word(" & integer'image(i) & ")=" & to_hstring(fpsr_val)
-          severity note;
-      end if;
+      save_buf(i) := fpsr_val;
     end loop;
+
+    -- Verify header structure.
+    assert save_buf(0)(31 downto 16) = x"0001"
+      report "FAIL TEST 37: word(0) version tag expected $0001, got $" &
+             to_hstring(save_buf(0)(31 downto 16))
+      severity failure;
+    -- Word(6): Operand A lower 32 bits (FP80_ONE lower = $00000000).
+    assert save_buf(6) = x"00000000"
+      report "FAIL TEST 37: word(6) opA_lo expected $00000000, got $" &
+             to_hstring(save_buf(6))
+      severity failure;
+    -- Word(7): Operand A upper (exp=$3FFF, mantissa[63:48]=$8000).
+    assert save_buf(7) = x"3FFF8000"
+      report "FAIL TEST 37: word(7) opA_hi expected $3FFF8000, got $" &
+             to_hstring(save_buf(7))
+      severity failure;
+    -- Word(10): Operand A middle 32 bits (FP80_ONE mid = $80000000).
+    assert save_buf(10)(31 downto 16) = x"8000"
+      report "FAIL TEST 37: word(10) opA_mid upper expected $8000, got $" &
+             to_hstring(save_buf(10)(31 downto 16))
+      severity failure;
 
     for i in 0 to 3 loop
       wait until rising_edge(clk);
@@ -1877,19 +1897,124 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n,
              dsack0_n, dsack1_n, d_out, fpsr_val, CIR_SAVE_ADDR);
     report "TEST 38 verify_fw=" & to_hstring(fpsr_val(15 downto 0)) severity note;
-    -- After Busy restore + commit, FPU should be initialized (Idle or Busy).
-    assert fpsr_val(15 downto 0) /= CIR_FRAME_NULL_FW
-      report "FAIL TEST 38: FPU should be initialized after Busy FRESTORE"
+    -- After Busy restore + commit, FPU should be initialized (Idle, since ALU idle).
+    assert fpsr_val(15 downto 0) = CIR_FRAME_IDLE_FW
+      report "FAIL TEST 38: Expected Idle FW after Busy FRESTORE, got $" &
+             to_hstring(fpsr_val(15 downto 0))
       severity failure;
     -- Read out frame data words to complete the save.
     for i in 0 to CIR_FRAME_IDLE_WORDS - 1 loop
       bus_read(a_in, rw, cs_n, as_n, ds_n,
                dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_RES_H);
     end loop;
+
+    -- Verify FPSR was restored from Busy frame header word 2.
+    -- Word 2 data was $B0 + 2 = $B2.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_FPSR);
+    report "TEST 38 fpsr_after_restore=" & to_hstring(fpsr_val) severity note;
+    assert fpsr_val = std_logic_vector(to_unsigned(16#B0# + 2, 32))
+      report "FAIL TEST 38: FPSR not restored from Busy frame. got=$" &
+             to_hstring(fpsr_val) & " expected=$000000B2"
+      severity failure;
     for i in 0 to 3 loop
       wait until rising_edge(clk);
     end loop;
     report "TEST 38 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 39: Busy save→restore→save e2e operand round-trip
+    -- ================================================================
+    report "TEST 39: Busy save/restore/save e2e round-trip" severity note;
+
+    -- Re-initialize FPU and load known operand.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+
+    -- Start FSIN via CIR.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_reg_cmd(0, 0, OPCODE_FSIN));
+    for i in 0 to 2 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Phase 1: FSAVE (Busy) — capture frame into save_buf.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPSAVE_OPWORD);
+    for i in 0 to 3 loop
+      wait until rising_edge(clk);
+    end loop;
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, CIR_SAVE_ADDR);
+    assert fpsr_val(15 downto 0) = CIR_FRAME_BUSY_FW
+      report "FAIL TEST 39: Phase 1 expected Busy FW, got $" & to_hstring(fpsr_val(15 downto 0))
+      severity failure;
+    for i in 0 to CIR_FRAME_BUSY_WORDS - 1 loop
+      bus_read(a_in, rw, cs_n, as_n, ds_n,
+               dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_RES_H);
+      save_buf(i) := fpsr_val;
+    end loop;
+    for i in 0 to 3 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Phase 2: FRESTORE (Busy) with captured frame data.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPRESTORE_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESTORE_ADDR, x"000000B4");
+    for i in 0 to 2 loop
+      wait until rising_edge(clk);
+    end loop;
+    for i in 0 to CIR_FRAME_BUSY_WORDS - 1 loop
+      bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+                ADDR_RES_H, save_buf(i));
+    end loop;
+    for i in 0 to 5 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Verify FPSR was restored from captured frame.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_FPSR);
+    report "TEST 39 fpsr_roundtrip=" & to_hstring(fpsr_val) severity note;
+    assert fpsr_val = save_buf(2)
+      report "FAIL TEST 39: FPSR round-trip mismatch. got=$" & to_hstring(fpsr_val) &
+             " expected=$" & to_hstring(save_buf(2))
+      severity failure;
+
+    -- Phase 3: FSAVE again. After Busy FRESTORE + commit, FPU is initialized
+    -- but ALU is idle → produces Idle frame. Verify the FPSR field in the
+    -- Idle frame matches what was restored.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPSAVE_OPWORD);
+    for i in 0 to 3 loop
+      wait until rising_edge(clk);
+    end loop;
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, CIR_SAVE_ADDR);
+    assert fpsr_val(15 downto 0) = CIR_FRAME_IDLE_FW
+      report "FAIL TEST 39: Phase 3 expected Idle FW, got $" & to_hstring(fpsr_val(15 downto 0))
+      severity failure;
+
+    -- Read Idle frame words and verify word 2 (FPSR) matches.
+    for i in 0 to CIR_FRAME_IDLE_WORDS - 1 loop
+      bus_read(a_in, rw, cs_n, as_n, ds_n,
+               dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_RES_H);
+      if i = 2 then
+        report "TEST 39 idle_fpsr=" & to_hstring(fpsr_val) severity note;
+        assert fpsr_val = save_buf(2)
+          report "FAIL TEST 39: Idle frame FPSR mismatch after round-trip. got=$" &
+                 to_hstring(fpsr_val) & " expected=$" & to_hstring(save_buf(2))
+          severity failure;
+      end if;
+    end loop;
+    for i in 0 to 3 loop
+      wait until rising_edge(clk);
+    end loop;
+    report "TEST 39 PASSED" severity note;
 
     -- ================================================================
     report "All CIR dialog tests PASSED" severity note;

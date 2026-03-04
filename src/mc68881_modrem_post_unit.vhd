@@ -38,10 +38,10 @@ entity mc68881_modrem_post_unit is
     -- Save/restore interface for FSAVE/FRESTORE Busy frame.
     save_req     : in  std_logic;
     save_data    : out std_logic_vector(31 downto 0);
-    save_addr    : in  natural range 0 to 2;
+    save_addr    : in  natural range 0 to 3;
     restore_req  : in  std_logic;
     restore_data : in  std_logic_vector(31 downto 0);
-    restore_addr : in  natural range 0 to 2;
+    restore_addr : in  natural range 0 to 3;
     restore_wr   : in  std_logic
   );
 end entity mc68881_modrem_post_unit;
@@ -103,6 +103,7 @@ architecture rtl of mc68881_modrem_post_unit is
   signal shadow_state      : std_logic_vector(31 downto 0) := (others => '0');
   signal shadow_word1      : std_logic_vector(31 downto 0) := (others => '0');
   signal shadow_word2      : std_logic_vector(31 downto 0) := (others => '0');
+  signal shadow_word3      : std_logic_vector(31 downto 0) := (others => '0');
 
   function unpack_fp80(value : fp80_t) return fp_unpacked_t is
     variable unpacked : fp_unpacked_t;
@@ -362,22 +363,23 @@ begin
       shadow_state <= (others => '0');
       shadow_word1 <= (others => '0');
       shadow_word2 <= (others => '0');
+      shadow_word3 <= (others => '0');
     elsif rising_edge(clk) then
       if save_req = '1' then
         -- Snapshot: pack FSM state + continuation state into word 0.
         shadow_state <= std_logic_vector(to_unsigned(state_t'pos(state_reg), 16)) &
                         std_logic_vector(to_unsigned(state_t'pos(mod_fp_cont_state_reg), 16));
-        -- Word 1: n_fp_reg lower 32 bits.
+        -- Words 1-3: n_fp_reg (80 bits across 3 words).
         shadow_word1 <= std_logic_vector(n_fp_reg(31 downto 0));
-        -- Word 2: n_fp_reg upper 48 bits (80-32=48, padded to 32 with upper 16 from bits 79:64).
         shadow_word2 <= std_logic_vector(n_fp_reg(63 downto 32));
+        shadow_word3 <= std_logic_vector(n_fp_reg(79 downto 64)) & x"0000";
       end if;
       if restore_wr = '1' then
         case restore_addr is
           when 0 => shadow_state <= restore_data;
           when 1 => shadow_word1 <= restore_data;
           when 2 => shadow_word2 <= restore_data;
-          when others => null;
+          when 3 => shadow_word3 <= restore_data;
         end case;
       end if;
     end if;
@@ -387,6 +389,7 @@ begin
   save_data <= shadow_state when save_addr = 0 else
                shadow_word1 when save_addr = 1 else
                shadow_word2 when save_addr = 2 else
+               shadow_word3 when save_addr = 3 else
                (others => '0');
 
   busy <= '1' when state_reg /= ST_IDLE else '0';

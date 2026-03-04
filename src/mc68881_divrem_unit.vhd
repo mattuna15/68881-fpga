@@ -45,10 +45,10 @@ entity mc68881_divrem_unit is
     -- Save/restore interface for FSAVE/FRESTORE Busy frame.
     save_req     : in  std_logic;
     save_data    : out std_logic_vector(31 downto 0);
-    save_addr    : in  natural range 0 to 5;
+    save_addr    : in  natural range 0 to 9;
     restore_req  : in  std_logic;
     restore_data : in  std_logic_vector(31 downto 0);
-    restore_addr : in  natural range 0 to 5;
+    restore_addr : in  natural range 0 to 9;
     restore_wr   : in  std_logic
   );
 end entity mc68881_divrem_unit;
@@ -119,9 +119,15 @@ architecture rtl of mc68881_divrem_unit is
   signal flag_underflow_reg : std_logic := '0';
   signal flag_inexact_reg : std_logic := '0';
 
-  -- Shadow registers for save/restore (6 words).
+  -- Shadow registers for save/restore (6 words for divrem, 4 for modrem_post).
   type save_array_t is array (0 to 5) of std_logic_vector(31 downto 0);
   signal shadow_regs : save_array_t := (others => (others => '0'));
+
+  -- Modrem_post save/restore routing signals.
+  signal modrem_save_data    : std_logic_vector(31 downto 0) := (others => '0');
+  signal modrem_save_addr    : natural range 0 to 3 := 0;
+  signal modrem_restore_addr : natural range 0 to 3 := 0;
+  signal modrem_restore_wr   : std_logic := '0';
 
   function prec_bits(prec : fp_round_prec_t) return natural is
   begin
@@ -410,13 +416,13 @@ begin
         fp_add_rp_out  => modrem_fp_add_rp,
         fp_add_done    => modrem_fp_add_done,
         fp_add_result  => modrem_fp_add_result,
-        save_req       => '0',
-        save_data      => open,
-        save_addr      => 0,
-        restore_req    => '0',
-        restore_data   => (others => '0'),
-        restore_addr   => 0,
-        restore_wr     => '0'
+        save_req       => save_req,
+        save_data      => modrem_save_data,
+        save_addr      => modrem_save_addr,
+        restore_req    => restore_req,
+        restore_data   => restore_data,
+        restore_addr   => modrem_restore_addr,
+        restore_wr     => modrem_restore_wr
       );
   end generate;
 
@@ -435,6 +441,7 @@ begin
     modrem_fp_add_sub <= false;
     modrem_fp_add_rm <= FP_RND_NEAREST;
     modrem_fp_add_rp <= FP_PREC_EXTENDED;
+    modrem_save_data <= (others => '0');
   end generate;
 
   process(clk, reset_n)
@@ -882,12 +889,19 @@ begin
         shadow_regs(5)(16) <= div_sign_reg;
         shadow_regs(5)(31 downto 17) <= std_logic_vector(to_unsigned(fpu_op_t'pos(op_reg), 15));
       end if;
-      if restore_wr = '1' then
+      if restore_wr = '1' and restore_addr <= 5 then
         shadow_regs(restore_addr) <= restore_data;
       end if;
     end if;
   end process;
 
-  -- Save data mux.
-  save_data <= shadow_regs(save_addr);
+  -- Modrem_post address routing: divrem addr 6-9 → modrem_post addr 0-3.
+  modrem_save_addr    <= save_addr - 6    when save_addr >= 6 and save_addr <= 9 else 0;
+  modrem_restore_addr <= restore_addr - 6 when restore_addr >= 6 and restore_addr <= 9 else 0;
+  modrem_restore_wr   <= restore_wr       when restore_addr >= 6 and restore_addr <= 9 else '0';
+
+  -- Save data mux: 0-5 divrem, 6-9 modrem_post.
+  save_data <= shadow_regs(save_addr) when save_addr <= 5 else
+               modrem_save_data       when save_addr >= 6 and save_addr <= 9 else
+               (others => '0');
 end architecture rtl;

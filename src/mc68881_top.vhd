@@ -214,33 +214,30 @@ architecture rtl of mc68881_top is
   signal cir_operand_staging     : std_logic_vector(95 downto 0) := (others => '0');
   signal cir_operand_word_arrived : std_logic := '0';        -- Pulse from bus write → dialog proc
   signal cir_operand_read_done   : std_logic := '0';         -- Pulse from bus read → dialog proc
+  signal cir_operand_read_prev   : std_logic := '0';         -- Edge-detect for operand reads
   signal cir_operand_write_prev  : std_logic := '0';         -- Edge-detect for operand writes
 
   -- CIR cpSAVE/cpRESTORE handshake signals (driven by cir_dialog_proc, read by bus_frame_proc).
   signal cir_save_req          : std_logic := '0';
-  signal cir_save_wait_cnt     : natural range 0 to 7 := 0;
   signal cir_save_word_idx     : natural range 0 to 63 := 0;
   signal cir_restore_word_idx  : natural range 0 to 63 := 0;
   signal cir_restore_fw_reg    : std_logic_vector(31 downto 0) := (others => '0');
-  signal cir_restore_data_reg  : std_logic_vector(31 downto 0) := (others => '0');
-  signal cir_restore_data_idx  : natural range 0 to 3 := 0;
-  signal cir_restore_data_we   : std_logic := '0';
   signal cir_restore_trigger   : std_logic := '0';
   signal cir_restore_null_req  : std_logic := '0';  -- Dialog FSM → bus_frame_proc: reset FPU (null restore)
   signal cir_restore_commit_req: std_logic := '0';  -- Dialog FSM → bus_frame_proc: commit idle frame
   signal cir_save_read_done    : std_logic := '0';  -- Pulse: host read Save CIR (format word)
   signal cir_save_read_prev    : std_logic := '0';  -- Edge-detect for Save CIR reads
-  -- Idle frame restore staging (6 x 32-bit words received from host).
-  type cir_frame_data_t is array (0 to CIR_FRAME_IDLE_WORDS-1) of std_logic_vector(31 downto 0);
+  -- Restore staging for header words (Idle: 0-5, Busy: 0-11).
+  type cir_frame_data_t is array (0 to CIR_FRAME_BUSY_HDR-1) of std_logic_vector(31 downto 0);
   signal cir_frame_data_reg    : cir_frame_data_t := (others => (others => '0'));
 
   -- ALU save/restore signals for Busy FSAVE/FRESTORE.
   signal alu_save_req_reg    : std_logic := '0';
   signal alu_save_data       : std_logic_vector(31 downto 0) := (others => '0');
-  signal alu_save_addr       : natural range 0 to 19 := 0;
+  signal alu_save_addr       : natural range 0 to 25 := 0;
   signal alu_restore_req_reg : std_logic := '0';
   signal alu_restore_data    : std_logic_vector(31 downto 0) := (others => '0');
-  signal alu_restore_addr    : natural range 0 to 19 := 0;
+  signal alu_restore_addr    : natural range 0 to 25 := 0;
   signal alu_restore_wr_reg  : std_logic := '0';
   -- Packed decimal save/restore signals.
   signal packed_save_data    : std_logic_vector(31 downto 0) := (others => '0');
@@ -1716,7 +1713,8 @@ begin
     end case;
   end process;
 
-  sync_read <= '1' when (bus_read = '1' and access_class = ACCESS_CIR) else '0';
+  sync_read <= '1' when (bus_read = '1' and
+                         (access_class = ACCESS_CIR or cir_state_reg = CIR_SAVE_FRAME)) else '0';
   -- FPCR mode control: bits 7-6 precision, 5-4 rounding mode.
   round_mode <= decode_round_mode(fpcr_reg(5 downto 4));
   round_prec <= decode_round_prec(fpcr_reg(7 downto 6));
@@ -1727,12 +1725,13 @@ begin
   cir_decoded_op <= cir_decode_cpgen_opcode(cir_command_reg);
 
   -- Busy frame save/restore address routing (concurrent).
+  -- Layout: 0-5 header, 6-11 operands, 12-37 ALU (26 words), 38-40 packed (3), 41-44 pad.
   -- FSAVE: map cir_save_word_idx to sub-unit save_addr.
-  alu_save_addr    <= cir_save_word_idx - 12 when cir_save_word_idx >= 12 and cir_save_word_idx <= 31 else 0;
-  packed_save_addr <= cir_save_word_idx - 32 when cir_save_word_idx >= 32 and cir_save_word_idx <= 34 else 0;
+  alu_save_addr    <= cir_save_word_idx - 12 when cir_save_word_idx >= 12 and cir_save_word_idx <= 37 else 0;
+  packed_save_addr <= cir_save_word_idx - 38 when cir_save_word_idx >= 38 and cir_save_word_idx <= 40 else 0;
   -- FRESTORE: map cir_restore_word_idx to sub-unit restore_addr.
-  alu_restore_addr    <= cir_restore_word_idx - 12 when cir_restore_word_idx >= 12 and cir_restore_word_idx <= 31 else 0;
-  packed_restore_addr <= cir_restore_word_idx - 32 when cir_restore_word_idx >= 32 and cir_restore_word_idx <= 34 else 0;
+  alu_restore_addr    <= cir_restore_word_idx - 12 when cir_restore_word_idx >= 12 and cir_restore_word_idx <= 37 else 0;
+  packed_restore_addr <= cir_restore_word_idx - 38 when cir_restore_word_idx >= 38 and cir_restore_word_idx <= 40 else 0;
   -- Restore data bus: shared between ALU and packed (only one writes at a time).
   alu_restore_data <= cir_restore_word_data;
 
@@ -2242,11 +2241,21 @@ begin
         fpu_initialized_reg <= '0';
       end if;
 
-      -- CIR FRESTORE commit: mark FPU initialized after idle frame restore.
-      -- (Idle frame carries non-architectural state only; FPCR/FPSR are restored
-      -- separately via FMOVEM.CR, so we just mark the FPU as active.)
+      -- CIR FRESTORE commit: mark FPU initialized and restore staged header data.
       if cir_restore_commit_req = '1' then
         fpu_initialized_reg <= '1';
+        -- Busy frame: restore operands and FPSR from staged header words.
+        -- Save layout: word 6=opA(31:0), 7=opA(79:64)&opA(63:48),
+        --   8=opB(31:0), 9=opB(79:64)&opB(63:48), 10=opA(63:32), 11=opB(63:32).
+        if cir_xfer_word_count = CIR_FRAME_BUSY_WORDS then
+          fpsr_reg <= cir_frame_data_reg(2);
+          operand_reg(0)(31 downto 0)  <= cir_frame_data_reg(6);
+          operand_reg(0)(63 downto 32) <= cir_frame_data_reg(10);
+          operand_reg(0)(79 downto 64) <= cir_frame_data_reg(7)(31 downto 16);
+          operand_reg(1)(31 downto 0)  <= cir_frame_data_reg(8);
+          operand_reg(1)(63 downto 32) <= cir_frame_data_reg(11);
+          operand_reg(1)(79 downto 64) <= cir_frame_data_reg(9)(31 downto 16);
+        end if;
       end if;
     end if;
   end process;
@@ -3140,14 +3149,14 @@ begin
               when 11 =>
                 -- Operand B middle 32 bits.
                 d_out_comb <= std_logic_vector(operand_reg(1)(63 downto 32));
-              when 12 to 31 =>
-                -- ALU + sub-unit save data (words 0..19 → trig, divrem, ALU).
+              when 12 to 37 =>
+                -- ALU + sub-unit save data (26 words: ALU 0-4, trig 5-15, divrem 16-25).
                 d_out_comb <= alu_save_data;
-              when 32 to 34 =>
+              when 38 to 40 =>
                 -- Packed decimal save data (words 0..2).
                 d_out_comb <= packed_save_data;
               when others =>
-                -- Padding (words 35-44).
+                -- Padding (words 41-44).
                 d_out_comb <= (others => '0');
             end case;
           else
@@ -3223,7 +3232,7 @@ begin
       latched_a4   <= '0';
       d_out_reg    <= (others => '0');
     elsif rising_edge(clk) then
-      if sync_read = '1' and start_access = '1' then
+      if sync_read = '1' and start_access = '1' and dsack_state = DSACK_IDLE then
         d_out_reg <= d_out_comb;
       end if;
 
@@ -3322,6 +3331,7 @@ begin
       cir_operand_staging <= (others => '0');
       cir_operand_word_arrived <= '0';
       cir_operand_read_done <= '0';
+      cir_operand_read_prev <= '0';
       cir_operand_write_prev <= '0';
       cir_save_read_done <= '0';
       cir_save_read_prev <= '0';
@@ -3363,8 +3373,16 @@ begin
         cir_save_read_done <= '1';
       end if;
 
+      -- Edge-detect for Operand CIR reads (prevents multi-pulse from sustained bus strobe).
+      if bus_read = '1' and addr = CIR_ADDR_OPERAND then
+        cir_operand_read_prev <= '1';
+      else
+        cir_operand_read_prev <= '0';
+      end if;
+
       -- Detect host read of Operand CIR during destination transfer or FSAVE frame.
       if bus_read = '1' and addr = CIR_ADDR_OPERAND
+         and cir_operand_read_prev = '0'
          and (cir_state_reg = CIR_XFER_DST or cir_state_reg = CIR_SAVE_FRAME) then
         cir_operand_read_done <= '1';
       end if;
@@ -3404,7 +3422,7 @@ begin
             end if;
             -- Store frame data word during FRESTORE frame transfer.
             if cir_state_reg = CIR_RESTORE_FRAME and cir_operand_write_prev = '0' then
-              if cir_restore_word_idx < CIR_FRAME_IDLE_WORDS then
+              if cir_restore_word_idx < CIR_FRAME_BUSY_HDR then
                 cir_frame_data_reg(cir_restore_word_idx) <= d_in;
               end if;
               -- Capture incoming word for sub-unit restore routing.
@@ -3510,7 +3528,6 @@ begin
           -- cpSAVE: trigger frame capture via handshake
           if cir_opword_written = '1' and cir_instr_type = CIR_TYPE_CPSAVE then
             cir_save_req <= '1';
-            cir_save_wait_cnt <= 7;  -- FRAME_LATENCY + margin
             cir_state_reg <= CIR_SAVE_WAIT;
           end if;
           -- cpRESTORE: request format word from CPU
@@ -3584,7 +3601,6 @@ begin
           -- cpSAVE preemption: allow FSAVE to suspend an in-progress computation.
           if cir_opword_written = '1' and cir_instr_type = CIR_TYPE_CPSAVE then
             cir_save_req <= '1';
-            cir_save_wait_cnt <= 7;
             cir_state_reg <= CIR_SAVE_WAIT;
           end if;
 
@@ -3689,6 +3705,7 @@ begin
               -- Busy frame: expect 45 data words (Task 15).
               cir_restore_word_idx <= 0;
               cir_xfer_word_count <= CIR_FRAME_BUSY_WORDS;
+              alu_restore_req_reg <= '1';  -- Hold high for sub-unit restore gating
               cir_state_reg <= CIR_RESTORE_FRAME;
             else
               -- Invalid format word: Pre-Instruction Exception.
@@ -3701,14 +3718,15 @@ begin
           -- Host writes frame data words to Operand CIR.
           if cir_operand_word_arrived = '1' then
             -- Route incoming word to appropriate sub-unit restore port.
-            if cir_restore_word_idx >= 12 and cir_restore_word_idx <= 31 then
-              alu_restore_wr_reg <= '1';  -- ALU + trig + divrem (20 words)
-            elsif cir_restore_word_idx >= 32 and cir_restore_word_idx <= 34 then
+            if cir_restore_word_idx >= 12 and cir_restore_word_idx <= 37 then
+              alu_restore_wr_reg <= '1';  -- ALU + trig + divrem + modrem_post (26 words)
+            elsif cir_restore_word_idx >= 38 and cir_restore_word_idx <= 40 then
               packed_restore_wr <= '1';   -- Packed decimal (3 words)
             end if;
             if cir_restore_word_idx + 1 >= cir_xfer_word_count then
               -- All frame words received. Request commit via bus_frame_proc.
               cir_restore_commit_req <= '1';
+              alu_restore_req_reg <= '0';
               cir_state_reg <= CIR_IDLE;
             else
               cir_restore_word_idx <= cir_restore_word_idx + 1;

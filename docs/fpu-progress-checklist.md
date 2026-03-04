@@ -614,7 +614,17 @@ Legend:
     in `mc68881_top.vhd`, cpGEN reg-to-reg path through ALU, memory-source and
     memory-destination transfers with E2E tests. Edge-detect operand writes,
     command flag re-trigger fix, CMP/TST writeback gating.
-- `[ ]` Phase 2: Implement conditional dialog path (`FNOP/FScc` first), then `FBcc/FDBcc/FTRAPcc`.
+- `[x]` Phase 2: Implement conditional dialog path (`FNOP/FScc` first), then `FBcc/FDBcc/FTRAPcc`.
+  - Done: CIR conditional dialog path for cpCond (FScc/FDBcc/FTRAPcc) and cpBcc
+    (FBcc/FNOP) instruction types. Condition evaluation routed through existing
+    `alu_control_proc` OP_CLASS_PROG_CTRL dispatch via unified `eff_op_class`/
+    `eff_op_sel` refactor (Option C). CIR_COND_EVAL state with
+    `cir_condition_written` flag gates entry until both OpWord and Condition CIR
+    writes complete. `cond_selector` variable in OP_CLASS_PROG_CTRL reads
+    `cir_condition_reg` directly for CIR path (avoids same-clock-edge timing
+    issue with `operand_reg`). Fixed double exc_classification bug where
+    `exc_event_valid_reg` from CIR ARITH valid handler overwrote correct FPSR CC.
+    E2E tests: FNOP, FBcc taken/not-taken, FScc true/false, BSUN via CIR (6 tests).
 - `[ ]` Phase 3: Implement FSAVE/FRESTORE format-word and state-frame flow.
 - `[ ]` Phase 4: Wire full exception dialog paths (pre/mid/BSUN/format) and FPIAR capture points.
 - `[ ]` Phase 5: Close timing/cycle tests and regression matrix.

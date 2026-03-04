@@ -164,11 +164,11 @@ use only the register-mapped peripheral interface. The CIR generic defaults to
 `true`.
 
 ## Remaining work
-- **Section 7 coprocessor interface (Phase 2+)**: Conditional dialog paths
-  (FBcc/FDBcc/FScc/FTRAPcc), FSAVE/FRESTORE format-word and state-frame flow,
-  full exception dialog paths, and protocol/cycle testbenches. Phase 1
-  (CIR types, dialog FSM, reg-to-reg, memory-source/destination transfers) is
-  complete.
+- **Section 7 coprocessor interface (Phase 3+)**: FSAVE/FRESTORE format-word
+  and state-frame flow, full exception dialog paths, and protocol/cycle
+  testbenches. Phases 1-2 (CIR types, dialog FSM, reg-to-reg,
+  memory-source/destination transfers, conditional dialog paths for
+  FBcc/FDBcc/FScc/FTRAPcc/FNOP) are complete.
 - **Test coverage**: Denormal handling (C1), exception detection expansion (C3),
   FPCR/FPSR architectural field completeness (C4), FPIAR tracking (C5),
   per-opcode self-checking testbenches (D1), cycle-count verification (D4),

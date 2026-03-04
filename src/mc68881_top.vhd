@@ -189,6 +189,7 @@ architecture rtl of mc68881_top is
   signal cir_response_prim     : std_logic_vector(15 downto 0) := CIR_PRIM_NULL;
   signal cir_opword_written    : std_logic := '0';
   signal cir_command_written   : std_logic := '0';
+  signal cir_condition_written : std_logic := '0';
   signal cir_exc_vector        : std_logic_vector(9 downto 0) := (others => '0');
   signal cir_control_ack       : std_logic := '0';
   signal frame_format_word_reg : std_logic_vector(15 downto 0) := (others => '0');
@@ -1860,8 +1861,17 @@ begin
 
       -- CIR launch: load op_sel and operands for ALU.
       if cir_launch_alu = '1' then
-        op_sel_reg <= cir_decoded_op;
-        operand_reg(0) <= fp_reg_file_reg(cir_dst_reg_idx);  -- Dest = operand A
+        if cir_instr_type = CIR_TYPE_CPCOND or
+           cir_instr_type = CIR_TYPE_CPBCC_W or
+           cir_instr_type = CIR_TYPE_CPBCC_L then
+          -- CIR conditional: load condition selector into operand A.
+          operand_reg(0) <= (others => '0');
+          operand_reg(0)(5 downto 0) <= cir_condition_reg;
+        else
+          -- cpGEN: load destination FP register as operand A.
+          op_sel_reg <= cir_decoded_op;
+          operand_reg(0) <= fp_reg_file_reg(cir_dst_reg_idx);
+        end if;
         if cir_reg_to_reg = '1' then
           -- Register-to-register: source from FP register file.
           operand_reg(1) <= fp_reg_file_reg(cir_src_reg_idx);
@@ -2259,6 +2269,9 @@ begin
     variable fdb_count_before : unsigned(15 downto 0) := (others => '0');
     variable fdb_count_after : unsigned(15 downto 0) := (others => '0');
     variable move_deferred : std_logic := '0';
+    variable eff_op_class : fpu_op_class_t := OP_CLASS_NONE;
+    variable eff_op_sel   : fpu_op_t := FPU_OP_NOP;
+    variable cond_selector : std_logic_vector(5 downto 0) := (others => '0');
   begin
     if reset_n = '0' then
       result_lo_reg <= (others => '0');
@@ -2385,26 +2398,51 @@ begin
         fpiar_issue_snapshot_reg <= fpiar_reg;
         micro_active_reg <= '1';
 
+        -- Determine effective op and class for unified dispatch.
         if cir_launch_alu = '1' then
-          -- CIR reg-to-reg path: use decoded command word opcode.
-          last_op_sel_reg <= cir_decoded_op;
-          total_cycles := op_cycle_count(
-            cir_decoded_op,
-            FPU_SRC_FPM,
-            EA_MODE_DN_AN,
-            EA_CYCLE_BEST,
-            false,
-            false,
-            false
-          );
-          if op_class(cir_decoded_op) /= OP_CLASS_MOVE then
-            cir_arith_active_reg <= '1';
+          if cir_instr_type = CIR_TYPE_CPCOND then
+            eff_op_sel := FPU_OP_FSCC;
+            eff_op_class := OP_CLASS_PROG_CTRL;
+          elsif cir_instr_type = CIR_TYPE_CPBCC_W or
+                cir_instr_type = CIR_TYPE_CPBCC_L then
+            eff_op_sel := FPU_OP_FBCC;
+            eff_op_class := OP_CLASS_PROG_CTRL;
+          else
+            eff_op_sel := cir_decoded_op;
+            eff_op_class := op_class(cir_decoded_op);
           end if;
         else
-          -- Legacy bus-write path: use d_in-decoded opcode.
-          last_op_sel_reg <= op_sel_write_decoded;
+          eff_op_sel := op_sel_write_decoded;
+          eff_op_class := op_class_write_decoded;
+        end if;
+
+        -- Set last_op_sel_reg, operands, cycle count.
+        if cir_launch_alu = '1' then
+          last_op_sel_reg <= eff_op_sel;
+          if eff_op_class = OP_CLASS_PROG_CTRL then
+            -- CIR conditional: condition selector is loaded into operand_reg(0)
+            -- by the bus_frame_proc CIR launch block (not here, to avoid
+            -- multi-driver conflict on operand_reg).
+            total_cycles := 0;
+          else
+            -- CIR cpGEN: existing cycle count.
+            total_cycles := op_cycle_count(
+              eff_op_sel,
+              FPU_SRC_FPM,
+              EA_MODE_DN_AN,
+              EA_CYCLE_BEST,
+              false,
+              false,
+              false
+            );
+            if eff_op_class /= OP_CLASS_MOVE then
+              cir_arith_active_reg <= '1';
+            end if;
+          end if;
+        else
+          last_op_sel_reg <= eff_op_sel;
           total_cycles := op_cycle_count(
-            op_sel_write_decoded,
+            eff_op_sel,
             src_kind_reg,
             ea_mode_reg,
             cycle_case_reg,
@@ -2422,22 +2460,21 @@ begin
         end if;
 
         -- Dispatch uses operation classes to keep execution paths scalable.
-        if cir_launch_alu = '1' then
-          -- CIR path: launch ALU for arithmetic ops only.
-          -- MOVE ops bypass the ALU (which doesn't handle OP_CLASS_MOVE).
-          -- The converted source is in operand_reg(1) after this edge, so
-          -- we defer the register file copy to the next cycle via a flag.
-          if op_class(cir_decoded_op) = OP_CLASS_MOVE then
+        if cir_launch_alu = '1' and eff_op_class /= OP_CLASS_PROG_CTRL then
+          -- CIR cpGEN path: MOVE or ARITH only.
+          -- MOVE ops bypass the ALU; defer register file copy via flag.
+          if eff_op_class = OP_CLASS_MOVE then
             cir_move_pending_reg <= '1';
           else
             op_start_reg <= '1';
           end if;
         else
-        case op_class_write_decoded is
+        -- Both legacy and CIR conditional paths use unified class dispatch.
+        case eff_op_class is
           when OP_CLASS_ARITH =>
             op_start_reg <= '1';
           when OP_CLASS_MOVE =>
-            if op_sel_write_decoded = FPU_OP_MOVE then
+            if eff_op_sel = FPU_OP_MOVE then
               move_cfg := move_cfg_decoded_reg;
               src_idx := move_cfg.src_idx;
               mem_fmt := move_cfg.mem_fmt;
@@ -2640,7 +2677,7 @@ begin
               if move_deferred = '0' then
                 result_ready_reg <= '1';
               end if;
-            elsif op_sel_write_decoded = FPU_OP_MOVEM then
+            elsif eff_op_sel = FPU_OP_MOVEM then
               move_cfg := move_cfg_decoded_reg;
               if move_cfg.movem_mask_from_dn = '1' then
                 mask := operand_reg(0)(7 downto 0);
@@ -2695,10 +2732,20 @@ begin
             decrement_taken := '0';
             counter_expired := '0';
 
-            if op_sel_write_decoded = FPU_OP_FSCC then
+            -- CIR conditional path: read condition from cir_condition_reg
+            -- (already stable). Legacy path: read from operand_reg(0).
+            -- This avoids a timing issue where bus_frame_proc loads
+            -- operand_reg(0) on the same clock edge alu_control_proc reads it.
+            if cir_launch_alu = '1' then
+              cond_selector := cir_condition_reg;
+            else
+              cond_selector := operand_reg(0)(5 downto 0);
+            end if;
+
+            if eff_op_sel = FPU_OP_FSCC then
               cc_field := fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN);
-              signaling_cond := is_signaling_fcc_condition(operand_reg(0)(5 downto 0));
-              cond_true := eval_fcc_condition(operand_reg(0)(5 downto 0), cc_field);
+              signaling_cond := is_signaling_fcc_condition(cond_selector);
+              cond_true := eval_fcc_condition(cond_selector, cc_field);
               if signaling_cond and cc_field(0) = '1' then
                 bsun_event := '1';
                 cond_true := '0';
@@ -2708,10 +2755,10 @@ begin
               end if;
               cir_response_word(0) := cond_true;
               cir_response_word(4) := bsun_event;
-            elsif op_sel_write_decoded = FPU_OP_FBCC then
+            elsif eff_op_sel = FPU_OP_FBCC then
               cc_field := fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN);
-              signaling_cond := is_signaling_fcc_condition(operand_reg(0)(5 downto 0));
-              cond_true := eval_fcc_condition(operand_reg(0)(5 downto 0), cc_field);
+              signaling_cond := is_signaling_fcc_condition(cond_selector);
+              cond_true := eval_fcc_condition(cond_selector, cc_field);
               if signaling_cond and cc_field(0) = '1' then
                 bsun_event := '1';
                 cond_true := '0';
@@ -2721,10 +2768,10 @@ begin
               cir_response_word(1) := branch_taken;
               cir_response_word(4) := bsun_event;
               prog_result := cir_response_word;
-            elsif op_sel_write_decoded = FPU_OP_FDBCC then
+            elsif eff_op_sel = FPU_OP_FDBCC then
               cc_field := fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN);
-              signaling_cond := is_signaling_fcc_condition(operand_reg(0)(5 downto 0));
-              cond_true := eval_fcc_condition(operand_reg(0)(5 downto 0), cc_field);
+              signaling_cond := is_signaling_fcc_condition(cond_selector);
+              cond_true := eval_fcc_condition(cond_selector, cc_field);
               if signaling_cond and cc_field(0) = '1' then
                 bsun_event := '1';
                 cond_true := '0';
@@ -2750,10 +2797,10 @@ begin
               cir_response_word(4) := bsun_event;
               cir_response_word(31 downto 16) := std_logic_vector(fdb_count_after);
               prog_result := cir_response_word;
-            elsif op_sel_write_decoded = FPU_OP_FTRAPCC then
+            elsif eff_op_sel = FPU_OP_FTRAPCC then
               cc_field := fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN);
-              signaling_cond := is_signaling_fcc_condition(operand_reg(0)(5 downto 0));
-              cond_true := eval_fcc_condition(operand_reg(0)(5 downto 0), cc_field);
+              signaling_cond := is_signaling_fcc_condition(cond_selector);
+              cond_true := eval_fcc_condition(cond_selector, cc_field);
               if signaling_cond and cc_field(0) = '1' then
                 bsun_event := '1';
                 cond_true := '0';
@@ -2766,15 +2813,15 @@ begin
               cir_response_word(4) := bsun_event;
             end if;
 
-            if op_sel_write_decoded = FPU_OP_FSCC or
-               op_sel_write_decoded = FPU_OP_FBCC or
-               op_sel_write_decoded = FPU_OP_FDBCC or
-               op_sel_write_decoded = FPU_OP_FTRAPCC then
+            if eff_op_sel = FPU_OP_FSCC or
+               eff_op_sel = FPU_OP_FBCC or
+               eff_op_sel = FPU_OP_FDBCC or
+               eff_op_sel = FPU_OP_FTRAPCC then
               if bsun_event = '1' and fpcr_reg(FPCR_EXC_EN_BSUN) = '1' then
                 trap_requested := '1';
               end if;
               cir_response_word(5) := trap_requested;
-              if op_sel_write_decoded /= FPU_OP_FSCC then
+              if eff_op_sel /= FPU_OP_FSCC then
                 prog_result := cir_response_word;
               end if;
 
@@ -2794,10 +2841,10 @@ begin
             result_lo_reg <= prog_result;
             result_ready_reg <= '1';
           when OP_CLASS_SYS_CTRL =>
-            if op_sel_write_decoded = FPU_OP_FSAVE then
+            if eff_op_sel = FPU_OP_FSAVE then
               sys_ctrl_save_req_reg <= '1';
               frame_op_waiting_reg <= '1';
-            elsif op_sel_write_decoded = FPU_OP_FRESTORE then
+            elsif eff_op_sel = FPU_OP_FRESTORE then
               sys_ctrl_restore_req_reg <= '1';
               frame_op_waiting_reg <= '1';
             else
@@ -2806,7 +2853,7 @@ begin
           when others =>
             result_ready_reg <= '1';
         end case;
-        end if;  -- cir_launch_alu guard
+        end if;  -- cir_launch_alu / unified dispatch
       end if;
 
       if valid = '1' then
@@ -2820,11 +2867,9 @@ begin
             fp_reg_file_reg(cir_dst_reg_idx) <= result;
           end if;
           cir_arith_active_reg <= '0';
-          -- Trigger exception classification for the CIR operation.
-          exc_event_valid_reg <= '1';
-          exc_event_result_reg <= result;
-          exc_event_opa_reg <= result;
-          exc_event_opb_reg <= FP80_CLASSIFY_ONE;
+          -- No exc_event needed: the ALU valid path in bus_frame_proc
+          -- already runs exc_classification with the correct operands
+          -- (operand_reg(0/1)) and result on this same clock edge.
         end if;
         if aux_valid = '1' then
           aux_result_lo_reg <= aux_result(FP80_RESULT_LO_WIDTH-1 downto 0);
@@ -3121,6 +3166,7 @@ begin
       cir_direction <= '0';
       cir_opword_written <= '0';
       cir_command_written <= '0';
+      cir_condition_written <= '0';
       cir_control_ack <= '0';
       cir_operand_staging <= (others => '0');
       cir_operand_word_arrived <= '0';
@@ -3164,6 +3210,7 @@ begin
 
           when CIR_ADDR_CONDITION =>
             cir_condition_reg <= d_in(5 downto 0);
+            cir_condition_written <= '1';
 
           when CIR_ADDR_OPERAND =>
             -- Store operand word during source transfer.
@@ -3199,6 +3246,7 @@ begin
       if cir_state_reg /= CIR_IDLE then
         cir_opword_written <= '0';
         cir_command_written <= '0';
+        cir_condition_written <= '0';
       end if;
 
       -- Fill operand staging for reg→mem transfer when FSM enters CIR_XFER_DST.
@@ -3262,14 +3310,10 @@ begin
             cir_state_reg <= CIR_DECODE;
           end if;
           -- cpBcc/cpScc: wait for OpWord + Condition write
-          -- (Condition CIR write is the trigger for conditional ops)
-          if cir_opword_written = '1' and
+          if cir_opword_written = '1' and cir_condition_written = '1' and
              (cir_instr_type = CIR_TYPE_CPCOND or
               cir_instr_type = CIR_TYPE_CPBCC_W or
               cir_instr_type = CIR_TYPE_CPBCC_L) then
-            -- For conditional ops, the condition selector comes via Condition CIR.
-            -- We transition when both opword and a condition write have occurred.
-            -- For now, transition immediately (condition may already be written).
             cir_state_reg <= CIR_COND_EVAL;
           end if;
           -- cpSAVE/cpRESTORE: triggered by Save/Restore CIR writes
@@ -3344,7 +3388,12 @@ begin
           cir_state_reg <= CIR_IDLE;
 
         when CIR_COND_EVAL =>
-          -- Task 9-11: conditional evaluation
+          -- Launch condition evaluation through alu_control_proc.
+          -- PROG_CTRL ops complete combinationally within op_issue_pulse
+          -- (no ALU start), so go directly to CIR_IDLE rather than
+          -- CIR_EXECUTE (which waits for the ALU's valid signal).
+          -- Result is in cir_response_reg; host polls STATUS.valid.
+          cir_launch_alu <= '1';
           cir_state_reg <= CIR_IDLE;
 
         when CIR_EXCEPT_PRE =>
@@ -3401,7 +3450,7 @@ begin
       when CIR_XFER_DST_WAIT =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_COND_EVAL =>
-        cir_response_prim <= CIR_PRIM_NULL;  -- Task 9 refines this
+        cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_EXCEPT_PRE =>
         cir_response_prim <= CIR_RESP_EXCEPT_PRE & "0" & "00" & cir_exc_vector;
       when CIR_EXCEPT_MID =>

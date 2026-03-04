@@ -119,6 +119,7 @@ architecture rtl of mc68881_top is
   constant ADDR_AUX_RES_L  : unsigned(4 downto 0) := to_unsigned(25, 5);
   constant ADDR_AUX_RES_H  : unsigned(4 downto 0) := to_unsigned(26, 5);
   constant ADDR_AUX_RES_E  : unsigned(4 downto 0) := to_unsigned(27, 5);
+  constant ADDR_CIR_RESTORE : unsigned(4 downto 0) := to_unsigned(28, 5);
 
   type dsack_state_t is (DSACK_IDLE, DSACK_WAIT_ASSERT, DSACK_ASSERTED);
   signal dsack_state  : dsack_state_t := DSACK_IDLE;
@@ -214,6 +215,24 @@ architecture rtl of mc68881_top is
   signal cir_operand_word_arrived : std_logic := '0';        -- Pulse from bus write → dialog proc
   signal cir_operand_read_done   : std_logic := '0';         -- Pulse from bus read → dialog proc
   signal cir_operand_write_prev  : std_logic := '0';         -- Edge-detect for operand writes
+
+  -- CIR cpSAVE/cpRESTORE handshake signals (driven by cir_dialog_proc, read by bus_frame_proc).
+  signal cir_save_req          : std_logic := '0';
+  signal cir_save_wait_cnt     : natural range 0 to 7 := 0;
+  signal cir_save_word_idx     : natural range 0 to 63 := 0;
+  signal cir_restore_word_idx  : natural range 0 to 63 := 0;
+  signal cir_restore_fw_reg    : std_logic_vector(31 downto 0) := (others => '0');
+  signal cir_restore_data_reg  : std_logic_vector(31 downto 0) := (others => '0');
+  signal cir_restore_data_idx  : natural range 0 to 3 := 0;
+  signal cir_restore_data_we   : std_logic := '0';
+  signal cir_restore_trigger   : std_logic := '0';
+  signal cir_restore_null_req  : std_logic := '0';  -- Dialog FSM → bus_frame_proc: reset FPU (null restore)
+  signal cir_restore_commit_req: std_logic := '0';  -- Dialog FSM → bus_frame_proc: commit idle frame
+  signal cir_save_read_done    : std_logic := '0';  -- Pulse: host read Save CIR (format word)
+  signal cir_save_read_prev    : std_logic := '0';  -- Edge-detect for Save CIR reads
+  -- Idle frame restore staging (6 x 32-bit words received from host).
+  type cir_frame_data_t is array (0 to CIR_FRAME_IDLE_WORDS-1) of std_logic_vector(31 downto 0);
+  signal cir_frame_data_reg    : cir_frame_data_t := (others => (others => '0'));
 
   signal exc_event_valid_reg : std_logic := '0';
   signal exc_event_result_reg : fp80_t := (others => '0');
@@ -1668,7 +1687,7 @@ begin
         access_class <= ACCESS_FPSR;
       when ADDR_FPIAR =>
         access_class <= ACCESS_FPIAR;
-      when ADDR_CIR_SAVE | ADDR_CIR_RESPONSE =>
+      when ADDR_CIR_SAVE | ADDR_CIR_RESPONSE | ADDR_CIR_RESTORE =>
         access_class <= ACCESS_CIR;
       when ADDR_FRAME_CMD | ADDR_FRAME_W0 | ADDR_FRAME_W1 | ADDR_FRAME_W2 | ADDR_FRAME_W3 =>
         access_class <= ACCESS_FRAME;
@@ -1793,9 +1812,11 @@ begin
       frame_start_restore_reg <= '0';
       fpu_initialized_reg <= '0';
       opsel_write_prev_reg <= '0';
+      cir_restore_trigger <= '0';
     elsif rising_edge(clk) then
       frame_start_save_reg <= '0';
       frame_start_restore_reg <= '0';
+      cir_restore_trigger <= '0';  -- One-shot: cleared each cycle, set by ADDR_CIR_RESTORE write
       -- Track OPSEL write level for edge detection in protocol violation check.
       if bus_write = '1' and addr = ADDR_OPSEL then
         opsel_write_prev_reg <= '1';
@@ -1830,6 +1851,10 @@ begin
             fpiar_reg <= d_in;
           when ADDR_CIR_SAVE =>
             fpiar_reg <= d_in;
+          when ADDR_CIR_RESTORE =>
+            -- Capture format word for FRESTORE dialog.
+            cir_restore_fw_reg <= d_in;
+            cir_restore_trigger <= '1';
           when ADDR_MOVE_CFG =>
             move_cfg_reg <= d_in;
             move_cfg_decoded_reg <= decode_move_cfg(d_in);
@@ -2176,6 +2201,18 @@ begin
         frame_busy_reg <= '1';
         frame_remaining_reg <= FRAME_LATENCY - 1;
         frame_restore_pending_reg <= '1';
+      end if;
+
+      -- CIR FRESTORE null: reset FPU to power-on state.
+      if cir_restore_null_req = '1' then
+        fpu_initialized_reg <= '0';
+      end if;
+
+      -- CIR FRESTORE commit: mark FPU initialized after idle frame restore.
+      -- (Idle frame carries non-architectural state only; FPCR/FPSR are restored
+      -- separately via FMOVEM.CR, so we just mark the FPU as active.)
+      if cir_restore_commit_req = '1' then
+        fpu_initialized_reg <= '1';
       end if;
     end if;
   end process;
@@ -2983,7 +3020,10 @@ begin
     cir_protocol_violation_reg,
     cir_state_reg,
     cir_xfer_word_idx,
-    cir_operand_staging
+    cir_operand_staging,
+    frame_format_word_reg,
+    cir_save_word_idx,
+    op_sel_reg
   )
     variable cfg0 : std_logic_vector(31 downto 0);
     variable cfg1 : std_logic_vector(31 downto 0);
@@ -3009,6 +3049,33 @@ begin
               when 1 => d_out_comb <= cir_operand_staging(63 downto 32);
               when 2 => d_out_comb <= cir_operand_staging(95 downto 64);
               when others => d_out_comb <= (others => '0');
+            end case;
+          elsif cir_state_reg = CIR_SAVE_FRAME then
+            -- FSAVE frame data read: return idle frame word by index.
+            case cir_save_word_idx is
+              when 0 =>
+                -- Frame version tag (upper 16) + internal flags (lower 16).
+                d_out_comb <= x"0001" & x"0000";  -- Version 1, no flags
+              when 1 =>
+                -- Last operation selector + class encoding.
+                d_out_comb(15 downto 0) <= std_logic_vector(to_unsigned(
+                  fpu_op_t'pos(op_sel_reg), 16));
+                d_out_comb(31 downto 16) <= std_logic_vector(to_unsigned(
+                  fpu_op_class_t'pos(op_class(op_sel_reg)), 16));
+              when 2 =>
+                -- Exception event state (packed FPSR EXC + AEXC).
+                d_out_comb <= fpsr_reg;
+              when 3 =>
+                -- Microsequencer state (cycle counter).
+                d_out_comb <= micro_total_reg;
+              when 4 =>
+                -- CIR dialog flags.
+                d_out_comb <= (others => '0');
+              when 5 =>
+                -- Reserved.
+                d_out_comb <= (others => '0');
+              when others =>
+                d_out_comb <= (others => '0');
             end case;
           else
             d_out_comb <= result_hi_reg;
@@ -3037,6 +3104,9 @@ begin
           d_out_comb(4) <= cir_response_pending_reg;
           d_out_comb(5) <= cir_protocol_violation_reg;
           d_out_comb(6) <= cir_trap_pending_reg;
+        when ADDR_CIR_SAVE =>
+          -- FSAVE format word (16-bit in lower half).
+          d_out_comb <= x"0000" & frame_format_word_reg;
         when ADDR_CIR_RESPONSE =>
           d_out_comb <= cir_response_reg;
         when ADDR_FPCR =>
@@ -3180,11 +3250,15 @@ begin
       cir_operand_word_arrived <= '0';
       cir_operand_read_done <= '0';
       cir_operand_write_prev <= '0';
+      cir_save_read_done <= '0';
+      cir_save_read_prev <= '0';
+      cir_frame_data_reg <= (others => (others => '0'));
     elsif rising_edge(clk) then
       -- Clear one-shot flags
       cir_control_ack <= '0';
       cir_operand_word_arrived <= '0';
       cir_operand_read_done <= '0';
+      cir_save_read_done <= '0';
 
       -- Edge-detect register for operand writes (prevents multi-pulse from
       -- a single bus transaction that holds strobes active across clocks).
@@ -3194,9 +3268,23 @@ begin
         cir_operand_write_prev <= '0';
       end if;
 
-      -- Detect host read of Operand CIR during destination transfer.
+      -- Edge-detect for Save CIR reads (format word read during cpSAVE).
+      if bus_read = '1' and addr = ADDR_CIR_SAVE then
+        cir_save_read_prev <= '1';
+      else
+        cir_save_read_prev <= '0';
+      end if;
+
+      -- Detect host read of Save CIR during FSAVE format-word phase.
+      if bus_read = '1' and addr = ADDR_CIR_SAVE
+         and cir_save_read_prev = '0'
+         and cir_state_reg = CIR_SAVE_FORMAT then
+        cir_save_read_done <= '1';
+      end if;
+
+      -- Detect host read of Operand CIR during destination transfer or FSAVE frame.
       if bus_read = '1' and addr = CIR_ADDR_OPERAND
-         and cir_state_reg = CIR_XFER_DST then
+         and (cir_state_reg = CIR_XFER_DST or cir_state_reg = CIR_SAVE_FRAME) then
         cir_operand_read_done <= '1';
       end if;
 
@@ -3231,6 +3319,13 @@ begin
                 when 2 => cir_operand_staging(95 downto 64) <= d_in;
                 when others => null;
               end case;
+              cir_operand_word_arrived <= '1';
+            end if;
+            -- Store frame data word during FRESTORE frame transfer.
+            if cir_state_reg = CIR_RESTORE_FRAME and cir_operand_write_prev = '0' then
+              if cir_restore_word_idx < CIR_FRAME_IDLE_WORDS then
+                cir_frame_data_reg(cir_restore_word_idx) <= d_in;
+              end if;
               cir_operand_word_arrived <= '1';
             end if;
 
@@ -3309,9 +3404,13 @@ begin
       cir_xfer_word_count <= 0;
       cir_launch_alu <= '0';
       cir_flags_consumed <= '0';
+      cir_restore_null_req <= '0';
+      cir_restore_commit_req <= '0';
     elsif rising_edge(clk) then
       cir_launch_alu <= '0';  -- default: clear one-shot pulse
       cir_flags_consumed <= '0';
+      cir_restore_null_req <= '0';
+      cir_restore_commit_req <= '0';
 
       case cir_state_reg is
 
@@ -3328,8 +3427,17 @@ begin
               cir_instr_type = CIR_TYPE_CPBCC_L) then
             cir_state_reg <= CIR_COND_EVAL;
           end if;
-          -- cpSAVE/cpRESTORE: triggered by Save/Restore CIR writes
-          -- (handled separately, not via OpWord)
+          -- cpSAVE: trigger frame capture via handshake
+          if cir_opword_written = '1' and cir_instr_type = CIR_TYPE_CPSAVE then
+            cir_save_req <= '1';
+            cir_save_wait_cnt <= 7;  -- FRAME_LATENCY + margin
+            cir_state_reg <= CIR_SAVE_WAIT;
+          end if;
+          -- cpRESTORE: request format word from CPU
+          if cir_opword_written = '1' and cir_instr_type = CIR_TYPE_CPRESTORE then
+            cir_restore_word_idx <= 0;
+            cir_state_reg <= CIR_RESTORE_FORMAT;
+          end if;
           -- Catch-all: clear stale flags for undefined instruction types
           -- ("110"/"111") to prevent them from blocking future operations.
           if cir_opword_written = '1' and
@@ -3434,21 +3542,81 @@ begin
             cir_state_reg <= CIR_IDLE;
           end if;
 
+        when CIR_SAVE_WAIT =>
+          -- Wait one cycle for frame type determination, then present format word.
+          -- Determine frame type from fpu_initialized_reg.
+          if fpu_initialized_reg = '0' then
+            frame_format_word_reg <= CIR_FRAME_NULL_FW;
+            cir_save_word_idx <= 0;
+            cir_xfer_word_count <= 0;  -- Null: 0 data words
+          else
+            frame_format_word_reg <= CIR_FRAME_IDLE_FW;
+            cir_save_word_idx <= 0;
+            cir_xfer_word_count <= CIR_FRAME_IDLE_WORDS;  -- Idle: 6 data words
+          end if;
+          cir_save_req <= '0';
+          cir_state_reg <= CIR_SAVE_FORMAT;
+
         when CIR_SAVE_FORMAT =>
-          -- TODO Task 12: implement cpSAVE. Return to IDLE to avoid hang.
-          cir_state_reg <= CIR_IDLE;
+          -- Format word ready in frame_format_word_reg. Wait for host to read
+          -- Save CIR (ADDR_CIR_SAVE). On read: advance to frame or complete.
+          if cir_save_read_done = '1' then
+            if cir_xfer_word_count = 0 then
+              -- Null frame: no data words to transfer.
+              cir_state_reg <= CIR_IDLE;
+            else
+              cir_state_reg <= CIR_SAVE_FRAME;
+            end if;
+          end if;
 
         when CIR_SAVE_FRAME =>
-          -- TODO Task 12: implement cpSAVE. Return to IDLE to avoid hang.
-          cir_state_reg <= CIR_IDLE;
+          -- Host reads Operand CIR (ADDR_RES_H / CIR_ADDR_OPERAND) word by word.
+          -- cir_operand_read_done pulses on each read.
+          if cir_operand_read_done = '1' then
+            if cir_save_word_idx + 1 >= cir_xfer_word_count then
+              -- All frame words transferred. Hold one extra cycle for read window.
+              cir_state_reg <= CIR_XFER_DST_WAIT;
+            else
+              cir_save_word_idx <= cir_save_word_idx + 1;
+            end if;
+          end if;
 
         when CIR_RESTORE_FORMAT =>
-          -- TODO Task 13: implement cpRESTORE. Return to IDLE to avoid hang.
-          cir_state_reg <= CIR_IDLE;
+          -- Wait for host to write format word to Restore CIR (ADDR_CIR_RESTORE).
+          -- cir_restore_trigger pulses on write.
+          if cir_restore_trigger = '1' then
+            if cir_restore_fw_reg(15 downto 0) = CIR_FRAME_NULL_FW then
+              -- Null frame: reset FPU to power-on state, no data follows.
+              cir_restore_null_req <= '1';
+              cir_state_reg <= CIR_IDLE;
+            elsif cir_restore_fw_reg(15 downto 0) = CIR_FRAME_IDLE_FW then
+              -- Idle frame: expect 6 data words.
+              cir_restore_word_idx <= 0;
+              cir_xfer_word_count <= CIR_FRAME_IDLE_WORDS;
+              cir_state_reg <= CIR_RESTORE_FRAME;
+            elsif cir_restore_fw_reg(15 downto 0) = CIR_FRAME_BUSY_FW then
+              -- Busy frame: expect 45 data words (Task 15).
+              cir_restore_word_idx <= 0;
+              cir_xfer_word_count <= CIR_FRAME_BUSY_WORDS;
+              cir_state_reg <= CIR_RESTORE_FRAME;
+            else
+              -- Invalid format word: Pre-Instruction Exception.
+              cir_exc_vector <= "00" & x"0E";  -- Format error vector ($0E = 14)
+              cir_state_reg <= CIR_EXCEPT_PRE;
+            end if;
+          end if;
 
         when CIR_RESTORE_FRAME =>
-          -- TODO Task 13: implement cpRESTORE. Return to IDLE to avoid hang.
-          cir_state_reg <= CIR_IDLE;
+          -- Host writes frame data words to Operand CIR.
+          if cir_operand_word_arrived = '1' then
+            if cir_restore_word_idx + 1 >= cir_xfer_word_count then
+              -- All frame words received. Request commit via bus_frame_proc.
+              cir_restore_commit_req <= '1';
+              cir_state_reg <= CIR_IDLE;
+            else
+              cir_restore_word_idx <= cir_restore_word_idx + 1;
+            end if;
+          end if;
 
       end case;
     end if;
@@ -3484,10 +3652,12 @@ begin
         cir_response_prim <= CIR_RESP_EXCEPT_MID & "0" & "00" & cir_exc_vector;
       when CIR_EXCEPT_POST =>
         cir_response_prim <= CIR_RESP_EXCEPT_POST & "0" & "00" & cir_exc_vector;
+      when CIR_SAVE_WAIT =>
+        cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_SAVE_FORMAT | CIR_SAVE_FRAME =>
-        cir_response_prim <= CIR_PRIM_BUSY;  -- Task 12 refines
+        cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_RESTORE_FORMAT | CIR_RESTORE_FRAME =>
-        cir_response_prim <= CIR_PRIM_BUSY;  -- Task 13 refines
+        cir_response_prim <= CIR_PRIM_BUSY;
     end case;
   end process;
 

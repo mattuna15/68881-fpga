@@ -34,7 +34,17 @@ entity mc68881_alu is
     packed_fp_add_b       : in  fp80_t;
     packed_fp_add_sub     : in  boolean;
     packed_fp_add_done    : out std_logic;
-    packed_fp_add_result  : out fp80_t
+    packed_fp_add_result  : out fp80_t;
+    -- Save/restore interface for FSAVE/FRESTORE Busy frame.
+    -- Save/restore interface for FSAVE/FRESTORE Busy frame.
+    -- Addr 0..4: ALU state, 5..13: trig unit, 14..19: divrem unit.
+    save_req     : in  std_logic;
+    save_data    : out std_logic_vector(31 downto 0);
+    save_addr    : in  natural range 0 to 19;
+    restore_req  : in  std_logic;
+    restore_data : in  std_logic_vector(31 downto 0);
+    restore_addr : in  natural range 0 to 19;
+    restore_wr   : in  std_logic
   );
 end entity mc68881_alu;
 
@@ -179,6 +189,20 @@ architecture rtl of mc68881_alu is
   signal modrem_add_rm     : fp_round_mode_t;
   signal modrem_add_rp     : fp_round_prec_t;
 
+  -- Save/restore shadow registers for FSAVE/FRESTORE Busy frame
+  type save_array_t is array (0 to 4) of std_logic_vector(31 downto 0);
+  signal shadow_regs : save_array_t := (others => (others => '0'));
+
+  -- Sub-unit save/restore routing signals.
+  signal trig_save_data    : std_logic_vector(31 downto 0);
+  signal trig_save_addr    : natural range 0 to 8 := 0;
+  signal divrem_save_data  : std_logic_vector(31 downto 0);
+  signal divrem_save_addr  : natural range 0 to 5 := 0;
+  signal trig_restore_addr : natural range 0 to 8 := 0;
+  signal divrem_restore_addr : natural range 0 to 5 := 0;
+  signal trig_restore_wr   : std_logic := '0';
+  signal divrem_restore_wr : std_logic := '0';
+
   -- Shared FP unit operand mux outputs
   signal shared_mul_start : std_logic;
   signal shared_mul_a     : fp80_t;
@@ -210,7 +234,14 @@ begin
       result     => trig_result,
       aux_valid  => trig_aux_valid,
       aux_result => trig_aux_result,
-      flag_divzero => trig_flag_divzero
+      flag_divzero => trig_flag_divzero,
+      save_req       => save_req,
+      save_data      => trig_save_data,
+      save_addr      => trig_save_addr,
+      restore_req    => restore_req,
+      restore_data   => restore_data,
+      restore_addr   => trig_restore_addr,
+      restore_wr     => trig_restore_wr
     );
 
   divrem_inst : entity work.mc68881_divrem_unit
@@ -245,7 +276,14 @@ begin
       modrem_fp_add_rm     => modrem_add_rm,
       modrem_fp_add_rp     => modrem_add_rp,
       modrem_fp_add_done   => alu_add_done,
-      modrem_fp_add_result => alu_add_result
+      modrem_fp_add_result => alu_add_result,
+      save_req       => save_req,
+      save_data      => divrem_save_data,
+      save_addr      => divrem_save_addr,
+      restore_req    => restore_req,
+      restore_data   => restore_data,
+      restore_addr   => divrem_restore_addr,
+      restore_wr     => divrem_restore_wr
     );
 
   sglops_inst : entity work.mc68881_sgl_ops_unit
@@ -653,4 +691,65 @@ begin
   quotient_byte <= quotient_byte_reg;
   quotient_valid <= quotient_valid_reg;
   aux_result <= aux_result_reg;
+
+  -- ================================================================
+  -- Save/restore process for FSAVE/FRESTORE Busy frame
+  -- ================================================================
+  p_save_restore : process(clk, reset_n)
+  begin
+    if reset_n = '0' then
+      shadow_regs <= (others => (others => '0'));
+    elsif rising_edge(clk) then
+      -- Snapshot internal state on save request
+      if save_req = '1' then
+        -- Word 0: op_pending (16b) | busy (1b) | latency_count (15b)
+        shadow_regs(0) <= std_logic_vector(to_unsigned(fpu_op_t'pos(op_pending_reg), 16))
+                        & busy_reg
+                        & std_logic_vector(to_unsigned(latency_count_reg, 15));
+        -- Word 1: simple_hold_count (8b) | simple_compute_pending (1b)
+        --       | alu_fp_seq_pending (1b) | alu_fp_is_mul (1b) | alu_fp_subtract (1b) | pad (20b)
+        shadow_regs(1) <= std_logic_vector(to_unsigned(simple_hold_count_reg, 8))
+                        & simple_compute_pending_reg
+                        & alu_fp_seq_pending_reg
+                        & alu_fp_is_mul_reg
+                        & (x"00000" & '0');  -- 21-bit padding (alu_fp_subtract is boolean, encode as bit)
+        shadow_regs(1)(20) <= '1' when alu_fp_subtract_reg else '0';
+        -- Word 2: simple_op (16b) | simple_rm (8b) | simple_rp (8b)
+        shadow_regs(2) <= std_logic_vector(to_unsigned(fpu_op_t'pos(simple_op_reg), 16))
+                        & std_logic_vector(to_unsigned(fp_round_mode_t'pos(simple_rm_reg), 8))
+                        & std_logic_vector(to_unsigned(fp_round_prec_t'pos(simple_rp_reg), 8));
+        -- Word 3: trig_done_seen (1b) | divrem_done_seen (1b) | sglops_done_seen (1b)
+        --       | divrem_complete (1b) | sglops_complete (1b) | pad (27b)
+        shadow_regs(3) <= trig_done_seen_reg
+                        & divrem_done_seen_reg
+                        & sglops_done_seen_reg
+                        & divrem_complete_reg
+                        & sglops_complete_reg
+                        & (26 downto 0 => '0');
+        -- Word 4: reserved
+        shadow_regs(4) <= (others => '0');
+      end if;
+      -- Restore: write shadow register from external data (ALU words 0..4 only)
+      if restore_wr = '1' and restore_addr <= 4 then
+        shadow_regs(restore_addr) <= restore_data;
+      end if;
+    end if;
+  end process p_save_restore;
+
+  -- Sub-unit save address routing (combinational).
+  trig_save_addr   <= save_addr - 5  when save_addr >= 5 and save_addr <= 13 else 0;
+  divrem_save_addr <= save_addr - 14 when save_addr >= 14 and save_addr <= 19 else 0;
+
+  -- Sub-unit restore address and write-enable routing (combinational).
+  trig_restore_addr   <= restore_addr - 5  when restore_addr >= 5 and restore_addr <= 13 else 0;
+  divrem_restore_addr <= restore_addr - 14 when restore_addr >= 14 and restore_addr <= 19 else 0;
+  trig_restore_wr     <= restore_wr when restore_addr >= 5 and restore_addr <= 13 else '0';
+  divrem_restore_wr   <= restore_wr when restore_addr >= 14 and restore_addr <= 19 else '0';
+
+  -- Read-side mux for save_data: route to ALU shadow regs or sub-unit data.
+  save_data <= shadow_regs(save_addr) when save_addr <= 4 else
+               trig_save_data          when save_addr >= 5 and save_addr <= 13 else
+               divrem_save_data        when save_addr >= 14 and save_addr <= 19 else
+               (others => '0');
+
 end architecture rtl;

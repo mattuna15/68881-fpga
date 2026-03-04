@@ -32,7 +32,15 @@ entity mc68881_packed_decimal_unit is
     fp_add_b_out   : out fp80_t;
     fp_add_sub_out : out boolean;
     fp_add_done    : in  std_logic;
-    fp_add_result  : in  fp80_t
+    fp_add_result  : in  fp80_t;
+    -- Save/restore interface for FSAVE/FRESTORE Busy frame.
+    save_req     : in  std_logic;
+    save_data    : out std_logic_vector(31 downto 0);
+    save_addr    : in  natural range 0 to 2;
+    restore_req  : in  std_logic;
+    restore_data : in  std_logic_vector(31 downto 0);
+    restore_addr : in  natural range 0 to 2;
+    restore_wr   : in  std_logic
   );
 end entity mc68881_packed_decimal_unit;
 
@@ -152,6 +160,11 @@ architecture rtl of mc68881_packed_decimal_unit is
 
   signal packed_mul_start_reg : std_logic := '0';
   signal packed_add_start_reg : std_logic := '0';
+
+  -- Shadow registers for save/restore.
+  signal shadow_word0 : std_logic_vector(31 downto 0) := (others => '0');
+  signal shadow_word1 : std_logic_vector(31 downto 0) := (others => '0');
+  signal shadow_word2 : std_logic_vector(31 downto 0) := (others => '0');
 
   function bcd_digit(value : natural) return std_logic_vector is
     variable nibble : std_logic_vector(3 downto 0) := (others => '0');
@@ -896,4 +909,44 @@ begin
       end if;
     end if;
   end process;
+  -- Save/restore process for Busy frame.
+  save_restore_proc : process(clk, reset_n)
+  begin
+    if reset_n = '0' then
+      shadow_word0 <= (others => '0');
+      shadow_word1 <= (others => '0');
+      shadow_word2 <= (others => '0');
+    elsif rising_edge(clk) then
+      if save_req = '1' then
+        -- Word 0: main FSM state + arith stage.
+        shadow_word0(15 downto 0) <= std_logic_vector(to_unsigned(
+          packed_state_t'pos(state_reg), 16));
+        shadow_word0(31 downto 16) <= std_logic_vector(to_unsigned(
+          arith_stage_t'pos(arith_stage_reg), 16));
+        -- Word 1: digit index + encode state.
+        shadow_word1 <= std_logic_vector(to_unsigned(idx_reg, 16)) &
+                        std_logic_vector(to_unsigned(
+                          packed_state_t'pos(scale_return_state_reg), 16));
+        -- Word 2: scale_abs_exp + flags.
+        shadow_word2 <= std_logic_vector(to_unsigned(scale_abs_exp_reg, 16)) &
+                        std_logic_vector(to_unsigned(scale_bit_idx_reg, 8)) &
+                        "0000000" & scale_use_neg_reg;
+      end if;
+      if restore_wr = '1' then
+        case restore_addr is
+          when 0 => shadow_word0 <= restore_data;
+          when 1 => shadow_word1 <= restore_data;
+          when 2 => shadow_word2 <= restore_data;
+          when others => null;
+        end case;
+      end if;
+    end if;
+  end process;
+
+  -- Save data mux.
+  save_data <= shadow_word0 when save_addr = 0 else
+               shadow_word1 when save_addr = 1 else
+               shadow_word2 when save_addr = 2 else
+               (others => '0');
+
 end architecture rtl;

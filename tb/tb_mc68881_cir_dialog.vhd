@@ -105,6 +105,7 @@ architecture sim of tb_mc68881_cir_dialog is
   constant OPCODE_FMOVE : std_logic_vector(6 downto 0) := "0000101";  -- 0x05
   constant OPCODE_FCMP  : std_logic_vector(6 downto 0) := "0000111";  -- 0x07
   constant OPCODE_FNEG : std_logic_vector(6 downto 0) := "0010011";  -- 0x13
+  constant OPCODE_FSIN : std_logic_vector(6 downto 0) := "0001101";  -- 0x0D
 
   -- CIR Condition address.
   constant CIR_CONDITION : unsigned(4 downto 0) :=
@@ -142,9 +143,10 @@ architecture sim of tb_mc68881_cir_dialog is
   constant CPRESTORE_OPWORD : std_logic_vector(31 downto 0) :=
     x"0000" & "0000000" & CIR_TYPE_CPRESTORE & "000000";
 
-  -- CIR addresses for Save/Restore.
+  -- CIR addresses for Save/Restore/Control.
   constant CIR_SAVE_ADDR    : unsigned(4 downto 0) := to_unsigned(12, 5);  -- ADDR_CIR_SAVE
   constant CIR_RESTORE_ADDR : unsigned(4 downto 0) := to_unsigned(28, 5); -- ADDR_CIR_RESTORE
+  constant CIR_CONTROL_ADDR : unsigned(4 downto 0) := CIR_ADDR_CONTROL;   -- from pkg
 
   function make_move_cfg(
     mode : std_logic_vector(1 downto 0);
@@ -1786,11 +1788,108 @@ begin
       severity failure;
     -- Acknowledge exception via Control CIR write.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
-              CIR_RESPONSE, x"00000001");
+              CIR_CONTROL_ADDR, x"00000001");
     for i in 0 to 3 loop
       wait until rising_edge(clk);
     end loop;
     report "TEST 36 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 37: FSAVE during active computation → Busy frame ($00B4, 45 words)
+    -- ================================================================
+    report "TEST 37: FSAVE Busy frame (during FSIN)" severity note;
+
+    -- First ensure FPU is initialized.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+    -- Start FSIN via CIR (reg-to-reg, FP0→FP0) but do NOT wait for completion.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_reg_cmd(0, 0, OPCODE_FSIN));
+    -- Wait for ALU to start (CIR_IDLE → CIR_DECODE → CIR_EXECUTE takes ~3 cycles,
+    -- then op_start_reg fires). Issue cpSAVE quickly before FSIN completes.
+    for i in 0 to 2 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Issue cpSAVE while busy.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPSAVE_OPWORD);
+    for i in 0 to 3 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Read format word: should be Busy ($00B4).
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, CIR_SAVE_ADDR);
+    report "TEST 37 format_word=" & to_hstring(fpsr_val(15 downto 0)) severity note;
+    assert fpsr_val(15 downto 0) = CIR_FRAME_BUSY_FW
+      report "FAIL TEST 37: Expected Busy FW $00B4, got $" & to_hstring(fpsr_val(15 downto 0))
+      severity failure;
+
+    -- Read all 45 frame data words.
+    for i in 0 to CIR_FRAME_BUSY_WORDS - 1 loop
+      bus_read(a_in, rw, cs_n, as_n, ds_n,
+               dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_RES_H);
+      if i < 6 then
+        report "TEST 37 frame_word(" & integer'image(i) & ")=" & to_hstring(fpsr_val)
+          severity note;
+      end if;
+    end loop;
+
+    for i in 0 to 3 loop
+      wait until rising_edge(clk);
+    end loop;
+    report "TEST 37 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 38: FRESTORE Busy frame → round-trip
+    -- ================================================================
+    report "TEST 38: FRESTORE Busy frame (round-trip)" severity note;
+
+    -- Issue cpRESTORE with Busy format word.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPRESTORE_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESTORE_ADDR, x"000000B4");
+    for i in 0 to 2 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Write 45 data words (arbitrary non-zero test data).
+    for i in 0 to CIR_FRAME_BUSY_WORDS - 1 loop
+      bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+                ADDR_RES_H,
+                std_logic_vector(to_unsigned(16#B0# + i, 32)));
+    end loop;
+
+    for i in 0 to 5 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Verify FPU is initialized after Busy restore.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPSAVE_OPWORD);
+    for i in 0 to 3 loop
+      wait until rising_edge(clk);
+    end loop;
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, CIR_SAVE_ADDR);
+    report "TEST 38 verify_fw=" & to_hstring(fpsr_val(15 downto 0)) severity note;
+    -- After Busy restore + commit, FPU should be initialized (Idle or Busy).
+    assert fpsr_val(15 downto 0) /= CIR_FRAME_NULL_FW
+      report "FAIL TEST 38: FPU should be initialized after Busy FRESTORE"
+      severity failure;
+    -- Read out frame data words to complete the save.
+    for i in 0 to CIR_FRAME_IDLE_WORDS - 1 loop
+      bus_read(a_in, rw, cs_n, as_n, ds_n,
+               dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_RES_H);
+    end loop;
+    for i in 0 to 3 loop
+      wait until rising_edge(clk);
+    end loop;
+    report "TEST 38 PASSED" severity note;
 
     -- ================================================================
     report "All CIR dialog tests PASSED" severity note;

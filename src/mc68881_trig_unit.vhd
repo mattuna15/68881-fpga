@@ -21,7 +21,15 @@ entity mc68881_trig_unit is
     result     : out fp80_t;
     aux_valid  : out std_logic;
     aux_result : out fp80_t;
-    flag_divzero : out std_logic
+    flag_divzero : out std_logic;
+    -- Save/restore interface for FSAVE/FRESTORE Busy frame.
+    save_req     : in  std_logic;
+    save_data    : out std_logic_vector(31 downto 0);
+    save_addr    : in  natural range 0 to 8;
+    restore_req  : in  std_logic;
+    restore_data : in  std_logic_vector(31 downto 0);
+    restore_addr : in  natural range 0 to 8;
+    restore_wr   : in  std_logic
   );
 end entity mc68881_trig_unit;
 
@@ -586,6 +594,10 @@ architecture rtl of mc68881_trig_unit is
     return unbiased_exp;
   end function;
 
+  -- Save/restore shadow register array (9 words).
+  type save_array_t is array (0 to 8) of std_logic_vector(31 downto 0);
+  signal shadow_regs : save_array_t := (others => (others => '0'));
+
 begin
   trig_div_inst : entity work.mc68881_divrem_unit
     generic map (
@@ -622,7 +634,14 @@ begin
       modrem_fp_add_rm     => open,
       modrem_fp_add_rp     => open,
       modrem_fp_add_done   => '0',
-      modrem_fp_add_result => (others => '0')
+      modrem_fp_add_result => (others => '0'),
+      save_req       => '0',
+      save_data      => open,
+      save_addr      => 0,
+      restore_req    => '0',
+      restore_data   => (others => '0'),
+      restore_addr   => 0,
+      restore_wr     => '0'
     );
 
   trig_mul_inst : entity work.mc68881_fp80_mul_unit
@@ -2048,4 +2067,36 @@ begin
   result <= result_reg;
   aux_valid <= aux_valid_reg;
   aux_result <= aux_result_reg;
+  -- ----------------------------------------------------------------
+  -- Save / Restore process for FSAVE/FRESTORE Busy frame support.
+  -- ----------------------------------------------------------------
+  p_save_restore : process(clk)
+  begin
+    if rising_edge(clk) then
+      if save_req = '1' then
+        -- Snapshot internal state into shadow registers.
+        shadow_regs(0) <= std_logic_vector(to_unsigned(trig_state_t'pos(state_reg), 16))
+                        & std_logic_vector(to_unsigned(trig_state_t'pos(cont_state_reg), 16));
+        shadow_regs(1) <= std_logic_vector(to_unsigned(fpu_op_t'pos(op_reg), 16))
+                        & std_logic_vector(to_unsigned(poly_idx_reg, 8))
+                        & std_logic_vector(to_unsigned(seed_idx_reg, 8));
+        shadow_regs(2) <= std_logic_vector(to_unsigned(seed_domain_t'pos(seed_domain_reg), 8))
+                        & std_logic_vector(to_unsigned(trig_state_t'pos(seed_return_state_reg), 16))
+                        & fp_exec_busy_reg & "0000000";
+        shadow_regs(3) <= x_reg(31 downto 0);
+        shadow_regs(4) <= x_reg(63 downto 32);
+        shadow_regs(5) <= x_reg(79 downto 64) & poly_reg(79 downto 64);
+        shadow_regs(6) <= poly_reg(31 downto 0);
+        shadow_regs(7) <= poly_reg(63 downto 32);
+        shadow_regs(8) <= tmp_reg(31 downto 0);
+      end if;
+
+      if restore_req = '1' and restore_wr = '1' then
+        shadow_regs(restore_addr) <= restore_data;
+      end if;
+    end if;
+  end process p_save_restore;
+
+  save_data <= shadow_regs(save_addr);
+
 end architecture rtl;

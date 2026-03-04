@@ -32,31 +32,31 @@ The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
 
 | Resource | Used | Available | Util% |
 |----------|------|-----------|-------|
-| Slice LUTs | 66,572 | 133,800 | 49.75% |
-| Registers | 11,903 | 267,600 | 4.45% |
+| Slice LUTs | 64,865 | 133,800 | 48.48% |
+| Registers | 11,908 | 267,600 | 4.45% |
 | Block RAM | 5 tiles | 365 | 1.37% |
 | DSP48E1 | 33 | 740 | 4.46% |
-| F7 Muxes | 993 | 66,900 | 1.48% |
 
 *Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-04.
-Includes Section 7 CIR coprocessor interface (~7K LUTs); see "CIR feature gating" below.*
+Includes Section 7 CIR coprocessor interface with conditional dialog paths (~7K LUTs);
+see "CIR feature gating" below.*
 
 ### Timing
 - Target clock: 10 MHz (100 ns period) — matches MC68881 bus timing.
 - Multi-cycle path constraints on sequential FP units (mul: 4 cycles, addsub: 6 cycles,
   div: 6 cycles) and trig engine hold states.
-- Post-route physopt WNS: **+11.404 ns** (88% slack margin at 100 ns period).
-- WHS (hold): +0.010 ns, no violations.
+- Post-route physopt WNS: **+9.875 ns** (90% slack margin at 100 ns period).
+- WHS (hold): no violations.
 
 ### Target device compatibility
 The design fits on several FPGA families. With CIR disabled (`ENABLE_CIR_g => false`),
-the core is ~59K LUTs and fits comfortably on smaller devices:
+the core is ~58K LUTs and fits comfortably on smaller devices:
 
 | Device | LUTs | DSPs | Fit (full)? | Fit (no CIR)? |
 |--------|------|------|-------------|---------------|
-| Xilinx Artix-7 200T | 134,600 | 740 | Yes (50%) | Yes (44%) |
-| Xilinx Artix-7 100T | 63,400 | 240 | No (105%) | Yes (~93%) |
-| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~94%) | Yes (~83%) |
+| Xilinx Artix-7 200T | 134,600 | 740 | Yes (48%) | Yes (43%) |
+| Xilinx Artix-7 100T | 63,400 | 240 | Yes (~102%) | Yes (~91%) |
+| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~91%) | Yes (~82%) |
 | Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
 
 All RTL is vendor-portable (inferred DSP/BRAM, no Xilinx IP cores). Porting to
@@ -164,11 +164,11 @@ use only the register-mapped peripheral interface. The CIR generic defaults to
 `true`.
 
 ## Remaining work
-- **Section 7 coprocessor interface (Phase 2+)**: Conditional dialog paths
-  (FBcc/FDBcc/FScc/FTRAPcc), FSAVE/FRESTORE format-word and state-frame flow,
-  full exception dialog paths, and protocol/cycle testbenches. Phase 1
-  (CIR types, dialog FSM, reg-to-reg, memory-source/destination transfers) is
-  complete.
+- **Section 7 coprocessor interface (Phase 3+)**: FSAVE/FRESTORE format-word
+  and state-frame flow, full exception dialog paths, and protocol/cycle
+  testbenches. Phases 1-2 (CIR types, dialog FSM, reg-to-reg,
+  memory-source/destination transfers, conditional dialog paths for
+  FBcc/FDBcc/FScc/FTRAPcc/FNOP) are complete.
 - **Test coverage**: Denormal handling (C1), exception detection expansion (C3),
   FPCR/FPSR architectural field completeness (C4), FPIAR tracking (C5),
   per-opcode self-checking testbenches (D1), cycle-count verification (D4),

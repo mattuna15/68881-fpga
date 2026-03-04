@@ -103,7 +103,38 @@ architecture sim of tb_mc68881_cir_dialog is
   constant OPCODE_FMUL : std_logic_vector(6 downto 0) := "0000011";  -- 0x03
   constant OPCODE_FDIV : std_logic_vector(6 downto 0) := "0000100";  -- 0x04
   constant OPCODE_FMOVE : std_logic_vector(6 downto 0) := "0000101";  -- 0x05
+  constant OPCODE_FCMP  : std_logic_vector(6 downto 0) := "0000111";  -- 0x07
   constant OPCODE_FNEG : std_logic_vector(6 downto 0) := "0010011";  -- 0x13
+
+  -- CIR Condition address.
+  constant CIR_CONDITION : unsigned(4 downto 0) :=
+    unsigned(std_logic_vector(CIR_ADDR_CONDITION));
+
+  -- FPSR/FPCR addresses for reading/writing.
+  constant ADDR_FPSR : unsigned(4 downto 0) := to_unsigned(14, 5);
+  constant ADDR_FPCR : unsigned(4 downto 0) := to_unsigned(11, 5);
+
+  -- cpBcc word displacement OpWord: bits [8:6] = "010".
+  constant CPBCC_W_OPWORD : std_logic_vector(31 downto 0) :=
+    x"0000" & "0000000" & CIR_TYPE_CPBCC_W & "000000";
+  -- cpBcc long displacement OpWord: bits [8:6] = "011".
+  constant CPBCC_L_OPWORD : std_logic_vector(31 downto 0) :=
+    x"0000" & "0000000" & CIR_TYPE_CPBCC_L & "000000";
+  -- cpCond OpWord (maps to FScc evaluation in RTL): bits [8:6] = "001".
+  -- FDBcc/FTRAPcc use the same CIR type; the CPU handles post-evaluation
+  -- actions (counter decrement, trap) based on the CIR response word.
+  constant CPCOND_OPWORD : std_logic_vector(31 downto 0) :=
+    x"0000" & "0000000" & CIR_TYPE_CPCOND & "000000";
+
+  -- Floating-point condition predicate codes.
+  constant FCC_F  : std_logic_vector(5 downto 0) := "000000";  -- False
+  constant FCC_EQ : std_logic_vector(5 downto 0) := "000001";  -- Equal
+  constant FCC_GT : std_logic_vector(5 downto 0) := "010010";  -- Greater Than (signaling)
+  constant FCC_T  : std_logic_vector(5 downto 0) := "001111";  -- True
+  constant FCC_NE : std_logic_vector(5 downto 0) := "001110";  -- Not Equal
+
+  -- FP80 QNaN for BSUN testing.
+  constant FP80_QNAN : fp80_t := x"7FFFC000000000000001";
 
   function make_move_cfg(
     mode : std_logic_vector(1 downto 0);
@@ -265,6 +296,39 @@ architecture sim of tb_mc68881_cir_dialog is
     assert resp = RESP_NULL
       report "Timeout polling CIR Response for Null"
       severity failure;
+  end procedure;
+
+  -- ----- CIR conditional evaluation (cpBcc/cpCond) -----
+  -- Writes OpWord + Condition CIR, waits for STATUS.valid, reads CIR Response.
+  procedure cir_cond_eval(
+    signal a_in_s : out std_logic_vector(4 downto 0);
+    signal d_in_s : out std_logic_vector(31 downto 0);
+    signal rw_s   : out std_logic;
+    signal cs_n_s : out std_logic;
+    signal as_n_s : out std_logic;
+    signal ds_n_s : out std_logic;
+    signal dsack0_n_s : in std_logic;
+    signal dsack1_n_s : in std_logic;
+    signal d_out_s : in std_logic_vector(31 downto 0);
+    constant opword    : std_logic_vector(31 downto 0);
+    constant condition : std_logic_vector(5 downto 0);
+    variable response  : out std_logic_vector(31 downto 0)
+  ) is
+    variable status_word : std_logic_vector(31 downto 0) := (others => '0');
+  begin
+    -- Write OpWord (cpBcc or cpCond type).
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_OPWORD, opword);
+    -- Write Condition CIR.
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_CONDITION,
+              x"000000" & "00" & condition);
+    -- Wait for completion (STATUS.valid).
+    wait_for_valid(a_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+                   dsack0_n_s, dsack1_n_s, d_out_s, status_word);
+    -- Read CIR Response register.
+    bus_read(a_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+             dsack0_n_s, dsack1_n_s, d_out_s, response, CIR_RESPONSE);
   end procedure;
 
   -- ----- Legacy FP register load helper -----
@@ -605,6 +669,8 @@ begin
     variable resp : std_logic_vector(15 downto 0) := (others => '0');
     variable last_resp : std_logic_vector(15 downto 0) := (others => '0');
     variable cmd_word : std_logic_vector(31 downto 0) := (others => '0');
+    variable cir_resp : std_logic_vector(31 downto 0) := (others => '0');
+    variable fpsr_val : std_logic_vector(31 downto 0) := (others => '0');
   begin
     -- Reset.
     reset_n <= '0';
@@ -1336,6 +1402,195 @@ begin
              to_hstring(single_result)
       severity failure;
     report "TEST 24 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 25: FNOP via CIR (cpBcc with condition F, zero displacement)
+    --   FNOP = FBcc(False) → branch never taken.
+    -- ================================================================
+    report "TEST 25: FNOP via CIR" severity note;
+
+    cir_cond_eval(a_in, d_in, rw, cs_n, as_n, ds_n,
+                  dsack0_n, dsack1_n, d_out,
+                  CPBCC_W_OPWORD, FCC_F, cir_resp);
+    report "TEST 25 cir_resp=" & to_hstring(cir_resp) severity note;
+    assert cir_resp(0) = '0'
+      report "FAIL TEST 25: FNOP cond_true should be 0, got 1"
+      severity failure;
+    assert cir_resp(1) = '0'
+      report "FAIL TEST 25: FNOP branch_taken should be 0, got 1"
+      severity failure;
+    report "TEST 25 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 26: FBcc taken (EQ condition, Z=1)
+    --   Pre-load FP0=1.0, FP1=1.0, FCMP FP0,FP1 → Z=1.
+    --   cpBcc with EQ → branch taken.
+    -- ================================================================
+    report "TEST 26: FBcc taken (EQ, equal operands)" severity note;
+
+    -- Set FPSR CC Z=1 via FCMP on equal operands.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 1, FP80_ONE_VAL);
+    cpgen_reg_to_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     OPCODE_FCMP, 0, 1);
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_FPSR);
+    report "TEST 26 FPSR after FCMP=" & to_hstring(fpsr_val) severity note;
+    -- Assert FPSR CC bits: Z=1, N=0 (verifies double-exc_classification fix).
+    assert fpsr_val(26) = '1'
+      report "FAIL TEST 26: FPSR CC.Z should be 1 after FCMP(1.0,1.0)"
+      severity failure;
+    assert fpsr_val(27) = '0'
+      report "FAIL TEST 26: FPSR CC.N should be 0 after FCMP(1.0,1.0)"
+      severity failure;
+
+    cir_cond_eval(a_in, d_in, rw, cs_n, as_n, ds_n,
+                  dsack0_n, dsack1_n, d_out,
+                  CPBCC_W_OPWORD, FCC_EQ, cir_resp);
+    report "TEST 26 cir_resp=" & to_hstring(cir_resp) severity note;
+    assert cir_resp(0) = '1'
+      report "FAIL TEST 26: FBcc EQ cond_true should be 1, got 0"
+      severity failure;
+    assert cir_resp(1) = '1'
+      report "FAIL TEST 26: FBcc EQ branch_taken should be 1, got 0"
+      severity failure;
+    report "TEST 26 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 27: FBcc not taken (NE condition, Z=1)
+    --   Same FPSR CC state (Z=1 from equal comparison above).
+    --   cpBcc with NE → branch not taken.
+    -- ================================================================
+    report "TEST 27: FBcc not taken (NE, equal operands)" severity note;
+
+    cir_cond_eval(a_in, d_in, rw, cs_n, as_n, ds_n,
+                  dsack0_n, dsack1_n, d_out,
+                  CPBCC_W_OPWORD, FCC_NE, cir_resp);
+    report "TEST 27 cir_resp=" & to_hstring(cir_resp) severity note;
+    assert cir_resp(0) = '0'
+      report "FAIL TEST 27: FBcc NE cond_true should be 0, got 1"
+      severity failure;
+    assert cir_resp(1) = '0'
+      report "FAIL TEST 27: FBcc NE branch_taken should be 0, got 1"
+      severity failure;
+    report "TEST 27 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 28: FScc (cpCond) condition true (EQ, Z=1)
+    --   FPSR CC still Z=1 from test 26's FCMP.
+    --   cpCond with EQ → condition true, result_lo byte = 0xFF.
+    -- ================================================================
+    report "TEST 28: FScc cpCond true (EQ, Z=1)" severity note;
+
+    cir_cond_eval(a_in, d_in, rw, cs_n, as_n, ds_n,
+                  dsack0_n, dsack1_n, d_out,
+                  CPCOND_OPWORD, FCC_EQ, cir_resp);
+    report "TEST 28 cir_resp=" & to_hstring(cir_resp) severity note;
+    assert cir_resp(0) = '1'
+      report "FAIL TEST 28: FScc EQ cond_true should be 1, got 0"
+      severity failure;
+    -- Read result_lo: FScc sets byte 0 to 0xFF when condition true.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, single_result, ADDR_RES_L);
+    assert single_result(7 downto 0) = x"FF"
+      report "FAIL TEST 28: FScc result_lo byte expected=FF got=" &
+             to_hstring(single_result(7 downto 0))
+      severity failure;
+    report "TEST 28 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 29: FScc (cpCond) condition false (NE, Z=1)
+    --   FPSR CC still Z=1. cpCond with NE → condition false.
+    -- ================================================================
+    report "TEST 29: FScc cpCond false (NE, Z=1)" severity note;
+
+    cir_cond_eval(a_in, d_in, rw, cs_n, as_n, ds_n,
+                  dsack0_n, dsack1_n, d_out,
+                  CPCOND_OPWORD, FCC_NE, cir_resp);
+    report "TEST 29 cir_resp=" & to_hstring(cir_resp) severity note;
+    assert cir_resp(0) = '0'
+      report "FAIL TEST 29: FScc NE cond_true should be 0, got 1"
+      severity failure;
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, single_result, ADDR_RES_L);
+    assert single_result(7 downto 0) = x"00"
+      report "FAIL TEST 29: FScc result_lo byte expected=00 got=" &
+             to_hstring(single_result(7 downto 0))
+      severity failure;
+    report "TEST 29 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 30: BSUN via CIR (signaling condition on NaN CC)
+    --   Load FP2=QNaN, FP3=1.0, FCMP FP2,FP3 → CC.NAN=1.
+    --   cpBcc with GT (signaling, bit4=1) → BSUN event.
+    -- ================================================================
+    report "TEST 30: BSUN via CIR" severity note;
+
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 2, FP80_QNAN);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 3, FP80_ONE_VAL);
+    cpgen_reg_to_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     OPCODE_FCMP, 2, 3);
+
+    cir_cond_eval(a_in, d_in, rw, cs_n, as_n, ds_n,
+                  dsack0_n, dsack1_n, d_out,
+                  CPBCC_W_OPWORD, FCC_GT, cir_resp);
+    report "TEST 30 cir_resp=" & to_hstring(cir_resp) severity note;
+    assert cir_resp(4) = '1'
+      report "FAIL TEST 30: BSUN bit should be 1, got 0"
+      severity failure;
+    -- BSUN should force cond_true=0 and branch_taken=0.
+    assert cir_resp(0) = '0'
+      report "FAIL TEST 30: BSUN should force cond_true=0"
+      severity failure;
+    assert cir_resp(1) = '0'
+      report "FAIL TEST 30: BSUN should force branch_taken=0"
+      severity failure;
+    -- Verify FPSR EXC.BSUN bit is set.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_FPSR);
+    report "TEST 30 FPSR=" & to_hstring(fpsr_val) severity note;
+    -- BSUN is FPSR bit [8+7]=bit 15 in the exception byte, which is FPSR(15).
+    -- But FPSR_EXC_BSUN=7 is offset within the exception byte (bits [15:8]).
+    assert fpsr_val(8 + 7) = '1'
+      report "FAIL TEST 30: FPSR EXC.BSUN should be set"
+      severity failure;
+    report "TEST 30 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 31: FBcc long displacement (cpBcc-L) taken
+    --   Reuse FPSR CC Z=1 state from test 26's FCMP (equal operands).
+    --   Re-establish CC by repeating the FCMP, since test 30 may have
+    --   changed CC state.
+    -- ================================================================
+    report "TEST 31: FBcc-L taken (EQ, equal operands)" severity note;
+
+    cpgen_reg_to_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     OPCODE_FCMP, 0, 1);
+    -- Verify CC state before conditional eval.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_FPSR);
+    assert fpsr_val(26) = '1'
+      report "FAIL TEST 31: FPSR CC.Z should be 1 before FBcc-L"
+      severity failure;
+
+    cir_cond_eval(a_in, d_in, rw, cs_n, as_n, ds_n,
+                  dsack0_n, dsack1_n, d_out,
+                  CPBCC_L_OPWORD, FCC_EQ, cir_resp);
+    report "TEST 31 cir_resp=" & to_hstring(cir_resp) severity note;
+    assert cir_resp(0) = '1'
+      report "FAIL TEST 31: FBcc-L EQ cond_true should be 1, got 0"
+      severity failure;
+    assert cir_resp(1) = '1'
+      report "FAIL TEST 31: FBcc-L EQ branch_taken should be 1, got 0"
+      severity failure;
+    report "TEST 31 PASSED" severity note;
 
     -- ================================================================
     report "All CIR dialog tests PASSED" severity note;

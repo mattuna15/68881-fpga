@@ -458,7 +458,20 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 - Follow-up:
   - Keep `tb/tb_mc68881_known_defects.vhd` as a persistent recheck for this vector.
 
-## Implementation Snapshot (2026-03-04)
+## Implementation Snapshot (2026-03-04, Phase 2)
+- Milestone:
+  - Section 7 CIR Phase 2 complete (conditional dialog paths: FBcc/FDBcc/FScc/FTRAPcc/FNOP).
+  - Unified dispatch refactor (eff_op_class/eff_op_sel) reduced LUT count vs Phase 1.
+  - Net LUT reduction of ~1,700 LUTs from Phase 1 snapshot (66,572 → 64,865).
+- Run data (non-incremental synthesis + implementation):
+  - Utilization (post-place): `Slice LUTs = 64865 / 133800 (48.48%)`
+  - DSPs: 33 / 740 (4.46%)
+  - Registers: 11908 / 267600 (4.45%)
+  - BRAM: 5 tiles / 365 (1.37%)
+  - Timing: `WNS=9.875ns`, `TNS=0.000ns`
+  - WNS regression of ~1.5 ns from Phase 1 (+11.404 → +9.875); still 90% slack margin.
+
+## Implementation Snapshot (2026-03-04, Phase 1)
 - Milestone:
   - Section 7 CIR Phase 1 complete (dialog FSM, reg-to-reg, memory transfers).
   - 8-phase LUT reduction applied: divider elimination, fintrz/fgetman de-duplication,
@@ -614,7 +627,17 @@ Legend:
     in `mc68881_top.vhd`, cpGEN reg-to-reg path through ALU, memory-source and
     memory-destination transfers with E2E tests. Edge-detect operand writes,
     command flag re-trigger fix, CMP/TST writeback gating.
-- `[ ]` Phase 2: Implement conditional dialog path (`FNOP/FScc` first), then `FBcc/FDBcc/FTRAPcc`.
+- `[x]` Phase 2: Implement conditional dialog path (`FNOP/FScc` first), then `FBcc/FDBcc/FTRAPcc`.
+  - Done: CIR conditional dialog path for cpCond (FScc/FDBcc/FTRAPcc) and cpBcc
+    (FBcc/FNOP) instruction types. Condition evaluation routed through existing
+    `alu_control_proc` OP_CLASS_PROG_CTRL dispatch via unified `eff_op_class`/
+    `eff_op_sel` refactor (Option C). CIR_COND_EVAL state with
+    `cir_condition_written` flag gates entry until both OpWord and Condition CIR
+    writes complete. `cond_selector` variable in OP_CLASS_PROG_CTRL reads
+    `cir_condition_reg` directly for CIR path (avoids same-clock-edge timing
+    issue with `operand_reg`). Fixed double exc_classification bug where
+    `exc_event_valid_reg` from CIR ARITH valid handler overwrote correct FPSR CC.
+    E2E tests: FNOP, FBcc taken/not-taken, FScc true/false, BSUN via CIR (6 tests).
 - `[ ]` Phase 3: Implement FSAVE/FRESTORE format-word and state-frame flow.
 - `[ ]` Phase 4: Wire full exception dialog paths (pre/mid/BSUN/format) and FPIAR capture points.
 - `[ ]` Phase 5: Close timing/cycle tests and regression matrix.

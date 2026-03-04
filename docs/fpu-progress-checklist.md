@@ -458,7 +458,20 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 - Follow-up:
   - Keep `tb/tb_mc68881_known_defects.vhd` as a persistent recheck for this vector.
 
-## Implementation Snapshot (2026-03-04)
+## Implementation Snapshot (2026-03-04, Phase 2)
+- Milestone:
+  - Section 7 CIR Phase 2 complete (conditional dialog paths: FBcc/FDBcc/FScc/FTRAPcc/FNOP).
+  - Unified dispatch refactor (eff_op_class/eff_op_sel) reduced LUT count vs Phase 1.
+  - Net LUT reduction of ~1,700 LUTs from Phase 1 snapshot (66,572 → 64,865).
+- Run data (non-incremental synthesis + implementation):
+  - Utilization (post-place): `Slice LUTs = 64865 / 133800 (48.48%)`
+  - DSPs: 33 / 740 (4.46%)
+  - Registers: 11908 / 267600 (4.45%)
+  - BRAM: 5 tiles / 365 (1.37%)
+  - Timing: `WNS=9.875ns`, `TNS=0.000ns`
+  - WNS regression of ~1.5 ns from Phase 1 (+11.404 → +9.875); still 90% slack margin.
+
+## Implementation Snapshot (2026-03-04, Phase 1)
 - Milestone:
   - Section 7 CIR Phase 1 complete (dialog FSM, reg-to-reg, memory transfers).
   - 8-phase LUT reduction applied: divider elimination, fintrz/fgetman de-duplication,

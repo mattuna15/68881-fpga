@@ -323,7 +323,14 @@ begin
       packed_fp_add_b      => (others => '0'),
       packed_fp_add_sub    => false,
       packed_fp_add_done   => open,
-      packed_fp_add_result => open
+      packed_fp_add_result => open,
+      save_req       => '0',
+      save_data      => open,
+      save_addr      => 0,
+      restore_req    => '0',
+      restore_data   => (others => '0'),
+      restore_addr   => 0,
+      restore_wr     => '0'
     );
 
   process

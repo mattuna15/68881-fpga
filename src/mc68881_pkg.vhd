@@ -312,6 +312,7 @@ package mc68881_pkg is
     CIR_EXCEPT_PRE,
     CIR_EXCEPT_MID,
     CIR_EXCEPT_POST,
+    CIR_SAVE_WAIT,
     CIR_SAVE_FORMAT,
     CIR_SAVE_FRAME,
     CIR_RESTORE_FORMAT,
@@ -356,6 +357,7 @@ package mc68881_pkg is
   constant CIR_FRAME_BUSY_FW     : std_logic_vector(15 downto 0) := x"00B4";
   constant CIR_FRAME_IDLE_WORDS  : natural := 6;   -- 24 bytes / 4
   constant CIR_FRAME_BUSY_WORDS  : natural := 45;  -- 180 bytes / 4
+  constant CIR_FRAME_BUSY_HDR    : natural := 12;  -- Header words 0-11 (operands + metadata)
 
   -- Helper: number of 32-bit operand words for a given source format.
   function cir_src_word_count(src_fmt : std_logic_vector(2 downto 0)) return natural;

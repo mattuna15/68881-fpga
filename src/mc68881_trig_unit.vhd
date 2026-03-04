@@ -382,6 +382,9 @@ architecture rtl of mc68881_trig_unit is
   signal c_reg : fp80_t := (others => '0');
   signal poly_reg : fp80_t := (others => '0');
   signal tmp_reg : fp80_t := (others => '0');
+  signal fintrz_tmp : fp80_t;
+  signal fgetman_a : fp80_t;
+  signal fgetman_tmp : fp80_t;
   signal tanh_x2_reg : fp80_t := (others => '0');
   signal result_reg : fp80_t := (others => '0');
   signal aux_result_reg : fp80_t := (others => '0');
@@ -664,6 +667,11 @@ begin
     end if;
   end process;
 
+  -- Shared combinational de-duplicated functions
+  fintrz_tmp <= fintrz_fp80(tmp_reg);
+  fgetman_a <= fgetman_fp80(a_reg);
+  fgetman_tmp <= fgetman_fp80(tmp_reg);
+
   process(clk, reset_n)
     variable abs_a : fp80_t;
     variable exp_bits : unsigned(FP_EXP_WIDTH-1 downto 0);
@@ -677,6 +685,12 @@ begin
     variable x_local : fp80_t;
     variable z_local : fp80_t;
     variable unbiased_exp_local : integer;
+    variable abs_a_gt_one : boolean;
+    variable a_exp_v : unsigned(FP_EXP_WIDTH-1 downto 0);
+    variable a_mant_v : unsigned(63 downto 0);
+    variable frac_abs_ge_half : boolean;
+    variable v_exp : unsigned(FP_EXP_WIDTH-1 downto 0);
+    variable v_mant : unsigned(63 downto 0);
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -748,6 +762,12 @@ begin
 
         when ST_CLASSIFY =>
           abs_a := abs_fp80(a_reg);
+          -- Pre-compute |a| > 1.0 using direct field comparison (replaces 4 compare_fp80 calls)
+          a_exp_v := unsigned(abs_a(78 downto 64));
+          a_mant_v := unsigned(abs_a(63 downto 0));
+          abs_a_gt_one := a_exp_v > to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH)
+                       or (a_exp_v = to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH)
+                           and a_mant_v > x"8000000000000000");
           trans_input_adjust_en_reg <= '0';
           trans_input_adjust_sub_reg <= '0';
           trans_input_adjust_const_reg <= FP80_ZERO;
@@ -987,7 +1007,7 @@ begin
                   result_reg <= FP80_NEG_INF;
                   flag_divzero_reg <= '1';
                   state_reg <= ST_DONE;
-                elsif compare_fp80(a_reg, FP80_NEG_ONE) < 0 then
+                elsif a_reg(FP_WIDTH-1) = '1' and abs_a_gt_one then
                   result_reg <= canonical_nan(FP80_ZERO);
                   state_reg <= ST_DONE;
                 elsif fp80_is_zero(a_reg) then
@@ -1092,7 +1112,7 @@ begin
                   coeff3_reg <= FP80_NEG_ONE_THIRD;
                   coeff4_reg <= FP80_ZERO;
                   coeff5_reg <= FP80_ONE_FIFTH;
-                  if compare_fp80(abs_a, FP80_ONE) > 0 then
+                  if abs_a_gt_one then
                     trans_post_add_en_reg <= '1';
                     trans_post_add_sub_reg <= '1';
                     if fp80_sign(a_reg) = '1' then
@@ -1116,7 +1136,7 @@ begin
                 end if;
 
               when FPU_OP_ASIN =>
-                if compare_fp80(abs_a, FP80_ONE) > 0 then
+                if abs_a_gt_one then
                   result_reg <= canonical_nan(FP80_ZERO);
                   state_reg <= ST_DONE;
                 elsif fp80_is_zero(a_reg) then
@@ -1143,7 +1163,7 @@ begin
                 end if;
 
               when FPU_OP_ACOS =>
-                if compare_fp80(abs_a, FP80_ONE) > 0 then
+                if abs_a_gt_one then
                   result_reg <= canonical_nan(FP80_ZERO);
                   state_reg <= ST_DONE;
                 elsif fp80_is_zero(a_reg) then
@@ -1182,7 +1202,7 @@ begin
                   end if;
                   flag_divzero_reg <= '1';
                   state_reg <= ST_DONE;
-                elsif compare_fp80(abs_a, FP80_ONE) > 0 then
+                elsif abs_a_gt_one then
                   result_reg <= canonical_nan(FP80_ZERO);
                   state_reg <= ST_DONE;
                 elsif fp80_is_zero(a_reg) then
@@ -1288,7 +1308,7 @@ begin
           state_reg <= ST_FP_MUL;
 
         when ST_TRIG_MOD_INV4_POST =>
-          q_fp_reg <= fintrz_fp80(tmp_reg);
+          q_fp_reg <= fintrz_tmp;
           state_reg <= ST_TRIG_MOD_QPI_PREP;
 
         when ST_TRIG_MOD_QPI_PREP =>
@@ -1324,7 +1344,7 @@ begin
           state_reg <= ST_FP_MUL;
 
         when ST_TRIG_SCALE_POST =>
-          q_fp_reg <= fintrz_fp80(tmp_reg);
+          q_fp_reg <= fintrz_tmp;
           state_reg <= ST_TRIG_FRAC_PREP;
 
         when ST_TRIG_FRAC_PREP =>
@@ -1339,7 +1359,13 @@ begin
         when ST_TRIG_FRAC_POST =>
           frac := tmp_reg;
           q_mod_local := fp80_int_mod4(q_fp_reg);
-          if frac(FP_WIDTH-1) = '0' and compare_fp80(frac, FP80_HALF) >= 0 then
+          -- |frac| >= 0.5: compare exponent/mantissa against FP80_HALF (exp=3FFE, mant=8000...)
+          v_exp := unsigned(frac(78 downto 64));
+          v_mant := unsigned(frac(63 downto 0));
+          frac_abs_ge_half := v_exp > to_unsigned(FP_EXP_BIAS - 1, FP_EXP_WIDTH)
+                           or (v_exp = to_unsigned(FP_EXP_BIAS - 1, FP_EXP_WIDTH)
+                               and v_mant >= x"8000000000000000");
+          if frac(FP_WIDTH-1) = '0' and frac_abs_ge_half then
             q_mod_local := (q_mod_local + 1) mod 4;
             add_a_reg <= q_fp_reg;
             add_b_reg <= FP80_ONE;
@@ -1349,7 +1375,7 @@ begin
             cont_state_reg <= ST_TRIG_QROUND_POST;
             q_mod_reg <= q_mod_local;
             state_reg <= ST_FP_ADD;
-          elsif frac(FP_WIDTH-1) = '1' and compare_fp80(abs_fp80(frac), FP80_HALF) >= 0 then
+          elsif frac(FP_WIDTH-1) = '1' and frac_abs_ge_half then
             q_mod_local := (q_mod_local + 3) mod 4;
             add_a_reg <= q_fp_reg;
             add_b_reg <= FP80_ONE;
@@ -1390,7 +1416,12 @@ begin
 
         when ST_TRIG_RESIDUAL_POST =>
           r_clamped := tmp_reg;
-          if compare_fp80(abs_fp80(r_clamped), FP80_EPS_TRIG) <= 0 then
+          -- |r_clamped| <= 2^-20: check exponent field <= EPS exponent (3FEB)
+          v_exp := unsigned(r_clamped(78 downto 64));
+          v_mant := unsigned(r_clamped(63 downto 0));
+          if v_exp < to_unsigned(16363, FP_EXP_WIDTH)
+             or (v_exp = to_unsigned(16363, FP_EXP_WIDTH)
+                 and v_mant <= x"8000000000000000") then
             r_clamped := FP80_ZERO;
           end if;
           r_reg <= r_clamped;
@@ -1639,7 +1670,13 @@ begin
           state_reg <= ST_FP_DIV;
 
         when ST_TRIG_TAN_DIV_POST =>
-          if op_reg = FPU_OP_TANH and compare_fp80(abs_fp80(tmp_reg), FP80_ONE) > 0 then
+          -- |tmp_reg| > 1.0: direct field comparison replaces compare_fp80
+          v_exp := unsigned(tmp_reg(78 downto 64));
+          v_mant := unsigned(tmp_reg(63 downto 0));
+          if op_reg = FPU_OP_TANH
+             and (v_exp > to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH)
+                  or (v_exp = to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH)
+                      and v_mant > x"8000000000000000")) then
             if tmp_reg(FP_WIDTH-1) = '1' then
               result_reg <= FP80_NEG_ONE;
             else
@@ -1709,8 +1746,8 @@ begin
           state_reg <= ST_TRIG_TAN_DIV;
 
         when ST_EXP_REDUCE_K_POST =>
-          exp_k_reg <= fintrz_fp80(tmp_reg);
-          mul_a_reg <= fintrz_fp80(tmp_reg);
+          exp_k_reg <= fintrz_tmp;
+          mul_a_reg <= fintrz_tmp;
           mul_b_reg <= FP80_LN2;
           mul_rm_reg <= FP_RND_NEAREST;
           mul_rp_reg <= FP_PREC_EXTENDED;
@@ -1747,7 +1784,7 @@ begin
           else
             log_exp_term_zero_reg <= '0';
           end if;
-          x_reg <= fgetman_fp80(a_reg);
+          x_reg <= fgetman_a;
           state_reg <= ST_LOG_GETEXP_POST;
 
         when ST_LOG_GETEXP_POST =>
@@ -1767,7 +1804,7 @@ begin
         when ST_LOGNP1_Z_POST =>
           -- z = tmp_reg = a + 1.  Finish FLOGNP1 setup using z.
           z_local := tmp_reg;
-          x_local := fgetman_fp80(z_local);
+          x_local := fgetman_tmp;
           unbiased_exp_local := fgetexp_unbiased_int(z_local);
           log_unbiased_exp_reg <= unbiased_exp_local;
           log_scale_reg <= FP80_LN2;

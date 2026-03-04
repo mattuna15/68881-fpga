@@ -458,6 +458,33 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 - Follow-up:
   - Keep `tb/tb_mc68881_known_defects.vhd` as a persistent recheck for this vector.
 
+## Implementation Snapshot (2026-03-04)
+- Milestone:
+  - Section 7 CIR Phase 1 complete (dialog FSM, reg-to-reg, memory transfers).
+  - 8-phase LUT reduction applied: divider elimination, fintrz/fgetman de-duplication,
+    compare_fp80 consolidation, carry-propagation serialization, selective ALU dispatch,
+    format converter sharing.
+  - LUT reductions offset CIR additions: net +565 LUTs vs pre-CIR baseline (66,007).
+  - Timing dramatically improved: WNS from +0.404 ns to +11.404 ns (+11 ns gain)
+    due to carry-propagation serialization breaking worst combinational paths.
+  - CIR feature is gatable (`ENABLE_CIR_g => false`) for smaller FPGAs.
+- Run data (non-incremental synthesis + implementation):
+  - Utilization (post-place): `Slice LUTs = 66572 / 133800 (49.75%)`
+  - DSPs: 33 / 740 (4.46%)
+  - Registers: 11903 / 267600 (4.45%)
+  - BRAM: 5 tiles / 365 (1.37%)
+  - Timing: `WNS=11.404ns`, `TNS=0.000ns`, `WHS=0.010ns`, `THS=0.000ns`
+  - DRC: 0 errors, warnings only (unconstrained I/O, DSP pipelining — pre-existing)
+- LUT reduction breakdown:
+  - Phase 1 (packed divider → bit index): ~1,000 LUTs
+  - Phase 2 (fintrz de-dup): ~800 LUTs
+  - Phase 3 (fgetman de-dup): ~400 LUTs
+  - Phase 4 (compare_fp80 consolidation): ~1,500 LUTs
+  - Phase 5 (ST_ENC_KROUND serialization): ~2,400 LUTs
+  - Phase 6 (ST_ENC_POSTROUND serialization): ~1,200 LUTs
+  - Phase 7 (ALU selective dispatch): ~600 LUTs
+  - Phase 8 (format converter sharing): ~800 LUTs
+
 ## Implementation Snapshot (2026-03-03)
 - Milestone:
   - Post-synth LUT usage at 44% after DEF-LUT-001 + DEF-LUT-002 + review fixes
@@ -512,9 +539,10 @@ Legend:
 ## Mapping to Existing Plan Checklist
 
 ### A) Design Quality
-- `[ ]` S7-A1. Add typed primitive model for CIR transactions.
+- `[x]` S7-A1. Add typed primitive model for CIR transactions.
   - Map: `A6` (central opcode metadata), `A7` (typed decode records).
-  - Add an internal `cir_primitive_t` record and explicit primitive-type enum.
+  - Done: `cir_state_t` FSM enum, `cir_cmd_type_t` command type, CIR address constants,
+    and helper functions added to `mc68881_pkg.vhd`.
 - `[ ]` S7-A2. Add opcode-class metadata hooks for Section 7 dialog kind.
   - Map: `A5` (explicit operation classes), `A6`.
   - Define dialog kind per op: register-register, ext-register, register-ext, control-move, movem, conditional, context-switch.
@@ -581,7 +609,11 @@ Legend:
   - Extend `tb/tb_mc68881_ac_timing.vhd` with explicit save/response-CIR access timing assertions.
 
 ## Incremental Implementation Plan (Recommended Order)
-- `[ ]` Phase 1: Define CIR primitive types + internal dialog state machine skeleton.
+- `[x]` Phase 1: Define CIR primitive types + internal dialog state machine skeleton.
+  - Done: CIR types/constants/helpers in `mc68881_pkg.vhd`, dialog FSM skeleton
+    in `mc68881_top.vhd`, cpGEN reg-to-reg path through ALU, memory-source and
+    memory-destination transfers with E2E tests. Edge-detect operand writes,
+    command flag re-trigger fix, CMP/TST writeback gating.
 - `[ ]` Phase 2: Implement conditional dialog path (`FNOP/FScc` first), then `FBcc/FDBcc/FTRAPcc`.
 - `[ ]` Phase 3: Implement FSAVE/FRESTORE format-word and state-frame flow.
 - `[ ]` Phase 4: Wire full exception dialog paths (pre/mid/BSUN/format) and FPIAR capture points.

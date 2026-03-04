@@ -283,6 +283,86 @@ package mc68881_pkg is
   function fscale_fp80(a : fp80_t; b : fp80_t) return fp80_t;
   function sgldiv_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
   function sglmul_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
+
+  -- ===== Section 7 Coprocessor Interface Types =====
+
+  -- CIR register addresses (5-bit, maps to A[4:1] of CPU-space address).
+  constant CIR_ADDR_RESPONSE     : unsigned(4 downto 0) := "00000";  -- $00
+  constant CIR_ADDR_CONTROL      : unsigned(4 downto 0) := "00001";  -- $02
+  constant CIR_ADDR_SAVE         : unsigned(4 downto 0) := "00010";  -- $04
+  constant CIR_ADDR_RESTORE      : unsigned(4 downto 0) := "00011";  -- $06
+  constant CIR_ADDR_OPWORD       : unsigned(4 downto 0) := "00100";  -- $08
+  constant CIR_ADDR_COMMAND      : unsigned(4 downto 0) := "00101";  -- $0A
+  constant CIR_ADDR_CONDITION    : unsigned(4 downto 0) := "00111";  -- $0E
+  constant CIR_ADDR_OPERAND      : unsigned(4 downto 0) := "01000";  -- $10
+  constant CIR_ADDR_REGSELECT    : unsigned(4 downto 0) := "01010";  -- $14
+  constant CIR_ADDR_INSTADDR     : unsigned(4 downto 0) := "01100";  -- $18
+  constant CIR_ADDR_OPADDR       : unsigned(4 downto 0) := "01110";  -- $1C
+
+  -- Dialog FSM states.
+  type cir_dialog_state_t is (
+    CIR_IDLE,
+    CIR_DECODE,
+    CIR_XFER_SRC,
+    CIR_XFER_SRC_WAIT,
+    CIR_EXECUTE,
+    CIR_XFER_DST,
+    CIR_XFER_DST_WAIT,
+    CIR_COND_EVAL,
+    CIR_EXCEPT_PRE,
+    CIR_EXCEPT_MID,
+    CIR_EXCEPT_POST,
+    CIR_SAVE_FORMAT,
+    CIR_SAVE_FRAME,
+    CIR_RESTORE_FORMAT,
+    CIR_RESTORE_FRAME
+  );
+
+  -- Response primitive categories (bits 15:13 of Response CIR).
+  constant CIR_RESP_BUSY         : std_logic_vector(2 downto 0) := "000";
+  constant CIR_RESP_NULL         : std_logic_vector(2 downto 0) := "001";
+  constant CIR_RESP_SUPERVISOR   : std_logic_vector(2 downto 0) := "010";
+  constant CIR_RESP_TRANSFER     : std_logic_vector(2 downto 0) := "011";
+  constant CIR_RESP_WRITEBACK    : std_logic_vector(2 downto 0) := "100";
+  constant CIR_RESP_EXCEPT_PRE   : std_logic_vector(2 downto 0) := "101";
+  constant CIR_RESP_EXCEPT_MID   : std_logic_vector(2 downto 0) := "110";
+  constant CIR_RESP_EXCEPT_POST  : std_logic_vector(2 downto 0) := "111";
+
+  -- Common response primitive words.
+  constant CIR_PRIM_BUSY         : std_logic_vector(15 downto 0) := x"0000";
+  constant CIR_PRIM_NULL         : std_logic_vector(15 downto 0) := x"2001";
+
+  -- Operation Word type field [8:6] — instruction family.
+  constant CIR_TYPE_CPGEN        : std_logic_vector(2 downto 0) := "000";
+  constant CIR_TYPE_CPCOND       : std_logic_vector(2 downto 0) := "001";
+  constant CIR_TYPE_CPBCC_W      : std_logic_vector(2 downto 0) := "010";
+  constant CIR_TYPE_CPBCC_L      : std_logic_vector(2 downto 0) := "011";
+  constant CIR_TYPE_CPSAVE       : std_logic_vector(2 downto 0) := "100";
+  constant CIR_TYPE_CPRESTORE    : std_logic_vector(2 downto 0) := "101";
+
+  -- Source format field [12:10] of cpGEN command word.
+  constant CIR_SRC_LONG          : std_logic_vector(2 downto 0) := "000";
+  constant CIR_SRC_SINGLE        : std_logic_vector(2 downto 0) := "001";
+  constant CIR_SRC_EXTENDED      : std_logic_vector(2 downto 0) := "010";
+  constant CIR_SRC_PACKED        : std_logic_vector(2 downto 0) := "011";
+  constant CIR_SRC_WORD          : std_logic_vector(2 downto 0) := "100";
+  constant CIR_SRC_DOUBLE        : std_logic_vector(2 downto 0) := "101";
+  constant CIR_SRC_BYTE          : std_logic_vector(2 downto 0) := "110";
+  constant CIR_SRC_FPN           : std_logic_vector(2 downto 0) := "111";
+
+  -- FSAVE frame format words.
+  constant CIR_FRAME_NULL_FW     : std_logic_vector(15 downto 0) := x"0000";
+  constant CIR_FRAME_IDLE_FW     : std_logic_vector(15 downto 0) := x"0018";
+  constant CIR_FRAME_BUSY_FW     : std_logic_vector(15 downto 0) := x"00B4";
+  constant CIR_FRAME_IDLE_WORDS  : natural := 6;   -- 24 bytes / 4
+  constant CIR_FRAME_BUSY_WORDS  : natural := 45;  -- 180 bytes / 4
+
+  -- Helper: number of 32-bit operand words for a given source format.
+  function cir_src_word_count(src_fmt : std_logic_vector(2 downto 0)) return natural;
+
+  -- Helper: decode command word bits [6:0] to fpu_op_t.
+  function cir_decode_cpgen_opcode(cmd_word : std_logic_vector(15 downto 0)) return fpu_op_t;
+
 end package mc68881_pkg;
 
 package body mc68881_pkg is
@@ -1129,6 +1209,39 @@ package body mc68881_pkg is
       return FPU_OP_NOP;
     end if;
 
+    return FPU_OP_NOP;
+  end function;
+
+  function cir_src_word_count(src_fmt : std_logic_vector(2 downto 0)) return natural is
+  begin
+    case src_fmt is
+      when CIR_SRC_LONG | CIR_SRC_SINGLE | CIR_SRC_WORD | CIR_SRC_BYTE =>
+        return 1;
+      when CIR_SRC_DOUBLE =>
+        return 2;
+      when CIR_SRC_EXTENDED | CIR_SRC_PACKED =>
+        return 3;
+      when CIR_SRC_FPN =>
+        return 0;
+      when others =>
+        return 0;
+    end case;
+  end function;
+
+  function cir_decode_cpgen_opcode(cmd_word : std_logic_vector(15 downto 0)) return fpu_op_t is
+    variable opcode_bits : std_logic_vector(6 downto 0);
+    variable key : op_key_t;
+  begin
+    opcode_bits := cmd_word(6 downto 0);
+    -- Build an op_key in OP_NS_CORE_V1 namespace and look up via descriptors.
+    key.namespace := OP_NS_CORE_V1;
+    key.opcode_id := '0' & opcode_bits;
+    for op in fpu_op_t loop
+      if OP_DESCRIPTORS(op).core_v1_decode_id_valid and
+         OP_DESCRIPTORS(op).core_v1_decode_id = key.opcode_id then
+        return op;
+      end if;
+    end loop;
     return FPU_OP_NOP;
   end function;
 

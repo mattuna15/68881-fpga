@@ -28,33 +28,36 @@ The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
 - **Peripheral interface**: Register-mapped bus interface with DSACK handshake,
   suitable for M68000/M68010 peripheral-mode operation.
 
-## Utilization (Xilinx Artix-7 200T, post-synth)
+## Utilization (Xilinx Artix-7 200T, post-place)
 
 | Resource | Used | Available | Util% |
 |----------|------|-----------|-------|
-| Slice LUTs | 59,304 | 134,600 | 44.06% |
-| Registers | 11,736 | 269,200 | 4.36% |
+| Slice LUTs | 66,572 | 133,800 | 49.75% |
+| Registers | 11,903 | 267,600 | 4.45% |
 | Block RAM | 5 tiles | 365 | 1.37% |
 | DSP48E1 | 33 | 740 | 4.46% |
-| F7 Muxes | 692 | 67,300 | 1.03% |
+| F7 Muxes | 993 | 66,900 | 1.48% |
 
-*Non-incremental synthesis, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-03.*
+*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-04.
+Includes Section 7 CIR coprocessor interface (~7K LUTs); see "CIR feature gating" below.*
 
 ### Timing
 - Target clock: 10 MHz (100 ns period) — matches MC68881 bus timing.
 - Multi-cycle path constraints on sequential FP units (mul: 4 cycles, addsub: 6 cycles,
   div: 6 cycles) and trig engine hold states.
-- Routed timing met with positive WNS on the Artix-7 200T.
+- Post-route physopt WNS: **+11.404 ns** (88% slack margin at 100 ns period).
+- WHS (hold): +0.010 ns, no violations.
 
 ### Target device compatibility
-The design fits on several FPGA families:
+The design fits on several FPGA families. With CIR disabled (`ENABLE_CIR_g => false`),
+the core is ~59K LUTs and fits comfortably on smaller devices:
 
-| Device | LUTs | DSPs | Fit? |
-|--------|------|------|------|
-| Xilinx Artix-7 200T | 134,600 | 740 | Yes (45%) |
-| Xilinx Artix-7 100T | 63,400 | 240 | Tight (~96%) |
-| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~85%) |
-| Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes |
+| Device | LUTs | DSPs | Fit (full)? | Fit (no CIR)? |
+|--------|------|------|-------------|---------------|
+| Xilinx Artix-7 200T | 134,600 | 740 | Yes (50%) | Yes (44%) |
+| Xilinx Artix-7 100T | 63,400 | 240 | No (105%) | Yes (~93%) |
+| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~94%) | Yes (~83%) |
+| Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
 
 All RTL is vendor-portable (inferred DSP/BRAM, no Xilinx IP cores). Porting to
 Intel/Quartus requires XDC-to-SDC constraint conversion and minor DSP inference
@@ -154,10 +157,18 @@ report_utilization -hierarchical -hierarchical_depth 10 -file mc68881_top_util_h
   inference and increases LUT usage sharply.
 - Validate architecture changes with non-incremental synth utilization reports.
 
+## CIR feature gating
+The Section 7 coprocessor interface (CIR dialog FSM) adds ~7K LUTs. For smaller
+FPGAs, set `ENABLE_CIR_g => false` on `mc68881_top` to disable the CIR logic and
+use only the register-mapped peripheral interface. The CIR generic defaults to
+`true`.
+
 ## Remaining work
-- **Section 7 coprocessor interface**: Full M68020/M68030 coprocessor primitive-dialog
-  protocol (CIR-based instruction/data/status transactions). The current peripheral-mode
-  register-mapped interface is complete and functional.
+- **Section 7 coprocessor interface (Phase 2+)**: Conditional dialog paths
+  (FBcc/FDBcc/FScc/FTRAPcc), FSAVE/FRESTORE format-word and state-frame flow,
+  full exception dialog paths, and protocol/cycle testbenches. Phase 1
+  (CIR types, dialog FSM, reg-to-reg, memory-source/destination transfers) is
+  complete.
 - **Test coverage**: Denormal handling (C1), exception detection expansion (C3),
   FPCR/FPSR architectural field completeness (C4), FPIAR tracking (C5),
   per-opcode self-checking testbenches (D1), cycle-count verification (D4),

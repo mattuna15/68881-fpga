@@ -19,7 +19,8 @@ The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
 - **Data movement**: FMOVE (all formats including packed decimal `.P`),
   FMOVEM (register lists and control registers), FMOVECR (ROM constants).
 - **Program control**: FScc, FBcc, FDBcc, FTRAPcc, FNOP with BSUN trap gating.
-- **System control**: FSAVE/FRESTORE frame handshake.
+- **System control**: FSAVE/FRESTORE with Null/Idle/Busy frame support (45-word
+  Busy frame with full sub-unit save/restore hierarchy).
 - **IEEE 754 compliance**: NaN propagation (SNaN/QNaN discrimination, payload
   preservation), infinity handling, signed zero, gradual underflow, all four
   rounding modes (nearest, zero, +inf, -inf), single/double/extended precision.
@@ -32,20 +33,20 @@ The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
 
 | Resource | Used | Available | Util% |
 |----------|------|-----------|-------|
-| Slice LUTs | 64,865 | 133,800 | 48.48% |
-| Registers | 11,908 | 267,600 | 4.45% |
+| Slice LUTs | 64,641 | 133,800 | 48.31% |
+| Registers | 13,096 | 267,600 | 4.89% |
 | Block RAM | 5 tiles | 365 | 1.37% |
 | DSP48E1 | 33 | 740 | 4.46% |
 
 *Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-04.
-Includes Section 7 CIR coprocessor interface with conditional dialog paths (~7K LUTs);
+Includes Section 7 CIR coprocessor interface with FSAVE/FRESTORE Busy frame support (~7K LUTs);
 see "CIR feature gating" below.*
 
 ### Timing
 - Target clock: 10 MHz (100 ns period) — matches MC68881 bus timing.
 - Multi-cycle path constraints on sequential FP units (mul: 4 cycles, addsub: 6 cycles,
   div: 6 cycles) and trig engine hold states.
-- Post-route physopt WNS: **+9.875 ns** (90% slack margin at 100 ns period).
+- Post-route physopt WNS: **+8.700 ns** (87% slack margin at 100 ns period).
 - WHS (hold): no violations.
 
 ### Target device compatibility
@@ -164,11 +165,11 @@ use only the register-mapped peripheral interface. The CIR generic defaults to
 `true`.
 
 ## Remaining work
-- **Section 7 coprocessor interface (Phase 3+)**: FSAVE/FRESTORE format-word
-  and state-frame flow, full exception dialog paths, and protocol/cycle
-  testbenches. Phases 1-2 (CIR types, dialog FSM, reg-to-reg,
-  memory-source/destination transfers, conditional dialog paths for
-  FBcc/FDBcc/FScc/FTRAPcc/FNOP) are complete.
+- **Section 7 coprocessor interface (Phase 4+)**: Full exception dialog paths
+  (pre/mid/BSUN/format), FPIAR capture points, and protocol/cycle testbenches.
+  Phases 1-3 (CIR types, dialog FSM, reg-to-reg, memory-source/destination
+  transfers, conditional dialog paths for FBcc/FDBcc/FScc/FTRAPcc/FNOP,
+  FSAVE/FRESTORE with Null/Idle/Busy frames) are complete.
 - **Test coverage**: Denormal handling (C1), exception detection expansion (C3),
   FPCR/FPSR architectural field completeness (C4), FPIAR tracking (C5),
   per-opcode self-checking testbenches (D1), cycle-count verification (D4),

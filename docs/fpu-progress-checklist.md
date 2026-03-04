@@ -458,6 +458,23 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 - Follow-up:
   - Keep `tb/tb_mc68881_known_defects.vhd` as a persistent recheck for this vector.
 
+## Implementation Snapshot (2026-03-04, Phase 3)
+- Milestone:
+  - Section 7 CIR Phase 3 complete (FSAVE/FRESTORE with Null/Idle/Busy frames).
+  - Full save/restore hierarchy: ALU (5 words) → trig (11 words) → divrem (6 words) →
+    modrem_post (4 words) = 26 sub-unit words, plus 12 header/operand words, 3 packed,
+    4 padding = 45 total Busy frame words.
+  - Fixed d_out_reg race condition and operand read edge-detection bugs.
+  - LUT usage decreased ~200 LUTs from Phase 2 (64,865 → 64,641) despite added logic,
+    likely due to dead code removal and signal cleanup.
+- Run data (non-incremental synthesis + implementation):
+  - Utilization (post-place): `Slice LUTs = 64641 / 133800 (48.31%)`
+  - DSPs: 33 / 740 (4.46%)
+  - Registers: 13096 / 267600 (4.89%)
+  - BRAM: 5 tiles / 365 (1.37%)
+  - Timing: `WNS=8.700ns`, `TNS=0.000ns`
+  - WNS regression of ~1.2 ns from Phase 2 (+9.875 → +8.700); still 87% slack margin.
+
 ## Implementation Snapshot (2026-03-04, Phase 2)
 - Milestone:
   - Section 7 CIR Phase 2 complete (conditional dialog paths: FBcc/FDBcc/FScc/FTRAPcc/FNOP).
@@ -566,9 +583,11 @@ Legend:
   - In progress: register-mapped conditional response path is wired for `FScc/FBcc/FDBcc`,
     including null/BSUN signaling path and response-order enforcement.
   - Remaining: full Section 7 primitive-dialog transaction model (beyond register-mapped emulation).
-- `[ ]` S7-B2. System-control dialog implementation (`FTRAPcc/FSAVE/FRESTORE`).
+- `[x]` S7-B2. System-control dialog implementation (`FTRAPcc/FSAVE/FRESTORE`).
   - Map: `B7`.
-  - Implement save/restore CIR format-word flow and state-frame transfer contract.
+  - Done: cpSAVE/cpRESTORE dialog with Null/Idle/Busy frame support.
+  - Done: 45-word Busy frame with full sub-unit save/restore hierarchy.
+  - Done: FRESTORE commit, Null reset, invalid format word exception.
 - `[~]` S7-B3. Command/condition/response protocol ordering rules.
   - Map: `B6`, `B7`.
   - In progress: conditional command issue is blocked while prior conditional response is pending,
@@ -587,9 +606,10 @@ Legend:
 - `[ ]` S7-C3. FPIAR update semantics tied to dialog phase.
   - Map: `C5`, `C4`.
   - Verify capture points for exceptions and non-updating moves/control operations.
-- `[ ]` S7-C4. Format exception handling for FSAVE/FRESTORE.
+- `[x]` S7-C4. Format exception handling for FSAVE/FRESTORE.
   - Map: `C3`, `C4`.
-  - Add invalid format-word and nested save/restore behavior checks.
+  - Done: Invalid format word raises Pre-Instruction Exception (vector $0E).
+  - Done: Test 36 verifies exception response for invalid format word $DEAD.
 
 ### D) Verification and Coverage
 - `[ ]` S7-D1. Add dedicated coprocessor-dialog protocol TB.
@@ -600,10 +620,11 @@ Legend:
   - Map: `D1`, `D5`.
   - New TB: `tb/tb_mc68881_protocol_violations.vhd`.
   - Cover early next-instruction initiation and illegal sequencing.
-- `[ ]` S7-D3. Add context-switch dialog TB with format-word/state-frame matrix.
+- `[x]` S7-D3. Add context-switch dialog TB with format-word/state-frame matrix.
   - Map: `D1`, `D5`, `D6`.
-  - New TB: `tb/tb_mc68881_context_switch_dialogs.vhd`.
-  - Cover null/idle/busy/not-ready/invalid format paths and restore validation.
+  - Done: Tests 32-39 in `tb/tb_mc68881_cir_dialog.vhd` cover Null/Idle/Busy
+    FSAVE, FRESTORE Null reset, FRESTORE Idle/Busy round-trip, invalid format
+    word exception, and full save→restore→save data integrity verification.
 - `[ ]` S7-D4. Extend top-level exception-path checks for Section 7 dialogs.
   - Map: `D1`, `C3`, `C5`.
   - Extend `tb/tb_mc68881_top.vhd` to assert EXC/AEXC/FPIAR side effects for dialog-triggered exceptions.
@@ -638,7 +659,20 @@ Legend:
     issue with `operand_reg`). Fixed double exc_classification bug where
     `exc_event_valid_reg` from CIR ARITH valid handler overwrote correct FPSR CC.
     E2E tests: FNOP, FBcc taken/not-taken, FScc true/false, BSUN via CIR (6 tests).
-- `[ ]` Phase 3: Implement FSAVE/FRESTORE format-word and state-frame flow.
+- `[x]` Phase 3: Implement FSAVE/FRESTORE format-word and state-frame flow.
+  - Done: cpSAVE/cpRESTORE CIR dialog FSM (CIR_SAVE_WAIT/FORMAT/FRAME,
+    CIR_RESTORE_FORMAT/FRAME) with Null, Idle, and Busy frame support.
+  - Done: 45-word Busy frame layout (6 header + 6 operand + 26 ALU/sub-unit +
+    3 packed + 4 padding) with full save/restore hierarchy wiring through
+    ALU → trig → divrem → modrem_post.
+  - Done: FRESTORE commit restores FPSR and operands from captured frame data;
+    Null FRESTORE resets FPU to power-on state; invalid format word raises
+    Pre-Instruction Exception.
+  - Done: Fixed d_out_reg race condition (sync_read latch gated on DSACK_IDLE,
+    extended to CIR_SAVE_FRAME) and added cir_operand_read_prev edge-detect.
+  - Tests: 8 new E2E tests (32-39) covering Null/Idle/Busy FSAVE, FRESTORE
+    Null reset, FRESTORE Idle/Busy round-trip, invalid format word exception,
+    and full save→restore→save data integrity verification.
 - `[ ]` Phase 4: Wire full exception dialog paths (pre/mid/BSUN/format) and FPIAR capture points.
 - `[ ]` Phase 5: Close timing/cycle tests and regression matrix.
 

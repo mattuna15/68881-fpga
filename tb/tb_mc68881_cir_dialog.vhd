@@ -117,7 +117,12 @@ architecture sim of tb_mc68881_cir_dialog is
   -- cpBcc word displacement OpWord: bits [8:6] = "010".
   constant CPBCC_W_OPWORD : std_logic_vector(31 downto 0) :=
     x"0000" & "0000000" & CIR_TYPE_CPBCC_W & "000000";
-  -- cpCond (FScc/FDBcc/FTRAPcc) OpWord: bits [8:6] = "001".
+  -- cpBcc long displacement OpWord: bits [8:6] = "011".
+  constant CPBCC_L_OPWORD : std_logic_vector(31 downto 0) :=
+    x"0000" & "0000000" & CIR_TYPE_CPBCC_L & "000000";
+  -- cpCond OpWord (maps to FScc evaluation in RTL): bits [8:6] = "001".
+  -- FDBcc/FTRAPcc use the same CIR type; the CPU handles post-evaluation
+  -- actions (counter decrement, trap) based on the CIR response word.
   constant CPCOND_OPWORD : std_logic_vector(31 downto 0) :=
     x"0000" & "0000000" & CIR_TYPE_CPCOND & "000000";
 
@@ -1434,6 +1439,13 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n,
              dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_FPSR);
     report "TEST 26 FPSR after FCMP=" & to_hstring(fpsr_val) severity note;
+    -- Assert FPSR CC bits: Z=1, N=0 (verifies double-exc_classification fix).
+    assert fpsr_val(26) = '1'
+      report "FAIL TEST 26: FPSR CC.Z should be 1 after FCMP(1.0,1.0)"
+      severity failure;
+    assert fpsr_val(27) = '0'
+      report "FAIL TEST 26: FPSR CC.N should be 0 after FCMP(1.0,1.0)"
+      severity failure;
 
     cir_cond_eval(a_in, d_in, rw, cs_n, as_n, ds_n,
                   dsack0_n, dsack1_n, d_out,
@@ -1532,6 +1544,13 @@ begin
     assert cir_resp(4) = '1'
       report "FAIL TEST 30: BSUN bit should be 1, got 0"
       severity failure;
+    -- BSUN should force cond_true=0 and branch_taken=0.
+    assert cir_resp(0) = '0'
+      report "FAIL TEST 30: BSUN should force cond_true=0"
+      severity failure;
+    assert cir_resp(1) = '0'
+      report "FAIL TEST 30: BSUN should force branch_taken=0"
+      severity failure;
     -- Verify FPSR EXC.BSUN bit is set.
     bus_read(a_in, rw, cs_n, as_n, ds_n,
              dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_FPSR);
@@ -1542,6 +1561,36 @@ begin
       report "FAIL TEST 30: FPSR EXC.BSUN should be set"
       severity failure;
     report "TEST 30 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 31: FBcc long displacement (cpBcc-L) taken
+    --   Reuse FPSR CC Z=1 state from test 26's FCMP (equal operands).
+    --   Re-establish CC by repeating the FCMP, since test 30 may have
+    --   changed CC state.
+    -- ================================================================
+    report "TEST 31: FBcc-L taken (EQ, equal operands)" severity note;
+
+    cpgen_reg_to_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     OPCODE_FCMP, 0, 1);
+    -- Verify CC state before conditional eval.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_FPSR);
+    assert fpsr_val(26) = '1'
+      report "FAIL TEST 31: FPSR CC.Z should be 1 before FBcc-L"
+      severity failure;
+
+    cir_cond_eval(a_in, d_in, rw, cs_n, as_n, ds_n,
+                  dsack0_n, dsack1_n, d_out,
+                  CPBCC_L_OPWORD, FCC_EQ, cir_resp);
+    report "TEST 31 cir_resp=" & to_hstring(cir_resp) severity note;
+    assert cir_resp(0) = '1'
+      report "FAIL TEST 31: FBcc-L EQ cond_true should be 1, got 0"
+      severity failure;
+    assert cir_resp(1) = '1'
+      report "FAIL TEST 31: FBcc-L EQ branch_taken should be 1, got 0"
+      severity failure;
+    report "TEST 31 PASSED" severity note;
 
     -- ================================================================
     report "All CIR dialog tests PASSED" severity note;

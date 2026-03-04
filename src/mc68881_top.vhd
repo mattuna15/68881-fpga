@@ -4,6 +4,11 @@ use ieee.numeric_std.all;
 
 use work.mc68881_pkg.all;
 
+-- MC68881 command word note:
+-- bits[12:10] are dual-use per Motorola encoding.
+--   bit14=0 → memory source → bits[12:10] = source data format
+--   bit14=1 → register source → bits[12:10] = FP register index
+
 entity mc68881_top is
   generic (
     -- `true`: full packed-decimal conversion path.
@@ -199,6 +204,7 @@ architecture rtl of mc68881_top is
 
   -- CIR ALU launch handshake signals.
   signal cir_launch_alu        : std_logic := '0';           -- One-cycle pulse from cir_dialog_proc
+  signal cir_flags_consumed    : std_logic := '0';           -- One-cycle pulse: dialog_proc consumed written flags
   signal cir_decoded_op        : fpu_op_t := FPU_OP_NOP;     -- Combinational decode of command word
   signal cir_arith_active_reg  : std_logic := '0';           -- Tracks CIR-launched arith op in alu_control_proc
   signal cir_move_pending_reg  : std_logic := '0';           -- One-cycle deferred FMOVE copy
@@ -1859,7 +1865,7 @@ begin
         end case;
       end if;
 
-      -- CIR launch: load op_sel and operands for ALU.
+      -- CIR launch: load operands (and op_sel for cpGEN) into ALU inputs.
       if cir_launch_alu = '1' then
         if cir_instr_type = CIR_TYPE_CPCOND or
            cir_instr_type = CIR_TYPE_CPBCC_W or
@@ -2734,8 +2740,10 @@ begin
 
             -- CIR conditional path: read condition from cir_condition_reg
             -- (already stable). Legacy path: read from operand_reg(0).
-            -- This avoids a timing issue where bus_frame_proc loads
-            -- operand_reg(0) on the same clock edge alu_control_proc reads it.
+            -- This avoids a signal scheduling issue where bus_frame_proc
+            -- assigns operand_reg(0) on this same rising_edge, but the
+            -- new value is not visible until the next delta cycle (so
+            -- alu_control_proc would read the stale pre-assignment value).
             if cir_launch_alu = '1' then
               cond_selector := cir_condition_reg;
             else
@@ -3243,7 +3251,9 @@ begin
       -- Include CIR_DECODE: once the dialog FSM enters DECODE, the flags have
       -- been consumed.  This prevents the reg-to-reg MOVE shortcut
       -- (DECODE → IDLE) from leaving them asserted and re-triggering.
-      if cir_state_reg /= CIR_IDLE then
+      -- Also clear on cir_flags_consumed pulse (undefined instruction type
+      -- catch-all in CIR_IDLE that cannot leave IDLE to trigger the /= check).
+      if cir_state_reg /= CIR_IDLE or cir_flags_consumed = '1' then
         cir_opword_written <= '0';
         cir_command_written <= '0';
         cir_condition_written <= '0';
@@ -3298,8 +3308,10 @@ begin
       cir_xfer_word_idx <= 0;
       cir_xfer_word_count <= 0;
       cir_launch_alu <= '0';
+      cir_flags_consumed <= '0';
     elsif rising_edge(clk) then
       cir_launch_alu <= '0';  -- default: clear one-shot pulse
+      cir_flags_consumed <= '0';
 
       case cir_state_reg is
 
@@ -3318,6 +3330,17 @@ begin
           end if;
           -- cpSAVE/cpRESTORE: triggered by Save/Restore CIR writes
           -- (handled separately, not via OpWord)
+          -- Catch-all: clear stale flags for undefined instruction types
+          -- ("110"/"111") to prevent them from blocking future operations.
+          if cir_opword_written = '1' and
+             cir_instr_type /= CIR_TYPE_CPGEN and
+             cir_instr_type /= CIR_TYPE_CPCOND and
+             cir_instr_type /= CIR_TYPE_CPBCC_W and
+             cir_instr_type /= CIR_TYPE_CPBCC_L and
+             cir_instr_type /= CIR_TYPE_CPSAVE and
+             cir_instr_type /= CIR_TYPE_CPRESTORE then
+            cir_flags_consumed <= '1';
+          end if;
 
         when CIR_DECODE =>
           if cir_reg_to_reg = '1' then
@@ -3412,16 +3435,20 @@ begin
           end if;
 
         when CIR_SAVE_FORMAT =>
-          null;  -- Task 12
+          -- TODO Task 12: implement cpSAVE. Return to IDLE to avoid hang.
+          cir_state_reg <= CIR_IDLE;
 
         when CIR_SAVE_FRAME =>
-          null;  -- Task 12
+          -- TODO Task 12: implement cpSAVE. Return to IDLE to avoid hang.
+          cir_state_reg <= CIR_IDLE;
 
         when CIR_RESTORE_FORMAT =>
-          null;  -- Task 13
+          -- TODO Task 13: implement cpRESTORE. Return to IDLE to avoid hang.
+          cir_state_reg <= CIR_IDLE;
 
         when CIR_RESTORE_FRAME =>
-          null;  -- Task 13
+          -- TODO Task 13: implement cpRESTORE. Return to IDLE to avoid hang.
+          cir_state_reg <= CIR_IDLE;
 
       end case;
     end if;

@@ -178,6 +178,7 @@ architecture rtl of mc68881_top is
   signal cir_dst_reg_idx       : natural range 0 to 7 := 0;
   signal cir_src_reg_idx       : natural range 0 to 7 := 0;
   signal cir_reg_to_reg        : std_logic := '0';
+  signal cir_direction         : std_logic := '0';  -- Bit 13: 0=mem→reg, 1=reg→mem
   signal cir_xfer_word_idx     : natural range 0 to 44 := 0;
   signal cir_xfer_word_count   : natural range 0 to 45 := 0;
   signal cir_response_prim     : std_logic_vector(15 downto 0) := CIR_PRIM_NULL;
@@ -194,6 +195,12 @@ architecture rtl of mc68881_top is
   signal cir_launch_alu        : std_logic := '0';           -- One-cycle pulse from cir_dialog_proc
   signal cir_decoded_op        : fpu_op_t := FPU_OP_NOP;     -- Combinational decode of command word
   signal cir_arith_active_reg  : std_logic := '0';           -- Tracks CIR-launched arith op in alu_control_proc
+  signal cir_move_pending_reg  : std_logic := '0';           -- One-cycle deferred FMOVE copy
+
+  -- CIR operand staging for memory-source/destination transfers (up to 3 x 32-bit words).
+  signal cir_operand_staging     : std_logic_vector(95 downto 0) := (others => '0');
+  signal cir_operand_word_arrived : std_logic := '0';        -- Pulse from bus write → dialog proc
+  signal cir_operand_read_done   : std_logic := '0';         -- Pulse from bus read → dialog proc
 
   signal exc_event_valid_reg : std_logic := '0';
   signal exc_event_result_reg : fp80_t := (others => '0');
@@ -1837,11 +1844,49 @@ begin
         end case;
       end if;
 
-      -- CIR reg-to-reg launch: load op_sel and operands from register file.
+      -- CIR launch: load op_sel and operands for ALU.
       if cir_launch_alu = '1' then
         op_sel_reg <= cir_decoded_op;
         operand_reg(0) <= fp_reg_file_reg(cir_dst_reg_idx);  -- Dest = operand A
-        operand_reg(1) <= fp_reg_file_reg(cir_src_reg_idx);  -- Source = operand B
+        if cir_reg_to_reg = '1' then
+          -- Register-to-register: source from FP register file.
+          operand_reg(1) <= fp_reg_file_reg(cir_src_reg_idx);
+        else
+          -- Memory source: convert staged operand words to FP80.
+          case cir_src_fmt is
+            when CIR_SRC_LONG =>
+              operand_reg(1) <= fp80_from_int(
+                signed32_to_integer(cir_operand_staging(31 downto 0)));
+            when CIR_SRC_SINGLE =>
+              operand_reg(1) <= fp80_from_single(
+                cir_operand_staging(31 downto 0));
+            when CIR_SRC_EXTENDED =>
+              -- Word 0 bits[15:0] = sign+exp, word 1 = mant_hi, word 2 = mant_lo.
+              operand_reg(1) <= cir_operand_staging(15 downto 0) &
+                                cir_operand_staging(63 downto 32) &
+                                cir_operand_staging(95 downto 64);
+            when CIR_SRC_WORD =>
+              operand_reg(1) <= fp80_from_int(
+                signed16_to_integer(cir_operand_staging(15 downto 0)));
+            when CIR_SRC_DOUBLE =>
+              -- Word 0 = upper 32, word 1 = lower 32.
+              operand_reg(1) <= fp80_from_double(
+                cir_operand_staging(31 downto 0) &
+                cir_operand_staging(63 downto 32));
+            when CIR_SRC_BYTE =>
+              operand_reg(1) <= fp80_from_int(
+                signed8_to_integer(cir_operand_staging(7 downto 0)));
+            when CIR_SRC_PACKED =>
+              -- Word 0 (staging[31:0]) = packed[95:64], word 1 = [63:32], word 2 = [31:0].
+              operand_reg(1) <= packed96_to_fp80_fast(
+                cir_operand_staging(31 downto 0) &
+                cir_operand_staging(63 downto 32) &
+                cir_operand_staging(95 downto 64),
+                fp_reg_file_reg(cir_dst_reg_idx));
+            when others =>
+              operand_reg(1) <= (others => '0');
+          end case;
+        end if;
       end if;
 
       if ctrl_move_write_req_reg = '1' then
@@ -2237,6 +2282,7 @@ begin
       exc_event_force_invalid_reg <= '0';
       exc_event_force_bsun_reg <= '0';
       cir_arith_active_reg <= '0';
+      cir_move_pending_reg <= '0';
       sys_ctrl_save_req_reg <= '0';
       sys_ctrl_restore_req_reg <= '0';
       frame_op_waiting_reg <= '0';
@@ -2267,6 +2313,12 @@ begin
       exc_event_force_bsun_reg <= '0';
       sys_ctrl_save_req_reg <= '0';
       sys_ctrl_restore_req_reg <= '0';
+
+      -- Keep cir_response_reg tracking FSM-based primitives when no
+      -- conditional dialog result is pending.
+      if cir_response_pending_reg = '0' then
+        cir_response_reg <= x"0000" & cir_response_prim;
+      end if;
 
       if packed_result_valid_reg = '1' and packed_pending_reg = '1' then
         if packed_req_mode_reg = PACKED_REQ_DECODE then
@@ -2331,7 +2383,9 @@ begin
             false,
             false
           );
-          cir_arith_active_reg <= '1';
+          if op_class(cir_decoded_op) /= OP_CLASS_MOVE then
+            cir_arith_active_reg <= '1';
+          end if;
         else
           -- Legacy bus-write path: use d_in-decoded opcode.
           last_op_sel_reg <= op_sel_write_decoded;
@@ -2355,8 +2409,15 @@ begin
 
         -- Dispatch uses operation classes to keep execution paths scalable.
         if cir_launch_alu = '1' then
-          -- CIR path always launches ALU for arithmetic operations.
-          op_start_reg <= '1';
+          -- CIR path: launch ALU for arithmetic ops only.
+          -- MOVE ops bypass the ALU (which doesn't handle OP_CLASS_MOVE).
+          -- The converted source is in operand_reg(1) after this edge, so
+          -- we defer the register file copy to the next cycle via a flag.
+          if op_class(cir_decoded_op) = OP_CLASS_MOVE then
+            cir_move_pending_reg <= '1';
+          else
+            op_start_reg <= '1';
+          end if;
         else
         case op_class_write_decoded is
           when OP_CLASS_ARITH =>
@@ -2756,6 +2817,24 @@ begin
         result_ready_reg <= '1';
       end if;
 
+      -- CIR FMOVE deferred copy: operand_reg(1) now holds the converted
+      -- source value (set by bus_frame_proc on the previous edge).  Copy it
+      -- to the destination FP register and mark result ready.
+      if cir_move_pending_reg = '1' then
+        fp_reg_file_reg(cir_dst_reg_idx) <= operand_reg(1);
+        result_lo_reg <= operand_reg(1)(FP80_RESULT_LO_WIDTH-1 downto 0);
+        result_hi_reg <= operand_reg(1)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1
+                                        downto FP80_RESULT_LO_WIDTH);
+        result_ex_reg <= operand_reg(1)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
+        result_ready_reg <= '1';
+        -- Trigger exception classification for the moved value.
+        exc_event_valid_reg <= '1';
+        exc_event_result_reg <= operand_reg(1);
+        exc_event_opa_reg <= operand_reg(1);
+        exc_event_opb_reg <= FP80_CLASSIFY_ONE;
+        cir_move_pending_reg <= '0';
+      end if;
+
       -- Frame-op completion: wait for frame_busy to go high then return low.
       -- The sys_ctrl_*_req guard prevents false completion before bus_frame_proc
       -- has started the frame op (see timing proof in plan).
@@ -2831,7 +2910,10 @@ begin
     cir_response_reg,
     cir_response_pending_reg,
     cir_trap_pending_reg,
-    cir_protocol_violation_reg
+    cir_protocol_violation_reg,
+    cir_state_reg,
+    cir_xfer_word_idx,
+    cir_operand_staging
   )
     variable cfg0 : std_logic_vector(31 downto 0);
     variable cfg1 : std_logic_vector(31 downto 0);
@@ -2849,7 +2931,18 @@ begin
     if bus_read = '1' then
       case addr is
         when ADDR_RES_L => d_out_comb <= result_lo_reg;
-        when ADDR_RES_H => d_out_comb <= result_hi_reg;
+        when ADDR_RES_H =>
+          if cir_state_reg = CIR_XFER_DST or cir_state_reg = CIR_XFER_DST_WAIT then
+            -- CIR Operand read: return current word from staging.
+            case cir_xfer_word_idx is
+              when 0 => d_out_comb <= cir_operand_staging(31 downto 0);
+              when 1 => d_out_comb <= cir_operand_staging(63 downto 32);
+              when 2 => d_out_comb <= cir_operand_staging(95 downto 64);
+              when others => d_out_comb <= (others => '0');
+            end case;
+          else
+            d_out_comb <= result_hi_reg;
+          end if;
         when ADDR_RES_E =>
           d_out_comb(FP80_RESULT_EX_WIDTH-1 downto 0) <= result_ex_reg;
           d_out_comb(31 downto 16) <= result_ex_hi_reg;
@@ -3008,12 +3101,24 @@ begin
       cir_dst_reg_idx <= 0;
       cir_src_reg_idx <= 0;
       cir_reg_to_reg <= '0';
+      cir_direction <= '0';
       cir_opword_written <= '0';
       cir_command_written <= '0';
       cir_control_ack <= '0';
+      cir_operand_staging <= (others => '0');
+      cir_operand_word_arrived <= '0';
+      cir_operand_read_done <= '0';
     elsif rising_edge(clk) then
       -- Clear one-shot flags
       cir_control_ack <= '0';
+      cir_operand_word_arrived <= '0';
+      cir_operand_read_done <= '0';
+
+      -- Detect host read of Operand CIR during destination transfer.
+      if bus_read = '1' and addr = CIR_ADDR_OPERAND
+         and cir_state_reg = CIR_XFER_DST then
+        cir_operand_read_done <= '1';
+      end if;
 
       if bus_write = '1' then
         case addr is
@@ -3028,10 +3133,23 @@ begin
             cir_dst_reg_idx <= to_integer(unsigned(d_in(9 downto 7)));
             cir_src_reg_idx <= to_integer(unsigned(d_in(12 downto 10)));
             cir_reg_to_reg <= d_in(14);
+            cir_direction <= d_in(13);
             cir_command_written <= '1';
 
           when CIR_ADDR_CONDITION =>
             cir_condition_reg <= d_in(5 downto 0);
+
+          when CIR_ADDR_OPERAND =>
+            -- Store operand word during source transfer.
+            if cir_state_reg = CIR_XFER_SRC then
+              case cir_xfer_word_idx is
+                when 0 => cir_operand_staging(31 downto 0) <= d_in;
+                when 1 => cir_operand_staging(63 downto 32) <= d_in;
+                when 2 => cir_operand_staging(95 downto 64) <= d_in;
+                when others => null;
+              end case;
+              cir_operand_word_arrived <= '1';
+            end if;
 
           when CIR_ADDR_INSTADDR =>
             -- FPIAR capture from Instruction Address CIR
@@ -3050,6 +3168,47 @@ begin
       if cir_state_reg /= CIR_IDLE and cir_state_reg /= CIR_DECODE then
         cir_opword_written <= '0';
         cir_command_written <= '0';
+      end if;
+
+      -- Fill operand staging for reg→mem transfer when FSM enters CIR_XFER_DST.
+      -- The dialog proc transitions to CIR_XFER_DST from CIR_DECODE; we detect
+      -- that transition on the next edge (CIR_XFER_DST with word_idx=0).
+      if cir_state_reg = CIR_XFER_DST and cir_xfer_word_idx = 0
+         and cir_operand_read_done = '0' then
+        -- Convert FP register to destination format and pack into staging.
+        -- cir_dst_reg_idx = source FP register (bits[9:7] of command word).
+        -- cir_src_fmt = destination memory format (bits[12:10]).
+        case cir_src_fmt is
+          when CIR_SRC_SINGLE =>
+            cir_operand_staging(31 downto 0) <=
+              fp80_to_single(fp_reg_file_reg(cir_dst_reg_idx), round_mode);
+          when CIR_SRC_LONG =>
+            cir_operand_staging(31 downto 0) <=
+              std_logic_vector(to_signed(
+                fp80_to_int_trunc(fp_reg_file_reg(cir_dst_reg_idx)), 32));
+          when CIR_SRC_WORD =>
+            cir_operand_staging(31 downto 0) <= x"0000" &
+              std_logic_vector(to_signed(
+                fp80_to_int_trunc(fp_reg_file_reg(cir_dst_reg_idx)), 16));
+          when CIR_SRC_BYTE =>
+            cir_operand_staging(31 downto 0) <= x"000000" &
+              std_logic_vector(to_signed(
+                fp80_to_int_trunc(fp_reg_file_reg(cir_dst_reg_idx)), 8));
+          when CIR_SRC_DOUBLE =>
+            -- Double: word 0 = upper 32, word 1 = lower 32
+            cir_operand_staging(63 downto 0) <=
+              fp80_to_double(fp_reg_file_reg(cir_dst_reg_idx), round_mode);
+          when CIR_SRC_EXTENDED =>
+            -- Extended: word 0[15:0]=sign+exp, word 1=mant_hi, word 2=mant_lo
+            cir_operand_staging(15 downto 0) <=
+              fp_reg_file_reg(cir_dst_reg_idx)(79 downto 64);
+            cir_operand_staging(63 downto 32) <=
+              fp_reg_file_reg(cir_dst_reg_idx)(63 downto 32);
+            cir_operand_staging(95 downto 64) <=
+              fp_reg_file_reg(cir_dst_reg_idx)(31 downto 0);
+          when others =>
+            cir_operand_staging <= (others => '0');
+        end case;
       end if;
     end if;
   end process;
@@ -3088,22 +3247,46 @@ begin
           -- (handled separately, not via OpWord)
 
         when CIR_DECODE =>
-          if cir_src_fmt = CIR_SRC_FPN then
-            -- Register-to-register: launch ALU and go to execute
+          if cir_reg_to_reg = '1' then
+            -- Register-to-register: launch ALU and go to execute.
+            -- MOVE ops bypass the ALU, so go directly to IDLE.
             cir_launch_alu <= '1';
-            cir_state_reg <= CIR_EXECUTE;
+            if op_class(cir_decoded_op) = OP_CLASS_MOVE then
+              cir_state_reg <= CIR_IDLE;
+            else
+              cir_state_reg <= CIR_EXECUTE;
+            end if;
+          elsif cir_direction = '1' then
+            -- Register→memory (FMOVE FPn,<ea>): convert and present data.
+            -- cir_dst_reg_idx holds the source FP register (bits[9:7]).
+            -- cir_src_fmt holds the destination memory format (bits[12:10]).
+            cir_xfer_word_count <= cir_src_word_count(cir_src_fmt);
+            cir_xfer_word_idx <= 0;
+            cir_state_reg <= CIR_XFER_DST;
           else
-            -- Memory source: request operand transfer
+            -- Memory→register: request operand transfer from host.
             cir_xfer_word_count <= cir_src_word_count(cir_src_fmt);
             cir_xfer_word_idx <= 0;
             cir_state_reg <= CIR_XFER_SRC;
           end if;
 
         when CIR_XFER_SRC =>
-          -- Wait for host to write operand words via Operand CIR
-          -- (Task 6 adds the actual operand write handling)
-          if cir_xfer_word_idx >= cir_xfer_word_count then
-            cir_state_reg <= CIR_EXECUTE;
+          -- Wait for host to write operand words via Operand CIR.
+          -- cir_operand_word_arrived is pulsed by the bus write process.
+          if cir_operand_word_arrived = '1' then
+            if cir_xfer_word_idx + 1 >= cir_xfer_word_count then
+              -- All words received: launch ALU with converted operand.
+              -- MOVE ops bypass the ALU, so go directly to IDLE.
+              cir_launch_alu <= '1';
+              cir_xfer_word_idx <= cir_xfer_word_idx + 1;
+              if op_class(cir_decoded_op) = OP_CLASS_MOVE then
+                cir_state_reg <= CIR_IDLE;
+              else
+                cir_state_reg <= CIR_EXECUTE;
+              end if;
+            else
+              cir_xfer_word_idx <= cir_xfer_word_idx + 1;
+            end if;
           end if;
 
         when CIR_XFER_SRC_WAIT =>
@@ -3116,11 +3299,20 @@ begin
           end if;
 
         when CIR_XFER_DST =>
-          -- Task 7: destination transfer
-          null;
+          -- Host reads operand words via CIR_ADDR_OPERAND.
+          if cir_operand_read_done = '1' then
+            if cir_xfer_word_idx + 1 >= cir_xfer_word_count then
+              -- Hold state one extra cycle so d_out_comb returns staging
+              -- data through the dsack assertion window.  Don't increment
+              -- word_idx so the mux continues returning the correct word.
+              cir_state_reg <= CIR_XFER_DST_WAIT;
+            else
+              cir_xfer_word_idx <= cir_xfer_word_idx + 1;
+            end if;
+          end if;
 
         when CIR_XFER_DST_WAIT =>
-          null;
+          cir_state_reg <= CIR_IDLE;
 
         when CIR_COND_EVAL =>
           -- Task 9-11: conditional evaluation

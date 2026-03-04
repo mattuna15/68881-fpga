@@ -39,8 +39,6 @@ end entity mc68881_packed_decimal_unit;
 architecture rtl of mc68881_packed_decimal_unit is
   subtype packed96_t is std_logic_vector(95 downto 0);
   type packed_digits_t is array (0 to 16) of natural range 0 to 9;
-  type natural12_t is array (0 to 11) of natural;
-
   type packed_state_t is (
     ST_IDLE,
     ST_SCALE_CHUNK,
@@ -50,7 +48,9 @@ architecture rtl of mc68881_packed_decimal_unit is
     ST_ENC_DIGIT_SUB,
     ST_ENC_DIGIT_SCALE,
     ST_ENC_POSTROUND,
+    ST_ENC_POSTROUND_PROP,
     ST_ENC_KROUND,
+    ST_ENC_KROUND_PROP,
     ST_ENC_PACK,
     ST_DEC_ACCUM_U64,
     ST_DEC_TO_FP,
@@ -71,10 +71,6 @@ architecture rtl of mc68881_packed_decimal_unit is
     AR_ST_IDLE,
     AR_ST_WAIT,
     AR_ST_COMMIT
-  );
-
-  constant POW2_SMALL : natural12_t := (
-    1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048
   );
 
   constant FP80_ONE : fp80_t := x"3FFF8000000000000000";
@@ -125,10 +121,14 @@ architecture rtl of mc68881_packed_decimal_unit is
   signal inexact_reg : std_logic := '0';
 
   signal scale_abs_exp_reg : natural range 0 to 12000 := 0;
+  signal scale_abs_exp_slv : std_logic_vector(11 downto 0);
   signal scale_use_neg_reg : std_logic := '0';
   signal scale_bit_idx_reg : natural range 0 to 12 := 0;
 
   signal mant_u64_reg : unsigned(63 downto 0) := (others => '0');
+
+  signal kround_carry_reg : std_logic := '0';
+  signal kround_idx_reg : natural range 0 to 16 := 0;
 
   signal rsp_valid_reg : std_logic := '0';
   signal rsp_word_reg : packed96_t := (others => '0');
@@ -216,6 +216,9 @@ architecture rtl of mc68881_packed_decimal_unit is
     end case;
   end function;
 begin
+  -- Convert scale_abs_exp_reg to SLV for bit-indexing (replaces divider chain)
+  scale_abs_exp_slv <= std_logic_vector(to_unsigned(scale_abs_exp_reg, 12));
+
   -- Drive shared FP unit ports
   fp_mul_start <= packed_mul_start_reg;
   fp_mul_a_out <= arith_mul_a_reg;
@@ -251,7 +254,6 @@ begin
     variable round_digit : natural := 0;
     variable has_trailing : boolean := false;
     variable scale_exp_local : integer := 0;
-    variable bit_value : natural := 0;
     variable tune_done : boolean := false;
     variable all_zero : boolean := true;
     variable exp0_i : integer := 0;
@@ -291,6 +293,8 @@ begin
       scale_use_neg_reg <= '0';
       scale_bit_idx_reg <= 0;
       mant_u64_reg <= (others => '0');
+      kround_carry_reg <= '0';
+      kround_idx_reg <= 0;
       rsp_valid_reg <= '0';
       rsp_word_reg <= (others => '0');
       rsp_fp_reg <= (others => '0');
@@ -398,47 +402,29 @@ begin
             end if;
 
           when AR_ENC_POSTROUND =>
-            digits_v := digits_reg;
             digit_int := arith_int_res_reg;
             if digit_int >= 5 then
-              carry := 1;
-              for idx in 16 downto 0 loop
-                if carry = 0 then
-                  exit;
-                end if;
-                if digits_v(idx) = 9 then
-                  digits_v(idx) := 0;
-                else
-                  digits_v(idx) := digits_v(idx) + 1;
-                  carry := 0;
-                end if;
-              end loop;
-              if carry = 1 then
-                for idx in 16 downto 1 loop
-                  digits_v(idx) := digits_v(idx-1);
-                end loop;
-                digits_v(0) := 1;
-                exp10_reg <= exp10_reg + 1;
-              end if;
-            end if;
-
-            digits_reg <= digits_v;
-
-            k_clamped := clamp_integer(req_k_reg, -64, 17);
-            if k_clamped > 0 then
-              keep_digits := k_clamped;
+              -- Start serialized carry propagation from digit 16 down to 0
+              kround_carry_reg <= '1';
+              kround_idx_reg <= 16;
+              state_reg <= ST_ENC_POSTROUND_PROP;
             else
-              keep_digits := exp10_reg + 1 + (-k_clamped);
-            end if;
+              k_clamped := clamp_integer(req_k_reg, -64, 17);
+              if k_clamped > 0 then
+                keep_digits := k_clamped;
+              else
+                keep_digits := exp10_reg + 1 + (-k_clamped);
+              end if;
 
-            if keep_digits < 1 then
-              keep_digits := 1;
-            elsif keep_digits > 17 then
-              keep_digits := 17;
-            end if;
+              if keep_digits < 1 then
+                keep_digits := 1;
+              elsif keep_digits > 17 then
+                keep_digits := 17;
+              end if;
 
-            keep_digits_reg <= keep_digits;
-            state_reg <= ST_ENC_KROUND;
+              keep_digits_reg <= keep_digits;
+              state_reg <= ST_ENC_KROUND;
+            end if;
 
           when others =>
             null;
@@ -628,14 +614,12 @@ begin
           if scale_bit_idx_reg = 12 then
             state_reg <= scale_return_state_reg;
           else
-            bit_value := (scale_abs_exp_reg / POW2_SMALL(scale_bit_idx_reg)) mod 2;
-            if bit_value = 1 then
+            if scale_abs_exp_slv(scale_bit_idx_reg) = '1' then
               do_mul := true;
               mul_a_v := work_fp_reg;
               mul_b_v := pow10_by_pow2(scale_bit_idx_reg, scale_use_neg_reg = '1');
               arith_commit := AR_SCALE_BITS;
-            end if;
-            if bit_value = 0 then
+            else
               scale_bit_idx_reg <= scale_bit_idx_reg + 1;
             end if;
           end if;
@@ -687,8 +671,6 @@ begin
           arith_commit := AR_ENC_DIGIT_SCALE;
 
         when ST_ENC_POSTROUND =>
-          digits_v := digits_reg;
-
           if not fp80_is_zero(work_fp_reg) then
             inexact_reg <= '1';
           end if;
@@ -696,62 +678,124 @@ begin
           do_int := true;
           int_arg_v := work_fp_reg;
           arith_commit := AR_ENC_POSTROUND;
+
+        when ST_ENC_POSTROUND_PROP =>
+          -- Per-digit carry propagation (reuses kround registers)
+          if digits_reg(kround_idx_reg) = 9 then
+            digits_reg(kround_idx_reg) <= 0;
+            if kround_idx_reg = 0 then
+              -- Carry out: all digits were 9, now all 0.
+              digits_reg(0) <= 1;
+              exp10_reg <= exp10_reg + 1;
+              -- Compute keep_digits and transition to KROUND
+              -- Note: exp10_reg increment is deferred (signal), so use old value
+              -- to match original behavior where keep_digits was computed
+              -- after exp10 signal assignment (also deferred).
+              k_clamped := clamp_integer(req_k_reg, -64, 17);
+              if k_clamped > 0 then
+                keep_digits := k_clamped;
+              else
+                keep_digits := exp10_reg + 1 + (-k_clamped);
+              end if;
+              if keep_digits < 1 then
+                keep_digits := 1;
+              elsif keep_digits > 17 then
+                keep_digits := 17;
+              end if;
+              keep_digits_reg <= keep_digits;
+              state_reg <= ST_ENC_KROUND;
+            else
+              kround_idx_reg <= kround_idx_reg - 1;
+            end if;
+          else
+            digits_reg(kround_idx_reg) <= digits_reg(kround_idx_reg) + 1;
+            -- Carry absorbed, compute keep_digits and transition to KROUND
+            k_clamped := clamp_integer(req_k_reg, -64, 17);
+            if k_clamped > 0 then
+              keep_digits := k_clamped;
+            else
+              keep_digits := exp10_reg + 1 + (-k_clamped);
+            end if;
+            if keep_digits < 1 then
+              keep_digits := 1;
+            elsif keep_digits > 17 then
+              keep_digits := 17;
+            end if;
+            keep_digits_reg <= keep_digits;
+            state_reg <= ST_ENC_KROUND;
+          end if;
+
         when ST_ENC_KROUND =>
-          digits_v := digits_reg;
           keep_digits := keep_digits_reg;
 
           if keep_digits < 17 then
-            round_digit := digits_v(keep_digits);
+            round_digit := digits_reg(keep_digits);
             carry := 0;
 
+            -- Combinational OR-reduce: check for trailing nonzero digits
             if round_digit > 5 then
               carry := 1;
             elsif round_digit = 5 then
               has_trailing := false;
               for idx in 0 to 16 loop
-                if idx > keep_digits and digits_v(idx) /= 0 then
+                if idx > keep_digits and digits_reg(idx) /= 0 then
                   has_trailing := true;
-                  exit;
                 end if;
               end loop;
-              if has_trailing or (digits_v(keep_digits-1) mod 2 = 1) then
+              if has_trailing or (digits_reg(keep_digits-1) mod 2 = 1) then
                 carry := 1;
               end if;
             end if;
 
+            -- Combinational OR-reduce: set inexact if any discarded digit nonzero
             for idx in 0 to 16 loop
-              if idx >= keep_digits and digits_v(idx) /= 0 then
+              if idx >= keep_digits and digits_reg(idx) /= 0 then
                 inexact_reg <= '1';
-                exit;
               end if;
             end loop;
 
-            for idx in 16 downto 0 loop
-              if idx < keep_digits then
-                if carry = 1 then
-                  if digits_v(idx) = 9 then
-                    digits_v(idx) := 0;
-                  else
-                    digits_v(idx) := digits_v(idx) + 1;
-                    carry := 0;
-                  end if;
-                end if;
-              else
-                digits_v(idx) := 0;
+            -- Zero out discarded digits
+            for idx in 0 to 16 loop
+              if idx >= keep_digits then
+                digits_reg(idx) <= 0;
               end if;
             end loop;
 
             if carry = 1 then
-              for idx in 16 downto 1 loop
-                digits_v(idx) := digits_v(idx-1);
-              end loop;
-              digits_v(0) := 1;
-              exp10_reg <= exp10_reg + 1;
+              -- Start serialized carry propagation from keep_digits-1 down to 0
+              kround_carry_reg <= '1';
+              kround_idx_reg <= keep_digits - 1;
+              state_reg <= ST_ENC_KROUND_PROP;
+            else
+              state_reg <= ST_ENC_PACK;
             end if;
+          else
+            state_reg <= ST_ENC_PACK;
           end if;
 
-          digits_reg <= digits_v;
-          state_reg <= ST_ENC_PACK;
+        when ST_ENC_KROUND_PROP =>
+          -- Per-digit carry propagation: one digit per cycle
+          if kround_carry_reg = '1' then
+            if digits_reg(kround_idx_reg) = 9 then
+              digits_reg(kround_idx_reg) <= 0;
+              if kround_idx_reg = 0 then
+                -- Carry out: all digits were 9, now all 0.
+                -- Result is 1.000...0 with exponent incremented.
+                digits_reg(0) <= 1;
+                exp10_reg <= exp10_reg + 1;
+                kround_carry_reg <= '0';
+                state_reg <= ST_ENC_PACK;
+              else
+                kround_idx_reg <= kround_idx_reg - 1;
+              end if;
+            else
+              digits_reg(kround_idx_reg) <= digits_reg(kround_idx_reg) + 1;
+              kround_carry_reg <= '0';
+              state_reg <= ST_ENC_PACK;
+            end if;
+          else
+            state_reg <= ST_ENC_PACK;
+          end if;
 
         when ST_ENC_PACK =>
           packed_word_v := (others => '0');

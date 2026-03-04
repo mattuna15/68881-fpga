@@ -65,6 +65,11 @@ architecture rtl of mc68881_top is
   signal move_cfg_decoded_reg : move_cfg_t := move_cfg_default;
   signal round_mode : fp_round_mode_t := FP_RND_NEAREST;
   signal round_prec : fp_round_prec_t := FP_PREC_EXTENDED;
+
+  -- Shared format converters (de-duplicated from FMOVE + CIR paths)
+  signal conv_fp_src : fp80_t := (others => '0');
+  signal conv_single_out : std_logic_vector(31 downto 0);
+  signal conv_double_out : std_logic_vector(63 downto 0);
   signal src_kind_reg : fpu_src_kind_t := FPU_SRC_FPM;
   signal ea_mode_reg  : ea_mode_t := EA_MODE_DN_AN;
   signal cycle_case_reg : ea_cycle_case_t := EA_CYCLE_BEST;
@@ -201,6 +206,7 @@ architecture rtl of mc68881_top is
   signal cir_operand_staging     : std_logic_vector(95 downto 0) := (others => '0');
   signal cir_operand_word_arrived : std_logic := '0';        -- Pulse from bus write → dialog proc
   signal cir_operand_read_done   : std_logic := '0';         -- Pulse from bus read → dialog proc
+  signal cir_operand_write_prev  : std_logic := '0';         -- Edge-detect for operand writes
 
   signal exc_event_valid_reg : std_logic := '0';
   signal exc_event_result_reg : fp80_t := (others => '0');
@@ -1624,6 +1630,14 @@ architecture rtl of mc68881_top is
   end function;
 
 begin
+  -- Shared format converters — single instance each, driven by conv_fp_src.
+  -- Source mux: CIR path uses cir_dst_reg_idx, FMOVE path uses move_cfg src_idx.
+  conv_fp_src <= fp_reg_file_reg(cir_dst_reg_idx)
+                 when cir_state_reg = CIR_XFER_DST
+                 else fp_reg_file_reg(move_cfg_decoded_reg.src_idx);
+  conv_single_out <= fp80_to_single(conv_fp_src, round_mode);
+  conv_double_out <= fp80_to_double(conv_fp_src, round_mode);
+
   addr      <= unsigned(a_in);
   bus_write <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '0') else '0';
   bus_read  <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '1') else '0';
@@ -2539,7 +2553,7 @@ begin
                     else
                       case mem_fmt is
                         when "01" =>
-                          single_bits := fp80_to_single(move_result, round_mode);
+                          single_bits := conv_single_out;
                           move_exc_enable := '1';
                           move_exc_result := fp80_from_single(single_bits);
                           if not fp80_is_nan(move_result) and not fp80_is_inf(move_result) and not fp80_is_zero(move_result) then
@@ -2561,7 +2575,7 @@ begin
                           result_ex_reg <= (others => '0');
                           result_ex_hi_reg <= (others => '0');
                         when "10" =>
-                          double_bits := fp80_to_double(move_result, round_mode);
+                          double_bits := conv_double_out;
                           move_exc_enable := '1';
                           move_exc_result := fp80_from_double(double_bits);
                           if not fp80_is_nan(move_result) and not fp80_is_inf(move_result) and not fp80_is_zero(move_result) then
@@ -2800,8 +2814,11 @@ begin
         result_hi_reg <= result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
         result_ex_reg <= result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
         -- CIR: write ALU result to destination FP register.
+        -- Gate writeback for compare/test ops that only update condition codes.
         if cir_arith_active_reg = '1' then
-          fp_reg_file_reg(cir_dst_reg_idx) <= result;
+          if last_op_sel_reg /= FPU_OP_CMP and last_op_sel_reg /= FPU_OP_TST then
+            fp_reg_file_reg(cir_dst_reg_idx) <= result;
+          end if;
           cir_arith_active_reg <= '0';
           -- Trigger exception classification for the CIR operation.
           exc_event_valid_reg <= '1';
@@ -3108,11 +3125,20 @@ begin
       cir_operand_staging <= (others => '0');
       cir_operand_word_arrived <= '0';
       cir_operand_read_done <= '0';
+      cir_operand_write_prev <= '0';
     elsif rising_edge(clk) then
       -- Clear one-shot flags
       cir_control_ack <= '0';
       cir_operand_word_arrived <= '0';
       cir_operand_read_done <= '0';
+
+      -- Edge-detect register for operand writes (prevents multi-pulse from
+      -- a single bus transaction that holds strobes active across clocks).
+      if bus_write = '1' and addr = CIR_ADDR_OPERAND then
+        cir_operand_write_prev <= '1';
+      else
+        cir_operand_write_prev <= '0';
+      end if;
 
       -- Detect host read of Operand CIR during destination transfer.
       if bus_read = '1' and addr = CIR_ADDR_OPERAND
@@ -3141,7 +3167,9 @@ begin
 
           when CIR_ADDR_OPERAND =>
             -- Store operand word during source transfer.
-            if cir_state_reg = CIR_XFER_SRC then
+            -- Edge-detect: only pulse on rising edge of bus_write to this addr
+            -- to prevent multi-pulse from a sustained bus strobe.
+            if cir_state_reg = CIR_XFER_SRC and cir_operand_write_prev = '0' then
               case cir_xfer_word_idx is
                 when 0 => cir_operand_staging(31 downto 0) <= d_in;
                 when 1 => cir_operand_staging(63 downto 32) <= d_in;
@@ -3164,8 +3192,11 @@ begin
         end case;
       end if;
 
-      -- Clear written flags when FSM consumes them (transitions out of IDLE)
-      if cir_state_reg /= CIR_IDLE and cir_state_reg /= CIR_DECODE then
+      -- Clear written flags when FSM consumes them.
+      -- Include CIR_DECODE: once the dialog FSM enters DECODE, the flags have
+      -- been consumed.  This prevents the reg-to-reg MOVE shortcut
+      -- (DECODE → IDLE) from leaving them asserted and re-triggering.
+      if cir_state_reg /= CIR_IDLE then
         cir_opword_written <= '0';
         cir_command_written <= '0';
       end if;
@@ -3180,8 +3211,7 @@ begin
         -- cir_src_fmt = destination memory format (bits[12:10]).
         case cir_src_fmt is
           when CIR_SRC_SINGLE =>
-            cir_operand_staging(31 downto 0) <=
-              fp80_to_single(fp_reg_file_reg(cir_dst_reg_idx), round_mode);
+            cir_operand_staging(31 downto 0) <= conv_single_out;
           when CIR_SRC_LONG =>
             cir_operand_staging(31 downto 0) <=
               std_logic_vector(to_signed(
@@ -3196,8 +3226,7 @@ begin
                 fp80_to_int_trunc(fp_reg_file_reg(cir_dst_reg_idx)), 8));
           when CIR_SRC_DOUBLE =>
             -- Double: word 0 = upper 32, word 1 = lower 32
-            cir_operand_staging(63 downto 0) <=
-              fp80_to_double(fp_reg_file_reg(cir_dst_reg_idx), round_mode);
+            cir_operand_staging(63 downto 0) <= conv_double_out;
           when CIR_SRC_EXTENDED =>
             -- Extended: word 0[15:0]=sign+exp, word 1=mant_hi, word 2=mant_lo
             cir_operand_staging(15 downto 0) <=

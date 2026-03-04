@@ -87,38 +87,6 @@ architecture rtl of mc68881_alu is
            op = FPU_OP_TST;
   end function;
 
-  -- All simple ops use registered dispatch to break combinational path
-  -- from operand_reg through FP logic to result_reg.
-  function compute_simple_result(
-    op : fpu_op_t;
-    a : fp80_t;
-    b : fp80_t;
-    rm : fp_round_mode_t;
-    rp : fp_round_prec_t
-  ) return fp80_t is
-  begin
-    case op is
-      when FPU_OP_INT =>
-        return fint_fp80(a, rm);
-      when FPU_OP_CMP =>
-        return fp80_from_int(compare_fp80(a, b));
-      when FPU_OP_ABS =>
-        return abs_fp80(a);
-      when FPU_OP_NEG =>
-        return neg_fp80(a);
-      when FPU_OP_INTRZ =>
-        return fintrz_fp80(a);
-      when FPU_OP_GETEXP =>
-        return fgetexp_fp80(a);
-      when FPU_OP_GETMAN =>
-        return fgetman_fp80(a);
-      when FPU_OP_TST =>
-        return ftst_fp80(a);
-      when others =>
-        return (others => '0');
-    end case;
-  end function;
-
   signal result_reg : fp80_t := (others => '0');
   signal busy_reg : std_logic := '0';
 
@@ -556,7 +524,17 @@ begin
             if simple_hold_count_reg > 0 then
               simple_hold_count_reg <= simple_hold_count_reg - 1;
             else
-              result_reg <= compute_simple_result(simple_op_reg, simple_a_reg, simple_b_reg, simple_rm_reg, simple_rp_reg);
+              case simple_op_reg is
+                when FPU_OP_INT    => result_reg <= fint_fp80(simple_a_reg, simple_rm_reg);
+                when FPU_OP_CMP    => result_reg <= fp80_from_int(compare_fp80(simple_a_reg, simple_b_reg));
+                when FPU_OP_ABS    => result_reg <= abs_fp80(simple_a_reg);
+                when FPU_OP_NEG    => result_reg <= neg_fp80(simple_a_reg);
+                when FPU_OP_INTRZ  => result_reg <= fintrz_fp80(simple_a_reg);
+                when FPU_OP_GETEXP => result_reg <= fgetexp_fp80(simple_a_reg);
+                when FPU_OP_GETMAN => result_reg <= fgetman_fp80(simple_a_reg);
+                when FPU_OP_TST    => result_reg <= ftst_fp80(simple_a_reg);
+                when others        => result_reg <= (others => '0');
+              end case;
               simple_compute_pending_reg <= '0';
             end if;
           end if;

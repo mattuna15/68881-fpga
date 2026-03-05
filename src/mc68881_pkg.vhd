@@ -306,9 +306,12 @@ package mc68881_pkg is
     CIR_XFER_SRC,
     CIR_XFER_SRC_WAIT,
     CIR_EXECUTE,
+    CIR_EXECUTE_DONE,
     CIR_XFER_DST,
     CIR_XFER_DST_WAIT,
     CIR_COND_EVAL,
+    CIR_COND_WAIT,
+    CIR_COND_CHECK,
     CIR_EXCEPT_PRE,
     CIR_EXCEPT_MID,
     CIR_EXCEPT_POST,
@@ -358,6 +361,18 @@ package mc68881_pkg is
   constant CIR_FRAME_IDLE_WORDS  : natural := 6;   -- 24 bytes / 4
   constant CIR_FRAME_BUSY_WORDS  : natural := 45;  -- 180 bytes / 4
   constant CIR_FRAME_BUSY_HDR    : natural := 12;  -- Header words 0-11 (operands + metadata)
+
+  -- Exception vector numbers for Response CIR (10-bit field).
+  -- MC68881 vectors at offsets $C0-$D8 (vectors 48-54); format error is vector 14.
+  constant CIR_VEC_FORMAT  : std_logic_vector(9 downto 0) := "00" & x"0E";  -- 14: Format error
+  constant CIR_VEC_TRAPCC  : std_logic_vector(9 downto 0) := "00" & x"07";  -- 7: cpTRAPcc
+  constant CIR_VEC_BSUN    : std_logic_vector(9 downto 0) := "00" & x"30";  -- 48: BSUN
+  constant CIR_VEC_INEXACT : std_logic_vector(9 downto 0) := "00" & x"31";  -- 49: Inexact
+  constant CIR_VEC_DIVZERO : std_logic_vector(9 downto 0) := "00" & x"32";  -- 50: Divide by zero
+  constant CIR_VEC_UNDERFL : std_logic_vector(9 downto 0) := "00" & x"33";  -- 51: Underflow
+  constant CIR_VEC_OPERR   : std_logic_vector(9 downto 0) := "00" & x"34";  -- 52: Operand error
+  constant CIR_VEC_OVERFL  : std_logic_vector(9 downto 0) := "00" & x"35";  -- 53: Overflow
+  constant CIR_VEC_SNAN    : std_logic_vector(9 downto 0) := "00" & x"36";  -- 54: Signaling NaN
 
   -- Helper: number of 32-bit operand words for a given source format.
   function cir_src_word_count(src_fmt : std_logic_vector(2 downto 0)) return natural;

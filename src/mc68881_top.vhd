@@ -202,6 +202,7 @@ architecture rtl of mc68881_top is
   signal cir_operand_read_data : std_logic_vector(31 downto 0) := (others => '0');
   signal cir_regselect_word    : std_logic_vector(15 downto 0) := (others => '0');
   signal cir_operand_addr_reg  : std_logic_vector(31 downto 0) := (others => '0');
+  signal cir_instaddr_reg      : std_logic_vector(31 downto 0) := (others => '0');
 
   -- CIR ALU launch handshake signals.
   signal cir_launch_alu        : std_logic := '0';           -- One-cycle pulse from cir_dialog_proc
@@ -310,7 +311,12 @@ architecture rtl of mc68881_top is
   constant FPSR_EXC_DIVZERO  : natural := 3;
   constant FPSR_EXC_INVALID  : natural := 4;
   constant FPSR_EXC_BSUN     : natural := 7;
-  constant FPCR_EXC_EN_BSUN  : natural := 15;
+  constant FPCR_EXC_EN_INEXACT  : natural := 8;
+  constant FPCR_EXC_EN_UNDERFLOW: natural := 9;
+  constant FPCR_EXC_EN_OVERFLOW : natural := 10;
+  constant FPCR_EXC_EN_DIVZERO  : natural := 11;
+  constant FPCR_EXC_EN_INVALID  : natural := 12;
+  constant FPCR_EXC_EN_BSUN    : natural := 15;
 
   type access_class_t is (
     ACCESS_NONE,
@@ -2489,7 +2495,12 @@ begin
         result_ready_reg <= '0';
         result_ex_hi_reg <= (others => '0');
         aux_result_ex_hi_reg <= (others => '0');
-        fpiar_issue_snapshot_reg <= fpiar_reg;
+        -- Use instruction address from CIR protocol when available.
+        if cir_launch_alu = '1' then
+          fpiar_issue_snapshot_reg <= cir_instaddr_reg;
+        else
+          fpiar_issue_snapshot_reg <= fpiar_reg;
+        end if;
         micro_active_reg <= '1';
 
         -- Determine effective op and class for unified dispatch.
@@ -3335,6 +3346,7 @@ begin
       cir_operand_write_prev <= '0';
       cir_save_read_done <= '0';
       cir_save_read_prev <= '0';
+      cir_instaddr_reg <= (others => '0');
       cir_frame_data_reg <= (others => (others => '0'));
     elsif rising_edge(clk) then
       -- Clear one-shot flags
@@ -3431,9 +3443,8 @@ begin
             end if;
 
           when CIR_ADDR_INSTADDR =>
-            -- FPIAR capture from Instruction Address CIR
-            -- (fpiar_reg is written in existing process, so just note this)
-            null;
+            -- Capture CPU's instruction PC for FPIAR.
+            cir_instaddr_reg <= d_in;
 
           when CIR_ADDR_CONTROL =>
             cir_control_ack <= d_in(0);
@@ -3594,14 +3605,43 @@ begin
           null;  -- Reserved for multi-cycle format conversion
 
         when CIR_EXECUTE =>
-          -- Wait for ALU completion, then return to idle.
+          -- Wait for ALU completion. Go to CIR_EXECUTE_DONE so that
+          -- bus_frame_proc has time to update fpsr_reg with exception flags
+          -- (VHDL signal semantics: same-edge write not visible until next cycle).
           if valid = '1' then
-            cir_state_reg <= CIR_IDLE;
+            cir_state_reg <= CIR_EXECUTE_DONE;
           end if;
           -- cpSAVE preemption: allow FSAVE to suspend an in-progress computation.
           if cir_opword_written = '1' and cir_instr_type = CIR_TYPE_CPSAVE then
             cir_save_req <= '1';
             cir_state_reg <= CIR_SAVE_WAIT;
+          end if;
+
+        when CIR_EXECUTE_DONE =>
+          -- FPSR EXC byte is now stable. Check FPCR exception enables.
+          -- Priority (highest first): INVALID > OVERFLOW > UNDERFLOW > DIVZERO > INEXACT.
+          if fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_INVALID) = '1' and
+             fpcr_reg(FPCR_EXC_EN_INVALID) = '1' then
+            cir_exc_vector <= CIR_VEC_SNAN;
+            cir_state_reg <= CIR_EXCEPT_POST;
+          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_OVERFLOW) = '1' and
+                fpcr_reg(FPCR_EXC_EN_OVERFLOW) = '1' then
+            cir_exc_vector <= CIR_VEC_OVERFL;
+            cir_state_reg <= CIR_EXCEPT_POST;
+          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_UNDERFLOW) = '1' and
+                fpcr_reg(FPCR_EXC_EN_UNDERFLOW) = '1' then
+            cir_exc_vector <= CIR_VEC_UNDERFL;
+            cir_state_reg <= CIR_EXCEPT_POST;
+          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_DIVZERO) = '1' and
+                fpcr_reg(FPCR_EXC_EN_DIVZERO) = '1' then
+            cir_exc_vector <= CIR_VEC_DIVZERO;
+            cir_state_reg <= CIR_EXCEPT_POST;
+          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_INEXACT) = '1' and
+                fpcr_reg(FPCR_EXC_EN_INEXACT) = '1' then
+            cir_exc_vector <= CIR_VEC_INEXACT;
+            cir_state_reg <= CIR_EXCEPT_POST;
+          else
+            cir_state_reg <= CIR_IDLE;
           end if;
 
         when CIR_XFER_DST =>
@@ -3622,12 +3662,27 @@ begin
 
         when CIR_COND_EVAL =>
           -- Launch condition evaluation through alu_control_proc.
-          -- PROG_CTRL ops complete combinationally within op_issue_pulse
-          -- (no ALU start), so go directly to CIR_IDLE rather than
-          -- CIR_EXECUTE (which waits for the ALU's valid signal).
-          -- Result is in cir_response_reg; host polls STATUS.valid.
+          -- PROG_CTRL ops complete combinationally within op_issue_pulse.
+          -- Go to CIR_COND_WAIT so cir_trap_pending_reg (set by alu_control_proc
+          -- on this same edge) is visible on the next cycle.
           cir_launch_alu <= '1';
-          cir_state_reg <= CIR_IDLE;
+          cir_state_reg <= CIR_COND_WAIT;
+
+        when CIR_COND_WAIT =>
+          -- alu_control_proc processes the launch on this cycle and sets
+          -- cir_trap_pending_reg. The new value isn't visible until next cycle.
+          cir_state_reg <= CIR_COND_CHECK;
+
+        when CIR_COND_CHECK =>
+          -- Now cir_trap_pending_reg from alu_control_proc is stable.
+          -- FTRAPcc traps are handled by the CPU in CIR mode — the FPU just
+          -- reports cond_true in the response word.
+          if cir_trap_pending_reg = '1' then
+            cir_exc_vector <= CIR_VEC_BSUN;
+            cir_state_reg <= CIR_EXCEPT_PRE;
+          else
+            cir_state_reg <= CIR_IDLE;
+          end if;
 
         when CIR_EXCEPT_PRE =>
           if cir_control_ack = '1' then
@@ -3747,6 +3802,8 @@ begin
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_EXECUTE =>
         cir_response_prim <= CIR_PRIM_BUSY;
+      when CIR_EXECUTE_DONE =>
+        cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_SRC =>
         -- Transfer Operand to-CP: [15:13]=011, [12]=1, [7:0]=byte count
         cir_response_prim <= "0111" & "0000" &
@@ -3760,6 +3817,10 @@ begin
       when CIR_XFER_DST_WAIT =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_COND_EVAL =>
+        cir_response_prim <= CIR_PRIM_BUSY;
+      when CIR_COND_WAIT =>
+        cir_response_prim <= CIR_PRIM_BUSY;
+      when CIR_COND_CHECK =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_EXCEPT_PRE =>
         cir_response_prim <= CIR_RESP_EXCEPT_PRE & "0" & "00" & cir_exc_vector;

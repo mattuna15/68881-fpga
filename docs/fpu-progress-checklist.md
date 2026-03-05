@@ -458,6 +458,29 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 - Follow-up:
   - Keep `tb/tb_mc68881_known_defects.vhd` as a persistent recheck for this vector.
 
+## Implementation Snapshot (2026-03-05, Phase 4)
+- Milestone:
+  - Section 7 CIR Phase 4 complete (exception dialog paths, FPIAR capture).
+  - Tree-based CLZ optimization: replaced all sequential 64-iteration CLZ loops
+    (fgetexp_fp80, fgetman_fp80, fgetexp_unbiased_int, packed-decimal encoder/decoder,
+    addsub count_leading_zeros) with a shared `clz()` function in mc68881_pkg using
+    binary-halving tree structure. Reduces synthesis from ~64-125 cascaded priority
+    encoder stages to ~6-11 LUT levels.
+  - Critical path moved from trig CLZ (682 logic levels, 399.9ns) to packed-decimal
+    scaling path (112 logic levels, 83.3ns) — a fundamentally different bottleneck.
+  - LUT usage dropped ~10 percentage points (49% → 39%) due to elimination of
+    cascaded mux chains from sequential CLZ synthesis.
+  - New worst path: `cir_operand_staging_reg[12]` → `operand_reg_reg[1][76]`
+    (packed-decimal-to-FP80 conversion via scale_fp80_by_pow10).
+  - Effective Fmax: ~12 MHz (up from ~10 MHz practical limit in Phase 3).
+- Run data (non-incremental synthesis + implementation):
+  - Utilization (post-place): `Slice LUTs = 52361 / 133800 (39.13%)`
+  - DSPs: 33 / 740 (4.46%)
+  - Registers: 13131 / 267600 (4.91%)
+  - BRAM: 5 tiles / 365 (1.37%)
+  - Timing: `WNS=16.631ns`, `TNS=0.000ns`
+  - WNS improvement of +7.9 ns from Phase 3 (+8.700 → +16.631); 83% slack margin.
+
 ## Implementation Snapshot (2026-03-04, Phase 3)
 - Milestone:
   - Section 7 CIR Phase 3 complete (FSAVE/FRESTORE with Null/Idle/Busy frames).
@@ -673,7 +696,15 @@ Legend:
   - Tests: 8 new E2E tests (32-39) covering Null/Idle/Busy FSAVE, FRESTORE
     Null reset, FRESTORE Idle/Busy round-trip, invalid format word exception,
     and full save→restore→save data integrity verification.
-- `[ ]` Phase 4: Wire full exception dialog paths (pre/mid/BSUN/format) and FPIAR capture points.
+- `[x]` Phase 4: Wire full exception dialog paths (pre/mid/BSUN/format) and FPIAR capture points.
+  - Done: Exception dialog paths (pre-instruction, mid-instruction, BSUN, format error),
+    FPIAR capture from CIR_ADDR_INSTADDR, exception priority (INVALID > DIVZERO).
+  - Done: Tree-based CLZ optimization — replaced 5 sequential 64-iteration CLZ loops
+    with shared `clz()` function using binary-halving tree (O(log N) logic depth).
+    Critical path dropped from 682 logic levels to 112; WNS recovered from +0.612ns
+    to +16.631ns; LUTs dropped from 49% to 39%.
+  - Tests: 46 CIR dialog tests (tb_mc68881_cir_dialog), full ALU regression,
+    known defects regression — all passing.
 - `[ ]` Phase 5: Close timing/cycle tests and regression matrix.
 
 ## Exit Criteria

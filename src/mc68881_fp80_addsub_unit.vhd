@@ -118,46 +118,6 @@ architecture rtl of mc68881_fp80_addsub_unit is
     return res;
   end function;
 
-  -- Leading zero detector: returns count of leading zeros in a 67-bit value.
-  -- Uses a tree structure for O(log N) logic depth instead of iterative loop.
-  function count_leading_zeros(value : unsigned) return natural is
-    variable cnt : natural := 0;
-    variable v   : unsigned(value'length-1 downto 0) := value;
-  begin
-    -- For 67-bit input, check power-of-2 chunks from MSB.
-    -- 64, 32, 16, 8, 4, 2, 1
-    if value'length > 64 then
-      if v(v'left downto v'left - 63) = 0 then
-        cnt := cnt + 64;
-        v := v(v'left - 64 downto 0) & (63 downto 0 => '0');
-      end if;
-    end if;
-    if v(v'left downto v'left - 31) = 0 then
-      cnt := cnt + 32;
-      v := v(v'left - 32 downto 0) & (31 downto 0 => '0');
-    end if;
-    if v(v'left downto v'left - 15) = 0 then
-      cnt := cnt + 16;
-      v := v(v'left - 16 downto 0) & (15 downto 0 => '0');
-    end if;
-    if v(v'left downto v'left - 7) = 0 then
-      cnt := cnt + 8;
-      v := v(v'left - 8 downto 0) & (7 downto 0 => '0');
-    end if;
-    if v(v'left downto v'left - 3) = 0 then
-      cnt := cnt + 4;
-      v := v(v'left - 4 downto 0) & (3 downto 0 => '0');
-    end if;
-    if v(v'left downto v'left - 1) = 0 then
-      cnt := cnt + 2;
-      v := v(v'left - 2 downto 0) & "00";
-    end if;
-    if v(v'left) = '0' then
-      cnt := cnt + 1;
-    end if;
-    return cnt;
-  end function;
-
 begin
 
   -- Synchronous reset: consistent with mc68881_fp80_mul_unit and allows
@@ -381,7 +341,7 @@ begin
               null;
             elsif norm_mant(norm_mant'left) = '0' then
               -- Need to normalize: find shift amount via LZD.
-              lzc := count_leading_zeros(norm_mant);
+              lzc := clz(norm_mant);
               -- Clamp shift to exponent (don't go below exp=0).
               if lzc > to_integer(norm_exp) then
                 shift_amt := to_integer(norm_exp);

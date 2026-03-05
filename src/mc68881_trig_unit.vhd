@@ -569,7 +569,6 @@ architecture rtl of mc68881_trig_unit is
   function fgetexp_unbiased_int(value : fp80_t) return integer is
     variable exp_bits : unsigned(FP_EXP_WIDTH-1 downto 0);
     variable unbiased_exp : integer := 0;
-    variable mantissa_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
     -- Log setup only needs finite/non-zero behavior; keep special classes inert.
     if fp80_is_zero(value) or fp80_is_nan(value) or fp80_is_inf(value) then
@@ -579,14 +578,8 @@ architecture rtl of mc68881_trig_unit is
     exp_bits := unsigned(value(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
 
     if exp_bits = 0 then
-      -- Match fgetexp_fp80 subnormal normalization semantics.
-      unbiased_exp := 1 - FP_EXP_BIAS;
-      mantissa_norm := unsigned(value(FP_MANT_WIDTH-1 downto 0));
-      for idx in 0 to FP_MANT_WIDTH-1 loop
-        exit when mantissa_norm(mantissa_norm'left) = '1';
-        mantissa_norm := shift_left(mantissa_norm, 1);
-        unbiased_exp := unbiased_exp - 1;
-      end loop;
+      -- Subnormal: unbiased exponent adjusted by leading zero count.
+      unbiased_exp := 1 - FP_EXP_BIAS - clz(unsigned(value(FP_MANT_WIDTH-1 downto 0)));
     else
       unbiased_exp := to_integer(exp_bits) - FP_EXP_BIAS;
     end if;

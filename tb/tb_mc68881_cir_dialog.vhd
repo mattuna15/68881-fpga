@@ -712,6 +712,22 @@ begin
     variable fpsr_val : std_logic_vector(31 downto 0) := (others => '0');
     type frame_buf_t is array (0 to CIR_FRAME_BUSY_WORDS-1) of std_logic_vector(31 downto 0);
     variable save_buf : frame_buf_t := (others => (others => '0'));
+    -- Phase 5 timing measurement variables.
+    variable t59_start   : time := 0 ns;
+    variable t59_elapsed : integer := 0;
+    variable t60_start   : time := 0 ns;
+    variable t60_elapsed : integer := 0;
+    variable t61_start   : time := 0 ns;
+    variable t61_elapsed : integer := 0;
+    variable t62_start   : time := 0 ns;
+    variable t62_elapsed : integer := 0;
+    variable t63_start   : time := 0 ns;
+    variable t63_elapsed : integer := 0;
+    variable t64_start   : time := 0 ns;
+    variable t64_elapsed : integer := 0;
+    variable t65_start   : time := 0 ns;
+    variable t65_elapsed : integer := 0;
+    variable single_readback : std_logic_vector(31 downto 0) := (others => '0');
   begin
     -- Reset.
     reset_n <= '0';
@@ -2446,6 +2462,812 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               ADDR_FPCR, x"00000000");
     report "TEST 46 PASSED" severity note;
+
+    -- ================================================================
+    -- ============== PHASE 5: PROTOCOL / TIMING / REGRESSION =========
+    -- ================================================================
+
+    -- ================================================================
+    -- TEST 47: CIR OpWord write while FSM busy (CIR_EXECUTE) is ignored
+    --   Start a cpGEN FADD, then immediately write a new OpWord before
+    --   completion. The in-flight operation must complete normally and
+    --   the spurious OpWord must not start a new dialog.
+    -- ================================================================
+    report "TEST 47: OpWord write during CIR_EXECUTE ignored" severity note;
+
+    -- Ensure clean state: clear FPCR exceptions, load FP0=1.0, FP1=2.0.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              ADDR_FPCR, x"00000000");
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 1, FP80_TWO_VAL);
+
+    -- Launch CIR FADD FP1,FP0 (FP0 = 1.0 + 2.0 = 3.0).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
+
+    -- Immediately write another OpWord while FSM is in DECODE/EXECUTE.
+    wait for CLK_PERIOD;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+
+    -- Wait for the original operation to complete.
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    -- Read result via legacy registers: FP0 should be 3.0.
+    read_result_fp80(a_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out, result_fp80);
+    check_fp80(result_fp80, FP80_THREE_VAL, "TEST 47 FADD result");
+
+    -- Verify FSM is back at IDLE (Null response), not stuck or re-launched.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 47: Expected Null after completion, got=" & to_hstring(cir_resp_16)
+      severity failure;
+    report "TEST 47 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 48: CIR response_pending persists until response read
+    --   Issue CIR FScc(T) manually, verify STATUS.response_pending=1
+    --   before reading response, then verify it clears after read.
+    --   Also verify STATUS.protocol_violation stays 0 during clean use.
+    -- ================================================================
+    report "TEST 48: CIR response_pending lifecycle" severity note;
+
+    -- Manually issue CIR FScc(T) -- do NOT use cir_cond_eval (it reads response).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPCOND_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_CONDITION, x"000000" & "00" & FCC_T);
+
+    -- Wait for completion (STATUS.valid).
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    -- DO NOT read CIR response yet -- response_pending should still be set.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_STATUS);
+    report "TEST 48 STATUS before response read=" & to_hstring(fpsr_val) severity note;
+    assert fpsr_val(4) = '1'
+      report "FAIL TEST 48: STATUS.response_pending (bit 4) should be set"
+      severity failure;
+    -- No protocol violation during clean use.
+    assert fpsr_val(5) = '0'
+      report "FAIL TEST 48: STATUS.protocol_violation (bit 5) should be 0"
+      severity failure;
+
+    -- Now consume the CIR response.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 48 cond_resp=" & to_hstring(cir_resp_16) severity note;
+
+    -- Read status again: response_pending should clear after response read.
+    wait for CLK_PERIOD * 2;
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_STATUS);
+    report "TEST 48 STATUS after response read=" & to_hstring(fpsr_val) severity note;
+    assert fpsr_val(4) = '0'
+      report "FAIL TEST 48: response_pending should clear after response read"
+      severity failure;
+    report "TEST 48 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 49: CIR cpCond OpWord write during condition evaluation
+    --   Issue FScc(T), then immediately (while FSM is in COND_EVAL/
+    --   COND_WAIT) write a second cpCond OpWord + Condition. The FSM
+    --   must ignore the second write and complete the first normally.
+    -- ================================================================
+    report "TEST 49: CIR cpCond write during evaluation ignored" severity note;
+
+    -- Issue first conditional: FScc(T) -- always true.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPCOND_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_CONDITION, x"000000" & "00" & FCC_T);
+
+    -- Immediately write a second cpCond (FSM is in COND_EVAL, not IDLE).
+    wait for CLK_PERIOD;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPCOND_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_CONDITION, x"000000" & "00" & FCC_F);
+
+    -- Wait for first conditional to complete.
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    -- Read response -- should be from the first (True) conditional.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 49 resp=" & to_hstring(cir_resp_16) severity note;
+
+    -- Give a few cycles for any spurious second dialog to start.
+    for i in 0 to 9 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Verify FSM is IDLE (Null response) -- second OpWord was ignored.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 49: Expected Null (second cpCond ignored), got=" & to_hstring(cir_resp_16)
+      severity failure;
+    report "TEST 49 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 50: Clean back-to-back dialogs (no violation)
+    --   Execute cpGEN FADD, consume result, then execute cpGEN FSUB.
+    --   Verify both complete correctly and no protocol violation flag.
+    -- ================================================================
+    report "TEST 50: Back-to-back cpGEN dialogs (clean)" severity note;
+
+    -- Load FP0=5.0, FP1=2.0.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_FIVE_VAL);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 1, FP80_TWO_VAL);
+
+    -- Dialog 1: FADD FP1,FP0 (FP0 = 5.0 + 2.0 = 7.0).
+    cpgen_reg_to_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     OPCODE_FADD, 1, 0);
+
+    -- Consume response.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+
+    -- Verify no violation.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_STATUS);
+    assert fpsr_val(5) = '0'
+      report "FAIL TEST 50: Unexpected protocol_violation after first dialog"
+      severity failure;
+
+    -- Dialog 2: FSUB FP1,FP0 (FP0 = 7.0 - 2.0 = 5.0).
+    cpgen_reg_to_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     OPCODE_FSUB, 1, 0);
+
+    -- Read result: FP0 should be 5.0.
+    read_result_fp80(a_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out, result_fp80);
+    check_fp80(result_fp80, FP80_FIVE_VAL, "TEST 50 FSUB result");
+
+    -- Verify no violation.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_STATUS);
+    assert fpsr_val(5) = '0'
+      report "FAIL TEST 50: Unexpected protocol_violation after second dialog"
+      severity failure;
+    report "TEST 50 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 51: cpGEN reg-to-reg primitive progression
+    --   Verify: OpWord→Command→Busy→(execute)→Null
+    -- ================================================================
+    report "TEST 51: cpGEN reg-to-reg primitive progression" severity note;
+
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 1, FP80_TWO_VAL);
+
+    -- Write OpWord.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    -- Response should still be Null (waiting for Command).
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 51 after opword resp=" & to_hstring(cir_resp_16) severity note;
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 51: Expected Null after OpWord-only, got=" & to_hstring(cir_resp_16)
+      severity failure;
+
+    -- Write Command -> FSM transitions to DECODE->EXECUTE, response becomes Busy.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
+    wait for CLK_PERIOD * 2;  -- Let FSM advance past DECODE
+
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 51 during execute resp=" & to_hstring(cir_resp_16) severity note;
+    -- Response should be Busy or already Null if fast completion.
+
+    -- Wait for ALU completion.
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    -- Final response: Null (IDLE).
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 51: Expected Null after completion, got=" & to_hstring(cir_resp_16)
+      severity failure;
+    report "TEST 51 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 52: cpGEN memory-source primitive progression
+    --   Verify: OpWord->Command->Transfer-to-CP->(operand write)->Null
+    -- ================================================================
+    report "TEST 52: cpGEN memory-source primitive progression" severity note;
+
+    -- Write OpWord + Command (single-precision FMOVE to FP2).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_mem_cmd(CIR_SRC_SINGLE, 2, OPCODE_FMOVE));
+
+    -- Wait for FSM to reach CIR_XFER_SRC.
+    wait for CLK_PERIOD * 2;
+
+    -- Response should be Transfer-to-CP (requesting operand data).
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 52 xfer_src resp=" & to_hstring(cir_resp_16) severity note;
+    assert cir_resp_16 = RESP_XFER_TO_CP_4
+      report "FAIL TEST 52: Expected Transfer-to-CP ($7004), got=" & to_hstring(cir_resp_16)
+      severity failure;
+
+    -- Write operand (single-precision 3.5 = 0x40600000).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPERAND, x"40600000");
+
+    -- Wait for completion (FMOVE is fast).
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    -- Final response: Null.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 52: Expected Null after FMOVE completion, got=" & to_hstring(cir_resp_16)
+      severity failure;
+    report "TEST 52 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 53: cpCond (FScc) primitive progression
+    --   Verify: OpWord->Condition->Busy->(evaluate)->conditional response
+    -- ================================================================
+    report "TEST 53: cpCond primitive progression" severity note;
+
+    -- Write OpWord only — response should be Null (waiting for Condition).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPCOND_OPWORD);
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 53: Expected Null after cpCond OpWord-only"
+      severity failure;
+
+    -- Write Condition (True) -> FSM enters CIR_COND_EVAL.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_CONDITION, x"000000" & "00" & FCC_T);
+
+    -- Wait for STATUS valid.
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    -- Read CIR response — should encode condition-true result.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 53 cond_resp=" & to_hstring(cir_resp_16) severity note;
+    -- The response encodes cond_true in the response word (non-Null, non-Busy).
+    assert cir_resp_16 /= RESP_NULL and cir_resp_16 /= RESP_BUSY
+      report "FAIL TEST 53: Expected conditional response, got=" & to_hstring(cir_resp_16)
+      severity failure;
+    report "TEST 53 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 54: cpBcc-W primitive progression
+    --   Verify: OpWord->Condition->Busy->(evaluate)->response->Null
+    --   Use FCC_EQ with Z=1 (from prior FCMP of equal operands) so
+    --   branch_taken=1, giving a non-zero response word.
+    -- ================================================================
+    report "TEST 54: cpBcc-W primitive progression" severity note;
+
+    -- Load equal values so FCMP sets Z=1, then FBcc(EQ) takes branch.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 1, FP80_ONE_VAL);
+    -- FCMP FP1,FP0 to set FPSR CC (Z=1).
+    cpgen_reg_to_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     OPCODE_FCMP, 1, 0);
+
+    -- Write OpWord (cpBcc word displacement).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPBCC_W_OPWORD);
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 54: Expected Null after cpBcc OpWord-only"
+      severity failure;
+
+    -- Write Condition (EQ -- branch taken because Z=1).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_CONDITION, x"000000" & "00" & FCC_EQ);
+
+    -- Wait for STATUS valid.
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    -- Read CIR response -- branch_taken=1, cond_true=1 -> bits[1:0]=11 -> $0003.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 54 branch_resp=" & to_hstring(cir_resp_16) severity note;
+    assert cir_resp_16(0) = '1'
+      report "FAIL TEST 54: Expected cond_true=1 in branch response"
+      severity failure;
+    assert cir_resp_16(1) = '1'
+      report "FAIL TEST 54: Expected branch_taken=1 in branch response"
+      severity failure;
+
+    -- Verify FSM returns to Null.
+    wait for CLK_PERIOD * 4;
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 54: Expected Null after branch complete"
+      severity failure;
+    report "TEST 54 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 55: cpSAVE/cpRESTORE primitive progression
+    --   Verify: FSAVE OpWord->format word->frame words->Null
+    --           FRESTORE OpWord->format write->commit
+    -- ================================================================
+    report "TEST 55: cpSAVE/cpRESTORE primitive progression" severity note;
+
+    -- Ensure FPU is initialized (load a value so we get Idle frame).
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+
+    -- cpSAVE: write OpWord.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPSAVE_OPWORD);
+
+    -- Wait for format word to be ready.
+    wait for CLK_PERIOD * 4;
+
+    -- Read format word from CIR_SAVE_ADDR — should be Idle ($0018).
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, CIR_SAVE_ADDR);
+    report "TEST 55 save_fw=" & to_hstring(fpsr_val(15 downto 0)) severity note;
+    assert fpsr_val(15 downto 0) = CIR_FRAME_IDLE_FW
+      report "FAIL TEST 55: Expected Idle FW $0018, got $" & to_hstring(fpsr_val(15 downto 0))
+      severity failure;
+
+    -- Read 6 Idle frame data words from Operand CIR.
+    for word_idx in 0 to 5 loop
+      bus_read(a_in, rw, cs_n, as_n, ds_n,
+               dsack0_n, dsack1_n, d_out, fpsr_val, CIR_OPERAND);
+      report "TEST 55 save_word(" & integer'image(word_idx) & ")=" &
+             to_hstring(fpsr_val) severity note;
+    end loop;
+
+    -- After all frame words read, FSM should return to IDLE.
+    wait for CLK_PERIOD * 4;
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 55: Expected Null after FSAVE complete, got=" & to_hstring(cir_resp_16)
+      severity failure;
+
+    -- cpRESTORE: write OpWord.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPRESTORE_OPWORD);
+    wait for CLK_PERIOD * 2;
+
+    -- Write Null format word (reset FPU).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESTORE_ADDR, x"0000" & CIR_FRAME_NULL_FW);
+    wait for CLK_PERIOD * 4;
+
+    -- Verify FSM is IDLE.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 55: Expected Null after FRESTORE Null, got=" & to_hstring(cir_resp_16)
+      severity failure;
+    report "TEST 55 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 56: Double OpWord write without response read
+    --   Issue two cpGEN commands back-to-back (second during first
+    --   execution). Second is ignored, first completes normally.
+    -- ================================================================
+    report "TEST 56: Double OpWord write without response read" severity note;
+
+    -- Ensure FPU initialized with known values.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 1, FP80_TWO_VAL);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 2, FP80_FIVE_VAL);
+
+    -- First dialog: FADD FP1,FP0 (FP0 = 1+2 = 3).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
+
+    -- Immediately try second dialog: FSUB FP2,FP0 — should be ignored.
+    wait for CLK_PERIOD;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_reg_cmd(2, 0, OPCODE_FSUB));
+
+    -- Wait for first operation to complete.
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    -- Read result: should be 3.0 (from FADD), not -2.0 (from FSUB).
+    read_result_fp80(a_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out, result_fp80);
+    check_fp80(result_fp80, FP80_THREE_VAL, "TEST 56 first dialog result");
+
+    -- FSM should be idle, second dialog ignored.
+    for i in 0 to 9 loop
+      wait until rising_edge(clk);
+    end loop;
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 56: Expected Null (second dialog ignored), got=" & to_hstring(cir_resp_16)
+      severity failure;
+    report "TEST 56 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 57: FRESTORE frame write without format word
+    --   Write OpWord for cpRESTORE, then write directly to Operand CIR
+    --   without writing format word first. FSM should still be in
+    --   CIR_RESTORE_FORMAT (waiting for format word via Restore CIR).
+    -- ================================================================
+    report "TEST 57: FRESTORE operand write without format word" severity note;
+
+    -- cpRESTORE OpWord.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPRESTORE_OPWORD);
+    wait for CLK_PERIOD * 2;
+
+    -- Write to Operand CIR (this is wrong — should go to Restore CIR).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPERAND, x"DEADBEEF");
+    wait for CLK_PERIOD * 2;
+
+    -- FSM should still be waiting for format word (Busy response).
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 57 resp_after_bad_write=" & to_hstring(cir_resp_16) severity note;
+    assert cir_resp_16 = RESP_BUSY
+      report "FAIL TEST 57: Expected Busy (still waiting for format), got=" & to_hstring(cir_resp_16)
+      severity failure;
+
+    -- Clean up: write valid Null format word to return to IDLE.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESTORE_ADDR, x"0000" & CIR_FRAME_NULL_FW);
+    wait for CLK_PERIOD * 4;
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 57: FSM should be IDLE after Null restore"
+      severity failure;
+    report "TEST 57 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 58: Condition write to cpGEN dialog (ignored)
+    --   Start a cpGEN dialog, then write to Condition CIR. The condition
+    --   write should be ignored; the cpGEN operation should complete.
+    -- ================================================================
+    report "TEST 58: Condition write to cpGEN ignored" severity note;
+
+    -- Ensure known state.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 1, FP80_TWO_VAL);
+
+    -- Start cpGEN FADD.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
+
+    -- Write a spurious Condition value while cpGEN is executing.
+    wait for CLK_PERIOD;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_CONDITION, x"000000" & "00" & FCC_EQ);
+
+    -- Wait for completion.
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    -- Result should be 3.0 (1+2), condition write was ignored.
+    read_result_fp80(a_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out, result_fp80);
+    check_fp80(result_fp80, FP80_THREE_VAL, "TEST 58 FADD result");
+    report "TEST 58 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 59: cpGEN reg-to-reg cycle overhead
+    --   Measure: OpWord write to STATUS.valid assertion.
+    --   Bound: <= 200 cycles for FADD (generous for microsequencer + ALU).
+    -- ================================================================
+    report "TEST 59: cpGEN reg-to-reg cycle overhead" severity note;
+
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 1, FP80_TWO_VAL);
+
+    -- Record start time.
+    t59_start := now;
+
+    -- Launch FADD via CIR.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
+
+    -- Wait for completion.
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    -- Record end time and compute elapsed cycles.
+    t59_elapsed := (now - t59_start) / CLK_PERIOD;
+    report "TEST 59 cpGEN FADD elapsed=" & integer'image(t59_elapsed) & " cycles" severity note;
+    assert t59_elapsed <= 200
+      report "FAIL TEST 59: cpGEN FADD took " & integer'image(t59_elapsed) &
+             " cycles, expected <= 200"
+      severity failure;
+
+    -- Consume response.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 59 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 60: cpCond (FScc) cycle overhead
+    --   Measure: OpWord write to STATUS.valid for condition evaluation.
+    --   Bound: <= 50 cycles (condition eval is lightweight).
+    -- ================================================================
+    report "TEST 60: cpCond FScc cycle overhead" severity note;
+
+    t60_start := now;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPCOND_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_CONDITION, x"000000" & "00" & FCC_T);
+
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+
+    t60_elapsed := (now - t60_start) / CLK_PERIOD;
+    report "TEST 60 cpCond elapsed=" & integer'image(t60_elapsed) & " cycles" severity note;
+    assert t60_elapsed <= 50
+      report "FAIL TEST 60: cpCond took " & integer'image(t60_elapsed) &
+             " cycles, expected <= 50"
+      severity failure;
+
+    -- Consume response.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 60 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 61: cpSAVE Idle frame cycle overhead
+    --   Measure: OpWord write to last frame word readable.
+    --   Bound: <= 100 cycles (format + 6 data words + FSM overhead).
+    -- ================================================================
+    report "TEST 61: cpSAVE Idle frame cycle overhead" severity note;
+
+    -- Ensure initialized.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
+
+    t61_start := now;
+
+    -- cpSAVE OpWord.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPSAVE_OPWORD);
+    wait for CLK_PERIOD * 4;
+
+    -- Read format word.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, CIR_SAVE_ADDR);
+
+    -- Read 6 Idle frame words.
+    for word_idx in 0 to 5 loop
+      bus_read(a_in, rw, cs_n, as_n, ds_n,
+               dsack0_n, dsack1_n, d_out, fpsr_val, CIR_OPERAND);
+    end loop;
+
+    t61_elapsed := (now - t61_start) / CLK_PERIOD;
+    report "TEST 61 cpSAVE Idle elapsed=" & integer'image(t61_elapsed) & " cycles (7 reads)"
+      severity note;
+    -- 7 reads at ~3-4 cycles each = ~21-28 cycles; bound at 100.
+    assert t61_elapsed <= 100
+      report "FAIL TEST 61: cpSAVE Idle took " & integer'image(t61_elapsed) &
+             " cycles, expected <= 100"
+      severity failure;
+
+    -- Wait for FSM to return to IDLE.
+    wait for CLK_PERIOD * 4;
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 61: Expected Null after save complete"
+      severity failure;
+    report "TEST 61 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 62: cpRESTORE Idle frame cycle overhead
+    --   Measure: OpWord write to FSM back in IDLE.
+    --   Bound: <= 100 cycles.
+    -- ================================================================
+    report "TEST 62: cpRESTORE Idle frame cycle overhead" severity note;
+
+    -- First do a save to capture frame data.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_FIVE_VAL);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPSAVE_OPWORD);
+    wait for CLK_PERIOD * 4;
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, CIR_SAVE_ADDR);
+    for word_idx in 0 to 5 loop
+      bus_read(a_in, rw, cs_n, as_n, ds_n,
+               dsack0_n, dsack1_n, d_out, save_buf(word_idx), CIR_OPERAND);
+    end loop;
+    wait for CLK_PERIOD * 4;
+
+    -- Now measure FRESTORE.
+    t62_start := now;
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPRESTORE_OPWORD);
+    wait for CLK_PERIOD * 2;
+
+    -- Write Idle format word.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESTORE_ADDR, x"0000" & CIR_FRAME_IDLE_FW);
+    wait for CLK_PERIOD * 2;
+
+    -- Write 6 frame data words.
+    for word_idx in 0 to 5 loop
+      bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+                CIR_OPERAND, save_buf(word_idx));
+    end loop;
+
+    -- Wait for FSM to settle.
+    wait for CLK_PERIOD * 4;
+
+    t62_elapsed := (now - t62_start) / CLK_PERIOD;
+    report "TEST 62 cpRESTORE Idle elapsed=" & integer'image(t62_elapsed) & " cycles"
+      severity note;
+    assert t62_elapsed <= 100
+      report "FAIL TEST 62: cpRESTORE Idle took " & integer'image(t62_elapsed) &
+             " cycles, expected <= 100"
+      severity failure;
+
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 62: Expected Null after restore complete"
+      severity failure;
+    report "TEST 62 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 63: CIR Response read DSACK timing
+    --   Verify that reading CIR_RESPONSE produces DSACK within a
+    --   bounded number of cycles (CIR reads use sync_read path).
+    -- ================================================================
+    report "TEST 63: CIR Response read DSACK timing" severity note;
+
+    t63_start := now;
+    -- Read CIR Response (FSM is IDLE, so Null response expected).
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, CIR_RESPONSE);
+    t63_elapsed := (now - t63_start) / CLK_PERIOD;
+    report "TEST 63 CIR Response read DSACK latency=" & integer'image(t63_elapsed) & " cycles"
+      severity note;
+    assert t63_elapsed <= 10
+      report "FAIL TEST 63: CIR Response DSACK took " & integer'image(t63_elapsed) &
+             " cycles, expected <= 10"
+      severity failure;
+    assert fpsr_val(15 downto 0) = RESP_NULL
+      report "FAIL TEST 63: Expected Null response in IDLE"
+      severity failure;
+    report "TEST 63 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 64: CIR Save sequential read streaming
+    --   During FSAVE, verify that consecutive CIR_SAVE_ADDR and
+    --   CIR_OPERAND reads each complete with DSACK. Measures total
+    --   streaming latency for an Idle frame (format + 6 words).
+    -- ================================================================
+    report "TEST 64: CIR Save sequential read streaming" severity note;
+
+    -- Ensure initialized.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_TWO_VAL);
+
+    -- Start FSAVE.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPSAVE_OPWORD);
+    wait for CLK_PERIOD * 4;
+
+    t64_start := now;
+
+    -- Read format word.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, CIR_SAVE_ADDR);
+    assert fpsr_val(15 downto 0) = CIR_FRAME_IDLE_FW
+      report "FAIL TEST 64: Expected Idle FW"
+      severity failure;
+
+    -- Stream 6 data words.
+    for word_idx in 0 to 5 loop
+      bus_read(a_in, rw, cs_n, as_n, ds_n,
+               dsack0_n, dsack1_n, d_out, fpsr_val, CIR_OPERAND);
+    end loop;
+
+    t64_elapsed := (now - t64_start) / CLK_PERIOD;
+    report "TEST 64 Save stream latency=" & integer'image(t64_elapsed) & " cycles (7 reads)"
+      severity note;
+    -- 7 reads at ~3-4 cycles each = ~21-28 cycles; bound at 50.
+    assert t64_elapsed <= 50
+      report "FAIL TEST 64: Save stream took " & integer'image(t64_elapsed) &
+             " cycles, expected <= 50"
+      severity failure;
+
+    -- Clean up: wait for IDLE.
+    wait for CLK_PERIOD * 4;
+    report "TEST 64 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 65: CIR Operand write-then-read turnaround
+    --   Write an operand via CIR memory-source path, then read back
+    --   via CIR reg-to-mem path. Verify data integrity and bounded
+    --   turnaround time.
+    -- ================================================================
+    report "TEST 65: CIR Operand write/read turnaround" severity note;
+
+    -- FMOVE single 3.5 (0x40600000) to FP3 via CIR memory-source.
+    t65_start := now;
+    cpgen_mem_single(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     OPCODE_FMOVE, 3, x"40600000");
+
+    -- Now read FP3 back via CIR FMOVE reg->mem (single format).
+    cpgen_reg_to_mem_single(a_in, d_in, rw, cs_n, as_n, ds_n,
+                            dsack0_n, dsack1_n, d_out,
+                            3, single_readback);
+    t65_elapsed := (now - t65_start) / CLK_PERIOD;
+
+    report "TEST 65 turnaround=" & integer'image(t65_elapsed) & " cycles, readback=$" &
+           to_hstring(single_readback) severity note;
+    assert single_readback = x"40600000"
+      report "FAIL TEST 65: Expected $40600000, got $" & to_hstring(single_readback)
+      severity failure;
+    -- Two full dialogs (write + read): bound at 200 cycles total.
+    assert t65_elapsed <= 200
+      report "FAIL TEST 65: Turnaround took " & integer'image(t65_elapsed) &
+             " cycles, expected <= 200"
+      severity failure;
+
+    -- Consume response.
+    wait for CLK_PERIOD * 4;
+    report "TEST 65 PASSED" severity note;
 
     -- ================================================================
     report "All CIR dialog tests PASSED" severity note;

@@ -8,6 +8,11 @@ mp.mp.dps = 200
 
 FP80_EXP_BIAS = 16383
 
+ROUND_NEAREST = "RN"
+ROUND_ZERO = "RZ"
+ROUND_PLUS_INF = "RP"
+ROUND_MINUS_INF = "RM"
+
 
 def round_ties_even(v: mp.mpf) -> int:
     base = int(mp.floor(v))
@@ -19,7 +24,7 @@ def round_ties_even(v: mp.mpf) -> int:
     return base if (base % 2 == 0) else (base + 1)
 
 
-def fp80_hex(x: mp.mpf) -> str:
+def fp80_hex(x: mp.mpf, rnd: str = ROUND_NEAREST) -> str:
     if mp.isnan(x):
         return "7FFFC000000000000001"
     if mp.isinf(x):
@@ -32,7 +37,16 @@ def fp80_hex(x: mp.mpf) -> str:
     e = int(mp.floor(mp.log(a, 2)))
     m = a / mp.power(2, e)
     q = m * mp.power(2, 63)
-    mant = round_ties_even(q)
+    if rnd == ROUND_NEAREST:
+        mant = round_ties_even(q)
+    elif rnd == ROUND_ZERO:
+        mant = int(mp.floor(q))
+    elif rnd == ROUND_PLUS_INF:
+        mant = int(mp.ceil(q)) if sign == 0 else int(mp.floor(q))
+    elif rnd == ROUND_MINUS_INF:
+        mant = int(mp.floor(q)) if sign == 0 else int(mp.ceil(q))
+    else:
+        raise ValueError(f"Unknown rounding mode: {rnd}")
     if mant == (1 << 64):
         mant >>= 1
         e += 1

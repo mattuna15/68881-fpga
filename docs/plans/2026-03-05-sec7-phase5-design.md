@@ -99,6 +99,13 @@ Insert the following tests after TEST 46 and before the "All CIR dialog tests PA
     --   Execute a CIR conditional (FScc EQ), consume the response to
     --   leave cir_response_pending=1, then write a conditional op to
     --   ADDR_OPSEL. Verify STATUS bit 5 latches.
+    --
+    -- IMPLEMENTATION NOTE: Redesigned during implementation. The actual
+    -- TEST 48 verifies the response_pending lifecycle (STATUS bit 4
+    -- set after conditional completes, cleared after response read).
+    -- The original protocol_violation test was dropped because
+    -- FPU_OP_FSCC has legacy_decode_id_valid => false, so no OPSEL
+    -- write can trigger the violation flag via the CIR path.
     -- ================================================================
     report "TEST 48: Protocol violation flag on OPSEL while response pending" severity note;
 
@@ -153,6 +160,12 @@ Insert the following tests after TEST 46 and before the "All CIR dialog tests PA
     --   Issue FScc(EQ), then immediately issue another FScc(NE) via
     --   CIR before reading the first response. The first result must
     --   complete; the second OpWord must be ignored.
+    --
+    -- IMPLEMENTATION NOTE: Redesigned during implementation. The actual
+    -- TEST 49 writes the second cpCond 1 CLK_PERIOD after the first,
+    -- while the FSM is still in CIR_COND_EVAL (not after completion).
+    -- This tests the "evaluation in progress" timing window rather
+    -- than the "response pending" window.
     -- ================================================================
     report "TEST 49: CIR cpCond while prior response unread" severity note;
 
@@ -382,6 +395,12 @@ These verify S7-D1: full primitive request/ack progression for each dialog famil
     -- ================================================================
     -- TEST 54: cpBcc-W primitive progression
     --   Verify: OpWord→Condition→Busy→branch decision response
+    --
+    -- IMPLEMENTATION NOTE: Redesigned during implementation. The actual
+    -- TEST 54 uses FCC_EQ with Z=1 (set via FCMP of equal operands)
+    -- instead of FCC_F. FCC_F produces response $0000 which is
+    -- indistinguishable from RESP_BUSY. The implemented test asserts
+    -- specific response bits (cond_true=1, branch_taken=1).
     -- ================================================================
     report "TEST 54: cpBcc-W primitive progression" severity note;
 

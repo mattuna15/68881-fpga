@@ -618,7 +618,7 @@ Legend:
   - Map: `B6`.
   - Done: CIR conditional dialog path for cpCond/cpBcc complete.
   - Done: CIR FSM naturally ignores OpWord writes when not in CIR_IDLE (flags auto-cleared).
-  - Verified by Tests 47, 49, 53, 54 in `tb/tb_mc68881_cir_dialog.vhd`.
+  - Verified by Tests 47, 49, 50, 56 in `tb/tb_mc68881_cir_dialog.vhd`.
 - `[x]` S7-B2. System-control dialog implementation (`FTRAPcc/FSAVE/FRESTORE`).
   - Map: `B7`.
   - Done: cpSAVE/cpRESTORE dialog with Null/Idle/Busy frame support.

@@ -242,6 +242,11 @@ begin
       wait for 0 ns;
       wait until valid = '1';
       wait for 0 ns;
+      report "PASS " & test_name &
+             " a=" & to_hstring(a_val) &
+             " b=" & to_hstring(b_val) &
+             " got=" & to_hstring(result) &
+             " exp=" & to_hstring(expected) severity note;
       check_result(expected, test_name);
       pass_count := pass_count + 1;
     end procedure;
@@ -266,6 +271,11 @@ begin
       wait for 0 ns;
       wait until valid = '1';
       wait for 0 ns;
+      report "PASS " & test_name &
+             " a=" & to_hstring(a_val) &
+             " b=" & to_hstring(b_val) &
+             " got=" & to_hstring(result) &
+             " exp=" & to_hstring(expected) severity note;
       check_fp80_close(result, expected, tol, test_name);
       pass_count := pass_count + 1;
     end procedure;
@@ -287,6 +297,10 @@ begin
       wait for 0 ns;
       wait until valid = '1';
       wait for 0 ns;
+      report "PASS " & test_name &
+             " arg=" & to_hstring(arg_val) &
+             " got=" & to_hstring(result) &
+             " exp=" & to_hstring(expected) severity note;
       check_result(expected, test_name);
       pass_count := pass_count + 1;
     end procedure;
@@ -309,6 +323,10 @@ begin
       wait for 0 ns;
       wait until valid = '1';
       wait for 0 ns;
+      report "PASS " & test_name &
+             " arg=" & to_hstring(arg_val) &
+             " got=" & to_hstring(result) &
+             " exp=" & to_hstring(expected) severity note;
       check_result_close(expected, tol, test_name);
       pass_count := pass_count + 1;
     end procedure;
@@ -328,6 +346,9 @@ begin
       wait for 0 ns;
       wait until valid = '1';
       wait for 0 ns;
+      report "PASS " & test_name &
+             " arg=" & to_hstring(arg_val) &
+             " got=" & to_hstring(result) & " (NaN)" severity note;
       check_result_nan(test_name);
       pass_count := pass_count + 1;
     end procedure;
@@ -348,6 +369,9 @@ begin
       wait for 0 ns;
       wait until valid = '1';
       wait for 0 ns;
+      report "PASS " & test_name &
+             " arg=" & to_hstring(arg_val) &
+             " got=" & to_hstring(result) & " (inf)" severity note;
       check_result_inf(expected_sign, test_name);
       pass_count := pass_count + 1;
     end procedure;

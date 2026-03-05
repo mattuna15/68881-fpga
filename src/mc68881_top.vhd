@@ -712,11 +712,7 @@ architecture rtl of mc68881_top is
     -- For subnormals (biased exponent = 0), adjust bin_exp by counting
     -- leading mantissa zeros so the exp10 estimate is accurate.
     if unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH)) = 0 then
-      bin_exp := 1 - FP_EXP_BIAS;
-      for bit_idx in FP_MANT_WIDTH-1 downto 0 loop
-        exit when abs_val(bit_idx) = '1';
-        bin_exp := bin_exp - 1;
-      end loop;
+      bin_exp := 1 - FP_EXP_BIAS - clz(unsigned(abs_val(FP_MANT_WIDTH-1 downto 0)));
     end if;
     if bin_exp >= 0 then
       exp10 := (bin_exp * 77) / 256;
@@ -893,11 +889,7 @@ architecture rtl of mc68881_top is
     -- For subnormals (biased exponent = 0), adjust bin_exp by counting
     -- leading mantissa zeros so the exp10 estimate is accurate.
     if unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH)) = 0 then
-      bin_exp := 1 - FP_EXP_BIAS;
-      for bit_idx in FP_MANT_WIDTH-1 downto 0 loop
-        exit when abs_val(bit_idx) = '1';
-        bin_exp := bin_exp - 1;
-      end loop;
+      bin_exp := 1 - FP_EXP_BIAS - clz(unsigned(abs_val(FP_MANT_WIDTH-1 downto 0)));
     end if;
     if bin_exp >= 0 then
       exp10 := (bin_exp * 77) / 256;

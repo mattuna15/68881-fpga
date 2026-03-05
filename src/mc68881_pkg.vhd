@@ -244,6 +244,7 @@ package mc68881_pkg is
   function neg_fp80(value : fp80_t) return fp80_t;
   function fint_fp80(value : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
   function fintrz_fp80(value : fp80_t) return fp80_t;
+  function clz(value : unsigned) return natural;
   function fgetexp_fp80(value : fp80_t) return fp80_t;
   function fgetman_fp80(value : fp80_t) return fp80_t;
   function ftst_fp80(value : fp80_t) return fp80_t;
@@ -2386,11 +2387,48 @@ package body mc68881_pkg is
     return pack_fp80(result_u);
   end function;
 
+  -- Tree-based count-leading-zeros: O(log N) logic depth instead of
+  -- sequential loop.  Width-generic via compile-time guards.
+  function clz(value : unsigned) return natural is
+    variable cnt : natural := 0;
+    variable v   : unsigned(value'length-1 downto 0) := value;
+  begin
+    if value'length > 64 then
+      if v(v'left downto v'left - 63) = 0 then
+        cnt := cnt + 64;
+        v := v(v'left - 64 downto 0) & (63 downto 0 => '0');
+      end if;
+    end if;
+    if v(v'left downto v'left - 31) = 0 then
+      cnt := cnt + 32;
+      v := v(v'left - 32 downto 0) & (31 downto 0 => '0');
+    end if;
+    if v(v'left downto v'left - 15) = 0 then
+      cnt := cnt + 16;
+      v := v(v'left - 16 downto 0) & (15 downto 0 => '0');
+    end if;
+    if v(v'left downto v'left - 7) = 0 then
+      cnt := cnt + 8;
+      v := v(v'left - 8 downto 0) & (7 downto 0 => '0');
+    end if;
+    if v(v'left downto v'left - 3) = 0 then
+      cnt := cnt + 4;
+      v := v(v'left - 4 downto 0) & (3 downto 0 => '0');
+    end if;
+    if v(v'left downto v'left - 1) = 0 then
+      cnt := cnt + 2;
+      v := v(v'left - 2 downto 0) & "00";
+    end if;
+    if v(v'left) = '0' then
+      cnt := cnt + 1;
+    end if;
+    return cnt;
+  end function;
+
   function fgetexp_fp80(value : fp80_t) return fp80_t is
     variable value_u : fp_unpacked_t := unpack_fp80(value);
     variable result_u : fp_unpacked_t;
     variable unbiased_exp : integer := 0;
-    variable mantissa_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
     if fp80_is_nan(value) then
       return value;
@@ -2412,14 +2450,8 @@ package body mc68881_pkg is
     end if;
 
     if value_u.exp = 0 then
-      -- Normalize subnormal mantissa before extracting the unbiased exponent.
-      unbiased_exp := 1 - FP_EXP_BIAS;
-      mantissa_norm := value_u.mant;
-      for idx in 0 to FP_MANT_WIDTH-1 loop
-        exit when mantissa_norm(mantissa_norm'left) = '1';
-        mantissa_norm := shift_left(mantissa_norm, 1);
-        unbiased_exp := unbiased_exp - 1;
-      end loop;
+      -- Subnormal: unbiased exponent adjusted by leading zero count.
+      unbiased_exp := 1 - FP_EXP_BIAS - clz(value_u.mant);
     else
       unbiased_exp := to_integer(value_u.exp) - FP_EXP_BIAS;
     end if;
@@ -2428,7 +2460,6 @@ package body mc68881_pkg is
 
   function fgetman_fp80(value : fp80_t) return fp80_t is
     variable result_u : fp_unpacked_t := unpack_fp80(value);
-    variable mantissa_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
     if fp80_is_nan(value) or fp80_is_zero(value) then
       return value;
@@ -2443,12 +2474,7 @@ package body mc68881_pkg is
 
     if result_u.exp = 0 then
       -- Normalize denormal mantissas before forcing exponent to bias.
-      mantissa_norm := result_u.mant;
-      for idx in 0 to FP_MANT_WIDTH-1 loop
-        exit when mantissa_norm(mantissa_norm'left) = '1';
-        mantissa_norm := shift_left(mantissa_norm, 1);
-      end loop;
-      result_u.mant := mantissa_norm;
+      result_u.mant := shift_left(result_u.mant, clz(result_u.mant));
     end if;
 
     result_u.exp := to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH);

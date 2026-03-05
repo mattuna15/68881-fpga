@@ -461,11 +461,29 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 ## TODO: Tighten Torture TB Transcendental Tolerances
 - The torture testbench (`tb/tb_mc68881_torture.vhd`) uses wide tolerances in
   `check_fp80_close` for transcendental operations (SIN, COS, TAN, ATAN, etc.).
-  Current thresholds are smoke-test level only.
+  Current thresholds are 5-10% for most ops, 20% for SINH(3)/COSH(3)/ATANH(0.9).
 - Once transcendental accuracy is improved (better argument reduction, higher-order
   polynomials, etc.), reduce the tolerance parameters to verify tighter ULP bounds.
 - Affected tests: Phase 1 transcendental golden vectors (~123 tests) and Phase 2
-  algebraic identities involving trig/exp/log (~10 tests).
+  algebraic identities involving trig/exp/log (~13 tests).
+
+## TODO: Torture TB Coverage Gaps
+- **Unused golden vectors**: ~8 generated vectors never tested: `TV_ETOXM1_TINY`,
+  `TV_ETOXM1_0P01`, `TV_ETOX_0P01`, `TV_LOGN_1P01`, `TV_LOGN_HUGE`, `TV_LOGN_TINY`,
+  `TV_LOGNP1_TINY`, `TV_LOGNP1_0P01`. Either add test calls or remove dead constants.
+- **Missing operation coverage**: No torture tests for MOD, REM, SCALE, SGLDIV, SGLMUL,
+  INT, INTRZ, GETEXP, GETMAN, CMP, TST. Only tested in basic ALU TB sweep, not the
+  systematic edge-case/rounding-mode torture framework.
+- **Negative zero semantics**: No tests for IEEE-754 sign-of-zero rules (e.g. `x-x` in
+  round-minus-inf → `-0`, `(-x)*0 = -0`). Generator preserves negative zero sign but
+  no TB vectors exercise it.
+- **NaN type discrimination**: `check_result_nan` accepts any NaN encoding without
+  distinguishing quiet vs signaling. Domain error results should be verified as QNaN.
+- **Generator overflow handling**: `fp80_hex` silently maps overflow to infinity for all
+  rounding modes. IEEE-754 says RZ/RM (positive overflow) should produce max finite.
+  Affects MUL HUGE*TWO RZ/RM golden vectors (currently tested as +inf).
+- **Subnormal reference flush**: `fp80_hex_safe` flushes subnormal results to zero.
+  DIV TINY/TWO and MUL TINY*HALF comments should note the reference is flushed to zero.
 
 ## Implementation Snapshot (2026-03-05, Phase 5)
 - Milestone:

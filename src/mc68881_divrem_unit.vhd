@@ -516,13 +516,16 @@ begin
               flag_invalid_reg <= nan_prop(80);
               state_reg <= ST_DONE;
             elsif b_u.exp = 0 and b_u.mant = 0 then
-              div_res_u.sign := a_u.sign xor b_u.sign;
-              div_res_u.exp := FP_EXP_ALL_ONES;
-              div_res_u.mant := (others => '0');
-              result_reg <= pack_fp80(div_res_u);
               if a_u.exp = 0 and a_u.mant = 0 then
+                -- 0/0: IEEE-754 invalid operation -> QNaN
+                result_reg <= canonical_qnan;
                 flag_invalid_reg <= '1';
               else
+                -- nonzero/0: divide by zero -> signed infinity
+                div_res_u.sign := a_u.sign xor b_u.sign;
+                div_res_u.exp := FP_EXP_ALL_ONES;
+                div_res_u.mant := (others => '0');
+                result_reg <= pack_fp80(div_res_u);
                 flag_divzero_reg <= '1';
               end if;
               state_reg <= ST_DONE;

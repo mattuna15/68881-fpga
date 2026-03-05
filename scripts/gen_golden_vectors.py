@@ -30,6 +30,9 @@ def fp80_hex(x: mp.mpf, rnd: str = ROUND_NEAREST) -> str:
     if mp.isinf(x):
         return ("7FFF" if x > 0 else "FFFF") + "8000000000000000"
     if x == 0:
+        # Preserve negative zero sign
+        if mp.sign(x) < 0:
+            return "80000000000000000000"
         return "00000000000000000000"
 
     sign = 1 if x < 0 else 0
@@ -65,9 +68,10 @@ def fp80_hex_safe(x: mp.mpf, rnd: str = ROUND_NEAREST) -> str:
     """Like fp80_hex but returns zero hex for subnormal/underflow results."""
     try:
         return fp80_hex(x, rnd)
-    except ValueError:
-        # Subnormal or underflow -- encode as positive zero
-        return "00000000000000000000"
+    except ValueError as e:
+        if "Subnormal" in str(e):
+            return "00000000000000000000"
+        raise  # Re-raise unknown rounding mode errors etc.
 
 
 def generate_torture_vectors() -> dict[str, str]:

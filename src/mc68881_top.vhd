@@ -2477,7 +2477,12 @@ begin
 
       if bus_read = '1' and addr = ADDR_CIR_RESPONSE then
         cir_response_pending_reg <= '0';
-        cir_trap_pending_reg <= '0';
+        -- Only clear trap_pending when NOT in the condition-eval pipeline,
+        -- otherwise the CIR response read between CIR_COND_EVAL and
+        -- CIR_COND_CHECK would race-clear the flag before it is sampled.
+        if cir_state_reg /= CIR_COND_WAIT and cir_state_reg /= CIR_COND_CHECK then
+          cir_trap_pending_reg <= '0';
+        end if;
         cir_protocol_violation_reg <= '0';
       end if;
 
@@ -3512,6 +3517,7 @@ begin
       alu_restore_req_reg <= '0';
       alu_restore_wr_reg <= '0';
       packed_restore_wr <= '0';
+      cir_exc_vector <= (others => '0');
     elsif rising_edge(clk) then
       cir_launch_alu <= '0';  -- default: clear one-shot pulse
       cir_flags_consumed <= '0';
@@ -3620,6 +3626,10 @@ begin
         when CIR_EXECUTE_DONE =>
           -- FPSR EXC byte is now stable. Check FPCR exception enables.
           -- Priority (highest first): INVALID > OVERFLOW > UNDERFLOW > DIVZERO > INEXACT.
+          -- NOTE: INVALID always maps to CIR_VEC_SNAN (vector 54). The real MC68881
+          -- distinguishes SNAN (vector 54) from OPERR (vector 52) based on whether
+          -- the invalid was from an SNaN input vs a domain error. This is a known
+          -- deviation; a future refinement could inspect operand signaling bits.
           if fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_INVALID) = '1' and
              fpcr_reg(FPCR_EXC_EN_INVALID) = '1' then
             cir_exc_vector <= CIR_VEC_SNAN;
@@ -3764,7 +3774,7 @@ begin
               cir_state_reg <= CIR_RESTORE_FRAME;
             else
               -- Invalid format word: Pre-Instruction Exception.
-              cir_exc_vector <= "00" & x"0E";  -- Format error vector ($0E = 14)
+              cir_exc_vector <= CIR_VEC_FORMAT;  -- Format error vector ($0E = 14)
               cir_state_reg <= CIR_EXCEPT_PRE;
             end if;
           end if;

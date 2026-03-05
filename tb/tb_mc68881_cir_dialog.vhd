@@ -59,6 +59,10 @@ architecture sim of tb_mc68881_cir_dialog is
     CIR_RESP_EXCEPT_PRE & "0" & "00" & CIR_VEC_BSUN;    -- $A030
   constant RESP_EXCEPT_POST_DZ  : std_logic_vector(15 downto 0) :=
     CIR_RESP_EXCEPT_POST & "0" & "00" & CIR_VEC_DIVZERO; -- $E032
+  constant RESP_EXCEPT_POST_OV  : std_logic_vector(15 downto 0) :=
+    CIR_RESP_EXCEPT_POST & "0" & "00" & CIR_VEC_OVERFL;  -- $E035
+  constant RESP_EXCEPT_POST_SNAN : std_logic_vector(15 downto 0) :=
+    CIR_RESP_EXCEPT_POST & "0" & "00" & CIR_VEC_SNAN;    -- $E036
 
   -- FP80 test constants.
   constant FP80_ONE_VAL   : fp80_t := x"3FFF8000000000000000";  -- 1.0
@@ -148,6 +152,9 @@ architecture sim of tb_mc68881_cir_dialog is
 
   -- FP80 positive infinity (result of 1.0 / 0.0).
   constant FP80_POS_INF : fp80_t := x"7FFF8000000000000000";
+
+  -- FP80 largest finite value (exponent $7FFE, max significand) for overflow tests.
+  constant FP80_LARGE : fp80_t := x"7FFEFFFFFFFFFFFFFFFF";
 
   -- CIR Instruction Address register (for FPIAR capture tests).
   constant CIR_INSTADDR : unsigned(4 downto 0) :=
@@ -2238,7 +2245,7 @@ begin
     legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
                        dsack0_n, dsack1_n, d_out, 5, FP80_ONE_VAL);
 
-    -- Execute FADD FP4,FP5 via CIR (SNAN input → INVALID exception → FPIAR capture).
+    -- Execute FADD FP4,FP5 via CIR (QNaN input → INVALID exception → FPIAR capture).
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -2303,6 +2310,142 @@ begin
       report "FAIL TEST 44: expected Null (no trap), got=" & to_hstring(cir_resp_16)
       severity failure;
     report "TEST 44 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 45: OVERFLOW post-instruction exception
+    --   FMUL(LARGE, LARGE) overflows to infinity. Enable FPCR OVERFLOW.
+    --   Verify EXCEPT_POST with OVERFLOW vector. Also verifies that OVERFLOW
+    --   wins over INEXACT (both are set, but OVERFLOW has higher priority).
+    -- ================================================================
+    report "TEST 45: OVERFLOW post-instruction exception" severity note;
+
+    -- Load largest finite value → FP6, FP7.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 6, FP80_LARGE);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 7, FP80_LARGE);
+
+    -- Enable OVERFLOW exception in FPCR (bit 10) and INEXACT (bit 8).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              ADDR_FPCR, x"00000500");  -- bits 10 + 8
+
+    -- Execute FMUL FP7,FP6 (FP6 = FP6 * FP7 = LARGE * LARGE → overflow).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_reg_cmd(7, 6, OPCODE_FMUL));
+
+    -- Wait for ALU completion.
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+    for i in 0 to 5 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Read CIR Response — should show EXCEPT_POST with OVERFLOW vector.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 45 exc_resp=" & to_hstring(cir_resp_16) severity note;
+    assert cir_resp_16 = RESP_EXCEPT_POST_OV
+      report "FAIL TEST 45: expected EXCEPT_POST/OV=" & to_hstring(RESP_EXCEPT_POST_OV) &
+             " got=" & to_hstring(cir_resp_16)
+      severity failure;
+
+    -- Verify FPSR OVERFLOW and INEXACT flags both set.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_FPSR);
+    report "TEST 45 FPSR=" & to_hstring(fpsr_val) severity note;
+    assert fpsr_val(8 + 2) = '1'
+      report "FAIL TEST 45: FPSR EXC.OVERFLOW should be set"
+      severity failure;
+    assert fpsr_val(8 + 0) = '1'
+      report "FAIL TEST 45: FPSR EXC.INEXACT should also be set"
+      severity failure;
+
+    -- Acknowledge exception.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_CONTROL_ADDR, x"00000001");
+    for i in 0 to 3 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Verify FSM returned to IDLE.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 45: after ack, expected Null, got=" & to_hstring(cir_resp_16)
+      severity failure;
+
+    -- Clear FPCR for next test.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              ADDR_FPCR, x"00000000");
+    report "TEST 45 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 46: Exception priority — INVALID wins over DIVZERO
+    --   FDIV(QNaN, 0.0) with both INVALID and DZ enabled. INVALID has
+    --   higher priority and should produce SNAN vector, not DZ vector.
+    -- ================================================================
+    report "TEST 46: Exception priority INVALID > DIVZERO" severity note;
+
+    -- Load QNaN → FP0, 0.0 → FP1.
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 0, FP80_QNAN);
+    legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
+                       dsack0_n, dsack1_n, d_out, 1, FP80_ZERO_VAL);
+
+    -- Enable both INVALID (bit 12) and DZ (bit 11) in FPCR.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              ADDR_FPCR, x"00001800");  -- bits 12 + 11
+
+    -- Execute FDIV FP1,FP0 (FP0 = QNaN / 0.0 → NaN, INVALID set).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FDIV));
+
+    -- Wait for ALU completion.
+    wait_for_valid(a_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out, fpsr_val);
+    for i in 0 to 5 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Read CIR Response — should show EXCEPT_POST with SNAN vector (INVALID wins).
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    report "TEST 46 exc_resp=" & to_hstring(cir_resp_16) severity note;
+    assert cir_resp_16 = RESP_EXCEPT_POST_SNAN
+      report "FAIL TEST 46: expected EXCEPT_POST/SNAN=" & to_hstring(RESP_EXCEPT_POST_SNAN) &
+             " got=" & to_hstring(cir_resp_16)
+      severity failure;
+
+    -- Verify FPSR INVALID is set.
+    bus_read(a_in, rw, cs_n, as_n, ds_n,
+             dsack0_n, dsack1_n, d_out, fpsr_val, ADDR_FPSR);
+    report "TEST 46 FPSR=" & to_hstring(fpsr_val) severity note;
+    assert fpsr_val(8 + 4) = '1'
+      report "FAIL TEST 46: FPSR EXC.INVALID should be set"
+      severity failure;
+
+    -- Acknowledge exception.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_CONTROL_ADDR, x"00000001");
+    for i in 0 to 3 loop
+      wait until rising_edge(clk);
+    end loop;
+
+    -- Verify FSM returned to IDLE.
+    cir_read_response(a_in, rw, cs_n, as_n, ds_n,
+                      dsack0_n, dsack1_n, d_out, cir_resp_16);
+    assert cir_resp_16 = RESP_NULL
+      report "FAIL TEST 46: after ack, expected Null, got=" & to_hstring(cir_resp_16)
+      severity failure;
+
+    -- Clear FPCR.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              ADDR_FPCR, x"00000000");
+    report "TEST 46 PASSED" severity note;
 
     -- ================================================================
     report "All CIR dialog tests PASSED" severity note;

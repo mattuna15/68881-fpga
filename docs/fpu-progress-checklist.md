@@ -458,6 +458,15 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 - Follow-up:
   - Keep `tb/tb_mc68881_known_defects.vhd` as a persistent recheck for this vector.
 
+## TODO: Tighten Torture TB Transcendental Tolerances
+- The torture testbench (`tb/tb_mc68881_torture.vhd`) uses wide tolerances in
+  `check_fp80_close` for transcendental operations (SIN, COS, TAN, ATAN, etc.).
+  Current thresholds are smoke-test level only.
+- Once transcendental accuracy is improved (better argument reduction, higher-order
+  polynomials, etc.), reduce the tolerance parameters to verify tighter ULP bounds.
+- Affected tests: Phase 1 transcendental golden vectors (~123 tests) and Phase 2
+  algebraic identities involving trig/exp/log (~10 tests).
+
 ## Implementation Snapshot (2026-03-05, Phase 5)
 - Milestone:
   - Section 7 CIR Phase 5 complete (timing/cycle tests and regression matrix closure).

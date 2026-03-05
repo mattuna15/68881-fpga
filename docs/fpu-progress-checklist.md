@@ -464,8 +464,8 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   Current thresholds are smoke-test level only.
 - Once transcendental accuracy is improved (better argument reduction, higher-order
   polynomials, etc.), reduce the tolerance parameters to verify tighter ULP bounds.
-- Affected tests: Phase 1 transcendental golden vectors (~126 tests) and Phase 2
-  algebraic identities involving trig/exp/log (~12 tests).
+- Affected tests: Phase 1 transcendental golden vectors (~123 tests) and Phase 2
+  algebraic identities involving trig/exp/log (~10 tests).
 
 ## Implementation Snapshot (2026-03-05, Phase 5)
 - Milestone:

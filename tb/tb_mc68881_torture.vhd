@@ -30,6 +30,7 @@ architecture sim of tb_mc68881_torture is
   signal busy   : std_logic;
 
   constant CLK_PERIOD : time := 10 ns;
+  constant MAX_WAIT   : time := 200 us; -- timeout for ALU valid
 
   -- ================================================================
   -- Architecture-level helper procedures
@@ -211,6 +212,7 @@ begin
     constant FP80_POS_INF : fp80_t := x"7FFF8000000000000000";
     constant FP80_NEG_INF : fp80_t := x"FFFF8000000000000000";
     constant FP80_QNAN    : fp80_t := x"7FFFC000000000000001";
+    constant FP80_QUARTER : fp80_t := x"3FFD8000000000000000"; -- 0.25
     -- Tolerances
     constant FP80_TOL_1E3  : fp80_t := x"3FF583126E978D4FE000"; -- 1e-3
     constant FP80_TOL_5E3  : fp80_t := x"3FF7A3D70A3D70A3D800"; -- 5e-3
@@ -240,9 +242,10 @@ begin
       wait until rising_edge(clk);
       start <= '0';
       wait for 0 ns;
-      wait until valid = '1';
+      wait until valid = '1' for MAX_WAIT;
+      assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
       wait for 0 ns;
-      report "PASS " & test_name &
+      report "CHECK " & test_name &
              " a=" & to_hstring(a_val) &
              " b=" & to_hstring(b_val) &
              " got=" & to_hstring(result) &
@@ -269,9 +272,10 @@ begin
       wait until rising_edge(clk);
       start <= '0';
       wait for 0 ns;
-      wait until valid = '1';
+      wait until valid = '1' for MAX_WAIT;
+      assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
       wait for 0 ns;
-      report "PASS " & test_name &
+      report "CHECK " & test_name &
              " a=" & to_hstring(a_val) &
              " b=" & to_hstring(b_val) &
              " got=" & to_hstring(result) &
@@ -295,9 +299,10 @@ begin
       wait until rising_edge(clk);
       start <= '0';
       wait for 0 ns;
-      wait until valid = '1';
+      wait until valid = '1' for MAX_WAIT;
+      assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
       wait for 0 ns;
-      report "PASS " & test_name &
+      report "CHECK " & test_name &
              " arg=" & to_hstring(arg_val) &
              " got=" & to_hstring(result) &
              " exp=" & to_hstring(expected) severity note;
@@ -321,9 +326,10 @@ begin
       wait until rising_edge(clk);
       start <= '0';
       wait for 0 ns;
-      wait until valid = '1';
+      wait until valid = '1' for MAX_WAIT;
+      assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
       wait for 0 ns;
-      report "PASS " & test_name &
+      report "CHECK " & test_name &
              " arg=" & to_hstring(arg_val) &
              " got=" & to_hstring(result) &
              " exp=" & to_hstring(expected) severity note;
@@ -344,9 +350,10 @@ begin
       wait until rising_edge(clk);
       start <= '0';
       wait for 0 ns;
-      wait until valid = '1';
+      wait until valid = '1' for MAX_WAIT;
+      assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
       wait for 0 ns;
-      report "PASS " & test_name &
+      report "CHECK " & test_name &
              " arg=" & to_hstring(arg_val) &
              " got=" & to_hstring(result) & " (NaN)" severity note;
       check_result_nan(test_name);
@@ -367,9 +374,10 @@ begin
       wait until rising_edge(clk);
       start <= '0';
       wait for 0 ns;
-      wait until valid = '1';
+      wait until valid = '1' for MAX_WAIT;
+      assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
       wait for 0 ns;
-      report "PASS " & test_name &
+      report "CHECK " & test_name &
              " arg=" & to_hstring(arg_val) &
              " got=" & to_hstring(result) & " (inf)" severity note;
       check_result_inf(expected_sign, test_name);
@@ -390,7 +398,8 @@ begin
       wait until rising_edge(clk);
       start <= '0';
       wait for 0 ns;
-      wait until valid = '1';
+      wait until valid = '1' for MAX_WAIT;
+      assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
       wait for 0 ns;
       got_val := result;
     end procedure;
@@ -411,7 +420,8 @@ begin
       wait until rising_edge(clk);
       start <= '0';
       wait for 0 ns;
-      wait until valid = '1';
+      wait until valid = '1' for MAX_WAIT;
+      assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
       wait for 0 ns;
       got_val := result;
     end procedure;
@@ -682,7 +692,7 @@ begin
     run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_1234567, FP_RND_NEAREST, TV_TAN_1234567, FP80_TOL_5E2, "TAN(1234567)");
     run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_NEG_0P7, FP_RND_NEAREST, TV_TAN_NEG_0P7, FP80_TOL_5E2, "TAN(-0.7)");
     run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_NEG_2P3, FP_RND_NEAREST, TV_TAN_NEG_2P3, FP80_TOL_5E2, "TAN(-2.3)");
-    report "TAN: 15 transcendental tests passed" severity note;
+    report "TAN: 14 transcendental tests passed" severity note;
 
     -- ATAN: args are 0, 0.5, 1, 2, 10, 100, -1, -2
     run_monadic(FPU_OP_ATAN, FP80_ZERO, FP_RND_NEAREST, TV_ATAN_0, "ATAN(0) exact");
@@ -695,7 +705,7 @@ begin
     run_monadic_close(FPU_OP_ATAN, neg_fp80(TV_ARG_TWO), FP_RND_NEAREST, TV_ATAN_NEG_2, FP80_TOL_2E1, "ATAN(-2)");
     report "ATAN: 8 transcendental tests passed" severity note;
 
-    -- ETOX: args are 0, 0.5, 1, 2, -1, -10, 10, 0.01
+    -- ETOX: args are 0, 0.5, 1, 2, -1, -10, 10
     run_monadic(FPU_OP_ETOX, FP80_ZERO, FP_RND_NEAREST, TV_ETOX_0, "ETOX(0) exact");
     run_monadic_close(FPU_OP_ETOX, TV_ARG_HALF, FP_RND_NEAREST, TV_ETOX_0P5, FP80_TOL_1E3, "ETOX(0.5)");
     run_monadic_close(FPU_OP_ETOX, TV_ARG_ONE, FP_RND_NEAREST, TV_ETOX_1, FP80_TOL_1E3, "ETOX(1)");
@@ -705,7 +715,7 @@ begin
     run_monadic_close(FPU_OP_ETOX, fp80_from_int(10), FP_RND_NEAREST, TV_ETOX_10, FP80_TOL_1E2, "ETOX(10)");
     report "ETOX: 7 transcendental tests passed" severity note;
 
-    -- ETOXM1: args are 0, tiny, 0.01, 0.5, 1
+    -- ETOXM1: args are 0, 0.5, 1
     run_monadic(FPU_OP_ETOXM1, FP80_ZERO, FP_RND_NEAREST, TV_ETOXM1_0, "ETOXM1(0) exact");
     run_monadic_close(FPU_OP_ETOXM1, TV_ARG_HALF, FP_RND_NEAREST, TV_ETOXM1_0P5, FP80_TOL_1E3, "ETOXM1(0.5)");
     run_monadic_close(FPU_OP_ETOXM1, TV_ARG_ONE, FP_RND_NEAREST, TV_ETOXM1_1, FP80_TOL_1E3, "ETOXM1(1)");
@@ -719,7 +729,7 @@ begin
     run_monadic_close(FPU_OP_LOGN, TV_ARG_HALF, FP_RND_NEAREST, TV_LOGN_0P5, FP80_TOL_2E2, "LOGN(0.5)");
     report "LOGN: 5 transcendental tests passed" severity note;
 
-    -- LOGNP1: args are 0, 0.01, 0.5, 1
+    -- LOGNP1: args are 0, 0.5, 1
     run_monadic(FPU_OP_LOGNP1, FP80_ZERO, FP_RND_NEAREST, TV_LOGNP1_0, "LOGNP1(0) exact");
     run_monadic_close(FPU_OP_LOGNP1, TV_ARG_HALF, FP_RND_NEAREST, TV_LOGNP1_0P5, FP80_TOL_2E2, "LOGNP1(0.5)");
     run_monadic_close(FPU_OP_LOGNP1, TV_ARG_ONE, FP_RND_NEAREST, TV_LOGNP1_1, FP80_TOL_2E2, "LOGNP1(1)");
@@ -748,7 +758,7 @@ begin
     run_monadic_close(FPU_OP_TWOTOX, TV_ARG_HALF, FP_RND_NEAREST, TV_TWOTOX_0P5, FP80_TOL_1E3, "TWOTOX(0.5)");
     run_monadic(FPU_OP_TWOTOX, FP80_NEG_ONE, FP_RND_NEAREST, TV_TWOTOX_NEG_1, "TWOTOX(-1) exact");
     run_monadic_close(FPU_OP_TWOTOX, fp80_from_int(10), FP_RND_NEAREST, TV_TWOTOX_10, FP80_TOL_1E3, "TWOTOX(10)");
-    run_monadic_close(FPU_OP_TWOTOX, TV_ARG_HALF, FP_RND_NEAREST, TV_TWOTOX_0P5, FP80_TOL_1E3, "TWOTOX(0.25)");
+    run_monadic_close(FPU_OP_TWOTOX, FP80_QUARTER, FP_RND_NEAREST, TV_TWOTOX_0P25, FP80_TOL_1E3, "TWOTOX(0.25)");
     report "TWOTOX: 6 transcendental tests passed" severity note;
 
     -- TENTOX: args are 0, 1, 0.5, -1, 2, -2
@@ -905,12 +915,14 @@ begin
       wait until rising_edge(clk);
       start <= '0';
       wait for 0 ns;
-      wait until valid = '1';
+      wait until valid = '1' for MAX_WAIT;
+      assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
       wait for 0 ns;
       sin_val := result;
       -- aux_valid may be same cycle or later; wait if needed
       if aux_valid /= '1' then
-        wait until aux_valid = '1';
+        wait until aux_valid = '1' for MAX_WAIT;
+        assert aux_valid = '1' report "TIMEOUT waiting for aux_valid" severity failure;
         wait for 0 ns;
       end if;
       cos_val := aux_result;
@@ -928,11 +940,13 @@ begin
       wait until rising_edge(clk);
       start <= '0';
       wait for 0 ns;
-      wait until valid = '1';
+      wait until valid = '1' for MAX_WAIT;
+      assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
       wait for 0 ns;
       sin_val := result;
       if aux_valid /= '1' then
-        wait until aux_valid = '1';
+        wait until aux_valid = '1' for MAX_WAIT;
+        assert aux_valid = '1' report "TIMEOUT waiting for aux_valid" severity failure;
         wait for 0 ns;
       end if;
       cos_val := aux_result;
@@ -977,7 +991,8 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
+    wait until valid = '1' for MAX_WAIT;
+    assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
     wait for 0 ns;
     check_result_inf('0', "EXC: 1/0 = +inf");
     assert flag_divzero = '1'
@@ -993,7 +1008,8 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
+    wait until valid = '1' for MAX_WAIT;
+    assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
     wait for 0 ns;
     check_result_inf('1', "EXC: -1/0 = -inf");
     assert flag_divzero = '1'
@@ -1009,7 +1025,8 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
+    wait until valid = '1' for MAX_WAIT;
+    assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
     wait for 0 ns;
     -- Accept either NaN or infinity-like encoding (exp all ones)
     assert unsigned(result(78 downto 64)) = (14 downto 0 => '1')
@@ -1026,7 +1043,8 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
+    wait until valid = '1' for MAX_WAIT;
+    assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
     wait for 0 ns;
     check_result_nan("EXC: inf-inf = NaN");
     pass_count := pass_count + 1;
@@ -1042,7 +1060,8 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
+    wait until valid = '1' for MAX_WAIT;
+    assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
     wait for 0 ns;
     check_result_inf('1', "EXC: ln(0) = -inf");
     pass_count := pass_count + 1;
@@ -1059,7 +1078,8 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
+    wait until valid = '1' for MAX_WAIT;
+    assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
     wait for 0 ns;
     check_result_nan("EXC: inf*0 = NaN");
     pass_count := pass_count + 1;
@@ -1073,7 +1093,8 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
+    wait until valid = '1' for MAX_WAIT;
+    assert valid = '1' report "TIMEOUT waiting for valid" severity failure;
     wait for 0 ns;
     check_result_nan("EXC: NaN+1 = NaN");
     pass_count := pass_count + 1;

@@ -64,13 +64,13 @@ package mc68881_golden_vectors_pkg is
   constant TV_ADD_TINY_TINY_RM : fp80_t := x"00028000000000000000";
   constant TV_ADD_HUGE_ONE_RN : fp80_t := x"7FFE8000000000000000";
   constant TV_ADD_HUGE_ONE_RZ : fp80_t := x"7FFE8000000000000000";
-  constant TV_ADD_HUGE_ONE_RP : fp80_t := x"7FFE8000000000000000";
+  constant TV_ADD_HUGE_ONE_RP : fp80_t := x"7FFE8000000000000001";  -- rounds up: 1.0 lost but RP bumps ULP
   constant TV_ADD_HUGE_ONE_RM : fp80_t := x"7FFE8000000000000000";
   constant TV_ADD_CANCEL_RN : fp80_t := x"3FC08000000000000000";
   constant TV_ADD_CANCEL_RZ : fp80_t := x"3FC08000000000000000";
   constant TV_ADD_CANCEL_RP : fp80_t := x"3FC08000000000000000";
   constant TV_ADD_CANCEL_RM : fp80_t := x"3FC08000000000000000";
-  constant TV_ADD_THIRD_SEVENTH_RN : fp80_t := x"3FFDF3CF3CF3CF3CF3CF";
+  constant TV_ADD_THIRD_SEVENTH_RN : fp80_t := x"3FFDF3CF3CF3CF3CF3D0";  -- rounds up at tie
   constant TV_ADD_THIRD_SEVENTH_RZ : fp80_t := x"3FFDF3CF3CF3CF3CF3CF";
   constant TV_ADD_THIRD_SEVENTH_RP : fp80_t := x"3FFDF3CF3CF3CF3CF3D0";
   constant TV_ADD_THIRD_SEVENTH_RM : fp80_t := x"3FFDF3CF3CF3CF3CF3CF";
@@ -90,13 +90,13 @@ package mc68881_golden_vectors_pkg is
   constant TV_SUB_HUGE_HUGE_RZ : fp80_t := x"00000000000000000000";
   constant TV_SUB_HUGE_HUGE_RP : fp80_t := x"00000000000000000000";
   constant TV_SUB_HUGE_HUGE_RM : fp80_t := x"00000000000000000000";
-  constant TV_SUB_ONE_THIRD_RN : fp80_t := x"3FFEAAAAAAAAAAAAAAAB";
+  constant TV_SUB_ONE_THIRD_RN : fp80_t := x"3FFEAAAAAAAAAAAAAAAA";  -- 1/3 input rounded up, so result rounds down
   constant TV_SUB_ONE_THIRD_RZ : fp80_t := x"3FFEAAAAAAAAAAAAAAAA";
   constant TV_SUB_ONE_THIRD_RP : fp80_t := x"3FFEAAAAAAAAAAAAAAAB";
   constant TV_SUB_ONE_THIRD_RM : fp80_t := x"3FFEAAAAAAAAAAAAAAAA";
   constant TV_SUB_TINY_SMALL_RN : fp80_t := x"BFD78000000000000000";
-  constant TV_SUB_TINY_SMALL_RZ : fp80_t := x"BFD78000000000000000";
-  constant TV_SUB_TINY_SMALL_RP : fp80_t := x"BFD78000000000000000";
+  constant TV_SUB_TINY_SMALL_RZ : fp80_t := x"BFD6FFFFFFFFFFFFFFFF";  -- toward zero: slightly less magnitude
+  constant TV_SUB_TINY_SMALL_RP : fp80_t := x"BFD6FFFFFFFFFFFFFFFF";  -- toward +inf for neg = toward zero
   constant TV_SUB_TINY_SMALL_RM : fp80_t := x"BFD78000000000000000";
   constant TV_SUB_THREE_TWO_RN : fp80_t := x"3FFF8000000000000000";
   constant TV_SUB_THREE_TWO_RZ : fp80_t := x"3FFF8000000000000000";
@@ -104,16 +104,16 @@ package mc68881_golden_vectors_pkg is
   constant TV_SUB_THREE_TWO_RM : fp80_t := x"3FFF8000000000000000";
   constant TV_MUL_THIRD_THREE_RN : fp80_t := x"3FFF8000000000000000";
   constant TV_MUL_THIRD_THREE_RZ : fp80_t := x"3FFF8000000000000000";
-  constant TV_MUL_THIRD_THREE_RP : fp80_t := x"3FFF8000000000000000";
+  constant TV_MUL_THIRD_THREE_RP : fp80_t := x"3FFF8000000000000001";  -- 1/3 rounded up × 3, RP rounds up
   constant TV_MUL_THIRD_THREE_RM : fp80_t := x"3FFF8000000000000000";
   constant TV_MUL_SEVENTH_SEVEN_RN : fp80_t := x"3FFF8000000000000000";
-  constant TV_MUL_SEVENTH_SEVEN_RZ : fp80_t := x"3FFF8000000000000000";
+  constant TV_MUL_SEVENTH_SEVEN_RZ : fp80_t := x"3FFEFFFFFFFFFFFFFFFF";  -- 1/7 truncated × 7, slightly below 1.0
   constant TV_MUL_SEVENTH_SEVEN_RP : fp80_t := x"3FFF8000000000000000";
-  constant TV_MUL_SEVENTH_SEVEN_RM : fp80_t := x"3FFF8000000000000000";
-  constant TV_MUL_TINY_HALF_RN : fp80_t := x"00000000000000000000";
-  constant TV_MUL_TINY_HALF_RZ : fp80_t := x"00000000000000000000";
-  constant TV_MUL_TINY_HALF_RP : fp80_t := x"00000000000000000000";
-  constant TV_MUL_TINY_HALF_RM : fp80_t := x"00000000000000000000";
+  constant TV_MUL_SEVENTH_SEVEN_RM : fp80_t := x"3FFEFFFFFFFFFFFFFFFF";  -- toward -inf = truncate for positive
+  constant TV_MUL_TINY_HALF_RN : fp80_t := x"00004000000000000000";  -- gradual underflow: min_normal/2 = max subnormal
+  constant TV_MUL_TINY_HALF_RZ : fp80_t := x"00004000000000000000";
+  constant TV_MUL_TINY_HALF_RP : fp80_t := x"00004000000000000000";
+  constant TV_MUL_TINY_HALF_RM : fp80_t := x"00004000000000000000";
   constant TV_MUL_HUGE_TWO_RN : fp80_t := x"7FFF8000000000000000";
   constant TV_MUL_HUGE_TWO_RZ : fp80_t := x"7FFF8000000000000000";
   constant TV_MUL_HUGE_TWO_RP : fp80_t := x"7FFF8000000000000000";
@@ -142,10 +142,10 @@ package mc68881_golden_vectors_pkg is
   constant TV_DIV_PI_E_RZ : fp80_t := x"3FFF93EEDFB138EDEF7E";
   constant TV_DIV_PI_E_RP : fp80_t := x"3FFF93EEDFB138EDEF7F";
   constant TV_DIV_PI_E_RM : fp80_t := x"3FFF93EEDFB138EDEF7E";
-  constant TV_DIV_TINY_TWO_RN : fp80_t := x"00000000000000000000";
-  constant TV_DIV_TINY_TWO_RZ : fp80_t := x"00000000000000000000";
-  constant TV_DIV_TINY_TWO_RP : fp80_t := x"00000000000000000000";
-  constant TV_DIV_TINY_TWO_RM : fp80_t := x"00000000000000000000";
+  constant TV_DIV_TINY_TWO_RN : fp80_t := x"00004000000000000000";  -- gradual underflow: min_normal/2
+  constant TV_DIV_TINY_TWO_RZ : fp80_t := x"00004000000000000000";
+  constant TV_DIV_TINY_TWO_RP : fp80_t := x"00004000000000000000";
+  constant TV_DIV_TINY_TWO_RM : fp80_t := x"00004000000000000000";
   constant TV_DIV_NEG_POS_RN : fp80_t := x"BFFDAAAAAAAAAAAAAAAB";
   constant TV_DIV_NEG_POS_RZ : fp80_t := x"BFFDAAAAAAAAAAAAAAAA";
   constant TV_DIV_NEG_POS_RP : fp80_t := x"BFFDAAAAAAAAAAAAAAAA";
@@ -163,9 +163,9 @@ package mc68881_golden_vectors_pkg is
   constant TV_SQRT_HALF_RP : fp80_t := x"3FFEB504F333F9DE6485";
   constant TV_SQRT_HALF_RM : fp80_t := x"3FFEB504F333F9DE6484";
   constant TV_SQRT_PI_RN : fp80_t := x"3FFFE2DFC48DA77B553D";
-  constant TV_SQRT_PI_RZ : fp80_t := x"3FFFE2DFC48DA77B553C";
-  constant TV_SQRT_PI_RP : fp80_t := x"3FFFE2DFC48DA77B553D";
-  constant TV_SQRT_PI_RM : fp80_t := x"3FFFE2DFC48DA77B553C";
+  constant TV_SQRT_PI_RZ : fp80_t := x"3FFFE2DFC48DA77B553D";  -- truncate = floor for positive
+  constant TV_SQRT_PI_RP : fp80_t := x"3FFFE2DFC48DA77B553E";  -- round up = ceil for positive
+  constant TV_SQRT_PI_RM : fp80_t := x"3FFFE2DFC48DA77B553D";  -- round toward -inf = floor for positive
   constant TV_SQRT_TINY_RN : fp80_t := x"20008000000000000000";
   constant TV_SQRT_TINY_RZ : fp80_t := x"20008000000000000000";
   constant TV_SQRT_TINY_RP : fp80_t := x"20008000000000000000";

@@ -124,6 +124,12 @@ architecture rtl of mc68881_trig_unit is
     ST_ATANH_DIV_POST,
     ST_ATANH_HALF_PREP,
     ST_ATANH_HALF_POST,
+    ST_LOG_TABLE_INDEX,
+    ST_LOG_TABLE_WAIT,
+    ST_LOG_TABLE_LATCH,
+    ST_LOG_DELTA_PREP,
+    ST_LOG_DELTA_POST,
+    ST_LOG_U_POST,
     ST_FP_SQRT,
     ST_TRANS_PREP,
     ST_TRANS_ADD_PREP,
@@ -419,6 +425,140 @@ architecture rtl of mc68881_trig_unit is
      3 => FP80_INV_LN10,
     others => FP80_ONE
   );
+  -- Table-assisted LOG range reduction: center points c_i = 1 + (2i+1)/128
+  constant LOG_CENTER_INIT : fp80_table64_t := (
+     0 => x"3FFF8100000000000000",
+     1 => x"3FFF8300000000000000",
+     2 => x"3FFF8500000000000000",
+     3 => x"3FFF8700000000000000",
+     4 => x"3FFF8900000000000000",
+     5 => x"3FFF8B00000000000000",
+     6 => x"3FFF8D00000000000000",
+     7 => x"3FFF8F00000000000000",
+     8 => x"3FFF9100000000000000",
+     9 => x"3FFF9300000000000000",
+    10 => x"3FFF9500000000000000",
+    11 => x"3FFF9700000000000000",
+    12 => x"3FFF9900000000000000",
+    13 => x"3FFF9B00000000000000",
+    14 => x"3FFF9D00000000000000",
+    15 => x"3FFF9F00000000000000",
+    16 => x"3FFFA100000000000000",
+    17 => x"3FFFA300000000000000",
+    18 => x"3FFFA500000000000000",
+    19 => x"3FFFA700000000000000",
+    20 => x"3FFFA900000000000000",
+    21 => x"3FFFAB00000000000000",
+    22 => x"3FFFAD00000000000000",
+    23 => x"3FFFAF00000000000000",
+    24 => x"3FFFB100000000000000",
+    25 => x"3FFFB300000000000000",
+    26 => x"3FFFB500000000000000",
+    27 => x"3FFFB700000000000000",
+    28 => x"3FFFB900000000000000",
+    29 => x"3FFFBB00000000000000",
+    30 => x"3FFFBD00000000000000",
+    31 => x"3FFFBF00000000000000",
+    32 => x"3FFFC100000000000000",
+    33 => x"3FFFC300000000000000",
+    34 => x"3FFFC500000000000000",
+    35 => x"3FFFC700000000000000",
+    36 => x"3FFFC900000000000000",
+    37 => x"3FFFCB00000000000000",
+    38 => x"3FFFCD00000000000000",
+    39 => x"3FFFCF00000000000000",
+    40 => x"3FFFD100000000000000",
+    41 => x"3FFFD300000000000000",
+    42 => x"3FFFD500000000000000",
+    43 => x"3FFFD700000000000000",
+    44 => x"3FFFD900000000000000",
+    45 => x"3FFFDB00000000000000",
+    46 => x"3FFFDD00000000000000",
+    47 => x"3FFFDF00000000000000",
+    48 => x"3FFFE100000000000000",
+    49 => x"3FFFE300000000000000",
+    50 => x"3FFFE500000000000000",
+    51 => x"3FFFE700000000000000",
+    52 => x"3FFFE900000000000000",
+    53 => x"3FFFEB00000000000000",
+    54 => x"3FFFED00000000000000",
+    55 => x"3FFFEF00000000000000",
+    56 => x"3FFFF100000000000000",
+    57 => x"3FFFF300000000000000",
+    58 => x"3FFFF500000000000000",
+    59 => x"3FFFF700000000000000",
+    60 => x"3FFFF900000000000000",
+    61 => x"3FFFFB00000000000000",
+    62 => x"3FFFFD00000000000000",
+    63 => x"3FFFFF00000000000000"
+  );
+  -- Table-assisted LOG range reduction: ln(c_i)
+  constant LOG_LN_CENTER_INIT : fp80_table64_t := (
+     0 => x"3FF7FF015358833C4800",
+     1 => x"3FF9BDC8D83EAD88D800",
+     2 => x"3FFA9CF43DCFF5EB0000",
+     3 => x"3FFADA16EB88CB8DF800",
+     4 => x"3FFB8B29B7751BD70800",
+     5 => x"3FFBA8D839F830C1F800",
+     6 => x"3FFBC61A2EB18CD90800",
+     7 => x"3FFBE2F2A47ADE3A1800",
+     8 => x"3FFBFF64898EDF55D800",
+     9 => x"3FFC8DB956A97B3D0000",
+    10 => x"3FFC9B8FE100F47BA000",
+    11 => x"3FFCA9372F1D0DA1C000",
+    12 => x"3FFCB6B07F38CE90E800",
+    13 => x"3FFCC3FD032906488800",
+    14 => x"3FFCD11DE0FF15AB1800",
+    15 => x"3FFCDE1433A16C66B000",
+    16 => x"3FFCEAE10B5A7DDC8800",
+    17 => x"3FFCF7856E5EE2C9B000",
+    18 => x"3FFD82012CA5A6820800",
+    19 => x"3FFD882C5FCD7256A800",
+    20 => x"3FFD8E44C60B4CCFD800",
+    21 => x"3FFD944AD09EF4351800",
+    22 => x"3FFD9A3EECD4C3EAA800",
+    23 => x"3FFDA0218434353F2000",
+    24 => x"3FFDA5F2FCABBBC50800",
+    25 => x"3FFDABB3B8BA2AD36000",
+    26 => x"3FFDB1641795CE3CA800",
+    27 => x"3FFDB70475515D0F2000",
+    28 => x"3FFDBC952AFEEA3D1000",
+    29 => x"3FFDC2168ED0F458B800",
+    30 => x"3FFDC788F439B3163800",
+    31 => x"3FFDCCECAC08BF045800",
+    32 => x"3FFDD24204872DD85000",
+    33 => x"3FFDD78949923BC35800",
+    34 => x"3FFDDCC2C4B49887D800",
+    35 => x"3FFDE1EEBD3E6D6A6800",
+    36 => x"3FFDE70D785C2F9F5800",
+    37 => x"3FFDEC1F392C5179F000",
+    38 => x"3FFDF12440D3E3613000",
+    39 => x"3FFDF61CCE9234660000",
+    40 => x"3FFDFB091FD381456000",
+    41 => x"3FFDFFE97042BFA4C000",
+    42 => x"3FFE825EFCED49369000",
+    43 => x"3FFE84C37A7AB9A90800",
+    44 => x"3FFE87224C2E8E646000",
+    45 => x"3FFE897B8CAC9F7DE000",
+    46 => x"3FFE8BCF55DEC4CD0800",
+    47 => x"3FFE8E1DC0FB89E12800",
+    48 => x"3FFE9066E68C955B7000",
+    49 => x"3FFE92AADE74C7BE5800",
+    50 => x"3FFE94E9BFF615845800",
+    51 => x"3FFE9723A1B720134000",
+    52 => x"3FFE995899C890EB8800",
+    53 => x"3FFE9B88BDAA3A3DB000",
+    54 => x"3FFE9DB4224FFFE11800",
+    55 => x"3FFE9FDADC268B7A1000",
+    56 => x"3FFEA1FCFF17CE733800",
+    57 => x"3FFEA41A9E8F5446F800",
+    58 => x"3FFEA633CD7E6771D000",
+    59 => x"3FFEA8489E600B435800",
+    60 => x"3FFEAA59233CCCA4C000",
+    61 => x"3FFEAC656DAE6BCC4800",
+    62 => x"3FFEAE6D8EE360BB2800",
+    63 => x"3FFEB07197A23C46C800"
+  );
   constant ATAN_CENTER_INIT : fp80_table64_t := (
      0 => x"3FF88000000000000000",
      1 => x"3FF9C000000000000000",
@@ -619,6 +759,8 @@ architecture rtl of mc68881_trig_unit is
   signal log_seed_post_scale_rom : fp80_table64_t := LOG_SEED_POST_SCALE_INIT;
   signal atan_center_rom : fp80_table64_t := ATAN_CENTER_INIT;
   signal atan_seed_offset_rom : fp80_table64_t := ATAN_SEED_OFFSET_INIT;
+  signal log_center_rom : fp80_table64_t := LOG_CENTER_INIT;
+  signal log_ln_center_rom : fp80_table64_t := LOG_LN_CENTER_INIT;
   attribute rom_style : string;
   attribute rom_style of trig_seed_center_rom : signal is "block";
   attribute rom_style of trig_seed_sin_rom : signal is "block";
@@ -628,6 +770,12 @@ architecture rtl of mc68881_trig_unit is
   attribute rom_style of log_seed_post_scale_rom : signal is "block";
   attribute rom_style of atan_center_rom : signal is "block";
   attribute rom_style of atan_seed_offset_rom : signal is "block";
+  attribute rom_style of log_center_rom : signal is "block";
+  attribute rom_style of log_ln_center_rom : signal is "block";
+
+  signal log_table_addr_reg : integer range 0 to 63 := 0;
+  signal log_center_q : fp80_t := (others => '0');
+  signal log_ln_center_q : fp80_t := (others => '0');
 
   signal trans_pre_mul_en_reg : std_logic := '0';
   signal trans_pre_mul_const_reg : fp80_t := (others => '0');
@@ -866,6 +1014,8 @@ begin
       log_seed_post_scale_q <= log_seed_post_scale_rom(aux_seed_addr_reg);
       atan_seed_offset_q <= atan_seed_offset_rom(aux_seed_addr_reg);
       atan_center_q <= atan_center_rom(aux_seed_addr_reg);
+      log_center_q <= log_center_rom(log_table_addr_reg);
+      log_ln_center_q <= log_ln_center_rom(log_table_addr_reg);
     end if;
   end process;
 
@@ -924,6 +1074,7 @@ begin
       seed_aux0_reg <= (others => '0');
       seed_aux1_reg <= (others => '0');
       trig_seed_addr_reg <= 0;
+      log_table_addr_reg <= 0;
       r_reg <= (others => '0');
       s_reg <= (others => '0');
       c_reg <= (others => '0');
@@ -1235,7 +1386,7 @@ begin
                   trans_post_add_sub_reg <= '0';
                   seed_domain_reg <= SEED_DOMAIN_LOG;
                   seed_idx_reg <= 0;
-                  seed_return_state_reg <= ST_TRANS_PREP;
+                  seed_return_state_reg <= ST_LOG_TABLE_INDEX;
                   state_reg <= ST_LOG_GETEXP;
                 end if;
 
@@ -1301,7 +1452,7 @@ begin
                   trans_post_add_sub_reg <= '0';
                   seed_domain_reg <= SEED_DOMAIN_LOG;
                   seed_idx_reg <= 2;
-                  seed_return_state_reg <= ST_TRANS_PREP;
+                  seed_return_state_reg <= ST_LOG_TABLE_INDEX;
                   state_reg <= ST_LOG_GETEXP;
                 end if;
 
@@ -1341,7 +1492,7 @@ begin
                   trans_post_add_sub_reg <= '0';
                   seed_domain_reg <= SEED_DOMAIN_LOG;
                   seed_idx_reg <= 3;
-                  seed_return_state_reg <= ST_TRANS_PREP;
+                  seed_return_state_reg <= ST_LOG_TABLE_INDEX;
                   state_reg <= ST_LOG_GETEXP;
                 end if;
 
@@ -2254,7 +2405,7 @@ begin
           trans_post_add_sub_reg <= '0';
           seed_domain_reg <= SEED_DOMAIN_LOG;
           seed_idx_reg <= 0;
-          seed_return_state_reg <= ST_TRANS_PREP;
+          seed_return_state_reg <= ST_LOG_TABLE_INDEX;
           x_reg <= x_local;
           state_reg <= ST_LOGNP1_META_POST;
 
@@ -2488,7 +2639,7 @@ begin
           trans_post_add_sub_reg <= '0';
           seed_domain_reg <= SEED_DOMAIN_LOG;
           seed_idx_reg <= 0;
-          seed_return_state_reg <= ST_TRANS_PREP;
+          seed_return_state_reg <= ST_LOG_TABLE_INDEX;
           state_reg <= ST_LOG_GETEXP;
 
         when ST_ATANH_HALF_PREP =>
@@ -2515,6 +2666,53 @@ begin
             state_reg <= cont_state_reg;
             fp_exec_busy_reg <= '0';
           end if;
+
+        -- ================================================================
+        -- LOG Table-Assisted Range Reduction States
+        -- ================================================================
+        when ST_LOG_TABLE_INDEX =>
+          -- x_reg = m = mantissa in [1, 2) from fgetman
+          -- Index = top 6 fractional bits = bits [62:57]
+          log_table_addr_reg <= to_integer(unsigned(x_reg(62 downto 57)));
+          state_reg <= ST_LOG_TABLE_WAIT;
+
+        when ST_LOG_TABLE_WAIT =>
+          -- BRAM read latency
+          state_reg <= ST_LOG_TABLE_LATCH;
+
+        when ST_LOG_TABLE_LATCH =>
+          -- Latch c_i and ln(c_i) from tables
+          c_reg <= log_center_q;           -- c_i (save for division)
+          coeff0_reg <= log_ln_center_q;   -- ln(c_i) as polynomial constant term
+          state_reg <= ST_LOG_DELTA_PREP;
+
+        when ST_LOG_DELTA_PREP =>
+          -- Compute delta = m - c_i
+          add_a_reg <= x_reg;              -- m
+          add_b_reg <= c_reg;              -- c_i
+          add_sub_reg <= true;             -- subtraction
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_LOG_DELTA_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_LOG_DELTA_POST =>
+          -- tmp_reg = m - c_i (delta), compute u = delta / c_i
+          div_a_reg <= tmp_reg;            -- delta
+          div_b_reg <= c_reg;              -- c_i
+          div_rm_reg <= FP_RND_NEAREST;
+          div_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_LOG_U_POST;
+          state_reg <= ST_FP_DIV;
+
+        when ST_LOG_U_POST =>
+          -- tmp_reg = u = (m - c_i) / c_i, a small value |u| < 1/128
+          x_reg <= tmp_reg;
+          -- Disable input adjust since we already computed u
+          trans_input_adjust_en_reg <= '0';
+          -- coeff0_reg already set to ln(c_i) in ST_LOG_TABLE_LATCH
+          -- Continue to polynomial via ST_TRANS_PREP (which will skip input adjust)
+          state_reg <= ST_TRANS_PREP;
 
         when ST_TRANS_PREP =>
           if trans_input_adjust_en_reg = '1' then

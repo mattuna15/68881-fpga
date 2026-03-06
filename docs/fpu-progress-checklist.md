@@ -148,9 +148,14 @@ B) Functional Completeness (Core Missing Ops)
 
 C) Exception Handling & Edge Cases
 ----------------------------------
-[~] C1. Add denormal handling coverage.
-    - Define flush/denormal rules per MC68881 behavior.
-    - In progress: subnormal input/output checks exist for sqrt/trig/trans and integer-conversion paths.
+[x] C1. Add denormal handling coverage.
+    - MC68881 normalizes denormalized inputs before arithmetic (biased exp 0 → true exp 1 - lz).
+    - Subnormal input normalization added to: add_sub_fp80, mul_fp80, div_fp80, fscale_fp80,
+      mc68881_fp80_mul_unit (ST_UNPACK), mc68881_fp80_addsub_unit (ST_UNPACK),
+      mc68881_divrem_unit (DIV and MOD/REM dispatch).
+    - Subnormal (gradual underflow) output added to: add_sub_fp80, mul_fp80, div_fp80,
+      mc68881_fp80_mul_unit (ST_NORM_ROUND), mc68881_fp80_addsub_unit (ST_NORM_ROUND).
+    - Tests: FADD(subnormal,0)=identity, FMUL(subnormal,2)=doubled, FDIV(subnormal,1)=identity.
 
 [x] C2. Improve NaN propagation details.
     - SNaN vs QNaN discrimination implemented (DEF-DIVREM-002, closed).
@@ -167,41 +172,33 @@ C) Exception Handling & Edge Cases
     - FIXED: FPCP-generated NaN pattern corrected. canonical_qnan/canonical_nan
       now returns all-ones mantissa (0xFFFFFFFFFFFFFFFF) per datasheet.
 
-[~] C3. Expand exception detection tests.
-    - Invalid, divzero, overflow, underflow, inexact for new ops.
-    - In progress: invalid/divzero coverage is exercised; overflow/underflow/inexact matrix is still incomplete.
-    - REVIEW FINDING (medium): Exception granularity is 5 bits instead of 8.
-      Code has INVALID, OVERFLOW, UNDERFLOW, DIVZERO, INEXACT. Datasheet defines
-      BSUN, SNAN, OPERR, OVFL, UNFL, DZ, INEX2, INEX1. Missing: BSUN (for B6
-      conditional instructions), SNAN vs OPERR distinction (different trap vectors
-      54 vs 52), INEX1 vs INEX2 (packed decimal input inexact).
-    - REVIEW FINDING (medium): Transcendental divide-by-zero not detected. FLOG(0),
-      FLOG2(0), FLOG10(0) should set DZ. FATANH(+/-1) should also set DZ. These
-      use EXC_POLICY_ARITH which has divzero disabled.
-    - FIXED: FTAN exception policy changed from EXC_POLICY_DIV to EXC_POLICY_ARITH.
-    - FIXED: FLOGN(0), FLOG10(0), FLOG2(0) now return -infinity and set DZ exception.
-      Added EXC_POLICY_LOG with divzero_on_zero_input flag. Trig unit split
-      zero/negative conditions to produce correct result per datasheet.
-    - REMAINING: FATANH(+/-1) and FLOGNP1(-1) still return NaN instead of +-infinity
-      with DZ. Requires trig unit DZ output port or per-op value comparison.
+[x] C3. Expand exception detection tests.
+    - FPSR EXC byte remapped to MC68881 8-bit layout: INEX1(0), INEX2(1), DZ(2),
+      UNFL(3), OVFL(4), OPERR(5), SNAN(6), BSUN(7).
+    - FPCR enable byte mirrors EXC at bits 15-8.
+    - INVALID split into SNAN (signaling NaN input) and OPERR (domain error).
+      OPERR guarded against NaN propagation (not a_nan and not b_nan).
+    - INEXACT mapped to INEX2 (arithmetic inexact). INEX1 reserved for packed decimal.
+    - FPSR AEXC byte: 5-bit MC68881 layout with IOP = SNAN|OPERR,
+      UNFL = UNFL AND (INEX2|INEX1), INEX = INEX2|INEX1|OVFL.
+    - CIR vector selection: BSUN > SNAN > OPERR > OVFL > UNFL > DZ > INEX2 > INEX1.
+    - Tests: SNAN vs OPERR discrimination (CIR T46A/T46B), SNAN > DZ priority (T46).
+    - FATANH(+/-1) and FLOGNP1(-1) DZ already fixed in prior work.
 
-[~] C4. Complete FPCR/FPSR architectural fields.
-    - FPCR exception-enable byte semantics.
-    - FPSR condition code, quotient, exception status, accrued exception bytes.
-    - In progress: per-op policy flow (A8) and key FPSR behavior are in place; full architectural closure remains.
-    - FIXED: FPSR EXC/AEXC byte positions corrected. EXC status byte now at
-      bits 15-8, Accrued byte at bits 7-0 per datasheet.
-    - FIXED: EXC status byte now cleared then set per operation (Section 2.3.3).
-    - FIXED: AEXC combination logic corrected per datasheet:
-      AEXC(UNFL) = UNFL AND INEX; AEXC(INEX) = INEX OR OVFL.
-    - REVIEW FINDING (medium): FPCR exception enable byte (bits 15-8) stored but
-      never consulted. No exception trapping is implemented.
-    - FIXED: fpsr_cc_from_result now sets N bit independently from sign, per
-      Table 2-1. -Infinity correctly sets N=1,I=1; -Zero sets N=1,Z=1.
+[x] C4. Complete FPCR/FPSR architectural fields.
+    - FPCR exception-enable byte implemented: enables checked in CIR_EXECUTE_DONE
+      for all 8 exception types (BSUN, SNAN, OPERR, OVFL, UNFL, DZ, INEX2, INEX1).
+    - FPSR EXC/AEXC byte positions at bits 15-8 and 7-0 per datasheet.
+    - EXC status byte cleared then set per operation (Section 2.3.3).
+    - AEXC combination logic per datasheet Table 2-2.
+    - CIR post-instruction exception trapping with correct vector selection.
+    - fpsr_cc_from_result sets N bit independently from sign per Table 2-1.
 
-[~] C5. Track FPIAR behavior across exceptions and restart points.
-    - Verify faulting instruction address capture and restore interactions.
-    - In progress: exception-time FPIAR capture checks exist for top-level flows; restart-corner coverage remains.
+[x] C5. Track FPIAR behavior across exceptions and restart points.
+    - fpiar_issue_snapshot_reg captures CIR instruction PC at issue time.
+    - On exception (exc_flags /= x"00"), FPIAR restored from snapshot per capture_fpiar_on_exception policy.
+    - FMOVEM read/write of FPIAR register fully functional.
+    - CIR dialog testbench verifies FPIAR capture across exception flows.
 
 D) Verification / Testbench Coverage
 ------------------------------------

@@ -2810,6 +2810,45 @@ begin
     run_monadic_exact(FPU_OP_TST, FP80_ARG_M2P3, FP80_ARG_M2P3, "FTST -2.3 passthrough");
     run_monadic_exact(FPU_OP_TST, FP80_ARG_12P5, FP80_ARG_12P5, "FTST 12.5 passthrough");
 
+    -- Subnormal arithmetic: verify denormal inputs are correctly normalized
+    -- and subnormal outputs are correctly generated.
+
+    -- FADD(subnormal, 0) → subnormal unchanged (zero shortcut).
+    op_sel <= FPU_OP_ADD;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(SUBNORMAL_POS, "ADD subnormal+0 identity");
+
+    -- FMUL(subnormal, 2.0) → exp=0, mant=2 (doubled subnormal).
+    op_sel <= FPU_OP_MUL;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= fp80_from_int(2);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(x"00000000000000000002", "MUL subnormal*2");
+
+    -- FDIV(subnormal, 1.0) → subnormal unchanged.
+    op_sel <= FPU_OP_DIV;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(SUBNORMAL_POS, "DIV subnormal/1 identity");
+
     std.env.stop;
     wait;
   end process;

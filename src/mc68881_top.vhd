@@ -305,18 +305,34 @@ architecture rtl of mc68881_top is
   constant FPSR_AEXC_MSB    : natural := 7;
   constant FPSR_EXC_LSB     : natural := 8;
   constant FPSR_EXC_MSB     : natural := 15;
-  constant FPSR_EXC_INEXACT  : natural := 0;
-  constant FPSR_EXC_UNDERFLOW: natural := 1;
-  constant FPSR_EXC_OVERFLOW : natural := 2;
-  constant FPSR_EXC_DIVZERO  : natural := 3;
-  constant FPSR_EXC_INVALID  : natural := 4;
-  constant FPSR_EXC_BSUN     : natural := 7;
-  constant FPCR_EXC_EN_INEXACT  : natural := 8;
-  constant FPCR_EXC_EN_UNDERFLOW: natural := 9;
-  constant FPCR_EXC_EN_OVERFLOW : natural := 10;
-  constant FPCR_EXC_EN_DIVZERO  : natural := 11;
-  constant FPCR_EXC_EN_INVALID  : natural := 12;
-  constant FPCR_EXC_EN_BSUN    : natural := 15;
+  -- MC68881 FPSR EXC byte layout (Table 2-2): bits [15:8] of FPSR.
+  -- Constants are offsets within the 8-bit EXC byte.
+  constant FPSR_EXC_INEX1  : natural := 0;  -- Packed decimal input inexact
+  constant FPSR_EXC_INEX2  : natural := 1;  -- Arithmetic result inexact
+  constant FPSR_EXC_DZ     : natural := 2;  -- Divide by zero
+  constant FPSR_EXC_UNFL   : natural := 3;  -- Underflow
+  constant FPSR_EXC_OVFL   : natural := 4;  -- Overflow
+  constant FPSR_EXC_OPERR  : natural := 5;  -- Operand error (domain)
+  constant FPSR_EXC_SNAN   : natural := 6;  -- Signaling NaN
+  constant FPSR_EXC_BSUN   : natural := 7;  -- Branch/set on unordered
+
+  -- MC68881 FPCR exception enable bits (mirror EXC byte, offset by 8).
+  constant FPCR_EXC_EN_INEX1  : natural := 8;
+  constant FPCR_EXC_EN_INEX2  : natural := 9;
+  constant FPCR_EXC_EN_DZ     : natural := 10;
+  constant FPCR_EXC_EN_UNFL   : natural := 11;
+  constant FPCR_EXC_EN_OVFL   : natural := 12;
+  constant FPCR_EXC_EN_OPERR  : natural := 13;
+  constant FPCR_EXC_EN_SNAN   : natural := 14;
+  constant FPCR_EXC_EN_BSUN   : natural := 15;
+
+  -- MC68881 FPSR AEXC byte layout (Table 2-2): bits [7:0] of FPSR.
+  -- AEXC has its own 5-bit layout, different from EXC.
+  constant FPSR_AEXC_INEX : natural := 0;
+  constant FPSR_AEXC_DZ   : natural := 1;
+  constant FPSR_AEXC_UNFL : natural := 2;
+  constant FPSR_AEXC_OVFL : natural := 3;
+  constant FPSR_AEXC_IOP  : natural := 4;
 
   type access_class_t is (
     ACCESS_NONE,
@@ -2024,71 +2040,75 @@ begin
         res_nan := fp80_is_nan(class_result);
         res_subnormal := fp80_exp_is_zero_nonzero_mant(class_result);
 
+        -- SNAN: signaling NaN input triggers SNAN exception.
         if exc_policy.invalid_on_nan_inputs and
            (fp80_is_snan(class_opa) or fp80_is_snan(class_opb)) then
-          exc_flags(FPSR_EXC_INVALID) := '1';
+          exc_flags(FPSR_EXC_SNAN) := '1';
         end if;
 
-        if exc_policy.invalid_on_nan_result and res_nan then
-          exc_flags(FPSR_EXC_INVALID) := '1';
+        -- OPERR: domain error producing NaN result (not from NaN input propagation).
+        if exc_policy.invalid_on_nan_result and res_nan and not a_nan and not b_nan then
+          exc_flags(FPSR_EXC_OPERR) := '1';
         end if;
 
         if exc_policy.divzero_on_zero_divisor_nonzero_dividend then
           if b_zero and not a_zero then
-            exc_flags(FPSR_EXC_DIVZERO) := '1';
+            exc_flags(FPSR_EXC_DZ) := '1';
           end if;
         end if;
 
         -- Transcendental singularity: log(0) = -infinity is DZ, not OVERFLOW.
         if exc_policy.divzero_on_zero_input and a_zero then
-          exc_flags(FPSR_EXC_DIVZERO) := '1';
+          exc_flags(FPSR_EXC_DZ) := '1';
         end if;
 
         -- Trig/divrem unit explicit DZ flag (FLOGNP1(-1), FATANH(±1), etc.)
         if class_divzero = '1' then
-          exc_flags(FPSR_EXC_DIVZERO) := '1';
+          exc_flags(FPSR_EXC_DZ) := '1';
         end if;
 
+        -- OPERR: 0/0, inf/inf, SQRT(negative), etc.
         if exc_policy.invalid_zero_over_zero and a_zero and b_zero then
-          exc_flags(FPSR_EXC_INVALID) := '1';
+          exc_flags(FPSR_EXC_OPERR) := '1';
         end if;
 
         if exc_policy.invalid_inf_over_inf and a_inf and b_inf then
-          exc_flags(FPSR_EXC_INVALID) := '1';
+          exc_flags(FPSR_EXC_OPERR) := '1';
         end if;
 
         if exc_policy.invalid_divisor_zero then
           if b_zero then
-            exc_flags(FPSR_EXC_INVALID) := '1';
+            exc_flags(FPSR_EXC_OPERR) := '1';
           end if;
         end if;
 
         if exc_policy.classify_overflow_underflow then
           if class_force_overflow = '1' then
-            exc_flags(FPSR_EXC_OVERFLOW) := '1';
+            exc_flags(FPSR_EXC_OVFL) := '1';
           end if;
 
           if class_force_underflow = '1' then
-            exc_flags(FPSR_EXC_UNDERFLOW) := '1';
+            exc_flags(FPSR_EXC_UNFL) := '1';
           end if;
 
           if res_inf and not a_inf and not b_inf and not res_nan and
-             exc_flags(FPSR_EXC_DIVZERO) = '0' then
-            exc_flags(FPSR_EXC_OVERFLOW) := '1';
+             exc_flags(FPSR_EXC_DZ) = '0' then
+            exc_flags(FPSR_EXC_OVFL) := '1';
           end if;
 
           if (res_zero or res_subnormal) and not a_zero and not b_zero and not res_nan and not res_inf then
-            exc_flags(FPSR_EXC_UNDERFLOW) := '1';
+            exc_flags(FPSR_EXC_UNFL) := '1';
           end if;
 
-          if exc_flags(FPSR_EXC_OVERFLOW) = '1' or exc_flags(FPSR_EXC_UNDERFLOW) = '1'
+          if exc_flags(FPSR_EXC_OVFL) = '1' or exc_flags(FPSR_EXC_UNFL) = '1'
              or class_force_inexact = '1' then
-            exc_flags(FPSR_EXC_INEXACT) := '1';
+            exc_flags(FPSR_EXC_INEX2) := '1';
           end if;
         end if;
 
+        -- class_force_invalid: packed BCD invalid, FGETEXP/FGETMAN infinity, etc.
         if class_force_invalid = '1' then
-          exc_flags(FPSR_EXC_INVALID) := '1';
+          exc_flags(FPSR_EXC_OPERR) := '1';
         end if;
 
         if class_force_bsun = '1' then
@@ -2097,27 +2117,23 @@ begin
 
         if exc_policy.update_exc_status then
           -- Datasheet Section 2.3.3: EXC byte is cleared then set per operation.
-          exc_status_byte := (others => '0');
-          exc_status_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) := exc_flags(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT);
-          exc_status_byte(FPSR_EXC_BSUN) := exc_flags(FPSR_EXC_BSUN);
+          exc_status_byte := exc_flags;
           fpsr_reg(FPSR_EXC_MSB downto FPSR_EXC_LSB) <= exc_status_byte;
         end if;
 
         if exc_policy.update_accumulated_exc then
-          -- Datasheet AEXC combination rules:
-          -- AEXC(UNFL) |= UNFL AND INEX; AEXC(INEX) |= INEX OR OVFL.
+          -- MC68881 AEXC combination rules (Table 2-2):
+          -- AEXC has a separate 5-bit layout: IOP(4), OVFL(3), UNFL(2), DZ(1), INEX(0).
           aexc_combined := (others => '0');
-          aexc_combined(FPSR_EXC_INVALID)   := exc_flags(FPSR_EXC_INVALID);
-          aexc_combined(FPSR_EXC_OVERFLOW)  := exc_flags(FPSR_EXC_OVERFLOW);
-          aexc_combined(FPSR_EXC_UNDERFLOW) := exc_flags(FPSR_EXC_UNDERFLOW) and exc_flags(FPSR_EXC_INEXACT);
-          aexc_combined(FPSR_EXC_DIVZERO)   := exc_flags(FPSR_EXC_DIVZERO);
-          aexc_combined(FPSR_EXC_INEXACT)   := exc_flags(FPSR_EXC_INEXACT) or exc_flags(FPSR_EXC_OVERFLOW);
-          aexc_combined(FPSR_EXC_BSUN)     := exc_flags(FPSR_EXC_BSUN);
+          aexc_combined(FPSR_AEXC_IOP)  := exc_flags(FPSR_EXC_SNAN) or exc_flags(FPSR_EXC_OPERR);
+          aexc_combined(FPSR_AEXC_OVFL) := exc_flags(FPSR_EXC_OVFL);
+          aexc_combined(FPSR_AEXC_UNFL) := exc_flags(FPSR_EXC_UNFL) and
+                                            (exc_flags(FPSR_EXC_INEX2) or exc_flags(FPSR_EXC_INEX1));
+          aexc_combined(FPSR_AEXC_DZ)   := exc_flags(FPSR_EXC_DZ);
+          aexc_combined(FPSR_AEXC_INEX) := exc_flags(FPSR_EXC_INEX2) or exc_flags(FPSR_EXC_INEX1) or
+                                            exc_flags(FPSR_EXC_OVFL);
           accrued_exc_byte := fpsr_reg(FPSR_AEXC_MSB downto FPSR_AEXC_LSB);
-          accrued_exc_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) :=
-            accrued_exc_byte(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT) or aexc_combined(FPSR_EXC_INVALID downto FPSR_EXC_INEXACT);
-          accrued_exc_byte(FPSR_EXC_BSUN) :=
-            accrued_exc_byte(FPSR_EXC_BSUN) or aexc_combined(FPSR_EXC_BSUN);
+          accrued_exc_byte := accrued_exc_byte or aexc_combined;
           fpsr_reg(FPSR_AEXC_MSB downto FPSR_AEXC_LSB) <= accrued_exc_byte;
         end if;
 
@@ -2132,7 +2148,7 @@ begin
           cc_bits := fpsr_cc_from_compare(class_opa, class_opb);
           fpsr_reg(FPSR_CC_NEG downto FPSR_CC_NAN) <= cc_bits;
         elsif exc_policy.update_cc_from_result then
-          if exc_flags(FPSR_EXC_INVALID) = '1' then
+          if exc_flags(FPSR_EXC_SNAN) = '1' or exc_flags(FPSR_EXC_OPERR) = '1' then
             cc_bits := (others => '0');
             cc_bits(0) := '1';
           else
@@ -3617,29 +3633,33 @@ begin
 
         when CIR_EXECUTE_DONE =>
           -- FPSR EXC byte is now stable. Check FPCR exception enables.
-          -- Priority (highest first): INVALID > OVERFLOW > UNDERFLOW > DIVZERO > INEXACT.
-          -- NOTE: INVALID always maps to CIR_VEC_SNAN (vector 54). The real MC68881
-          -- distinguishes SNAN (vector 54) from OPERR (vector 52) based on whether
-          -- the invalid was from an SNaN input vs a domain error. This is a known
-          -- deviation; a future refinement could inspect operand signaling bits.
-          if fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_INVALID) = '1' and
-             fpcr_reg(FPCR_EXC_EN_INVALID) = '1' then
+          -- MC68881 priority (highest first): BSUN > SNAN > OPERR > OVFL > UNFL > DZ > INEX2 > INEX1.
+          if fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_SNAN) = '1' and
+             fpcr_reg(FPCR_EXC_EN_SNAN) = '1' then
             cir_exc_vector <= CIR_VEC_SNAN;
             cir_state_reg <= CIR_EXCEPT_POST;
-          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_OVERFLOW) = '1' and
-                fpcr_reg(FPCR_EXC_EN_OVERFLOW) = '1' then
+          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_OPERR) = '1' and
+                fpcr_reg(FPCR_EXC_EN_OPERR) = '1' then
+            cir_exc_vector <= CIR_VEC_OPERR;
+            cir_state_reg <= CIR_EXCEPT_POST;
+          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_OVFL) = '1' and
+                fpcr_reg(FPCR_EXC_EN_OVFL) = '1' then
             cir_exc_vector <= CIR_VEC_OVERFL;
             cir_state_reg <= CIR_EXCEPT_POST;
-          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_UNDERFLOW) = '1' and
-                fpcr_reg(FPCR_EXC_EN_UNDERFLOW) = '1' then
+          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_UNFL) = '1' and
+                fpcr_reg(FPCR_EXC_EN_UNFL) = '1' then
             cir_exc_vector <= CIR_VEC_UNDERFL;
             cir_state_reg <= CIR_EXCEPT_POST;
-          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_DIVZERO) = '1' and
-                fpcr_reg(FPCR_EXC_EN_DIVZERO) = '1' then
+          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_DZ) = '1' and
+                fpcr_reg(FPCR_EXC_EN_DZ) = '1' then
             cir_exc_vector <= CIR_VEC_DIVZERO;
             cir_state_reg <= CIR_EXCEPT_POST;
-          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_INEXACT) = '1' and
-                fpcr_reg(FPCR_EXC_EN_INEXACT) = '1' then
+          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_INEX2) = '1' and
+                fpcr_reg(FPCR_EXC_EN_INEX2) = '1' then
+            cir_exc_vector <= CIR_VEC_INEXACT;
+            cir_state_reg <= CIR_EXCEPT_POST;
+          elsif fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_INEX1) = '1' and
+                fpcr_reg(FPCR_EXC_EN_INEX1) = '1' then
             cir_exc_vector <= CIR_VEC_INEXACT;
             cir_state_reg <= CIR_EXCEPT_POST;
           else

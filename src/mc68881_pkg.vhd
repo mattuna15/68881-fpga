@@ -1681,8 +1681,11 @@ package body mc68881_pkg is
     variable mant_main  : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable mant_ext   : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
     variable exp_diff   : natural := 0;
-    variable exp_res    : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
     variable exp_res_i  : integer := 0;
+    variable a_exp_i    : integer := 0;
+    variable b_exp_i    : integer := 0;
+    variable lz_norm    : natural := 0;
+    variable denorm_shift : natural := 0;
     variable sign_b     : std_logic := '0';
   begin
     res_u.sign := '0';
@@ -1700,6 +1703,23 @@ package body mc68881_pkg is
       return pack_fp80(a_u);
     end if;
 
+    -- Normalize denormalized operands (MC68881 normalizes before arithmetic).
+    if a_u.exp = 0 and a_u.mant /= 0 then
+      lz_norm := clz(a_u.mant);
+      a_u.mant := shift_left(a_u.mant, lz_norm);
+      a_exp_i := 1 - lz_norm;
+    else
+      a_exp_i := to_integer(a_u.exp);
+    end if;
+
+    if b_u.exp = 0 and b_u.mant /= 0 then
+      lz_norm := clz(b_u.mant);
+      b_u.mant := shift_left(b_u.mant, lz_norm);
+      b_exp_i := 1 - lz_norm;
+    else
+      b_exp_i := to_integer(b_u.exp);
+    end if;
+
     sign_b := b_u.sign;
     if subtract then
       sign_b := not sign_b;
@@ -1708,16 +1728,16 @@ package body mc68881_pkg is
     mant_a_ext := a_u.mant & (FP_GRS_BITS-1 downto 0 => '0');
     mant_b_ext := b_u.mant & (FP_GRS_BITS-1 downto 0 => '0');
 
-    if a_u.exp > b_u.exp then
-      exp_diff := to_integer(a_u.exp - b_u.exp);
+    if a_exp_i > b_exp_i then
+      exp_diff := a_exp_i - b_exp_i;
       mant_b_ext := shift_right_with_sticky(mant_b_ext, exp_diff);
-      exp_res := a_u.exp;
-    elsif b_u.exp > a_u.exp then
-      exp_diff := to_integer(b_u.exp - a_u.exp);
+      exp_res_i := a_exp_i;
+    elsif b_exp_i > a_exp_i then
+      exp_diff := b_exp_i - a_exp_i;
       mant_a_ext := shift_right_with_sticky(mant_a_ext, exp_diff);
-      exp_res := b_u.exp;
+      exp_res_i := b_exp_i;
     else
-      exp_res := a_u.exp;
+      exp_res_i := a_exp_i;
     end if;
 
     if a_u.sign = sign_b then
@@ -1728,8 +1748,8 @@ package body mc68881_pkg is
         mant_sum(mant_sum'left-1 downto 0) := shift_right_with_sticky(mant_sum(mant_sum'left-1 downto 0), 1);
         mant_sum(mant_sum'left-1) := '1';
         mant_sum(mant_sum'left) := '0';
-        if exp_res /= FP_EXP_ALL_ONES then
-          exp_res := exp_res + 1;
+        if exp_res_i < FP_EXP_MAX then
+          exp_res_i := exp_res_i + 1;
         end if;
       end if;
     else
@@ -1741,16 +1761,19 @@ package body mc68881_pkg is
         res_u.sign := sign_b;
       end if;
 
-      normalize_left(
-        mant_sum(mant_sum'left-1 downto 0),
-        exp_res,
-        mant_sum(mant_sum'left-1 downto 0),
-        exp_res
-      );
+      -- Normalize left after subtraction cancellation (integer exponent version).
+      if mant_sum(mant_sum'left-1 downto 0) /= 0 and exp_res_i > 0 then
+        lz_norm := clz(mant_sum(mant_sum'left-1 downto 0));
+        if lz_norm > exp_res_i then
+          lz_norm := exp_res_i;
+        end if;
+        mant_sum(mant_sum'left-1 downto 0) :=
+          shift_left(mant_sum(mant_sum'left-1 downto 0), lz_norm);
+        exp_res_i := exp_res_i - lz_norm;
+      end if;
     end if;
 
     mant_ext := mant_sum(mant_sum'left-1 downto 0);
-    exp_res_i := to_integer(exp_res);
     apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);
 
     if mant_main = 0 then
@@ -1767,14 +1790,20 @@ package body mc68881_pkg is
     end if;
 
     if exp_res_i <= 0 then
-      res_u.sign := '0';
-      res_u.exp := (others => '0');
-      res_u.mant := (others => '0');
+      -- Subnormal output: right-shift mantissa, set exp=0.
+      denorm_shift := 1 - exp_res_i;
+      if denorm_shift >= FP_MANT_WIDTH or mant_main = 0 then
+        res_u.sign := '0';
+        res_u.exp := (others => '0');
+        res_u.mant := (others => '0');
+      else
+        res_u.exp := (others => '0');
+        res_u.mant := shift_right(mant_main, denorm_shift);
+      end if;
       return pack_fp80(res_u);
     end if;
 
-    exp_res := to_unsigned(exp_res_i, FP_EXP_WIDTH);
-    res_u.exp := exp_res;
+    res_u.exp := to_unsigned(exp_res_i, FP_EXP_WIDTH);
     res_u.mant := mant_main;
     return pack_fp80(res_u);
   end function;
@@ -1792,7 +1821,10 @@ package body mc68881_pkg is
     variable mant_ext  : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
     variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable exp_res_i : integer := 0;
-    variable exp_res   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable a_exp_i   : integer := 0;
+    variable b_exp_i   : integer := 0;
+    variable lz_norm   : natural := 0;
+    variable denorm_shift : natural := 0;
     variable low_or : std_logic := '0';
     variable mant_hi : integer := 0;
     variable low_hi  : integer := 0;
@@ -1812,7 +1844,24 @@ package body mc68881_pkg is
       return pack_fp80(res_u);
     end if;
 
-    exp_res_i := to_integer(a_u.exp) + to_integer(b_u.exp) - FP_EXP_BIAS;
+    -- Normalize denormalized operands (MC68881 normalizes before arithmetic).
+    if a_u.exp = 0 and a_u.mant /= 0 then
+      lz_norm := clz(a_u.mant);
+      a_u.mant := shift_left(a_u.mant, lz_norm);
+      a_exp_i := 1 - lz_norm;
+    else
+      a_exp_i := to_integer(a_u.exp);
+    end if;
+
+    if b_u.exp = 0 and b_u.mant /= 0 then
+      lz_norm := clz(b_u.mant);
+      b_u.mant := shift_left(b_u.mant, lz_norm);
+      b_exp_i := 1 - lz_norm;
+    else
+      b_exp_i := to_integer(b_u.exp);
+    end if;
+
+    exp_res_i := a_exp_i + b_exp_i - FP_EXP_BIAS;
     mant_prod := a_u.mant * b_u.mant;
 
     if mant_prod(mant_prod'left) = '1' then
@@ -1840,9 +1889,16 @@ package body mc68881_pkg is
     apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);
 
     if exp_res_i <= 0 then
-      res_u.sign := '0';
-      res_u.exp := (others => '0');
-      res_u.mant := (others => '0');
+      -- Subnormal output: right-shift mantissa, set exp=0.
+      denorm_shift := 1 - exp_res_i;
+      if denorm_shift >= FP_MANT_WIDTH or mant_main = 0 then
+        res_u.sign := '0';
+        res_u.exp := (others => '0');
+        res_u.mant := (others => '0');
+      else
+        res_u.exp := (others => '0');
+        res_u.mant := shift_right(mant_main, denorm_shift);
+      end if;
       return pack_fp80(res_u);
     end if;
 
@@ -1852,8 +1908,7 @@ package body mc68881_pkg is
       return pack_fp80(res_u);
     end if;
 
-    exp_res := to_unsigned(exp_res_i, FP_EXP_WIDTH);
-    res_u.exp := exp_res;
+    res_u.exp := to_unsigned(exp_res_i, FP_EXP_WIDTH);
     res_u.mant := mant_main;
     return pack_fp80(res_u);
   end function;
@@ -1873,7 +1928,10 @@ package body mc68881_pkg is
     variable mant_ext : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
     variable mant_main : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable exp_res_i : integer := 0;
-    variable exp_res   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+    variable a_exp_i   : integer := 0;
+    variable b_exp_i   : integer := 0;
+    variable lz_norm   : natural := 0;
+    variable denorm_shift : natural := 0;
     variable shift     : integer := 0;
     variable low_or : std_logic := '0';
     variable top_index : integer := FP_MANT_WIDTH + FP_GRS_BITS;
@@ -1899,7 +1957,24 @@ package body mc68881_pkg is
       return pack_fp80(res_u);
     end if;
 
-    exp_res_i := to_integer(a_u.exp) - to_integer(b_u.exp) + FP_EXP_BIAS;
+    -- Normalize denormalized operands (MC68881 normalizes before arithmetic).
+    if a_u.exp = 0 and a_u.mant /= 0 then
+      lz_norm := clz(a_u.mant);
+      a_u.mant := shift_left(a_u.mant, lz_norm);
+      a_exp_i := 1 - lz_norm;
+    else
+      a_exp_i := to_integer(a_u.exp);
+    end if;
+
+    if b_u.exp = 0 and b_u.mant /= 0 then
+      lz_norm := clz(b_u.mant);
+      b_u.mant := shift_left(b_u.mant, lz_norm);
+      b_exp_i := 1 - lz_norm;
+    else
+      b_exp_i := to_integer(b_u.exp);
+    end if;
+
+    exp_res_i := a_exp_i - b_exp_i + FP_EXP_BIAS;
 
     num := a_u.mant & (FP_MANT_WIDTH+FP_GRS_BITS-1 downto 0 => '0');
     quot := num / b_u.mant;
@@ -1955,9 +2030,16 @@ package body mc68881_pkg is
     apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);
 
     if exp_res_i <= 0 then
-      res_u.sign := '0';
-      res_u.exp := (others => '0');
-      res_u.mant := (others => '0');
+      -- Subnormal output: right-shift mantissa, set exp=0.
+      denorm_shift := 1 - exp_res_i;
+      if denorm_shift >= FP_MANT_WIDTH or mant_main = 0 then
+        res_u.sign := '0';
+        res_u.exp := (others => '0');
+        res_u.mant := (others => '0');
+      else
+        res_u.exp := (others => '0');
+        res_u.mant := shift_right(mant_main, denorm_shift);
+      end if;
       return pack_fp80(res_u);
     end if;
 
@@ -1967,8 +2049,7 @@ package body mc68881_pkg is
       return pack_fp80(res_u);
     end if;
 
-    exp_res := to_unsigned(exp_res_i, FP_EXP_WIDTH);
-    res_u.exp := exp_res;
+    res_u.exp := to_unsigned(exp_res_i, FP_EXP_WIDTH);
     res_u.mant := mant_main;
     return pack_fp80(res_u);
   end function;
@@ -2615,12 +2696,25 @@ package body mc68881_pkg is
     variable scale_i : integer := fp80_to_int_trunc(a);
     variable exp_i : integer := 0;
     variable result_u : fp_unpacked_t := b_u;
+    variable lz_norm : natural := 0;
   begin
-    if b_u.exp = 0 or b_u.exp = FP_EXP_ALL_ONES then
+    if b_u.exp = FP_EXP_ALL_ONES then
       return b;
     end if;
 
-    exp_i := to_integer(b_u.exp) + scale_i;
+    if b_u.exp = 0 and b_u.mant = 0 then
+      return b;
+    end if;
+
+    -- Normalize denormalized operand (MC68881 normalizes before arithmetic).
+    if b_u.exp = 0 and b_u.mant /= 0 then
+      lz_norm := clz(b_u.mant);
+      b_u.mant := shift_left(b_u.mant, lz_norm);
+      exp_i := 1 - lz_norm + scale_i;
+      result_u.mant := b_u.mant;
+    else
+      exp_i := to_integer(b_u.exp) + scale_i;
+    end if;
     if exp_i <= 0 then
       result_u.exp := (others => '0');
       result_u.mant := (others => '0');

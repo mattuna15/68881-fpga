@@ -91,6 +91,8 @@ architecture rtl of mc68881_trig_unit is
     ST_EXP_REDUCE_K_POST,
     ST_EXP_REDUCE_KLN2_POST,
     ST_EXP_REDUCE_R_POST,
+    ST_EXP_CW_LO_MUL,
+    ST_EXP_CW_LO_SUB,
     ST_LOG_EXP_TERM_POST,
     ST_LOG_GETEXP,
     ST_LOG_GETEXP_POST,
@@ -173,6 +175,8 @@ architecture rtl of mc68881_trig_unit is
   constant FP80_NEG_ONE_FOURTH : fp80_t := x"BFFD8000000000000000";
   constant FP80_NEG_ONE_SIXTH : fp80_t := x"BFFCAAAAAAAAAAAAAAAB";
   constant FP80_LN2 : fp80_t := x"3FFEB17217F7D1CF79AC";
+  constant FP80_LN2_HI : fp80_t := x"3FFEB17217F700000000";  -- ln(2) with low 32 mantissa bits zeroed
+  constant FP80_LN2_LO : fp80_t := x"3FDED1CF79AC00000000";  -- ln(2) - LN2_HI
   constant FP80_LN10 : fp80_t := x"4000935D8DDDAAA8AC17";
   constant FP80_INV_LN2 : fp80_t := x"3FFFB8AA3B295C17F0BC";
   constant FP80_INV_LN10 : fp80_t := x"3FFDDE5BD8A937287195";
@@ -2058,14 +2062,35 @@ begin
         when ST_EXP_REDUCE_K_POST =>
           exp_k_reg <= fintrz_tmp;
           mul_a_reg <= fintrz_tmp;
-          mul_b_reg <= FP80_LN2;
+          mul_b_reg <= FP80_LN2_HI;  -- Cody-Waite: use high-part of ln(2)
           mul_rm_reg <= FP_RND_NEAREST;
           mul_rp_reg <= FP_PREC_EXTENDED;
           cont_state_reg <= ST_EXP_REDUCE_KLN2_POST;
           state_reg <= ST_FP_MUL;
 
         when ST_EXP_REDUCE_KLN2_POST =>
+          -- tmp_reg = k * LN2_HI.  Compute r_hi = x - k * LN2_HI
           add_a_reg <= x_reg;
+          add_b_reg <= tmp_reg;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP_CW_LO_MUL;
+          state_reg <= ST_FP_ADD;
+
+        when ST_EXP_CW_LO_MUL =>
+          -- tmp_reg = r_hi = x - k * LN2_HI.  Save and compute k * LN2_LO.
+          r_reg <= tmp_reg;
+          mul_a_reg <= exp_k_reg;
+          mul_b_reg <= FP80_LN2_LO;
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP_CW_LO_SUB;
+          state_reg <= ST_FP_MUL;
+
+        when ST_EXP_CW_LO_SUB =>
+          -- tmp_reg = k * LN2_LO.  Compute r = r_hi - k * LN2_LO.
+          add_a_reg <= r_reg;
           add_b_reg <= tmp_reg;
           add_sub_reg <= true;
           add_rm_reg <= FP_RND_NEAREST;

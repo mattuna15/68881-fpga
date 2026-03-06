@@ -2849,6 +2849,66 @@ begin
     wait for 0 ns;
     check_result(SUBNORMAL_POS, "DIV subnormal/1 identity");
 
+    -- FADD(subnormal, subnormal) → exp=0, mant=2 (doubled).
+    op_sel <= FPU_OP_ADD;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= SUBNORMAL_POS;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(x"00000000000000000002", "ADD subnormal+subnormal");
+
+    -- FSUB(subnormal, subnormal) → positive zero.
+    op_sel <= FPU_OP_SUB;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= SUBNORMAL_POS;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(FP80_ZERO, "SUB subnormal-subnormal => +0");
+
+    -- FMUL(subnormal, subnormal) → complete underflow to +0.
+    op_sel <= FPU_OP_MUL;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= SUBNORMAL_POS;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(FP80_ZERO, "MUL subnormal*subnormal => +0 (underflow)");
+
+    -- FMUL(negative subnormal, 2.0) → negative subnormal, sign preserved.
+    op_sel <= FPU_OP_MUL;
+    a_in   <= SUBNORMAL_NEG;
+    b_in   <= fp80_from_int(2);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(x"80000000000000000002", "MUL neg subnormal*2 sign preserved");
+
+    -- FADD(+inf, -inf) → NaN (OPERR domain error).
+    op_sel <= FPU_OP_ADD;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_NEG_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result_nan("ADD +inf + -inf => NaN (OPERR)");
+
     std.env.stop;
     wait;
   end process;

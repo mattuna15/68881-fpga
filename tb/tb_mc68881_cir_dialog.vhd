@@ -2402,9 +2402,9 @@ begin
     report "TEST 45 PASSED" severity note;
 
     -- ================================================================
-    -- TEST 46: Exception priority — OPERR wins over DZ
-    --   FDIV(QNaN, 0.0) with both OPERR and DZ enabled. OPERR has
-    --   higher priority and should produce OPERR vector, not DZ vector.
+    -- TEST 46: Exception priority — SNAN wins over DZ
+    --   FDIV(SNaN, 0.0) with both SNAN and DZ enabled. SNAN has
+    --   higher priority and should produce SNAN vector, not DZ vector.
     -- ================================================================
     report "TEST 46: Exception priority SNAN > DZ" severity note;
 

@@ -3633,7 +3633,8 @@ begin
 
         when CIR_EXECUTE_DONE =>
           -- FPSR EXC byte is now stable. Check FPCR exception enables.
-          -- MC68881 priority (highest first): BSUN > SNAN > OPERR > OVFL > UNFL > DZ > INEX2 > INEX1.
+          -- MC68881 post-instruction priority (highest first): SNAN > OPERR > OVFL > UNFL > DZ > INEX2 > INEX1.
+          -- (BSUN is handled separately in CIR_COND_CHECK for conditional instructions.)
           if fpsr_reg(FPSR_EXC_LSB + FPSR_EXC_SNAN) = '1' and
              fpcr_reg(FPCR_EXC_EN_SNAN) = '1' then
             cir_exc_vector <= CIR_VEC_SNAN;

@@ -2697,6 +2697,7 @@ package body mc68881_pkg is
     variable exp_i : integer := 0;
     variable result_u : fp_unpacked_t := b_u;
     variable lz_norm : natural := 0;
+    variable denorm_shift : natural := 0;
   begin
     if b_u.exp = FP_EXP_ALL_ONES then
       return b;
@@ -2716,8 +2717,15 @@ package body mc68881_pkg is
       exp_i := to_integer(b_u.exp) + scale_i;
     end if;
     if exp_i <= 0 then
-      result_u.exp := (others => '0');
-      result_u.mant := (others => '0');
+      denorm_shift := 1 - exp_i;
+      if denorm_shift >= FP_MANT_WIDTH or result_u.mant = 0 then
+        result_u.sign := '0';
+        result_u.exp := (others => '0');
+        result_u.mant := (others => '0');
+      else
+        result_u.exp := (others => '0');
+        result_u.mant := shift_right(result_u.mant, denorm_shift);
+      end if;
       return pack_fp80(result_u);
     end if;
 

@@ -88,6 +88,11 @@ architecture rtl of mc68881_trig_unit is
     ST_TANH_DEN_MUL_PREP,
     ST_TANH_DEN_MUL_POST,
     ST_TANH_DEN_ADD_POST,
+    ST_TANH_2X_POST,
+    ST_TANH_EXP_POST,
+    ST_TANH_NUMER_POST,
+    ST_TANH_DENOM_POST,
+    ST_TANH_DIV_POST,
     ST_EXP_REDUCE_K_POST,
     ST_EXP_REDUCE_KLN2_POST,
     ST_EXP_REDUCE_R_POST,
@@ -1564,8 +1569,50 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  x_reg <= x_local;
-                  state_reg <= ST_TANH_X2_PREP;
+                  -- tanh(x) = (e^(2|x|) - 1) / (e^(2|x|) + 1), sign applied at end
+                  v_exp := unsigned(abs_a(78 downto 64));
+                  v_mant := unsigned(abs_a(63 downto 0));
+                  if v_exp > to_unsigned(FP_EXP_BIAS + 3, FP_EXP_WIDTH)
+                     or (v_exp = to_unsigned(FP_EXP_BIAS + 3, FP_EXP_WIDTH)
+                         and v_mant > x"A000000000000000") then
+                    -- |x| > 10, tanh saturates to sign(x)
+                    if fp80_sign(a_reg) = '1' then
+                      result_reg <= FP80_NEG_ONE;
+                    else
+                      result_reg <= FP80_ONE;
+                    end if;
+                    state_reg <= ST_DONE;
+                  elsif v_exp /= 0 and to_integer(v_exp) < FP_EXP_BIAS - 32 then
+                    -- |x| < 2^-32, tanh(x) ~ x
+                    result_reg <= a_reg;
+                    state_reg <= ST_DONE;
+                  else
+                    -- Save sign, compute 2*|x| then route through EXP pipeline
+                    atan_neg_reg <= fp80_sign(a_reg);
+                    -- Set up EXP pipeline coefficients
+                    exp_reduce_en_reg <= '1';
+                    coeff0_reg <= FP80_ONE;
+                    coeff1_reg <= FP80_ONE;
+                    coeff2_reg <= FP80_HALF;
+                    coeff3_reg <= FP80_ONE_SIXTH;
+                    coeff4_reg <= FP80_ONE_TWENTYFOURTH;
+                    coeff5_reg <= FP80_ONE_120TH;
+                    coeff6_reg <= FP80_ONE_720TH;
+                    coeff7_reg <= FP80_ONE_5040TH;
+                    coeff8_reg <= FP80_ONE_40320TH;
+                    coeff9_reg <= FP80_ONE_362880TH;
+                    poly_degree_reg <= 9;
+                    seed_domain_reg <= SEED_DOMAIN_EXP;
+                    seed_idx_reg <= 0;
+                    seed_return_state_reg <= ST_TRANS_PREP;
+                    -- Multiply |x| * 2
+                    mul_a_reg <= abs_a;
+                    mul_b_reg <= FP80_TWO;
+                    mul_rm_reg <= FP_RND_NEAREST;
+                    mul_rp_reg <= FP_PREC_EXTENDED;
+                    cont_state_reg <= ST_TANH_2X_POST;
+                    state_reg <= ST_FP_MUL;
+                  end if;
                 end if;
 
               when others =>
@@ -2058,6 +2105,51 @@ begin
         when ST_TANH_DEN_ADD_POST =>
           c_reg <= tmp_reg;
           state_reg <= ST_TRIG_TAN_DIV;
+
+        -- New TANH via EXP pipeline states
+        when ST_TANH_2X_POST =>
+          -- tmp_reg = 2|x|, feed into EXP pipeline
+          x_reg <= tmp_reg;
+          state_reg <= ST_SEED_READ;
+
+        when ST_TANH_EXP_POST =>
+          -- result_reg = e^(2|x|); save it, compute e^(2|x|) - 1
+          s_reg <= result_reg;
+          add_a_reg <= result_reg;
+          add_b_reg <= FP80_ONE;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TANH_NUMER_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_TANH_NUMER_POST =>
+          -- tmp_reg = e^(2|x|) - 1 (numerator); compute e^(2|x|) + 1
+          r_reg <= tmp_reg;
+          add_a_reg <= s_reg;
+          add_b_reg <= FP80_ONE;
+          add_sub_reg <= false;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TANH_DENOM_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_TANH_DENOM_POST =>
+          -- tmp_reg = e^(2|x|) + 1 (denominator); divide
+          div_a_reg <= r_reg;
+          div_b_reg <= tmp_reg;
+          div_rm_reg <= rm_reg;
+          div_rp_reg <= rp_reg;
+          cont_state_reg <= ST_TANH_DIV_POST;
+          state_reg <= ST_FP_DIV;
+
+        when ST_TANH_DIV_POST =>
+          -- tmp_reg = tanh(|x|); apply original sign
+          result_reg <= tmp_reg;
+          if atan_neg_reg = '1' then
+            result_reg(FP_WIDTH-1) <= not tmp_reg(FP_WIDTH-1);
+          end if;
+          state_reg <= ST_DONE;
 
         when ST_EXP_REDUCE_K_POST =>
           exp_k_reg <= fintrz_tmp;
@@ -2567,7 +2659,11 @@ begin
         when ST_TRANS_POST_ADD_POST =>
           if exp_reduce_en_reg = '1' then
             result_reg <= fscale_fp80(exp_k_reg, tmp_reg);
-            state_reg <= ST_DONE;
+            if op_reg = FPU_OP_TANH then
+              state_reg <= ST_TANH_EXP_POST;
+            else
+              state_reg <= ST_DONE;
+            end if;
           elsif op_reg = FPU_OP_ATANH then
             result_reg <= tmp_reg;
             state_reg <= ST_ATANH_HALF_PREP;
@@ -2589,7 +2685,11 @@ begin
         when ST_TRANS_FINAL_ROUND_POST =>
           if exp_reduce_en_reg = '1' then
             result_reg <= fscale_fp80(exp_k_reg, tmp_reg);
-            state_reg <= ST_DONE;
+            if op_reg = FPU_OP_TANH then
+              state_reg <= ST_TANH_EXP_POST;
+            else
+              state_reg <= ST_DONE;
+            end if;
           elsif op_reg = FPU_OP_ATANH then
             result_reg <= tmp_reg;
             state_reg <= ST_ATANH_HALF_PREP;

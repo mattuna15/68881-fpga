@@ -864,12 +864,12 @@ begin
     run_monadic_close(FPU_OP_COSH, fp80_from_int(3), FP_RND_NEAREST, TV_COSH_3, FP80_TOL_2E1, "COSH(3)");
     report "COSH: 5 transcendental tests passed" severity note;
 
-    -- TANH (measured: 0.5=6b, 1=5b, -1=5b, 3=7b)
+    -- TANH via EXP pipeline
     run_monadic(FPU_OP_TANH, FP80_ZERO, FP_RND_NEAREST, TV_TANH_0, "TANH(0) exact");
-    run_monadic_close(FPU_OP_TANH, TV_ARG_HALF, FP_RND_NEAREST, TV_TANH_0P5, FP80_TOL_5E2, "TANH(0.5)");
-    run_monadic_close(FPU_OP_TANH, TV_ARG_ONE, FP_RND_NEAREST, TV_TANH_1, FP80_TOL_5E2, "TANH(1)");
-    run_monadic_close(FPU_OP_TANH, FP80_NEG_ONE, FP_RND_NEAREST, TV_TANH_NEG_1, FP80_TOL_5E2, "TANH(-1)");
-    run_monadic_close(FPU_OP_TANH, fp80_from_int(3), FP_RND_NEAREST, TV_TANH_3, FP80_TOL_1E1, "TANH(3)");
+    run_monadic_close(FPU_OP_TANH, TV_ARG_HALF, FP_RND_NEAREST, TV_TANH_0P5, FP80_TOL_1E3, "TANH(0.5)");
+    run_monadic_close(FPU_OP_TANH, TV_ARG_ONE, FP_RND_NEAREST, TV_TANH_1, FP80_TOL_1E3, "TANH(1)");
+    run_monadic_close(FPU_OP_TANH, FP80_NEG_ONE, FP_RND_NEAREST, TV_TANH_NEG_1, FP80_TOL_1E3, "TANH(-1)");
+    run_monadic_close(FPU_OP_TANH, fp80_from_int(3), FP_RND_NEAREST, TV_TANH_3, FP80_TOL_1E3, "TANH(3)");
     report "TANH: 5 transcendental tests passed" severity note;
 
     -- ATANH (measured: 0.5=9b, -0.5=9b, 0.9=3b, tiny=exact)

@@ -96,6 +96,26 @@ architecture rtl of mc68881_trig_unit is
     ST_LOGNP1_META_POST,
     ST_LOGNP1_GETEXP_POST,
     ST_ATAN_INV_POST,
+    ST_ATAN_INDEX_MUL_POST,
+    ST_ATAN_DELTA_PREP,
+    ST_ATAN_DELTA_POST,
+    ST_ATAN_CX_MUL_POST,
+    ST_ATAN_DENOM_ADD_POST,
+    ST_ATAN_U_POST,
+    ST_ATAN_RECIP_SUB,
+    ST_ATAN_RECIP_POST,
+    ST_ASIN_X2_POST,
+    ST_ASIN_ONEMX2_POST,
+    ST_ASIN_SQRT_POST,
+    ST_ASIN_DIV_POST,
+    ST_ACOS_FINAL,
+    ST_ACOS_FINAL_POST,
+    ST_ATANH_NUMER_POST,
+    ST_ATANH_DENOM_POST,
+    ST_ATANH_DIV_POST,
+    ST_ATANH_HALF_PREP,
+    ST_ATANH_HALF_POST,
+    ST_FP_SQRT,
     ST_TRANS_PREP,
     ST_TRANS_ADD_PREP,
     ST_TRANS_INPUT_ADJUST_POST,
@@ -133,6 +153,8 @@ architecture rtl of mc68881_trig_unit is
   constant FP80_TWO_OVER_PI : fp80_t := x"3FFEA2F9836E4E4416F4";
   constant FP80_TRIG_INDEX_SCALE : fp80_t := x"4004A2F9836E4E441800"; -- 128/pi
   constant FP80_EPS_TRIG  : fp80_t := x"3FEB8000000000000000"; -- 2^-20
+
+  constant FP80_SIXTY_FOUR : fp80_t := x"40058000000000000000"; -- 64.0
 
   constant FP80_ONE_THIRD : fp80_t := x"3FFDAAAAAAAAAAAAAAAB";
   constant FP80_ONE_FOURTH : fp80_t := x"3FFD8000000000000000";
@@ -384,8 +406,137 @@ architecture rtl of mc68881_trig_unit is
      3 => FP80_INV_LN10,
     others => FP80_ONE
   );
+  constant ATAN_CENTER_INIT : fp80_table64_t := (
+     0 => x"3FF88000000000000000",
+     1 => x"3FF9C000000000000000",
+     2 => x"3FFAA000000000000000",
+     3 => x"3FFAE000000000000000",
+     4 => x"3FFB9000000000000000",
+     5 => x"3FFBB000000000000000",
+     6 => x"3FFBD000000000000000",
+     7 => x"3FFBF000000000000000",
+     8 => x"3FFC8800000000000000",
+     9 => x"3FFC9800000000000000",
+    10 => x"3FFCA800000000000000",
+    11 => x"3FFCB800000000000000",
+    12 => x"3FFCC800000000000000",
+    13 => x"3FFCD800000000000000",
+    14 => x"3FFCE800000000000000",
+    15 => x"3FFCF800000000000000",
+    16 => x"3FFD8400000000000000",
+    17 => x"3FFD8C00000000000000",
+    18 => x"3FFD9400000000000000",
+    19 => x"3FFD9C00000000000000",
+    20 => x"3FFDA400000000000000",
+    21 => x"3FFDAC00000000000000",
+    22 => x"3FFDB400000000000000",
+    23 => x"3FFDBC00000000000000",
+    24 => x"3FFDC400000000000000",
+    25 => x"3FFDCC00000000000000",
+    26 => x"3FFDD400000000000000",
+    27 => x"3FFDDC00000000000000",
+    28 => x"3FFDE400000000000000",
+    29 => x"3FFDEC00000000000000",
+    30 => x"3FFDF400000000000000",
+    31 => x"3FFDFC00000000000000",
+    32 => x"3FFE8200000000000000",
+    33 => x"3FFE8600000000000000",
+    34 => x"3FFE8A00000000000000",
+    35 => x"3FFE8E00000000000000",
+    36 => x"3FFE9200000000000000",
+    37 => x"3FFE9600000000000000",
+    38 => x"3FFE9A00000000000000",
+    39 => x"3FFE9E00000000000000",
+    40 => x"3FFEA200000000000000",
+    41 => x"3FFEA600000000000000",
+    42 => x"3FFEAA00000000000000",
+    43 => x"3FFEAE00000000000000",
+    44 => x"3FFEB200000000000000",
+    45 => x"3FFEB600000000000000",
+    46 => x"3FFEBA00000000000000",
+    47 => x"3FFEBE00000000000000",
+    48 => x"3FFEC200000000000000",
+    49 => x"3FFEC600000000000000",
+    50 => x"3FFECA00000000000000",
+    51 => x"3FFECE00000000000000",
+    52 => x"3FFED200000000000000",
+    53 => x"3FFED600000000000000",
+    54 => x"3FFEDA00000000000000",
+    55 => x"3FFEDE00000000000000",
+    56 => x"3FFEE200000000000000",
+    57 => x"3FFEE600000000000000",
+    58 => x"3FFEEA00000000000000",
+    59 => x"3FFEEE00000000000000",
+    60 => x"3FFEF200000000000000",
+    61 => x"3FFEF600000000000000",
+    62 => x"3FFEFA00000000000000",
+    63 => x"3FFEFE00000000000000"
+  );
   constant ATAN_SEED_OFFSET_INIT : fp80_table64_t := (
-    others => FP80_ZERO
+     0 => x"3FF7FFFEAAADDDD4B800",
+     1 => x"3FF9BFF700C252E1B000",
+     2 => x"3FFA9FEB2F8B4E4EC800",
+     3 => x"3FFADFC6EF89CE222000",
+     4 => x"3FFB8FC36DF8416AC800",
+     5 => x"3FFBAF91927E96BD9000",
+     6 => x"3FFBCF4A0A9E7EE78800",
+     7 => x"3FFBEEE90B80F5D37000",
+     8 => x"3FFC87356E67A0441000",
+     9 => x"3FFC96E5ED97DD0FF800",
+    10 => x"3FFCA6843D4ED278B800",
+    11 => x"3FFCB60EA44C499EC800",
+    12 => x"3FFCC58377143CE14800",
+    13 => x"3FFCD4E118DA0193C800",
+    14 => x"3FFCE425FC53A1737000",
+    15 => x"3FFCF350A474B7626800",
+    16 => x"3FFD812FD288332DB000",
+    17 => x"3FFD88A8D1B1218E5000",
+    18 => x"3FFD9012AB3F23E4B000",
+    19 => x"3FFD976CC3D411E7F000",
+    20 => x"3FFD9EB689493889A000",
+    21 => x"3FFDA5EF72C344873800",
+    22 => x"3FFDAD1700BAF07A7000",
+    23 => x"3FFDB42CBCFAFD37F000",
+    24 => x"3FFDBB303A940BA81000",
+    25 => x"3FFDC22115C6FCAEB800",
+    26 => x"3FFDC8FEF3E686331000",
+    27 => x"3FFDCFC98330B4001000",
+    28 => x"3FFDD6807AA1102C6000",
+    29 => x"3FFDDD2399BC31252800",
+    30 => x"3FFDE3B2A8556B8FC800",
+    31 => x"3FFDEA2D764F64315800",
+    32 => x"3FFDF093DB583A258000",
+    33 => x"3FFDF6E5B6A1FC21A800",
+    34 => x"3FFDFD22EE981492C800",
+    35 => x"3FFE81A5B84928244000",
+    36 => x"3FFE84AF98430D2C8000",
+    37 => x"3FFE87AF145B3F14A800",
+    38 => x"3FFE8AA42CB1BB235000",
+    39 => x"3FFE8D8EE43C82142800",
+    40 => x"3FFE906F409F411D9000",
+    41 => x"3FFE93454A034B6D3000",
+    42 => x"3FFE96110AF012233000",
+    43 => x"3FFE98D2902443A5F000",
+    44 => x"3FFE9B89E86FB6282000",
+    45 => x"3FFE9E37248E3C6E2000",
+    46 => x"3FFEA0DA57037F520800",
+    47 => x"3FFEA37393F7F238B000",
+    48 => x"3FFEA602F116F4A72000",
+    49 => x"3FFEA888856E2F6C0800",
+    50 => x"3FFEAB04694E3861A000",
+    51 => x"3FFEAD76B62C84A8B800",
+    52 => x"3FFEAFDF8686AE625000",
+    53 => x"3FFEB23EF5C7105C8000",
+    54 => x"3FFEB495202AB7DB5000",
+    55 => x"3FFEB6E222A8AA9D7800",
+    56 => x"3FFEB9261ADA7D73D800",
+    57 => x"3FFEBB6126E636360000",
+    58 => x"3FFEBD9365697287F000",
+    59 => x"3FFEBFBCF565CBC4C000",
+    60 => x"3FFEC1DDF62E6F711000",
+    61 => x"3FFEC3F68756E2D15000",
+    62 => x"3FFEC606C8A2E7A4E800",
+    63 => x"3FFEC80ED9F7778C3800"
   );
 
   signal state_reg : trig_state_t := ST_IDLE;
@@ -445,6 +596,7 @@ architecture rtl of mc68881_trig_unit is
   signal log_seed_input_adj_q : fp80_t := (others => '0');
   signal log_seed_post_scale_q : fp80_t := (others => '0');
   signal atan_seed_offset_q : fp80_t := (others => '0');
+  signal atan_center_q : fp80_t := (others => '0');
 
   signal trig_seed_center_rom : fp80_table64_t := TRIG_SEED_CENTER_INIT;
   signal trig_seed_sin_rom : fp80_table64_t := TRIG_SEED_SIN_INIT;
@@ -452,6 +604,7 @@ architecture rtl of mc68881_trig_unit is
   signal exp_seed_pre_mul_rom : fp80_table64_t := EXP_SEED_PRE_MUL_INIT;
   signal log_seed_input_adj_rom : fp80_table64_t := LOG_SEED_INPUT_ADJ_INIT;
   signal log_seed_post_scale_rom : fp80_table64_t := LOG_SEED_POST_SCALE_INIT;
+  signal atan_center_rom : fp80_table64_t := ATAN_CENTER_INIT;
   signal atan_seed_offset_rom : fp80_table64_t := ATAN_SEED_OFFSET_INIT;
   attribute rom_style : string;
   attribute rom_style of trig_seed_center_rom : signal is "block";
@@ -460,6 +613,7 @@ architecture rtl of mc68881_trig_unit is
   attribute rom_style of exp_seed_pre_mul_rom : signal is "block";
   attribute rom_style of log_seed_input_adj_rom : signal is "block";
   attribute rom_style of log_seed_post_scale_rom : signal is "block";
+  attribute rom_style of atan_center_rom : signal is "block";
   attribute rom_style of atan_seed_offset_rom : signal is "block";
 
   signal trans_pre_mul_en_reg : std_logic := '0';
@@ -494,11 +648,16 @@ architecture rtl of mc68881_trig_unit is
   signal div_b_reg : fp80_t := (others => '0');
   signal div_rm_reg : fp_round_mode_t := FP_RND_NEAREST;
   signal div_rp_reg : fp_round_prec_t := FP_PREC_EXTENDED;
+  signal trig_divrem_op_reg : fpu_op_t := FPU_OP_DIV;
   signal trig_div_start_reg : std_logic := '0';
   signal trig_div_busy : std_logic := '0';
   signal trig_div_done : std_logic := '0';
   signal trig_div_result : fp80_t := (others => '0');
   signal trig_div_flag_divzero : std_logic := '0';
+
+  signal atan_neg_reg : std_logic := '0';
+  signal atan_recip_reg : std_logic := '0';
+  signal acos_neg_input_reg : std_logic := '0';
 
   signal trig_mul_start_reg : std_logic := '0';
   signal trig_mul_busy      : std_logic;
@@ -617,7 +776,7 @@ begin
       clk     => clk,
       reset_n => reset_n,
       start   => trig_div_start_reg,
-      op_sel  => FPU_OP_DIV,
+      op_sel  => trig_divrem_op_reg,
       a_in    => div_a_reg,
       b_in    => div_b_reg,
       round_mode => div_rm_reg,
@@ -693,6 +852,7 @@ begin
       log_seed_input_adj_q <= log_seed_input_adj_rom(aux_seed_addr_reg);
       log_seed_post_scale_q <= log_seed_post_scale_rom(aux_seed_addr_reg);
       atan_seed_offset_q <= atan_seed_offset_rom(aux_seed_addr_reg);
+      atan_center_q <= atan_center_rom(aux_seed_addr_reg);
     end if;
   end process;
 
@@ -777,6 +937,10 @@ begin
       trig_div_start_reg <= '0';
       trig_mul_start_reg <= '0';
       trig_add_start_reg <= '0';
+      trig_divrem_op_reg <= FPU_OP_DIV;
+      atan_neg_reg <= '0';
+      atan_recip_reg <= '0';
+      acos_neg_input_reg <= '0';
     elsif rising_edge(clk) then
       done_reg <= '0';
       aux_valid_reg <= '0';
@@ -1186,26 +1350,31 @@ begin
                   coeff3_reg <= FP80_NEG_ONE_THIRD;
                   coeff4_reg <= FP80_ZERO;
                   coeff5_reg <= FP80_ONE_FIFTH;
+                  coeff6_reg <= FP80_ZERO;
+                  coeff7_reg <= FP80_NEG_ONE_SEVENTH;
+                  coeff8_reg <= FP80_ZERO;
+                  coeff9_reg <= FP80_ONE_NINTH;
+                  poly_degree_reg <= 9;
+                  atan_neg_reg <= fp80_sign(a_reg);
                   if abs_a_gt_one then
-                    trans_post_add_en_reg <= '1';
-                    trans_post_add_sub_reg <= '1';
-                    if fp80_sign(a_reg) = '1' then
-                      trans_post_add_const_reg <= FP80_NEG_HALF_PI;
-                    else
-                      trans_post_add_const_reg <= FP80_HALF_PI;
-                    end if;
+                    -- |x| > 1: compute 1/|x|, then table-assisted atan(1/|x|)
+                    atan_recip_reg <= '1';
                     div_a_reg <= FP80_ONE;
-                    div_b_reg <= x_local;
+                    div_b_reg <= abs_a;
                     div_rm_reg <= FP_RND_NEAREST;
                     div_rp_reg <= FP_PREC_EXTENDED;
                     cont_state_reg <= ST_ATAN_INV_POST;
                     state_reg <= ST_FP_DIV;
                   else
-                    seed_domain_reg <= SEED_DOMAIN_ATAN;
-                    seed_idx_reg <= 0;
-                    seed_return_state_reg <= ST_TRANS_PREP;
-                    x_reg <= x_local;
-                    state_reg <= ST_SEED_READ;
+                    -- |x| <= 1: table-assisted atan(|x|)
+                    atan_recip_reg <= '0';
+                    x_reg <= abs_a;
+                    mul_a_reg <= abs_a;
+                    mul_b_reg <= FP80_SIXTY_FOUR;
+                    mul_rm_reg <= FP_RND_NEAREST;
+                    mul_rp_reg <= FP_PREC_EXTENDED;
+                    cont_state_reg <= ST_ATAN_INDEX_MUL_POST;
+                    state_reg <= ST_FP_MUL;
                   end if;
                 end if;
 
@@ -1222,18 +1391,33 @@ begin
                 elsif a_reg = FP80_NEG_ONE then
                   result_reg <= FP80_NEG_HALF_PI;
                   state_reg <= ST_DONE;
+                elsif a_exp_v /= 0 and to_integer(a_exp_v) < FP_EXP_BIAS - 32 then
+                  -- Tiny argument: asin(x) = x
+                  result_reg <= a_reg;
+                  state_reg <= ST_DONE;
                 else
+                  -- ASIN(x) = ATAN(x / sqrt(1-x^2))
+                  atan_neg_reg <= fp80_sign(a_reg);
+                  atan_recip_reg <= '0';
                   coeff0_reg <= FP80_ZERO;
                   coeff1_reg <= FP80_ONE;
                   coeff2_reg <= FP80_ZERO;
-                  coeff3_reg <= FP80_ONE_SIXTH;
+                  coeff3_reg <= FP80_NEG_ONE_THIRD;
                   coeff4_reg <= FP80_ZERO;
-                  coeff5_reg <= FP80_THREE_FORTIETHS;
-                  seed_domain_reg <= SEED_DOMAIN_ATAN;
-                  seed_idx_reg <= 1;
-                  seed_return_state_reg <= ST_TRANS_PREP;
-                  x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
+                  coeff5_reg <= FP80_ONE_FIFTH;
+                  coeff6_reg <= FP80_ZERO;
+                  coeff7_reg <= FP80_NEG_ONE_SEVENTH;
+                  coeff8_reg <= FP80_ZERO;
+                  coeff9_reg <= FP80_ONE_NINTH;
+                  poly_degree_reg <= 9;
+                  -- Start computing x^2
+                  x_reg <= abs_a;
+                  mul_a_reg <= abs_a;
+                  mul_b_reg <= abs_a;
+                  mul_rm_reg <= FP_RND_NEAREST;
+                  mul_rp_reg <= FP_PREC_EXTENDED;
+                  cont_state_reg <= ST_ASIN_X2_POST;
+                  state_reg <= ST_FP_MUL;
                 end if;
 
               when FPU_OP_ACOS =>
@@ -1250,20 +1434,30 @@ begin
                   result_reg <= FP80_PI;
                   state_reg <= ST_DONE;
                 else
+                  -- ACOS(x) = pi/2 - ASIN(x)
+                  -- Compute ASIN(|x|) first, then adjust with pi/2
+                  acos_neg_input_reg <= fp80_sign(a_reg);
+                  atan_neg_reg <= '0'; -- don't negate the ASIN result
+                  atan_recip_reg <= '0';
                   coeff0_reg <= FP80_ZERO;
                   coeff1_reg <= FP80_ONE;
                   coeff2_reg <= FP80_ZERO;
-                  coeff3_reg <= FP80_ONE_SIXTH;
+                  coeff3_reg <= FP80_NEG_ONE_THIRD;
                   coeff4_reg <= FP80_ZERO;
-                  coeff5_reg <= FP80_THREE_FORTIETHS;
-                  trans_post_add_en_reg <= '1';
-                  trans_post_add_sub_reg <= '1';
-                  trans_post_add_const_reg <= FP80_HALF_PI;
-                  seed_domain_reg <= SEED_DOMAIN_ATAN;
-                  seed_idx_reg <= 2;
-                  seed_return_state_reg <= ST_TRANS_PREP;
-                  x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
+                  coeff5_reg <= FP80_ONE_FIFTH;
+                  coeff6_reg <= FP80_ZERO;
+                  coeff7_reg <= FP80_NEG_ONE_SEVENTH;
+                  coeff8_reg <= FP80_ZERO;
+                  coeff9_reg <= FP80_ONE_NINTH;
+                  poly_degree_reg <= 9;
+                  -- Start computing x^2
+                  x_reg <= abs_a;
+                  mul_a_reg <= abs_a;
+                  mul_b_reg <= abs_a;
+                  mul_rm_reg <= FP_RND_NEAREST;
+                  mul_rp_reg <= FP_PREC_EXTENDED;
+                  cont_state_reg <= ST_ASIN_X2_POST;
+                  state_reg <= ST_FP_MUL;
                 end if;
 
               when FPU_OP_ATANH =>
@@ -1282,18 +1476,20 @@ begin
                 elsif fp80_is_zero(a_reg) then
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
+                elsif a_exp_v /= 0 and to_integer(a_exp_v) < FP_EXP_BIAS - 32 then
+                  -- Tiny argument: atanh(x) = x
+                  result_reg <= a_reg;
+                  state_reg <= ST_DONE;
                 else
-                  coeff0_reg <= FP80_ZERO;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_ZERO;
-                  coeff3_reg <= FP80_ONE_THIRD;
-                  coeff4_reg <= FP80_ZERO;
-                  coeff5_reg <= FP80_ONE_FIFTH;
-                  seed_domain_reg <= SEED_DOMAIN_ATAN;
-                  seed_idx_reg <= 3;
-                  seed_return_state_reg <= ST_TRANS_PREP;
-                  x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
+                  -- ATANH(x) = 0.5 * ln((1+x)/(1-x))
+                  -- Step 1: compute 1+x
+                  add_a_reg <= FP80_ONE;
+                  add_b_reg <= a_reg;
+                  add_sub_reg <= false;
+                  add_rm_reg <= FP_RND_NEAREST;
+                  add_rp_reg <= FP_PREC_EXTENDED;
+                  cont_state_reg <= ST_ATANH_NUMER_POST;
+                  state_reg <= ST_FP_ADD;
                 end if;
 
               when FPU_OP_SINH =>
@@ -1568,7 +1764,8 @@ begin
                 aux_seed_addr_reg <= seed_idx_reg;
                 state_reg <= ST_SEED_READ_WAIT;
               else
-                seed_aux0_reg <= ATAN_SEED_OFFSET_INIT(seed_idx_reg);
+                seed_aux0_reg <= ATAN_CENTER_INIT(seed_idx_reg);
+                seed_aux1_reg <= ATAN_SEED_OFFSET_INIT(seed_idx_reg);
                 state_reg <= seed_return_state_reg;
               end if;
           end case;
@@ -1588,7 +1785,8 @@ begin
               seed_aux0_reg <= log_seed_input_adj_q;
               seed_aux1_reg <= log_seed_post_scale_q;
             when others =>
-              seed_aux0_reg <= atan_seed_offset_q;
+              seed_aux0_reg <= atan_center_q;
+              seed_aux1_reg <= atan_seed_offset_q;
           end case;
           state_reg <= seed_return_state_reg;
 
@@ -1938,11 +2136,240 @@ begin
           end if;
 
         when ST_ATAN_INV_POST =>
+          -- tmp_reg = 1/|x|, which is < 1
+          x_reg <= tmp_reg;
+          -- Compute table index: |y| * 64
+          mul_a_reg <= tmp_reg;
+          mul_b_reg <= FP80_SIXTY_FOUR;
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_ATAN_INDEX_MUL_POST;
+          state_reg <= ST_FP_MUL;
+
+        when ST_ATAN_INDEX_MUL_POST =>
+          -- tmp_reg = |x| * 64 (or |1/x| * 64 for recip path)
+          seed_idx_reg <= clamp_seed_index(fp80_to_int_trunc(tmp_reg));
           seed_domain_reg <= SEED_DOMAIN_ATAN;
+          seed_return_state_reg <= ST_ATAN_DELTA_PREP;
+          state_reg <= ST_SEED_READ;
+
+        when ST_ATAN_DELTA_PREP =>
+          -- seed_aux0_reg = c_i (center), seed_aux1_reg = atan(c_i)
+          -- Set up the post-add to add atan(c_i) after polynomial
+          trans_post_add_en_reg <= '1';
+          trans_post_add_sub_reg <= '0';
+          trans_post_add_const_reg <= seed_aux1_reg;  -- atan(c_i)
+          -- Compute delta = x_reg - c_i
+          add_a_reg <= x_reg;
+          add_b_reg <= seed_aux0_reg;
+          add_sub_reg <= true;  -- subtraction
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_ATAN_DELTA_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_ATAN_DELTA_POST =>
+          -- tmp_reg = delta = x - c_i
+          r_reg <= tmp_reg;
+          -- Now compute c_i * x
+          mul_a_reg <= seed_aux0_reg;  -- c_i
+          mul_b_reg <= x_reg;          -- |x|
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_ATAN_CX_MUL_POST;
+          state_reg <= ST_FP_MUL;
+
+        when ST_ATAN_CX_MUL_POST =>
+          -- tmp_reg = c_i * x
+          -- Compute 1 + c_i * x
+          add_a_reg <= FP80_ONE;
+          add_b_reg <= tmp_reg;
+          add_sub_reg <= false;  -- addition
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_ATAN_DENOM_ADD_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_ATAN_DENOM_ADD_POST =>
+          -- tmp_reg = 1 + c_i * x (denominator)
+          -- Compute u = delta / (1 + c_i * x)
+          div_a_reg <= r_reg;    -- delta
+          div_b_reg <= tmp_reg;  -- 1 + c_i * x
+          div_rm_reg <= FP_RND_NEAREST;
+          div_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_ATAN_U_POST;
+          state_reg <= ST_FP_DIV;
+
+        when ST_ATAN_U_POST =>
+          -- tmp_reg = u = delta / (1 + c_i * x), small value |u| < ~1/64
+          x_reg <= tmp_reg;
+          state_reg <= ST_TRANS_POLY_INIT;
+
+        when ST_ATAN_RECIP_SUB =>
+          -- result_reg = atan(1/|x|), need pi/2 - atan(1/|x|)
+          add_a_reg <= FP80_HALF_PI;
+          add_b_reg <= result_reg;
+          add_sub_reg <= true;
+          add_rm_reg <= rm_reg;
+          add_rp_reg <= rp_reg;
+          cont_state_reg <= ST_ATAN_RECIP_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_ATAN_RECIP_POST =>
+          result_reg <= tmp_reg;
+          if op_reg = FPU_OP_ACOS then
+            state_reg <= ST_ACOS_FINAL;
+          elsif atan_neg_reg = '1' then
+            result_reg(FP_WIDTH-1) <= not tmp_reg(FP_WIDTH-1);
+            state_reg <= ST_DONE;
+          else
+            state_reg <= ST_DONE;
+          end if;
+
+        when ST_ASIN_X2_POST =>
+          -- tmp_reg = x^2, compute 1 - x^2
+          add_a_reg <= FP80_ONE;
+          add_b_reg <= tmp_reg;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_ASIN_ONEMX2_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_ASIN_ONEMX2_POST =>
+          -- tmp_reg = 1-x^2, compute sqrt(1-x^2)
+          div_a_reg <= tmp_reg;
+          div_rm_reg <= FP_RND_NEAREST;
+          div_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_ASIN_SQRT_POST;
+          state_reg <= ST_FP_SQRT;
+
+        when ST_ASIN_SQRT_POST =>
+          -- tmp_reg = sqrt(1-x^2), compute |x| / sqrt(1-x^2)
+          div_a_reg <= x_reg;    -- |x|
+          div_b_reg <= tmp_reg;  -- sqrt(1-x^2)
+          div_rm_reg <= FP_RND_NEAREST;
+          div_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_ASIN_DIV_POST;
+          state_reg <= ST_FP_DIV;
+
+        when ST_ASIN_DIV_POST =>
+          -- tmp_reg = y = |x| / sqrt(1-x^2)
+          -- Check if |y| > 1
+          v_exp := unsigned(tmp_reg(78 downto 64));
+          v_mant := unsigned(tmp_reg(63 downto 0));
+          if v_exp > to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH)
+             or (v_exp = to_unsigned(FP_EXP_BIAS, FP_EXP_WIDTH)
+                 and v_mant > x"8000000000000000") then
+            -- |y| > 1: compute 1/y, set recip flag
+            atan_recip_reg <= '1';
+            div_a_reg <= FP80_ONE;
+            div_b_reg <= tmp_reg;
+            div_rm_reg <= FP_RND_NEAREST;
+            div_rp_reg <= FP_PREC_EXTENDED;
+            cont_state_reg <= ST_ATAN_INV_POST;
+            state_reg <= ST_FP_DIV;
+          else
+            -- |y| <= 1: direct to ATAN table path
+            atan_recip_reg <= '0';
+            x_reg <= tmp_reg;
+            mul_a_reg <= tmp_reg;
+            mul_b_reg <= FP80_SIXTY_FOUR;
+            mul_rm_reg <= FP_RND_NEAREST;
+            mul_rp_reg <= FP_PREC_EXTENDED;
+            cont_state_reg <= ST_ATAN_INDEX_MUL_POST;
+            state_reg <= ST_FP_MUL;
+          end if;
+
+        when ST_ACOS_FINAL =>
+          -- result_reg = ASIN(|x|), compute pi/2 +/- ASIN(|x|)
+          add_a_reg <= FP80_HALF_PI;
+          add_b_reg <= result_reg;
+          if acos_neg_input_reg = '0' then
+            add_sub_reg <= true;   -- pi/2 - ASIN(|x|) for positive x
+          else
+            add_sub_reg <= false;  -- pi/2 + ASIN(|x|) for negative x
+          end if;
+          add_rm_reg <= rm_reg;
+          add_rp_reg <= rp_reg;
+          cont_state_reg <= ST_ACOS_FINAL_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_ACOS_FINAL_POST =>
+          result_reg <= tmp_reg;
+          state_reg <= ST_DONE;
+
+        when ST_ATANH_NUMER_POST =>
+          -- tmp_reg = 1+x, save and compute 1-x
+          r_reg <= tmp_reg;  -- numerator
+          add_a_reg <= FP80_ONE;
+          add_b_reg <= a_reg;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_ATANH_DENOM_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_ATANH_DENOM_POST =>
+          -- tmp_reg = 1-x, compute (1+x)/(1-x)
+          div_a_reg <= r_reg;   -- 1+x
+          div_b_reg <= tmp_reg; -- 1-x
+          div_rm_reg <= FP_RND_NEAREST;
+          div_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_ATANH_DIV_POST;
+          state_reg <= ST_FP_DIV;
+
+        when ST_ATANH_DIV_POST =>
+          -- tmp_reg = (1+x)/(1-x), always > 0 for |x| < 1
+          -- Route through LOGN pipeline
+          a_reg <= tmp_reg;
+          log_scale_reg <= FP80_LN2;
+          log_exp_add_en_reg <= '1';
+          coeff0_reg <= FP80_ZERO;
+          coeff1_reg <= FP80_ONE;
+          coeff2_reg <= FP80_NEG_HALF;
+          coeff3_reg <= FP80_ONE_THIRD;
+          coeff4_reg <= FP80_NEG_ONE_FOURTH;
+          coeff5_reg <= FP80_ONE_FIFTH;
+          coeff6_reg <= FP80_NEG_ONE_SIXTH;
+          coeff7_reg <= FP80_ONE_SEVENTH;
+          coeff8_reg <= FP80_NEG_ONE_EIGHTH;
+          coeff9_reg <= FP80_ONE_NINTH;
+          poly_degree_reg <= 9;
+          trans_input_adjust_en_reg <= '1';
+          trans_input_adjust_sub_reg <= '1';
+          trans_post_mul_en_reg <= '1';
+          trans_post_add_en_reg <= '1';
+          trans_post_add_sub_reg <= '0';
+          seed_domain_reg <= SEED_DOMAIN_LOG;
           seed_idx_reg <= 0;
           seed_return_state_reg <= ST_TRANS_PREP;
-          x_reg <= tmp_reg;
-          state_reg <= ST_SEED_READ;
+          state_reg <= ST_LOG_GETEXP;
+
+        when ST_ATANH_HALF_PREP =>
+          -- Multiply ln result by 0.5
+          mul_a_reg <= result_reg;
+          mul_b_reg <= FP80_HALF;
+          mul_rm_reg <= rm_reg;
+          mul_rp_reg <= rp_reg;
+          cont_state_reg <= ST_ATANH_HALF_POST;
+          state_reg <= ST_FP_MUL;
+
+        when ST_ATANH_HALF_POST =>
+          result_reg <= tmp_reg;
+          state_reg <= ST_DONE;
+
+        when ST_FP_SQRT =>
+          if fp_exec_busy_reg = '0' then
+            trig_divrem_op_reg <= FPU_OP_SQRT;
+            fp_exec_busy_reg <= '1';
+            trig_div_start_reg <= '1';
+          elsif trig_div_done = '1' then
+            tmp_reg <= trig_div_result;
+            trig_divrem_op_reg <= FPU_OP_DIV;
+            state_reg <= cont_state_reg;
+            fp_exec_busy_reg <= '0';
+          end if;
 
         when ST_TRANS_PREP =>
           if trans_input_adjust_en_reg = '1' then
@@ -2087,18 +2514,46 @@ begin
         when ST_TRANS_POST_ADD_POST =>
           if exp_reduce_en_reg = '1' then
             result_reg <= fscale_fp80(exp_k_reg, tmp_reg);
+            state_reg <= ST_DONE;
+          elsif op_reg = FPU_OP_ATANH then
+            result_reg <= tmp_reg;
+            state_reg <= ST_ATANH_HALF_PREP;
+          elsif (op_reg = FPU_OP_ATAN or op_reg = FPU_OP_ASIN or op_reg = FPU_OP_ACOS) and atan_recip_reg = '1' then
+            result_reg <= tmp_reg;
+            state_reg <= ST_ATAN_RECIP_SUB;
+          elsif op_reg = FPU_OP_ACOS then
+            result_reg <= tmp_reg;
+            state_reg <= ST_ACOS_FINAL;
+          elsif (op_reg = FPU_OP_ATAN or op_reg = FPU_OP_ASIN) and atan_neg_reg = '1' then
+            result_reg <= tmp_reg;
+            result_reg(FP_WIDTH-1) <= not tmp_reg(FP_WIDTH-1);
+            state_reg <= ST_DONE;
           else
             result_reg <= tmp_reg;
+            state_reg <= ST_DONE;
           end if;
-          state_reg <= ST_DONE;
 
         when ST_TRANS_FINAL_ROUND_POST =>
           if exp_reduce_en_reg = '1' then
             result_reg <= fscale_fp80(exp_k_reg, tmp_reg);
+            state_reg <= ST_DONE;
+          elsif op_reg = FPU_OP_ATANH then
+            result_reg <= tmp_reg;
+            state_reg <= ST_ATANH_HALF_PREP;
+          elsif (op_reg = FPU_OP_ATAN or op_reg = FPU_OP_ASIN or op_reg = FPU_OP_ACOS) and atan_recip_reg = '1' then
+            result_reg <= tmp_reg;
+            state_reg <= ST_ATAN_RECIP_SUB;
+          elsif op_reg = FPU_OP_ACOS then
+            result_reg <= tmp_reg;
+            state_reg <= ST_ACOS_FINAL;
+          elsif (op_reg = FPU_OP_ATAN or op_reg = FPU_OP_ASIN) and atan_neg_reg = '1' then
+            result_reg <= tmp_reg;
+            result_reg(FP_WIDTH-1) <= not tmp_reg(FP_WIDTH-1);
+            state_reg <= ST_DONE;
           else
             result_reg <= tmp_reg;
+            state_reg <= ST_DONE;
           end if;
-          state_reg <= ST_DONE;
 
         when ST_FP_MUL =>
           if fp_exec_busy_reg = '0' then

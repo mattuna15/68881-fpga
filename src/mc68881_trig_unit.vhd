@@ -53,6 +53,8 @@ architecture rtl of mc68881_trig_unit is
     ST_TRIG_QPI_POST,
     ST_TRIG_RESIDUAL_PREP,
     ST_TRIG_RESIDUAL_POST,
+    ST_TRIG_CW_LO_MUL,
+    ST_TRIG_CW_LO_SUB,
     ST_TRIG_SEED_INDEX_ADD_PREP,
     ST_TRIG_SEED_INDEX_ADD_POST,
     ST_TRIG_SEED_INDEX_SCALE_POST,
@@ -147,6 +149,8 @@ architecture rtl of mc68881_trig_unit is
   constant FP80_NEG_INF   : fp80_t := x"FFFF8000000000000000";
   constant FP80_PI        : fp80_t := x"4000C90FDAA22168C235";
   constant FP80_HALF_PI   : fp80_t := x"3FFFC90FDAA22168C235";
+  constant FP80_HALF_PI_HI : fp80_t := x"3FFFC90FDAA200000000";
+  constant FP80_HALF_PI_LO : fp80_t := x"3FDD85A308D400000000";
   constant FP80_QUARTER_PI : fp80_t := x"3FFEC90FDAA22168C000";
   constant FP80_NEG_HALF_PI : fp80_t := x"BFFFC90FDAA22168C235";
   constant FP80_TWO_PI    : fp80_t := x"4001C90FDAA22168C235";
@@ -1676,7 +1680,7 @@ begin
 
         when ST_TRIG_QPI_PREP =>
           mul_a_reg <= q_fp_reg;
-          mul_b_reg <= FP80_HALF_PI;
+          mul_b_reg <= FP80_HALF_PI_HI;
           mul_rm_reg <= FP_RND_NEAREST;
           mul_rp_reg <= FP_PREC_EXTENDED;
           cont_state_reg <= ST_TRIG_QPI_POST;
@@ -1695,6 +1699,30 @@ begin
           state_reg <= ST_FP_ADD;
 
         when ST_TRIG_RESIDUAL_POST =>
+          -- r_hi = x - q * HALF_PI_HI (in tmp_reg)
+          -- Save r_hi, then apply Cody-Waite LO correction
+          r_reg <= tmp_reg;
+          -- Compute q * HALF_PI_LO
+          mul_a_reg <= q_fp_reg;
+          mul_b_reg <= FP80_HALF_PI_LO;
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TRIG_CW_LO_MUL;
+          state_reg <= ST_FP_MUL;
+
+        when ST_TRIG_CW_LO_MUL =>
+          -- tmp_reg = q * HALF_PI_LO
+          -- Compute r = r_hi - q * HALF_PI_LO
+          add_a_reg <= r_reg;       -- r_hi
+          add_b_reg <= tmp_reg;     -- q * HALF_PI_LO
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TRIG_CW_LO_SUB;
+          state_reg <= ST_FP_ADD;
+
+        when ST_TRIG_CW_LO_SUB =>
+          -- tmp_reg = r = r_hi - q * HALF_PI_LO (the corrected residual)
           r_clamped := tmp_reg;
           -- |r_clamped| <= 2^-20: check exponent field <= EPS exponent (3FEB)
           v_exp := unsigned(r_clamped(78 downto 64));

@@ -152,6 +152,18 @@ architecture rtl of mc68881_trig_unit is
   constant FP80_INV_LN10 : fp80_t := x"3FFDDE5BD8A937287195";
   constant FP80_LOG10_2 : fp80_t := x"3FFD9A209A84FBCFF798";
 
+  constant FP80_ONE_720TH     : fp80_t := x"3FF5B60B60B60B60B60B"; -- 1/720 = 1/6!
+  constant FP80_ONE_5040TH    : fp80_t := x"3FF2D00D00D00D00D00D"; -- 1/5040 = 1/7!
+  constant FP80_ONE_40320TH   : fp80_t := x"3FEFD00D00D00D00D00D"; -- 1/40320 = 1/8!
+  constant FP80_ONE_362880TH  : fp80_t := x"3FECB8EF1D2AB6399C7D"; -- 1/362880 = 1/9!
+  constant FP80_ONE_SEVENTH   : fp80_t := x"3FFC9249249249249249"; -- 1/7
+  constant FP80_ONE_EIGHTH    : fp80_t := x"3FFC8000000000000000"; -- 1/8
+  constant FP80_ONE_NINTH     : fp80_t := x"3FFBE38E38E38E38E38E"; -- 1/9
+  constant FP80_NEG_ONE_FIFTH : fp80_t := x"BFFCCCCCCCCCCCCCCCCD"; -- -1/5
+  constant FP80_NEG_ONE_SEVENTH : fp80_t := x"BFFC9249249249249249"; -- -1/7
+  constant FP80_NEG_ONE_EIGHTH  : fp80_t := x"BFFC8000000000000000"; -- -1/8
+  constant FP80_NEG_ONE_NINTH   : fp80_t := x"BFFBE38E38E38E38E38E"; -- -1/9
+
   type fp80_table64_t is array (0 to 63) of fp80_t;
   type seed_domain_t is (SEED_DOMAIN_TRIG, SEED_DOMAIN_EXP, SEED_DOMAIN_LOG, SEED_DOMAIN_ATAN);
   constant TRIG_SEED_CENTER_INIT : fp80_table64_t := (
@@ -406,7 +418,12 @@ architecture rtl of mc68881_trig_unit is
   signal coeff3_reg : fp80_t := (others => '0');
   signal coeff4_reg : fp80_t := (others => '0');
   signal coeff5_reg : fp80_t := (others => '0');
-  signal poly_idx_reg : integer range 0 to 5 := 0;
+  signal coeff6_reg : fp80_t := (others => '0');
+  signal coeff7_reg : fp80_t := (others => '0');
+  signal coeff8_reg : fp80_t := (others => '0');
+  signal coeff9_reg : fp80_t := (others => '0');
+  signal poly_degree_reg : integer range 0 to 9 := 5;
+  signal poly_idx_reg : integer range 0 to 9 := 0;
   signal q_fp_reg : fp80_t := (others => '0');
   signal q_mod_reg : integer range 0 to 3 := 0;
   signal seed_idx_reg : integer range 0 to 63 := 0;
@@ -716,6 +733,11 @@ begin
       tmp_reg <= (others => '0');
       tanh_x2_reg <= (others => '0');
       poly_idx_reg <= 0;
+      poly_degree_reg <= 5;
+      coeff6_reg <= (others => '0');
+      coeff7_reg <= (others => '0');
+      coeff8_reg <= (others => '0');
+      coeff9_reg <= (others => '0');
       q_fp_reg <= (others => '0');
       q_mod_reg <= 0;
       seed_idx_reg <= 0;
@@ -861,6 +883,11 @@ begin
             coeff3_reg <= FP80_ZERO;
             coeff4_reg <= FP80_ZERO;
             coeff5_reg <= FP80_ZERO;
+            coeff6_reg <= FP80_ZERO;
+            coeff7_reg <= FP80_ZERO;
+            coeff8_reg <= FP80_ZERO;
+            coeff9_reg <= FP80_ZERO;
+            poly_degree_reg <= 5;
             x_local := a_reg;
 
             case op_reg is
@@ -883,6 +910,11 @@ begin
                   coeff3_reg <= FP80_ONE_SIXTH;
                   coeff4_reg <= FP80_ONE_TWENTYFOURTH;
                   coeff5_reg <= FP80_ONE_120TH;
+                  coeff6_reg <= FP80_ONE_720TH;
+                  coeff7_reg <= FP80_ONE_5040TH;
+                  coeff8_reg <= FP80_ONE_40320TH;
+                  coeff9_reg <= FP80_ONE_362880TH;
+                  poly_degree_reg <= 9;
                   seed_domain_reg <= SEED_DOMAIN_EXP;
                   seed_idx_reg <= 0;
                   seed_return_state_reg <= ST_TRANS_PREP;
@@ -908,6 +940,11 @@ begin
                   coeff3_reg <= FP80_ONE_SIXTH;
                   coeff4_reg <= FP80_ONE_TWENTYFOURTH;
                   coeff5_reg <= FP80_ONE_120TH;
+                  coeff6_reg <= FP80_ONE_720TH;
+                  coeff7_reg <= FP80_ONE_5040TH;
+                  coeff8_reg <= FP80_ONE_40320TH;
+                  coeff9_reg <= FP80_ONE_362880TH;
+                  poly_degree_reg <= 9;
                   trans_post_add_en_reg <= '1';
                   trans_post_add_sub_reg <= '0';
                   trans_post_add_const_reg <= FP80_NEG_ONE;
@@ -940,6 +977,11 @@ begin
                   coeff3_reg <= FP80_ONE_SIXTH;
                   coeff4_reg <= FP80_ONE_TWENTYFOURTH;
                   coeff5_reg <= FP80_ONE_120TH;
+                  coeff6_reg <= FP80_ONE_720TH;
+                  coeff7_reg <= FP80_ONE_5040TH;
+                  coeff8_reg <= FP80_ONE_40320TH;
+                  coeff9_reg <= FP80_ONE_362880TH;
+                  poly_degree_reg <= 9;
                   trans_pre_mul_en_reg <= '1';
                   seed_domain_reg <= SEED_DOMAIN_EXP;
                   seed_idx_reg <= 1;
@@ -967,6 +1009,11 @@ begin
                   coeff3_reg <= FP80_ONE_SIXTH;
                   coeff4_reg <= FP80_ONE_TWENTYFOURTH;
                   coeff5_reg <= FP80_ONE_120TH;
+                  coeff6_reg <= FP80_ONE_720TH;
+                  coeff7_reg <= FP80_ONE_5040TH;
+                  coeff8_reg <= FP80_ONE_40320TH;
+                  coeff9_reg <= FP80_ONE_362880TH;
+                  poly_degree_reg <= 9;
                   trans_pre_mul_en_reg <= '1';
                   seed_domain_reg <= SEED_DOMAIN_EXP;
                   seed_idx_reg <= 2;
@@ -999,6 +1046,11 @@ begin
                   coeff3_reg <= FP80_ONE_THIRD;
                   coeff4_reg <= FP80_NEG_ONE_FOURTH;
                   coeff5_reg <= FP80_ONE_FIFTH;
+                  coeff6_reg <= FP80_NEG_ONE_SIXTH;
+                  coeff7_reg <= FP80_ONE_SEVENTH;
+                  coeff8_reg <= FP80_NEG_ONE_EIGHTH;
+                  coeff9_reg <= FP80_ONE_NINTH;
+                  poly_degree_reg <= 9;
                   trans_input_adjust_en_reg <= '1';
                   trans_input_adjust_sub_reg <= '1';
                   trans_post_mul_en_reg <= '1';
@@ -1060,6 +1112,11 @@ begin
                   coeff3_reg <= FP80_ONE_THIRD;
                   coeff4_reg <= FP80_NEG_ONE_FOURTH;
                   coeff5_reg <= FP80_ONE_FIFTH;
+                  coeff6_reg <= FP80_NEG_ONE_SIXTH;
+                  coeff7_reg <= FP80_ONE_SEVENTH;
+                  coeff8_reg <= FP80_NEG_ONE_EIGHTH;
+                  coeff9_reg <= FP80_ONE_NINTH;
+                  poly_degree_reg <= 9;
                   trans_input_adjust_en_reg <= '1';
                   trans_input_adjust_sub_reg <= '1';
                   trans_post_mul_en_reg <= '1';
@@ -1095,6 +1152,11 @@ begin
                   coeff3_reg <= FP80_ONE_THIRD;
                   coeff4_reg <= FP80_NEG_ONE_FOURTH;
                   coeff5_reg <= FP80_ONE_FIFTH;
+                  coeff6_reg <= FP80_NEG_ONE_SIXTH;
+                  coeff7_reg <= FP80_ONE_SEVENTH;
+                  coeff8_reg <= FP80_NEG_ONE_EIGHTH;
+                  coeff9_reg <= FP80_ONE_NINTH;
+                  poly_degree_reg <= 9;
                   trans_input_adjust_en_reg <= '1';
                   trans_input_adjust_sub_reg <= '1';
                   trans_post_mul_en_reg <= '1';
@@ -1248,6 +1310,11 @@ begin
                   coeff3_reg <= FP80_ONE_SIXTH;
                   coeff4_reg <= FP80_ZERO;
                   coeff5_reg <= FP80_ONE_120TH;
+                  coeff6_reg <= FP80_ZERO;
+                  coeff7_reg <= FP80_ONE_5040TH;
+                  coeff8_reg <= FP80_ZERO;
+                  coeff9_reg <= FP80_ONE_362880TH;
+                  poly_degree_reg <= 9;
                   seed_domain_reg <= SEED_DOMAIN_EXP;
                   seed_idx_reg <= 0;
                   seed_return_state_reg <= ST_TRANS_PREP;
@@ -1269,6 +1336,11 @@ begin
                   coeff3_reg <= FP80_ZERO;
                   coeff4_reg <= FP80_ONE_TWENTYFOURTH;
                   coeff5_reg <= FP80_ZERO;
+                  coeff6_reg <= FP80_ONE_720TH;
+                  coeff7_reg <= FP80_ZERO;
+                  coeff8_reg <= FP80_ONE_40320TH;
+                  coeff9_reg <= FP80_ZERO;
+                  poly_degree_reg <= 9;
                   seed_domain_reg <= SEED_DOMAIN_EXP;
                   seed_idx_reg <= 0;
                   seed_return_state_reg <= ST_TRANS_PREP;
@@ -1827,6 +1899,11 @@ begin
           coeff3_reg <= FP80_ONE_THIRD;
           coeff4_reg <= FP80_NEG_ONE_FOURTH;
           coeff5_reg <= FP80_ONE_FIFTH;
+          coeff6_reg <= FP80_NEG_ONE_SIXTH;
+          coeff7_reg <= FP80_ONE_SEVENTH;
+          coeff8_reg <= FP80_NEG_ONE_EIGHTH;
+          coeff9_reg <= FP80_ONE_NINTH;
+          poly_degree_reg <= 9;
           trans_input_adjust_en_reg <= '1';
           trans_input_adjust_sub_reg <= '1';
           trans_post_mul_en_reg <= '1';
@@ -1917,8 +1994,13 @@ begin
           state_reg <= ST_TRANS_PREP;
 
         when ST_TRANS_POLY_INIT =>
-          poly_reg <= coeff5_reg;
-          poly_idx_reg <= 4;
+          case poly_degree_reg is
+            when 9 => poly_reg <= coeff9_reg; poly_idx_reg <= 8;
+            when 8 => poly_reg <= coeff8_reg; poly_idx_reg <= 7;
+            when 7 => poly_reg <= coeff7_reg; poly_idx_reg <= 6;
+            when 6 => poly_reg <= coeff6_reg; poly_idx_reg <= 5;
+            when others => poly_reg <= coeff5_reg; poly_idx_reg <= 4;
+          end case;
           state_reg <= ST_TRANS_POLY_MUL_PREP;
 
         when ST_TRANS_POLY_MUL_PREP =>
@@ -1931,6 +2013,10 @@ begin
 
         when ST_TRANS_POLY_MUL_POST =>
           case poly_idx_reg is
+            when 8 => coeff_sel := coeff8_reg;
+            when 7 => coeff_sel := coeff7_reg;
+            when 6 => coeff_sel := coeff6_reg;
+            when 5 => coeff_sel := coeff5_reg;
             when 4 => coeff_sel := coeff4_reg;
             when 3 => coeff_sel := coeff3_reg;
             when 2 => coeff_sel := coeff2_reg;

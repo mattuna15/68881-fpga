@@ -64,15 +64,6 @@ architecture rtl of mc68881_fp80_mul_unit is
   signal done_reg    : std_logic := '0';
   signal result_reg  : fp80_t := (others => '0');
 
-  -- Local helper: precision bits for rounding.
-  function prec_bits(prec : fp_round_prec_t) return natural is
-  begin
-    case prec is
-      when FP_PREC_SINGLE => return 24;
-      when FP_PREC_DOUBLE => return 53;
-      when others         => return FP_MANT_WIDTH;
-    end case;
-  end function;
 
 begin
 
@@ -93,9 +84,7 @@ begin
     variable sticky     : std_logic;
     variable any_disc   : std_logic;
     variable increment  : std_logic;
-    variable prec_w     : natural;
     variable drop_bits  : natural;
-    variable lsb_keep   : integer;
     variable exp_res    : unsigned(FP_EXP_WIDTH-1 downto 0);
     variable res_packed : fp80_t;
     variable lz_norm    : natural;
@@ -233,28 +222,45 @@ begin
 
           -- Inline apply_rounding.
           mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
-          prec_w    := prec_bits(rp_reg);
-          drop_bits := FP_MANT_WIDTH - prec_w;
-          lsb_keep  := FP_GRS_BITS + drop_bits;
 
-          guard     := mant_ext(lsb_keep - 1);
-          round_bit := mant_ext(lsb_keep - 2);
-          sticky    := '0';
-          if lsb_keep > 2 then
-            for i in 0 to mant_ext'length-1 loop
-              if i <= lsb_keep - 3 and mant_ext(i) = '1' then
-                sticky := '1';
-              end if;
-            end loop;
-          end if;
+          -- Extract guard, round, sticky using constant indices per precision.
+          sticky := '0';
+          case rp_reg is
+            when FP_PREC_SINGLE =>
+              guard     := mant_ext(42);
+              round_bit := mant_ext(41);
+              if mant_ext(40 downto 0) /= 0 then sticky := '1'; end if;
+              drop_bits := 40;
+            when FP_PREC_DOUBLE =>
+              guard     := mant_ext(13);
+              round_bit := mant_ext(12);
+              if mant_ext(11 downto 0) /= 0 then sticky := '1'; end if;
+              drop_bits := 11;
+            when others =>  -- extended
+              guard     := mant_ext(2);
+              round_bit := mant_ext(1);
+              if mant_ext(0) = '1' then sticky := '1'; end if;
+              drop_bits := 0;
+          end case;
 
           any_disc  := guard or round_bit or sticky;
           increment := '0';
           case rm_reg is
             when FP_RND_NEAREST =>
-              if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(drop_bits) = '1') then
-                increment := '1';
-              end if;
+              case rp_reg is
+                when FP_PREC_SINGLE =>
+                  if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(40) = '1') then
+                    increment := '1';
+                  end if;
+                when FP_PREC_DOUBLE =>
+                  if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(11) = '1') then
+                    increment := '1';
+                  end if;
+                when others =>
+                  if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(0) = '1') then
+                    increment := '1';
+                  end if;
+              end case;
             when FP_RND_ZERO =>
               increment := '0';
             when FP_RND_MINUS_INF =>
@@ -268,7 +274,11 @@ begin
           end case;
 
           if increment = '1' then
-            mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH + 1) sll drop_bits);
+            case rp_reg is
+              when FP_PREC_SINGLE => mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH + 1) sll 40);
+              when FP_PREC_DOUBLE => mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH + 1) sll 11);
+              when others         => mant_round := ('0' & mant_main) + 1;
+            end case;
             if mant_round(mant_round'left) = '1' then
               -- Rounding overflow: shift right with sticky, increment exponent.
               mant_main := shift_right(mant_round(mant_round'left-1 downto 0), 1);
@@ -282,13 +292,12 @@ begin
             end if;
           end if;
 
-          if drop_bits > 0 then
-            for i in 0 to mant_main'length-1 loop
-              if i < drop_bits then
-                mant_main(i) := '0';
-              end if;
-            end loop;
-          end if;
+          -- Zero lower bits for reduced-precision modes.
+          case rp_reg is
+            when FP_PREC_SINGLE => mant_main(39 downto 0) := (others => '0');
+            when FP_PREC_DOUBLE => mant_main(10 downto 0) := (others => '0');
+            when others         => null;
+          end case;
 
           -- Underflow: produce subnormal output or flush to zero.
           if exp_var <= 0 then

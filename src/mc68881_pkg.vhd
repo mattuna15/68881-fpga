@@ -1428,48 +1428,54 @@ package body mc68881_pkg is
     variable sticky     : std_logic := '0';
     variable increment  : std_logic := '0';
     variable any_disc   : std_logic := '0';
-    variable prec_w     : natural := FP_MANT_WIDTH;
-    variable drop_bits  : natural := 0;
-    variable lsb_keep   : integer := FP_GRS_BITS;
     variable exp_var    : integer := 0;
+    variable drop_bits  : natural := 0;
   begin
     mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
-    prec_w := prec_bits(round_prec);
-    drop_bits := FP_MANT_WIDTH - prec_w;
-    lsb_keep := FP_GRS_BITS + drop_bits;
 
-
-    guard := mant_ext(lsb_keep-1);
-    round_bit := mant_ext(lsb_keep-2);
-    if lsb_keep > 2 then
-      for i in 0 to mant_ext'length-1 loop
-        if i <= lsb_keep-3 and mant_ext(i) = '1' then
-          sticky := '1';
-        end if;
-      end loop;
-    end if;
+    -- Extract guard/round/sticky per precision using constant indices.
+    sticky := '0';
+    case round_prec is
+      when FP_PREC_SINGLE =>
+        guard := mant_ext(42); round_bit := mant_ext(41);
+        if mant_ext(40 downto 0) /= 0 then sticky := '1'; end if;
+        drop_bits := 40;
+      when FP_PREC_DOUBLE =>
+        guard := mant_ext(13); round_bit := mant_ext(12);
+        if mant_ext(11 downto 0) /= 0 then sticky := '1'; end if;
+        drop_bits := 11;
+      when others =>
+        guard := mant_ext(2); round_bit := mant_ext(1);
+        if mant_ext(0) = '1' then sticky := '1'; end if;
+        drop_bits := 0;
+    end case;
 
     any_disc := guard or round_bit or sticky;
     case round_mode is
       when FP_RND_NEAREST =>
-        if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(drop_bits) = '1') then
-          increment := '1';
-        end if;
+        case round_prec is
+          when FP_PREC_SINGLE =>
+            if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(40) = '1') then increment := '1'; end if;
+          when FP_PREC_DOUBLE =>
+            if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(11) = '1') then increment := '1'; end if;
+          when others =>
+            if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(0) = '1') then increment := '1'; end if;
+        end case;
       when FP_RND_ZERO =>
         increment := '0';
       when FP_RND_MINUS_INF =>
-        if sign = '1' and any_disc = '1' then
-          increment := '1';
-        end if;
+        if sign = '1' and any_disc = '1' then increment := '1'; end if;
       when FP_RND_PLUS_INF =>
-        if sign = '0' and any_disc = '1' then
-          increment := '1';
-        end if;
+        if sign = '0' and any_disc = '1' then increment := '1'; end if;
     end case;
 
     exp_var := exp_in;
     if increment = '1' then
-      mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll drop_bits);
+      case round_prec is
+        when FP_PREC_SINGLE => mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll 40);
+        when FP_PREC_DOUBLE => mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll 11);
+        when others => mant_round := ('0' & mant_main) + 1;
+      end case;
       if mant_round(mant_round'left) = '1' then
         mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
         mant_main(mant_main'left) := '1';
@@ -1479,13 +1485,11 @@ package body mc68881_pkg is
       end if;
     end if;
 
-    if drop_bits > 0 then
-      for i in 0 to mant_main'length-1 loop
-        if i < drop_bits then
-          mant_main(i) := '0';
-        end if;
-      end loop;
-    end if;
+    case round_prec is
+      when FP_PREC_SINGLE => mant_main(39 downto 0) := (others => '0');
+      when FP_PREC_DOUBLE => mant_main(10 downto 0) := (others => '0');
+      when others => null;
+    end case;
 
     mant_out := mant_main;
     exp_out := exp_var;

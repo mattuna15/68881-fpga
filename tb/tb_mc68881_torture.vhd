@@ -221,6 +221,13 @@ begin
     variable sum_val : fp80_t := (others => '0');
     variable ln_val : fp80_t := (others => '0');
     variable exp_ln_val : fp80_t := (others => '0');
+    variable prev_val : fp80_t := (others => '0');
+    variable curr_val : fp80_t := (others => '0');
+    variable sh_val : fp80_t := (others => '0');
+    variable ch_val : fp80_t := (others => '0');
+    variable sh2 : fp80_t := (others => '0');
+    variable ch2 : fp80_t := (others => '0');
+    variable diff_val : fp80_t := (others => '0');
 
     -- Constants
     constant FP80_ZERO    : fp80_t := x"00000000000000000000";
@@ -1166,10 +1173,231 @@ begin
     report "=== PHASE 3 COMPLETE ===" severity note;
 
     -- ================================================================
+    -- PHASE 4: Extended Coverage Tests (from external review)
+    -- ================================================================
+    report "=== PHASE 4: Extended Coverage Tests ===" severity note;
+
+    -- ----------------------------------------------------------------
+    -- 4a: Domain boundary tests - ASIN near +/-1
+    -- ----------------------------------------------------------------
+    run_monadic_close(FPU_OP_ASIN, TV_ARG_0P99, FP_RND_NEAREST,
+      TV_ASIN_0P99, FP80_TOL_1E12, "ASIN(0.99) boundary");
+    run_monadic_close(FPU_OP_ASIN, TV_ARG_0P999, FP_RND_NEAREST,
+      TV_ASIN_0P999, FP80_TOL_1E10, "ASIN(0.999) boundary");
+    run_monadic_close(FPU_OP_ASIN, TV_ARG_0P9999, FP_RND_NEAREST,
+      TV_ASIN_0P9999, FP80_TOL_1E9, "ASIN(0.9999) boundary");
+    run_monadic_close(FPU_OP_ASIN, TV_ARG_NEG_0P99, FP_RND_NEAREST,
+      TV_ASIN_NEG_0P99, FP80_TOL_1E12, "ASIN(-0.99) boundary");
+    report "ASIN boundary: 4 tests passed" severity note;
+
+    -- 4b: Domain boundary tests - ACOS near +/-1
+    run_monadic_close(FPU_OP_ACOS, TV_ARG_0P99, FP_RND_NEAREST,
+      TV_ACOS_0P99, FP80_TOL_1E10, "ACOS(0.99) boundary");
+    run_monadic_close(FPU_OP_ACOS, TV_ARG_NEG_0P99, FP_RND_NEAREST,
+      TV_ACOS_NEG_0P99, FP80_TOL_1E12, "ACOS(-0.99) boundary");
+    run_monadic_close(FPU_OP_ACOS, TV_ARG_0P001, FP_RND_NEAREST,
+      TV_ACOS_0P001, FP80_TOL_1E14, "ACOS(0.001) mid-range");
+    report "ACOS boundary: 3 tests passed" severity note;
+
+    -- 4c: Domain boundary tests - ATANH near +/-1
+    run_monadic_close(FPU_OP_ATANH, TV_ARG_0P99, FP_RND_NEAREST,
+      TV_ATANH_0P99, FP80_TOL_1E10, "ATANH(0.99) boundary");
+    run_monadic_close(FPU_OP_ATANH, TV_ARG_NEG_0P99, FP_RND_NEAREST,
+      TV_ATANH_NEG_0P99, FP80_TOL_1E10, "ATANH(-0.99) boundary");
+    run_monadic_close(FPU_OP_ATANH, TV_ARG_0P999, FP_RND_NEAREST,
+      TV_ATANH_0P999, FP80_TOL_1E9, "ATANH(0.999) boundary");
+    report "ATANH boundary: 3 tests passed" severity note;
+
+    -- ----------------------------------------------------------------
+    -- 4d: Domain error exception tests
+    -- ----------------------------------------------------------------
+    run_monadic_nan(FPU_OP_ASIN, TV_ARG_TWO, "ASIN(2) domain error -> NaN");
+    run_monadic_nan(FPU_OP_ACOS, TV_ARG_TWO, "ACOS(2) domain error -> NaN");
+    run_monadic_inf(FPU_OP_ATANH, TV_ARG_ONE, '0', "ATANH(1) -> +inf");
+    run_monadic_inf(FPU_OP_ATANH, FP80_NEG_ONE, '1', "ATANH(-1) -> -inf");
+    run_monadic_nan(FPU_OP_LOGN, GV_ARG_M2, "LOGN(-2) domain error -> NaN");
+    run_monadic_nan(FPU_OP_LOG2, GV_ARG_M2, "LOG2(-2) domain error -> NaN");
+    run_monadic_nan(FPU_OP_LOG10, GV_ARG_M2, "LOG10(-2) domain error -> NaN");
+    report "Domain errors: 7 tests passed" severity note;
+
+    -- ----------------------------------------------------------------
+    -- 4e: EXP overflow/underflow boundary
+    -- ----------------------------------------------------------------
+    run_monadic_close(FPU_OP_ETOX, TV_ARG_11356, FP_RND_NEAREST,
+      TV_ETOX_11356, FP80_TOL_1E3, "EXP(11356) near overflow");
+    run_monadic_close(FPU_OP_ETOX, TV_ARG_0P001, FP_RND_NEAREST,
+      TV_ETOX_0P001, FP80_TOL_1E16, "EXP(0.001) small positive");
+    run_monadic_close(FPU_OP_ETOX, TV_ARG_NEG_0P001, FP_RND_NEAREST,
+      TV_ETOX_NEG_0P001, FP80_TOL_1E16, "EXP(-0.001) small negative");
+    report "EXP boundary: 3 tests passed" severity note;
+
+    -- ----------------------------------------------------------------
+    -- 4f: Cross-function consistency LOG2 vs LOGN/ln(2)
+    -- ----------------------------------------------------------------
+    -- log2(7) should equal logn(7) / logn(2)
+    run_monadic_capture(FPU_OP_LOGN, TV_ARG_7, FP_RND_NEAREST, captured);
+    run_binary_capture(FPU_OP_DIV, captured, TV_LOGN_2, FP_RND_NEAREST, ln_val);
+    check_fp80_close(ln_val, TV_LOG2_7, FP80_TOL_1E15, "log2(7) vs logn(7)/ln(2)");
+    pass_count := pass_count + 1;
+
+    -- log10(7) should equal logn(7) / logn(10)
+    run_binary_capture(FPU_OP_DIV, captured, TV_LOGN_10, FP_RND_NEAREST, ln_val);
+    check_fp80_close(ln_val, TV_LOG10_7, FP80_TOL_1E15, "log10(7) vs logn(7)/ln(10)");
+    pass_count := pass_count + 1;
+    report "Cross-function: 2 tests passed" severity note;
+
+    -- ----------------------------------------------------------------
+    -- 4g: Inverse function round-trip identities
+    -- ----------------------------------------------------------------
+    -- asin(sin(x)) ~ x for x in (-pi/2, pi/2)
+    run_monadic_close(FPU_OP_ASIN, TV_SIN_0P5_VAL, FP_RND_NEAREST,
+      TV_ARG_HALF, FP80_TOL_1E14, "asin(sin(0.5))~0.5");
+    run_monadic_close(FPU_OP_ASIN, TV_SIN_0P3_VAL, FP_RND_NEAREST,
+      TV_ARG_0P3, FP80_TOL_1E14, "asin(sin(0.3))~0.3");
+    run_monadic_close(FPU_OP_ASIN, TV_SIN_1P0_VAL, FP_RND_NEAREST,
+      TV_ARG_ONE, FP80_TOL_1E14, "asin(sin(1.0))~1.0");
+
+    -- atan(tan(x)) ~ x for x in (-pi/2, pi/2)
+    run_monadic_close(FPU_OP_ATAN, TV_TAN_0P5_VAL, FP_RND_NEAREST,
+      TV_ARG_HALF, FP80_TOL_1E14, "atan(tan(0.5))~0.5");
+    run_monadic_close(FPU_OP_ATAN, TV_TAN_0P3_VAL, FP_RND_NEAREST,
+      TV_ARG_0P3, FP80_TOL_1E14, "atan(tan(0.3))~0.3");
+    run_monadic_close(FPU_OP_ATAN, TV_TAN_1P0_VAL, FP_RND_NEAREST,
+      TV_ARG_ONE, FP80_TOL_1E14, "atan(tan(1.0))~1.0");
+    report "Inverse roundtrip: 6 tests passed" severity note;
+
+    -- ----------------------------------------------------------------
+    -- 4h: Monotonicity - SIN on (0, pi/2)
+    -- ----------------------------------------------------------------
+    run_monadic_capture(FPU_OP_SIN, TV_ARG_PI_1_10, FP_RND_NEAREST, prev_val);
+    check_fp80_close(prev_val, TV_SIN_PI_1_10, FP80_TOL_1E6, "sin(pi/10)");
+    pass_count := pass_count + 1;
+
+    run_monadic_capture(FPU_OP_SIN, TV_ARG_PI_2_10, FP_RND_NEAREST, curr_val);
+    check_fp80_close(curr_val, TV_SIN_PI_2_10, FP80_TOL_1E6, "sin(2pi/10)");
+    assert compare_fp80(curr_val, prev_val) > 0
+      report "SIN monotonicity fail: sin(2pi/10) <= sin(pi/10)" severity failure;
+    pass_count := pass_count + 1;
+    prev_val := curr_val;
+
+    run_monadic_capture(FPU_OP_SIN, TV_ARG_PI_3_10, FP_RND_NEAREST, curr_val);
+    check_fp80_close(curr_val, TV_SIN_PI_3_10, FP80_TOL_1E6, "sin(3pi/10)");
+    assert compare_fp80(curr_val, prev_val) > 0
+      report "SIN monotonicity fail: sin(3pi/10) <= sin(2pi/10)" severity failure;
+    pass_count := pass_count + 1;
+    prev_val := curr_val;
+
+    run_monadic_capture(FPU_OP_SIN, TV_ARG_PI_4_10, FP_RND_NEAREST, curr_val);
+    check_fp80_close(curr_val, TV_SIN_PI_4_10, FP80_TOL_1E6, "sin(4pi/10)");
+    assert compare_fp80(curr_val, prev_val) > 0
+      report "SIN monotonicity fail: sin(4pi/10) <= sin(3pi/10)" severity failure;
+    pass_count := pass_count + 1;
+    prev_val := curr_val;
+
+    run_monadic_capture(FPU_OP_SIN, TV_ARG_PI_5_10, FP_RND_NEAREST, curr_val);
+    check_fp80_close(curr_val, TV_SIN_PI_5_10, FP80_TOL_1E6, "sin(pi/2)");
+    assert compare_fp80(curr_val, prev_val) > 0
+      report "SIN monotonicity fail: sin(pi/2) <= sin(4pi/10)" severity failure;
+    pass_count := pass_count + 1;
+    report "SIN monotonicity: 5 tests passed" severity note;
+
+    -- ----------------------------------------------------------------
+    -- 4i: Monotonicity - ATAN (always increasing)
+    -- ----------------------------------------------------------------
+    run_monadic_capture(FPU_OP_ATAN, TV_ARG_0P1, FP_RND_NEAREST, prev_val);
+    check_fp80_close(prev_val, TV_ATAN_0P1, FP80_TOL_1E14, "atan(0.1)");
+    pass_count := pass_count + 1;
+
+    run_monadic_capture(FPU_OP_ATAN, TV_ARG_HALF, FP_RND_NEAREST, curr_val);
+    check_fp80_close(curr_val, TV_ATAN_0P5, FP80_TOL_1E14, "atan(0.5)");
+    assert compare_fp80(curr_val, prev_val) > 0
+      report "ATAN monotonicity fail: atan(0.5) <= atan(0.1)" severity failure;
+    pass_count := pass_count + 1;
+    prev_val := curr_val;
+
+    run_monadic_capture(FPU_OP_ATAN, TV_ARG_ONE, FP_RND_NEAREST, curr_val);
+    check_fp80_close(curr_val, TV_ATAN_1, FP80_TOL_1E14, "atan(1.0)");
+    assert compare_fp80(curr_val, prev_val) > 0
+      report "ATAN monotonicity fail: atan(1) <= atan(0.5)" severity failure;
+    pass_count := pass_count + 1;
+    prev_val := curr_val;
+
+    run_monadic_capture(FPU_OP_ATAN, TV_ARG_TWO, FP_RND_NEAREST, curr_val);
+    assert compare_fp80(curr_val, prev_val) > 0
+      report "ATAN monotonicity fail: atan(2) <= atan(1)" severity failure;
+    pass_count := pass_count + 1;
+    prev_val := curr_val;
+
+    run_monadic_capture(FPU_OP_ATAN, TV_ARG_10, FP_RND_NEAREST, curr_val);
+    check_fp80_close(curr_val, TV_ATAN_10, FP80_TOL_1E14, "atan(10)");
+    assert compare_fp80(curr_val, prev_val) > 0
+      report "ATAN monotonicity fail: atan(10) <= atan(2)" severity failure;
+    pass_count := pass_count + 1;
+    prev_val := curr_val;
+
+    run_monadic_capture(FPU_OP_ATAN, TV_ARG_100, FP_RND_NEAREST, curr_val);
+    check_fp80_close(curr_val, TV_ATAN_100, FP80_TOL_1E14, "atan(100)");
+    assert compare_fp80(curr_val, prev_val) > 0
+      report "ATAN monotonicity fail: atan(100) <= atan(10)" severity failure;
+    pass_count := pass_count + 1;
+    report "ATAN monotonicity: 6 tests passed" severity note;
+
+    -- ----------------------------------------------------------------
+    -- 4j: ETOXM1 / LOGNP1 small argument precision
+    -- ----------------------------------------------------------------
+    run_monadic_close(FPU_OP_ETOXM1, TV_ARG_1EN10, FP_RND_NEAREST,
+      TV_ETOXM1_1EN10, FP80_TOL_1E14, "ETOXM1(1e-10)");
+    run_monadic_close(FPU_OP_ETOXM1, TV_ARG_1EN15, FP_RND_NEAREST,
+      TV_ETOXM1_1EN15, FP80_TOL_1E14, "ETOXM1(1e-15)");
+    run_monadic_close(FPU_OP_ETOXM1, TV_ARG_NEG_1EN10, FP_RND_NEAREST,
+      TV_ETOXM1_NEG_1EN10, FP80_TOL_1E14, "ETOXM1(-1e-10)");
+
+    run_monadic_close(FPU_OP_LOGNP1, TV_ARG_1EN10, FP_RND_NEAREST,
+      TV_LOGNP1_1EN10, FP80_TOL_1E14, "LOGNP1(1e-10)");
+    run_monadic_close(FPU_OP_LOGNP1, TV_ARG_1EN15, FP_RND_NEAREST,
+      TV_LOGNP1_1EN15, FP80_TOL_1E14, "LOGNP1(1e-15)");
+    run_monadic_close(FPU_OP_LOGNP1, TV_ARG_NEG_1EN10, FP_RND_NEAREST,
+      TV_LOGNP1_NEG_1EN10, FP80_TOL_1E14, "LOGNP1(-1e-10)");
+    report "ETOXM1/LOGNP1 small args: 6 tests passed" severity note;
+
+    -- ----------------------------------------------------------------
+    -- 4k: Back-to-back operations (no stale state)
+    -- ----------------------------------------------------------------
+    -- Run SIN then COS on same argument back-to-back
+    run_monadic_close(FPU_OP_SIN, TV_ARG_0P7, FP_RND_NEAREST,
+      TV_SIN_0P7, FP80_TOL_1E8, "back2back SIN(0.7)");
+    run_monadic_close(FPU_OP_COS, TV_ARG_0P7, FP_RND_NEAREST,
+      TV_COS_0P7, FP80_TOL_1E8, "back2back COS(0.7)");
+    -- Run again to ensure no stale state from previous
+    run_monadic_close(FPU_OP_SIN, TV_ARG_0P7, FP_RND_NEAREST,
+      TV_SIN_0P7, FP80_TOL_1E8, "back2back SIN(0.7) repeat");
+    report "Back-to-back: 3 tests passed" severity note;
+
+    -- ----------------------------------------------------------------
+    -- 4l: SINH/COSH algebraic identity: cosh^2 - sinh^2 = 1
+    -- ----------------------------------------------------------------
+    run_monadic_capture(FPU_OP_SINH, TV_ARG_TWO, FP_RND_NEAREST, sh_val);
+    check_fp80_close(sh_val, TV_SINH_2_VAL, FP80_TOL_1E3, "sinh(2)");
+    pass_count := pass_count + 1;
+
+    run_monadic_capture(FPU_OP_COSH, TV_ARG_TWO, FP_RND_NEAREST, ch_val);
+    check_fp80_close(ch_val, TV_COSH_2_VAL, FP80_TOL_1E3, "cosh(2)");
+    pass_count := pass_count + 1;
+
+    run_binary_capture(FPU_OP_MUL, ch_val, ch_val, FP_RND_NEAREST, ch2);
+    run_binary_capture(FPU_OP_MUL, sh_val, sh_val, FP_RND_NEAREST, sh2);
+    run_binary_capture(FPU_OP_SUB, ch2, sh2, FP_RND_NEAREST, diff_val);
+    check_fp80_close(diff_val, FP80_ONE, FP80_TOL_1E2, "cosh(2)^2-sinh(2)^2~1");
+    pass_count := pass_count + 1;
+    report "SINH/COSH identity: 3 tests passed" severity note;
+
+    report "=== PHASE 4 COMPLETE ===" severity note;
+
+    -- ================================================================
     -- Final report
     -- ================================================================
-    assert pass_count = 298
-      report "Expected 298 tests but only " & integer'image(pass_count) & " passed"
+    assert pass_count = 349
+      report "Expected 349 tests but only " & integer'image(pass_count) & " passed"
       severity failure;
     report "=== TORTURE TB: " & integer'image(pass_count) & " tests passed. No failures detected. ===" severity note;
     std.env.stop;

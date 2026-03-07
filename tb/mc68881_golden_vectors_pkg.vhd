@@ -325,4 +325,80 @@ package mc68881_golden_vectors_pkg is
   constant TV_ATANH_NEG_0P5 : fp80_t := x"BFFE8C9F53D5681854BB";
   constant TV_ATANH_0P9 : fp80_t := x"3FFFBC71B03025996390";
   constant TV_ATANH_TINY : fp80_t := x"3FC38000000000000000";
+
+  -- Phase 4: Domain boundary tests (ASIN/ACOS/ATANH near limits)
+  constant TV_ARG_0P99     : fp80_t := x"3FFEFD70A3D70A3D70A4";
+  constant TV_ARG_NEG_0P99 : fp80_t := x"BFFEFD70A3D70A3D70A4";
+  constant TV_ARG_0P999    : fp80_t := x"3FFEFFBE76C8B4395810";
+  constant TV_ARG_0P9999   : fp80_t := x"3FFEFFF972474538EF35";
+  constant TV_ARG_0P001    : fp80_t := x"3FF583126E978D4FDF3B";
+  constant TV_ASIN_0P99    : fp80_t := x"3FFFB6F1E3799EA8ECC2";
+  constant TV_ASIN_0P999   : fp80_t := x"3FFFC3564D68C7C01B8B";
+  constant TV_ASIN_0P9999  : fp80_t := x"3FFFC74070D00AAB316F";
+  constant TV_ASIN_NEG_0P99: fp80_t := x"BFFFB6F1E3799EA8ECC2";
+  constant TV_ACOS_0P99    : fp80_t := x"3FFC90EFB94415FEAB96";
+  constant TV_ACOS_NEG_0P99: fp80_t := x"4000C000DF0DE008D77B";
+  constant TV_ACOS_0P001   : fp80_t := x"3FFFC8EF16061FE52C08";
+  constant TV_ATANH_0P99   : fp80_t := x"4000A962C0CCBE6C3130";
+  constant TV_ATANH_NEG_0P99:fp80_t := x"C000A962C0CCBE6C3130";
+  constant TV_ATANH_0P999  : fp80_t := x"4000F3367EF4E3E1733E";
+
+  -- Phase 4: EXP boundary
+  constant TV_ARG_11356    : fp80_t := x"400CB170000000000000";
+  constant TV_ETOX_11356   : fp80_t := x"7FFE97AE01B5ED4A38FC";
+  constant TV_ARG_NEG_0P001: fp80_t := x"BFF583126E978D4FDF3B";
+  constant TV_ETOX_0P001   : fp80_t := x"3FFF8020C8CDBF719E74";
+  constant TV_ETOX_NEG_0P001:fp80_t := x"3FFEFFBE7F2B78D4EDD2";
+
+  -- Phase 4: Cross-function consistency
+  constant TV_ARG_7        : fp80_t := x"4001E000000000000000";
+  constant TV_LOGN_7       : fp80_t := x"3FFFF913957192D2BAA3";
+  constant TV_LOG2_7       : fp80_t := x"4000B3ABB3FAA02166CD";
+  constant TV_LOG10_7      : fp80_t := x"3FFED858585BC661F94B";
+
+  -- Phase 4: Inverse roundtrip helpers
+  constant TV_SIN_0P5_VAL  : fp80_t := x"3FFDF57743A2582F7F44";
+  constant TV_SIN_0P3_VAL  : fp80_t := x"3FFD974E6CADD5D19C2B";
+  constant TV_ARG_0P3      : fp80_t := x"3FFD999999999999999A";
+  constant TV_SIN_1P0_VAL  : fp80_t := x"3FFED76AA47848677021";
+  constant TV_TAN_0P5_VAL  : fp80_t := x"3FFE8BDA7ADF9A3A5219";
+  constant TV_TAN_0P3_VAL  : fp80_t := x"3FFD9E61522714CCBDCB";
+  constant TV_TAN_1P0_VAL  : fp80_t := x"3FFFC75922E5F71D2DC5";
+
+  -- Phase 4: SIN monotonicity points
+  constant TV_ARG_PI_1_10  : fp80_t := x"3FFDA0D97BB4E78701C4";
+  constant TV_ARG_PI_2_10  : fp80_t := x"3FFEA0D97BB4E78701C4";
+  constant TV_ARG_PI_3_10  : fp80_t := x"3FFEF146398F5B4A82A6";
+  constant TV_ARG_PI_4_10  : fp80_t := x"3FFFA0D97BB4E78701C4";
+  constant TV_ARG_PI_5_10  : fp80_t := x"3FFFC90FDAA22168C235";
+  constant TV_SIN_PI_1_10  : fp80_t := x"3FFD9E3779B97F4A7C16";
+  constant TV_SIN_PI_2_10  : fp80_t := x"3FFE96791823AAD2EF6E";
+  constant TV_SIN_PI_3_10  : fp80_t := x"3FFECF1BBCDCBFA53E0B";
+  constant TV_SIN_PI_4_10  : fp80_t := x"3FFEF378709A22A7FAF3";
+  constant TV_SIN_PI_5_10  : fp80_t := x"3FFF8000000000000000";
+
+  -- Phase 4: ATAN monotonicity points (new args only; results reuse TV_ATAN_*)
+  constant TV_ARG_0P1      : fp80_t := x"3FFBCCCCCCCCCCCCCCCD";
+  constant TV_ATAN_0P1     : fp80_t := x"3FFBCC1F1417166261D7";
+  constant TV_ARG_10       : fp80_t := x"4002A000000000000000";
+  constant TV_ARG_100      : fp80_t := x"4005C800000000000000";
+
+  -- Phase 4: ETOXM1/LOGNP1 small arguments
+  constant TV_ARG_1EN10    : fp80_t := x"3FDDDBE6FECEBDEDD5BF";
+  constant TV_ARG_1EN15    : fp80_t := x"3FCD901D7CF73AB0ACD9";
+  constant TV_ARG_NEG_1EN10: fp80_t := x"BFDDDBE6FECEBDEDD5BF";
+  constant TV_ETOXM1_1EN10 : fp80_t := x"3FDDDBE6FECEED2717D8";
+  constant TV_ETOXM1_1EN15 : fp80_t := x"3FCD901D7CF73AB0C121";
+  constant TV_ETOXM1_NEG_1EN10: fp80_t := x"BFDDDBE6FECE8EB493A6";
+  constant TV_LOGNP1_1EN10 : fp80_t := x"3FDDDBE6FECE8EB493A6";
+  constant TV_LOGNP1_1EN15 : fp80_t := x"3FCD901D7CF73AB09891";
+  constant TV_LOGNP1_NEG_1EN10: fp80_t := x"BFDDDBE6FECEED2717D8";
+
+  -- Phase 4: Back-to-back and identity tests
+  constant TV_ARG_0P7      : fp80_t := x"3FFEB333333333333333";
+  constant TV_SIN_0P7      : fp80_t := x"3FFEA4EB734A30CDC2A8";
+  constant TV_COS_0P7      : fp80_t := x"3FFEC3CCB294FCEC930C";
+  constant TV_SINH_2_VAL   : fp80_t := x"4000E81E7B1DB70CFB7A";
+  constant TV_COSH_2_VAL   : fp80_t := x"4000F0C7D06F96CDE14A";
+
 end package mc68881_golden_vectors_pkg;

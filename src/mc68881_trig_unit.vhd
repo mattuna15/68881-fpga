@@ -753,6 +753,7 @@ architecture rtl of mc68881_trig_unit is
   signal state_reg : trig_state_t := ST_IDLE;
   signal cont_state_reg : trig_state_t := ST_IDLE;
   signal a_settle_count_reg : natural range 0 to 5 := 0;
+  signal a_settle_return_reg : trig_state_t := ST_CLASSIFY;
 
   signal op_reg : fpu_op_t := FPU_OP_NOP;
   signal a_reg : fp80_t := (others => '0');
@@ -1104,6 +1105,7 @@ begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
       a_settle_count_reg <= 0;
+      a_settle_return_reg <= ST_CLASSIFY;
       done_reg <= '0';
       aux_valid_reg <= '0';
       flag_divzero_reg <= '0';
@@ -1177,16 +1179,17 @@ begin
             rp_reg <= round_prec;
             flag_divzero_reg <= '0';
             a_settle_count_reg <= 5;
+            a_settle_return_reg <= ST_CLASSIFY;
             state_reg <= ST_A_SETTLE;
           end if;
 
         when ST_A_SETTLE =>
           -- Wait for a_reg combinational fan-out (fgetexp, fgetman, abs, etc.)
-          -- to settle before ST_CLASSIFY samples derived values.
-          -- 7-cycle MCP: a_reg clocked in ST_IDLE (cycle 0), ST_CLASSIFY at
-          -- cycle 6, ST_LOG_GETEXP at cycle 7.
+          -- to settle before sampling derived values.
+          -- 7-cycle MCP: a_reg clocked in ST_IDLE (cycle 0), 6 settle cycles,
+          -- then a_settle_return_reg (ST_CLASSIFY or ST_LOG_GETEXP).
           if a_settle_count_reg = 0 then
-            state_reg <= ST_CLASSIFY;
+            state_reg <= a_settle_return_reg;
           else
             a_settle_count_reg <= a_settle_count_reg - 1;
           end if;
@@ -2501,7 +2504,8 @@ begin
 
         when ST_ATANH_DIV_POST =>
           -- tmp_reg = (1+x)/(1-x), always > 0 for |x| < 1
-          -- Route through LOGN pipeline
+          -- Route through LOGN pipeline via ST_A_SETTLE (a_reg needs
+          -- settle cycles for fgetexp/fgetman fan-out, 7-cycle MCP).
           a_reg <= tmp_reg;
           log_scale_reg <= FP80_LN2;
           log_exp_add_en_reg <= '1';
@@ -2515,7 +2519,9 @@ begin
           seed_domain_reg <= SEED_DOMAIN_LOG;
           seed_idx_reg <= 0;
           seed_return_state_reg <= ST_LOG_TABLE_INDEX;
-          state_reg <= ST_LOG_GETEXP;
+          a_settle_count_reg <= 5;
+          a_settle_return_reg <= ST_LOG_GETEXP;
+          state_reg <= ST_A_SETTLE;
 
         when ST_ATANH_HALF_PREP =>
           -- Multiply ln result by 0.5

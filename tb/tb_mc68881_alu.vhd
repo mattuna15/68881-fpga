@@ -2909,6 +2909,31 @@ begin
     wait for 0 ns;
     check_result_nan("ADD +inf + -inf => NaN (OPERR)");
 
+    -- FSUB underflow to subnormal: min_normal - (min_normal - ulp) → ulp subnormal.
+    -- Exercises addsub unit's denorm_shift output path in ST_NORM_ROUND.
+    op_sel <= FPU_OP_SUB;
+    a_in   <= FP80_MIN_NORMAL;  -- exp=1, mant=1.0
+    b_in   <= x"00017FFFFFFFFFFFFFFF";  -- exp=1, mant=1.0 - 1ulp
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(x"00000000000000000001", "SUB underflow to subnormal");
+
+    -- FSIN(SNaN) → quieted NaN with payload preserved.
+    -- Verifies SNAN handling through transcendental dispatch path.
+    op_sel <= FPU_OP_SIN;
+    a_in   <= SNAN_PAYLOAD_456;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(QNAN_PAYLOAD_456, "SIN(SNaN) quieted payload preserved");
+
     std.env.stop;
     wait;
   end process;

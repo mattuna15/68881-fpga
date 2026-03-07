@@ -49,7 +49,7 @@ full exception dialog paths.*
 - Target clock: **33 MHz** (30.303 ns period) — 3.3× faster than original MC68881.
 - Multi-cycle path constraints on sequential FP units, trig engine hold states,
   format conversion paths (operand staging, MOVE dispatch, LOG exponent conversion).
-- Post-route WNS: **+0.026 ns** (timing met). WHS: **+0.044 ns** (no hold violations).
+- Post-route WNS: **+0.026 ns** (timing met). WHS: **+0.033 ns** (no hold violations).
 
 ### Target device compatibility
 The design fits on several FPGA families. With CIR disabled (`ENABLE_CIR_g => false`),
@@ -57,8 +57,8 @@ the core is ~55K LUTs:
 
 | Device | LUTs | DSPs | Fit? |
 |--------|------|------|------|
-| Xilinx Artix-7 200T | 134,600 | 740 | Yes (48%) |
-| Xilinx Artix-7 100T | 63,400 | 240 | Tight (~95%) |
+| Xilinx Artix-7 200T | 133,800 | 740 | Yes (48%) |
+| Xilinx Artix-7 100T | 63,400 | 240 | No (102%); Yes with CIR disabled (~87%) |
 | Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~85%) |
 | Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes |
 

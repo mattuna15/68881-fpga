@@ -181,13 +181,15 @@ C) Exception Handling & Edge Cases
     - INEXACT mapped to INEX2 (arithmetic inexact). INEX1 reserved for packed decimal.
     - FPSR AEXC byte: 5-bit MC68881 layout with IOP = SNAN|OPERR,
       UNFL = UNFL AND (INEX2|INEX1), INEX = INEX2|INEX1|OVFL.
-    - CIR vector selection: BSUN > SNAN > OPERR > OVFL > UNFL > DZ > INEX2 > INEX1.
+    - CIR post-instruction vector selection: SNAN > OPERR > OVFL > UNFL > DZ > INEX2 > INEX1.
+      BSUN handled separately in CIR_COND_CHECK for conditional instructions.
     - Tests: SNAN vs OPERR discrimination (CIR T46A/T46B), SNAN > DZ priority (T46).
     - FATANH(+/-1) and FLOGNP1(-1) DZ already fixed in prior work.
 
 [x] C4. Complete FPCR/FPSR architectural fields.
     - FPCR exception-enable byte implemented: enables checked in CIR_EXECUTE_DONE
-      for all 8 exception types (BSUN, SNAN, OPERR, OVFL, UNFL, DZ, INEX2, INEX1).
+      for 7 arithmetic exception types (SNAN, OPERR, OVFL, UNFL, DZ, INEX2, INEX1);
+      BSUN enable checked separately in CIR_COND_CHECK.
     - FPSR EXC/AEXC byte positions at bits 15-8 and 7-0 per datasheet.
     - EXC status byte cleared then set per operation (Section 2.3.3).
     - AEXC combination logic per datasheet Table 2-2.
@@ -500,7 +502,7 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - DSPs: 33 / 740 (4.46%)
   - Registers: 13418 / 267600 (5.01%)
   - BRAM: 8 tiles / 365 (2.19%)
-  - Timing: `WNS=+0.026ns`, `TNS=0.000ns`, `WHS=+0.044ns`, `THS=0.000ns`
+  - Timing: `WNS=+0.026ns`, `TNS=0.000ns`, `WHS=+0.033ns`, `THS=0.000ns`
   - 298/298 GHDL regression tests passing.
 
 ## Implementation Snapshot (2026-03-05, Phase 5)

@@ -50,6 +50,7 @@ architecture rtl of mc68881_packed_decimal_unit is
   type packed_state_t is (
     ST_IDLE,
     ST_ENC_CLASSIFY,
+    ST_ENC_EXP10,
     ST_ENC_SCALE_PREP,
     ST_SCALE_CHUNK,
     ST_SCALE_BITS,
@@ -122,6 +123,7 @@ architecture rtl of mc68881_packed_decimal_unit is
 
   signal sign_reg : std_logic := '0';
   signal exp10_reg : integer range -10000 to 10000 := 0;
+  signal bin_exp_reg : integer range -20000 to 20000 := 0;
   signal work_fp_reg : fp80_t := (others => '0');
   signal digits_reg : packed_digits_t := (others => 0);
   signal enc_digit_reg : natural range 0 to 9 := 0;
@@ -297,6 +299,7 @@ begin
       req_k_reg <= 0;
       sign_reg <= '0';
       exp10_reg <= 0;
+      bin_exp_reg <= 0;
       work_fp_reg <= (others => '0');
       digits_reg <= (others => 0);
       enc_digit_reg <= 0;
@@ -594,20 +597,24 @@ begin
               end loop;
             end if;
 
-            if bin_exp >= 0 then
-              exp10_local := (bin_exp * 77) / 256;
-            else
-              exp10_local := -(((-bin_exp) * 77 + 255) / 256);
-            end if;
-
-            exp10_reg <= exp10_local;
+            bin_exp_reg <= bin_exp;
             work_fp_reg <= abs_val;
-            state_reg <= ST_ENC_SCALE_PREP;
+            state_reg <= ST_ENC_EXP10;
           end if;
 
+        when ST_ENC_EXP10 =>
+          -- Pipeline stage: DSP multiply bin_exp_reg * 77.
+          -- Registering bin_exp_reg allows DSP48E1 AREG input pipelining,
+          -- breaking the req_fp_reg -> exponent extraction -> DSP path.
+          if bin_exp_reg >= 0 then
+            exp10_reg <= (bin_exp_reg * 77) / 256;
+          else
+            exp10_reg <= -(((-bin_exp_reg) * 77 + 255) / 256);
+          end if;
+          state_reg <= ST_ENC_SCALE_PREP;
+
         when ST_ENC_SCALE_PREP =>
-          -- Second pipeline stage: compute scale parameters from exp10_reg.
-          -- Splits the DSP multiply + carry chain path from ST_ENC_CLASSIFY.
+          -- Third pipeline stage: compute scale parameters from exp10_reg.
           scale_exp_local := -exp10_reg;
           if scale_exp_local = 0 then
             state_reg <= ST_ENC_TUNE;

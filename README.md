@@ -187,6 +187,7 @@ use only the register-mapped peripheral interface. The CIR generic defaults to
 
 ## Key documentation
 - Master checklist: `docs/fpu-progress-checklist.md`
+- GHDL test results (298 tests): `docs/tests.txt`
 - Programming reference: `docs/68881-programming.txt`
 - FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`
 - Technical summary: `docs/68881-tech-summary.pdf`

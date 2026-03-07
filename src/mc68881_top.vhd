@@ -3601,22 +3601,25 @@ begin
           -- cir_operand_word_arrived is pulsed by the bus write process.
           if cir_operand_word_arrived = '1' then
             if cir_xfer_word_idx + 1 >= cir_xfer_word_count then
-              -- All words received: launch ALU with converted operand.
-              -- MOVE ops bypass the ALU, so go directly to IDLE.
-              cir_launch_alu <= '1';
+              -- All words received.  Transition to CIR_XFER_SRC_WAIT
+              -- for one extra hold cycle so the format conversion path
+              -- (cir_operand_staging -> operand_reg) has 3 clock periods
+              -- to settle at 33 MHz (MCP=3, 90.9ns budget).
               cir_xfer_word_idx <= cir_xfer_word_idx + 1;
-              if op_class(cir_decoded_op) = OP_CLASS_MOVE then
-                cir_state_reg <= CIR_IDLE;
-              else
-                cir_state_reg <= CIR_EXECUTE;
-              end if;
+              cir_state_reg <= CIR_XFER_SRC_WAIT;
             else
               cir_xfer_word_idx <= cir_xfer_word_idx + 1;
             end if;
           end if;
 
         when CIR_XFER_SRC_WAIT =>
-          null;  -- Reserved for multi-cycle format conversion
+          -- Hold state: launch ALU after format conversion path settles.
+          cir_launch_alu <= '1';
+          if op_class(cir_decoded_op) = OP_CLASS_MOVE then
+            cir_state_reg <= CIR_IDLE;
+          else
+            cir_state_reg <= CIR_EXECUTE;
+          end if;
 
         when CIR_EXECUTE =>
           -- Wait for ALU completion. Go to CIR_EXECUTE_DONE so that

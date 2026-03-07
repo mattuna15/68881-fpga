@@ -36,6 +36,7 @@ end entity mc68881_trig_unit;
 architecture rtl of mc68881_trig_unit is
   type trig_state_t is (
     ST_IDLE,
+    ST_A_SETTLE,
     ST_CLASSIFY,
     ST_TRIG_REDUCE,
     ST_TRIG_MOD_SCALE_POST,
@@ -92,6 +93,7 @@ architecture rtl of mc68881_trig_unit is
     ST_EXP_CW_LO_SUB,
     ST_LOG_EXP_TERM_POST,
     ST_LOG_GETEXP,
+    ST_LOG_GETEXP_HOLD,
     ST_LOG_GETEXP_POST,
     ST_LOGNP1_Z_POST,
     ST_LOGNP1_META_POST,
@@ -750,6 +752,7 @@ architecture rtl of mc68881_trig_unit is
 
   signal state_reg : trig_state_t := ST_IDLE;
   signal cont_state_reg : trig_state_t := ST_IDLE;
+  signal a_settle_count_reg : natural range 0 to 5 := 0;
 
   signal op_reg : fpu_op_t := FPU_OP_NOP;
   signal a_reg : fp80_t := (others => '0');
@@ -1100,6 +1103,7 @@ begin
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
+      a_settle_count_reg <= 0;
       done_reg <= '0';
       aux_valid_reg <= '0';
       flag_divzero_reg <= '0';
@@ -1172,7 +1176,19 @@ begin
             rm_reg <= round_mode;
             rp_reg <= round_prec;
             flag_divzero_reg <= '0';
+            a_settle_count_reg <= 5;
+            state_reg <= ST_A_SETTLE;
+          end if;
+
+        when ST_A_SETTLE =>
+          -- Wait for a_reg combinational fan-out (fgetexp, fgetman, abs, etc.)
+          -- to settle before ST_CLASSIFY samples derived values.
+          -- 7-cycle MCP: a_reg clocked in ST_IDLE (cycle 0), ST_CLASSIFY at
+          -- cycle 6, ST_LOG_GETEXP at cycle 7.
+          if a_settle_count_reg = 0 then
             state_reg <= ST_CLASSIFY;
+          else
+            a_settle_count_reg <= a_settle_count_reg - 1;
           end if;
 
         when ST_CLASSIFY =>
@@ -1373,7 +1389,7 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (2-cycle MCP).
+                  -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (7-cycle MCP).
                   log_scale_reg <= FP80_LN2;
                   log_exp_add_en_reg <= '1';
                   coeff_set_reg <= COEFF_SET_LOG;
@@ -1431,7 +1447,7 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (2-cycle MCP).
+                  -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (7-cycle MCP).
                   log_exp_add_en_reg <= '1';
                   coeff_set_reg <= COEFF_SET_LOG;
                   poly_degree_reg <= 9;
@@ -1461,7 +1477,7 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (2-cycle MCP).
+                  -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (7-cycle MCP).
                   log_scale_reg <= FP80_LOG10_2;
                   log_exp_add_en_reg <= '1';
                   coeff_set_reg <= COEFF_SET_LOG;
@@ -2224,9 +2240,9 @@ begin
 
         when ST_LOG_GETEXP =>
           -- Pipeline stage: capture unbiased exponent metadata and fgetman result.
-          -- a_reg was loaded in ST_IDLE, one full cycle before ST_CLASSIFY set up
-          -- coefficients and transitioned here.  This gives the heavy combinational
-          -- logic two clock periods (200 ns) to settle.
+          -- a_reg was loaded in ST_IDLE, with ST_A_SETTLE wait cycles before
+          -- ST_CLASSIFY.  This gives the heavy combinational logic seven clock
+          -- periods (212 ns at 33 MHz) to settle (7-cycle MCP).
           unbiased_exp_local := fgetexp_unbiased_int(a_reg);
           log_unbiased_exp_reg <= unbiased_exp_local;
           if unbiased_exp_local = 0 then
@@ -2235,6 +2251,11 @@ begin
             log_exp_term_zero_reg <= '0';
           end if;
           x_reg <= fgetman_a;
+          state_reg <= ST_LOG_GETEXP_HOLD;
+
+        when ST_LOG_GETEXP_HOLD =>
+          -- Hold state: gives fp80_from_int(log_unbiased_exp_reg) an extra
+          -- cycle to settle (2-cycle MCP from log_unbiased_exp_reg).
           state_reg <= ST_LOG_GETEXP_POST;
 
         when ST_LOG_GETEXP_POST =>

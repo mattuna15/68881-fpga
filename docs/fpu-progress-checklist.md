@@ -456,13 +456,10 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - Keep `tb/tb_mc68881_known_defects.vhd` as a persistent recheck for this vector.
 
 ## TODO: Tighten Torture TB Transcendental Tolerances
-- The torture testbench (`tb/tb_mc68881_torture.vhd`) uses wide tolerances in
-  `check_fp80_close` for transcendental operations (SIN, COS, TAN, ATAN, etc.).
-  Current thresholds are 5-10% for most ops, 20% for SINH(3)/COSH(3)/ATANH(0.9).
-- Once transcendental accuracy is improved (better argument reduction, higher-order
-  polynomials, etc.), reduce the tolerance parameters to verify tighter ULP bounds.
-- Affected tests: Phase 1 transcendental golden vectors (~123 tests) and Phase 2
-  algebraic identities involving trig/exp/log (~13 tests).
+- Tolerances were tightened after the transcendental accuracy improvement series
+  (degree-9 Horner, Cody-Waite, table-assisted ATAN/LOG, TANH via EXP).
+- Current tolerances: 1e-5 to 1e-16 depending on operation (trig ~1e-7, LOG ~1e-16).
+  Previously 5-20%. Further tightening possible as polynomial precision improves.
 
 ## TODO: Torture TB Coverage Gaps
 - **Unused golden vectors**: ~8 generated vectors never tested: `TV_ETOXM1_TINY`,
@@ -481,6 +478,30 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   Affects MUL HUGE*TWO RZ/RM golden vectors (currently tested as +inf).
 - **Subnormal reference flush**: `fp80_hex_safe` flushes subnormal results to zero.
   DIV TINY/TWO and MUL TINY*HALF comments should note the reference is flushed to zero.
+
+## Implementation Snapshot (2026-03-07, 33 MHz Timing Closure)
+- Milestone:
+  - **33 MHz timing closure achieved** (WNS = +0.026ns, WHS = +0.044ns).
+  - Clock target raised from 10 MHz (100ns) to 33 MHz (30.303ns) — 3.3× speedup.
+  - Transcendental accuracy improvements: degree-9 Horner polynomial, BRAM
+    coefficient ROM (5 sets × 10 coeffs), table-assisted ATAN/LOG range reduction,
+    Cody-Waite argument reduction (trig/EXP), TANH via EXP pipeline.
+  - Accuracy: 30–55 bits across transcendental ops (previously 5–20 bits).
+  - Multi-cycle path constraints added for: operand staging → operand_reg (MCP=3),
+    operand_reg → MOVE destinations (MCP=2), move_cfg_decoded_reg → MOVE
+    destinations (MCP=2), log_unbiased_exp_reg → mul_a/log_exp_term (MCP=2),
+    a_reg → log/x_reg (MCP=7), simple ops (MCP=2), packed int_trunc (MCP=4).
+  - RTL hold states: ST_LOG_GETEXP_HOLD (trig LOG exponent conversion),
+    CIR_XFER_SRC_WAIT (operand staging format conversion).
+  - LUT increase from 52K to 65K due to BRAM coefficient ROM control logic,
+    table-assisted reduction tables, and extended polynomial evaluation.
+- Run data (non-incremental synthesis + implementation):
+  - Utilization (post-place): `Slice LUTs = 64583 / 133800 (48.27%)`
+  - DSPs: 33 / 740 (4.46%)
+  - Registers: 13418 / 267600 (5.01%)
+  - BRAM: 8 tiles / 365 (2.19%)
+  - Timing: `WNS=+0.026ns`, `TNS=0.000ns`, `WHS=+0.044ns`, `THS=0.000ns`
+  - 298/298 GHDL regression tests passing.
 
 ## Implementation Snapshot (2026-03-05, Phase 5)
 - Milestone:

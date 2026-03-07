@@ -80,14 +80,6 @@ architecture rtl of mc68881_trig_unit is
     ST_TRIG_TAN_DIV,
     ST_TRIG_TAN_DIV_POST,
     ST_TRIG_TINY_ROUND_POST,
-    ST_TANH_X2_PREP,
-    ST_TANH_X2_POST,
-    ST_TANH_NUM_ADD_PREP,
-    ST_TANH_NUM_ADD_POST,
-    ST_TANH_NUM_MUL_POST,
-    ST_TANH_DEN_MUL_PREP,
-    ST_TANH_DEN_MUL_POST,
-    ST_TANH_DEN_ADD_POST,
     ST_TANH_2X_POST,
     ST_TANH_EXP_POST,
     ST_TANH_NUMER_POST,
@@ -136,6 +128,7 @@ architecture rtl of mc68881_trig_unit is
     ST_TRANS_INPUT_ADJUST_POST,
     ST_TRANS_PRE_MUL_POST,
     ST_TRANS_POLY_INIT,
+    ST_TRANS_POLY_INIT_WAIT,
     ST_TRANS_POLY_MUL_PREP,
     ST_TRANS_POLY_MUL_POST,
     ST_TRANS_POLY_ADD_POST,
@@ -155,8 +148,6 @@ architecture rtl of mc68881_trig_unit is
   constant FP80_HALF      : fp80_t := x"3FFE8000000000000000";
   constant FP80_TWO       : fp80_t := x"40008000000000000000";
   constant FP80_TEN       : fp80_t := x"4002A000000000000000";
-  constant FP80_NINE      : fp80_t := x"40028800000000000000";
-  constant FP80_TWENTY_SEVEN : fp80_t := x"4003D800000000000000";
   constant FP80_NEG_ONE   : fp80_t := x"BFFF8000000000000000";
   constant FP80_POS_INF   : fp80_t := x"7FFF8000000000000000";
   constant FP80_NEG_INF   : fp80_t := x"FFFF8000000000000000";
@@ -207,6 +198,71 @@ architecture rtl of mc68881_trig_unit is
 
   type fp80_table64_t is array (0 to 63) of fp80_t;
   type seed_domain_t is (SEED_DOMAIN_TRIG, SEED_DOMAIN_EXP, SEED_DOMAIN_LOG, SEED_DOMAIN_ATAN);
+
+  -- Coefficient ROM: 5 sets × 10 coefficients for Horner polynomial evaluation
+  constant COEFF_SET_EXP  : integer := 0;  -- EXP/ETOXM1/TWOTOX/TENTOX/TANH
+  constant COEFF_SET_LOG  : integer := 1;  -- LOGN/LOG2/LOG10/LOGNP1/ATANH
+  constant COEFF_SET_ATAN : integer := 2;  -- ATAN/ASIN/ACOS
+  constant COEFF_SET_SINH : integer := 3;  -- SINH (odd terms of EXP)
+  constant COEFF_SET_COSH : integer := 4;  -- COSH (even terms of EXP)
+  type fp80_table50_t is array (0 to 49) of fp80_t;
+  constant COEFF_ROM_INIT : fp80_table50_t := (
+    -- EXP set (indices 0-9): 1/n! Taylor series
+     0 => x"3FFF8000000000000000", -- 1         (coeff0: constant term)
+     1 => x"3FFF8000000000000000", -- 1         (coeff1: x)
+     2 => x"3FFE8000000000000000", -- 1/2       (coeff2: x^2)
+     3 => x"3FFCAAAAAAAAAAAAAAAB", -- 1/6       (coeff3: x^3)
+     4 => x"3FFAAAAAAAAAAAAAAAAB", -- 1/24      (coeff4: x^4)
+     5 => x"3FF88888888888888889", -- 1/120     (coeff5: x^5)
+     6 => x"3FF5B60B60B60B60B60B", -- 1/720     (coeff6: x^6)
+     7 => x"3FF2D00D00D00D00D00D", -- 1/5040    (coeff7: x^7)
+     8 => x"3FEFD00D00D00D00D00D", -- 1/40320   (coeff8: x^8)
+     9 => x"3FECB8EF1D2AB6399C7D", -- 1/362880  (coeff9: x^9)
+    -- LOG set (indices 10-19): alternating 1/n series for ln(1+x)
+    10 => x"00000000000000000000", -- 0         (coeff0: overridden by table for LOG)
+    11 => x"3FFF8000000000000000", -- 1         (coeff1: x)
+    12 => x"BFFE8000000000000000", -- -1/2      (coeff2: x^2)
+    13 => x"3FFDAAAAAAAAAAAAAAAB", -- 1/3       (coeff3: x^3)
+    14 => x"BFFD8000000000000000", -- -1/4      (coeff4: x^4)
+    15 => x"3FFCCCCCCCCCCCCCCCCD", -- 1/5       (coeff5: x^5)
+    16 => x"BFFCAAAAAAAAAAAAAAAB", -- -1/6      (coeff6: x^6)
+    17 => x"3FFC9249249249249249", -- 1/7       (coeff7: x^7)
+    18 => x"BFFC8000000000000000", -- -1/8      (coeff8: x^8)
+    19 => x"3FFBE38E38E38E38E38E", -- 1/9       (coeff9: x^9)
+    -- ATAN set (indices 20-29): odd-power series for atan(x)
+    20 => x"00000000000000000000", -- 0         (coeff0: constant term)
+    21 => x"3FFF8000000000000000", -- 1         (coeff1: x)
+    22 => x"00000000000000000000", -- 0         (coeff2: x^2 unused)
+    23 => x"BFFDAAAAAAAAAAAAAAAB", -- -1/3      (coeff3: x^3)
+    24 => x"00000000000000000000", -- 0         (coeff4: x^4 unused)
+    25 => x"3FFCCCCCCCCCCCCCCCCD", -- 1/5       (coeff5: x^5)
+    26 => x"00000000000000000000", -- 0         (coeff6: x^6 unused)
+    27 => x"BFFC9249249249249249", -- -1/7      (coeff7: x^7)
+    28 => x"00000000000000000000", -- 0         (coeff8: x^8 unused)
+    29 => x"3FFBE38E38E38E38E38E", -- 1/9       (coeff9: x^9)
+    -- SINH set (indices 30-39): odd Taylor terms (x + x^3/3! + x^5/5! + ...)
+    30 => x"00000000000000000000", -- 0         (coeff0)
+    31 => x"3FFF8000000000000000", -- 1         (coeff1: x)
+    32 => x"00000000000000000000", -- 0         (coeff2)
+    33 => x"3FFCAAAAAAAAAAAAAAAB", -- 1/6       (coeff3: x^3)
+    34 => x"00000000000000000000", -- 0         (coeff4)
+    35 => x"3FF88888888888888889", -- 1/120     (coeff5: x^5)
+    36 => x"00000000000000000000", -- 0         (coeff6)
+    37 => x"3FF2D00D00D00D00D00D", -- 1/5040    (coeff7: x^7)
+    38 => x"00000000000000000000", -- 0         (coeff8)
+    39 => x"3FECB8EF1D2AB6399C7D", -- 1/362880  (coeff9: x^9)
+    -- COSH set (indices 40-49): even Taylor terms (1 + x^2/2! + x^4/4! + ...)
+    40 => x"3FFF8000000000000000", -- 1         (coeff0: constant term)
+    41 => x"00000000000000000000", -- 0         (coeff1)
+    42 => x"3FFE8000000000000000", -- 1/2       (coeff2: x^2)
+    43 => x"00000000000000000000", -- 0         (coeff3)
+    44 => x"3FFAAAAAAAAAAAAAAAAB", -- 1/24      (coeff4: x^4)
+    45 => x"00000000000000000000", -- 0         (coeff5)
+    46 => x"3FF5B60B60B60B60B60B", -- 1/720     (coeff6: x^6)
+    47 => x"00000000000000000000", -- 0         (coeff7)
+    48 => x"3FEFD00D00D00D00D00D", -- 1/40320   (coeff8: x^8)
+    49 => x"00000000000000000000"  -- 0         (coeff9)
+  );
   constant TRIG_SEED_CENTER_INIT : fp80_table64_t := (
      0 => x"BFFEC5EB9B3798E32000",
      1 => x"BFFEBFA31C6287D7D800",
@@ -709,25 +765,21 @@ architecture rtl of mc68881_trig_unit is
   signal fintrz_tmp : fp80_t;
   signal fgetman_a : fp80_t;
   signal fgetman_tmp : fp80_t;
-  signal tanh_x2_reg : fp80_t := (others => '0');
   signal result_reg : fp80_t := (others => '0');
   signal aux_result_reg : fp80_t := (others => '0');
   signal done_reg : std_logic := '0';
   signal aux_valid_reg : std_logic := '0';
   signal flag_divzero_reg : std_logic := '0';
 
-  signal coeff0_reg : fp80_t := (others => '0');
-  signal coeff1_reg : fp80_t := (others => '0');
-  signal coeff2_reg : fp80_t := (others => '0');
-  signal coeff3_reg : fp80_t := (others => '0');
-  signal coeff4_reg : fp80_t := (others => '0');
-  signal coeff5_reg : fp80_t := (others => '0');
-  signal coeff6_reg : fp80_t := (others => '0');
-  signal coeff7_reg : fp80_t := (others => '0');
-  signal coeff8_reg : fp80_t := (others => '0');
-  signal coeff9_reg : fp80_t := (others => '0');
+  signal coeff_set_reg : integer range 0 to 4 := COEFF_SET_EXP;
+  signal coeff_rom_sig : fp80_table50_t := COEFF_ROM_INIT;
+  signal coeff_rom_addr_reg : integer range 0 to 49 := 0;
+  signal coeff_rom_q : fp80_t := (others => '0');
+  signal coeff0_override_en_reg : std_logic := '0';
+  signal coeff0_override_reg : fp80_t := (others => '0');
   signal poly_degree_reg : integer range 0 to 9 := 5;
   signal poly_idx_reg : integer range 0 to 9 := 0;
+  signal poly_init_flag : std_logic := '0';
   signal q_fp_reg : fp80_t := (others => '0');
   signal q_mod_reg : integer range 0 to 3 := 0;
   signal seed_idx_reg : integer range 0 to 63 := 0;
@@ -772,6 +824,7 @@ architecture rtl of mc68881_trig_unit is
   attribute rom_style of atan_seed_offset_rom : signal is "block";
   attribute rom_style of log_center_rom : signal is "block";
   attribute rom_style of log_ln_center_rom : signal is "block";
+  attribute rom_style of coeff_rom_sig : signal is "block";
 
   signal log_table_addr_reg : integer range 0 to 63 := 0;
   signal log_center_q : fp80_t := (others => '0');
@@ -1016,6 +1069,7 @@ begin
       atan_center_q <= atan_center_rom(aux_seed_addr_reg);
       log_center_q <= log_center_rom(log_table_addr_reg);
       log_ln_center_q <= log_ln_center_rom(log_table_addr_reg);
+      coeff_rom_q <= coeff_rom_sig(coeff_rom_addr_reg);
     end if;
   end process;
 
@@ -1054,13 +1108,12 @@ begin
       x_reg <= (others => '0');
       poly_reg <= (others => '0');
       tmp_reg <= (others => '0');
-      tanh_x2_reg <= (others => '0');
       poly_idx_reg <= 0;
       poly_degree_reg <= 5;
-      coeff6_reg <= (others => '0');
-      coeff7_reg <= (others => '0');
-      coeff8_reg <= (others => '0');
-      coeff9_reg <= (others => '0');
+      coeff_set_reg <= COEFF_SET_EXP;
+      coeff_rom_addr_reg <= 0;
+      coeff0_override_en_reg <= '0';
+      coeff0_override_reg <= (others => '0');
       q_fp_reg <= (others => '0');
       q_mod_reg <= 0;
       seed_idx_reg <= 0;
@@ -1205,16 +1258,7 @@ begin
             result_reg <= fp80_quiet_nan(a_reg);
             state_reg <= ST_DONE;
           else
-            coeff0_reg <= FP80_ZERO;
-            coeff1_reg <= FP80_ZERO;
-            coeff2_reg <= FP80_ZERO;
-            coeff3_reg <= FP80_ZERO;
-            coeff4_reg <= FP80_ZERO;
-            coeff5_reg <= FP80_ZERO;
-            coeff6_reg <= FP80_ZERO;
-            coeff7_reg <= FP80_ZERO;
-            coeff8_reg <= FP80_ZERO;
-            coeff9_reg <= FP80_ZERO;
+            coeff0_override_en_reg <= '0';
             poly_degree_reg <= 5;
             x_local := a_reg;
 
@@ -1232,16 +1276,7 @@ begin
                   state_reg <= ST_DONE;
                 else
                   exp_reduce_en_reg <= '1';
-                  coeff0_reg <= FP80_ONE;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_HALF;
-                  coeff3_reg <= FP80_ONE_SIXTH;
-                  coeff4_reg <= FP80_ONE_TWENTYFOURTH;
-                  coeff5_reg <= FP80_ONE_120TH;
-                  coeff6_reg <= FP80_ONE_720TH;
-                  coeff7_reg <= FP80_ONE_5040TH;
-                  coeff8_reg <= FP80_ONE_40320TH;
-                  coeff9_reg <= FP80_ONE_362880TH;
+                  coeff_set_reg <= COEFF_SET_EXP;
                   poly_degree_reg <= 9;
                   seed_domain_reg <= SEED_DOMAIN_EXP;
                   seed_idx_reg <= 0;
@@ -1262,16 +1297,7 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  coeff0_reg <= FP80_ONE;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_HALF;
-                  coeff3_reg <= FP80_ONE_SIXTH;
-                  coeff4_reg <= FP80_ONE_TWENTYFOURTH;
-                  coeff5_reg <= FP80_ONE_120TH;
-                  coeff6_reg <= FP80_ONE_720TH;
-                  coeff7_reg <= FP80_ONE_5040TH;
-                  coeff8_reg <= FP80_ONE_40320TH;
-                  coeff9_reg <= FP80_ONE_362880TH;
+                  coeff_set_reg <= COEFF_SET_EXP;
                   poly_degree_reg <= 9;
                   trans_post_add_en_reg <= '1';
                   trans_post_add_sub_reg <= '0';
@@ -1299,16 +1325,7 @@ begin
                   state_reg <= ST_DONE;
                 else
                   exp_reduce_en_reg <= '1';
-                  coeff0_reg <= FP80_ONE;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_HALF;
-                  coeff3_reg <= FP80_ONE_SIXTH;
-                  coeff4_reg <= FP80_ONE_TWENTYFOURTH;
-                  coeff5_reg <= FP80_ONE_120TH;
-                  coeff6_reg <= FP80_ONE_720TH;
-                  coeff7_reg <= FP80_ONE_5040TH;
-                  coeff8_reg <= FP80_ONE_40320TH;
-                  coeff9_reg <= FP80_ONE_362880TH;
+                  coeff_set_reg <= COEFF_SET_EXP;
                   poly_degree_reg <= 9;
                   trans_pre_mul_en_reg <= '1';
                   seed_domain_reg <= SEED_DOMAIN_EXP;
@@ -1331,16 +1348,7 @@ begin
                   state_reg <= ST_DONE;
                 else
                   exp_reduce_en_reg <= '1';
-                  coeff0_reg <= FP80_ONE;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_HALF;
-                  coeff3_reg <= FP80_ONE_SIXTH;
-                  coeff4_reg <= FP80_ONE_TWENTYFOURTH;
-                  coeff5_reg <= FP80_ONE_120TH;
-                  coeff6_reg <= FP80_ONE_720TH;
-                  coeff7_reg <= FP80_ONE_5040TH;
-                  coeff8_reg <= FP80_ONE_40320TH;
-                  coeff9_reg <= FP80_ONE_362880TH;
+                  coeff_set_reg <= COEFF_SET_EXP;
                   poly_degree_reg <= 9;
                   trans_pre_mul_en_reg <= '1';
                   seed_domain_reg <= SEED_DOMAIN_EXP;
@@ -1368,16 +1376,7 @@ begin
                   -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (2-cycle MCP).
                   log_scale_reg <= FP80_LN2;
                   log_exp_add_en_reg <= '1';
-                  coeff0_reg <= FP80_ZERO;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_NEG_HALF;
-                  coeff3_reg <= FP80_ONE_THIRD;
-                  coeff4_reg <= FP80_NEG_ONE_FOURTH;
-                  coeff5_reg <= FP80_ONE_FIFTH;
-                  coeff6_reg <= FP80_NEG_ONE_SIXTH;
-                  coeff7_reg <= FP80_ONE_SEVENTH;
-                  coeff8_reg <= FP80_NEG_ONE_EIGHTH;
-                  coeff9_reg <= FP80_ONE_NINTH;
+                  coeff_set_reg <= COEFF_SET_LOG;
                   poly_degree_reg <= 9;
                   trans_input_adjust_en_reg <= '1';
                   trans_input_adjust_sub_reg <= '1';
@@ -1434,16 +1433,7 @@ begin
                 else
                   -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (2-cycle MCP).
                   log_exp_add_en_reg <= '1';
-                  coeff0_reg <= FP80_ZERO;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_NEG_HALF;
-                  coeff3_reg <= FP80_ONE_THIRD;
-                  coeff4_reg <= FP80_NEG_ONE_FOURTH;
-                  coeff5_reg <= FP80_ONE_FIFTH;
-                  coeff6_reg <= FP80_NEG_ONE_SIXTH;
-                  coeff7_reg <= FP80_ONE_SEVENTH;
-                  coeff8_reg <= FP80_NEG_ONE_EIGHTH;
-                  coeff9_reg <= FP80_ONE_NINTH;
+                  coeff_set_reg <= COEFF_SET_LOG;
                   poly_degree_reg <= 9;
                   trans_input_adjust_en_reg <= '1';
                   trans_input_adjust_sub_reg <= '1';
@@ -1474,16 +1464,7 @@ begin
                   -- Defer heavy fgetexp/fgetman to ST_LOG_GETEXP (2-cycle MCP).
                   log_scale_reg <= FP80_LOG10_2;
                   log_exp_add_en_reg <= '1';
-                  coeff0_reg <= FP80_ZERO;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_NEG_HALF;
-                  coeff3_reg <= FP80_ONE_THIRD;
-                  coeff4_reg <= FP80_NEG_ONE_FOURTH;
-                  coeff5_reg <= FP80_ONE_FIFTH;
-                  coeff6_reg <= FP80_NEG_ONE_SIXTH;
-                  coeff7_reg <= FP80_ONE_SEVENTH;
-                  coeff8_reg <= FP80_NEG_ONE_EIGHTH;
-                  coeff9_reg <= FP80_ONE_NINTH;
+                  coeff_set_reg <= COEFF_SET_LOG;
                   poly_degree_reg <= 9;
                   trans_input_adjust_en_reg <= '1';
                   trans_input_adjust_sub_reg <= '1';
@@ -1508,16 +1489,7 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  coeff0_reg <= FP80_ZERO;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_ZERO;
-                  coeff3_reg <= FP80_NEG_ONE_THIRD;
-                  coeff4_reg <= FP80_ZERO;
-                  coeff5_reg <= FP80_ONE_FIFTH;
-                  coeff6_reg <= FP80_ZERO;
-                  coeff7_reg <= FP80_NEG_ONE_SEVENTH;
-                  coeff8_reg <= FP80_ZERO;
-                  coeff9_reg <= FP80_ONE_NINTH;
+                  coeff_set_reg <= COEFF_SET_ATAN;
                   poly_degree_reg <= 9;
                   atan_neg_reg <= fp80_sign(a_reg);
                   if abs_a_gt_one then
@@ -1563,16 +1535,7 @@ begin
                   -- ASIN(x) = ATAN(x / sqrt(1-x^2))
                   atan_neg_reg <= fp80_sign(a_reg);
                   atan_recip_reg <= '0';
-                  coeff0_reg <= FP80_ZERO;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_ZERO;
-                  coeff3_reg <= FP80_NEG_ONE_THIRD;
-                  coeff4_reg <= FP80_ZERO;
-                  coeff5_reg <= FP80_ONE_FIFTH;
-                  coeff6_reg <= FP80_ZERO;
-                  coeff7_reg <= FP80_NEG_ONE_SEVENTH;
-                  coeff8_reg <= FP80_ZERO;
-                  coeff9_reg <= FP80_ONE_NINTH;
+                  coeff_set_reg <= COEFF_SET_ATAN;
                   poly_degree_reg <= 9;
                   -- Start computing x^2
                   x_reg <= abs_a;
@@ -1603,16 +1566,7 @@ begin
                   acos_neg_input_reg <= fp80_sign(a_reg);
                   atan_neg_reg <= '0'; -- don't negate the ASIN result
                   atan_recip_reg <= '0';
-                  coeff0_reg <= FP80_ZERO;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_ZERO;
-                  coeff3_reg <= FP80_NEG_ONE_THIRD;
-                  coeff4_reg <= FP80_ZERO;
-                  coeff5_reg <= FP80_ONE_FIFTH;
-                  coeff6_reg <= FP80_ZERO;
-                  coeff7_reg <= FP80_NEG_ONE_SEVENTH;
-                  coeff8_reg <= FP80_ZERO;
-                  coeff9_reg <= FP80_ONE_NINTH;
+                  coeff_set_reg <= COEFF_SET_ATAN;
                   poly_degree_reg <= 9;
                   -- Start computing x^2
                   x_reg <= abs_a;
@@ -1664,16 +1618,7 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  coeff0_reg <= FP80_ZERO;
-                  coeff1_reg <= FP80_ONE;
-                  coeff2_reg <= FP80_ZERO;
-                  coeff3_reg <= FP80_ONE_SIXTH;
-                  coeff4_reg <= FP80_ZERO;
-                  coeff5_reg <= FP80_ONE_120TH;
-                  coeff6_reg <= FP80_ZERO;
-                  coeff7_reg <= FP80_ONE_5040TH;
-                  coeff8_reg <= FP80_ZERO;
-                  coeff9_reg <= FP80_ONE_362880TH;
+                  coeff_set_reg <= COEFF_SET_SINH;
                   poly_degree_reg <= 9;
                   seed_domain_reg <= SEED_DOMAIN_EXP;
                   seed_idx_reg <= 0;
@@ -1690,16 +1635,7 @@ begin
                   result_reg <= FP80_ONE;
                   state_reg <= ST_DONE;
                 else
-                  coeff0_reg <= FP80_ONE;
-                  coeff1_reg <= FP80_ZERO;
-                  coeff2_reg <= FP80_HALF;
-                  coeff3_reg <= FP80_ZERO;
-                  coeff4_reg <= FP80_ONE_TWENTYFOURTH;
-                  coeff5_reg <= FP80_ZERO;
-                  coeff6_reg <= FP80_ONE_720TH;
-                  coeff7_reg <= FP80_ZERO;
-                  coeff8_reg <= FP80_ONE_40320TH;
-                  coeff9_reg <= FP80_ZERO;
+                  coeff_set_reg <= COEFF_SET_COSH;
                   poly_degree_reg <= 9;
                   seed_domain_reg <= SEED_DOMAIN_EXP;
                   seed_idx_reg <= 0;
@@ -1742,16 +1678,7 @@ begin
                     atan_neg_reg <= fp80_sign(a_reg);
                     -- Set up EXP pipeline coefficients
                     exp_reduce_en_reg <= '1';
-                    coeff0_reg <= FP80_ONE;
-                    coeff1_reg <= FP80_ONE;
-                    coeff2_reg <= FP80_HALF;
-                    coeff3_reg <= FP80_ONE_SIXTH;
-                    coeff4_reg <= FP80_ONE_TWENTYFOURTH;
-                    coeff5_reg <= FP80_ONE_120TH;
-                    coeff6_reg <= FP80_ONE_720TH;
-                    coeff7_reg <= FP80_ONE_5040TH;
-                    coeff8_reg <= FP80_ONE_40320TH;
-                    coeff9_reg <= FP80_ONE_362880TH;
+                    coeff_set_reg <= COEFF_SET_EXP;
                     poly_degree_reg <= 9;
                     seed_domain_reg <= SEED_DOMAIN_EXP;
                     seed_idx_reg <= 0;
@@ -2203,61 +2130,6 @@ begin
           s_reg <= tmp_reg;
           state_reg <= ST_TRIG_RECONSTRUCT;
 
-        when ST_TANH_X2_PREP =>
-          mul_a_reg <= x_reg;
-          mul_b_reg <= x_reg;
-          mul_rm_reg <= FP_RND_NEAREST;
-          mul_rp_reg <= FP_PREC_EXTENDED;
-          cont_state_reg <= ST_TANH_X2_POST;
-          state_reg <= ST_FP_MUL;
-
-        when ST_TANH_X2_POST =>
-          tanh_x2_reg <= tmp_reg;
-          state_reg <= ST_TANH_NUM_ADD_PREP;
-
-        when ST_TANH_NUM_ADD_PREP =>
-          add_a_reg <= FP80_TWENTY_SEVEN;
-          add_b_reg <= tanh_x2_reg;
-          add_sub_reg <= false;
-          add_rm_reg <= FP_RND_NEAREST;
-          add_rp_reg <= FP_PREC_EXTENDED;
-          cont_state_reg <= ST_TANH_NUM_ADD_POST;
-          state_reg <= ST_FP_ADD;
-
-        when ST_TANH_NUM_ADD_POST =>
-          mul_a_reg <= x_reg;
-          mul_b_reg <= tmp_reg;
-          mul_rm_reg <= FP_RND_NEAREST;
-          mul_rp_reg <= FP_PREC_EXTENDED;
-          cont_state_reg <= ST_TANH_NUM_MUL_POST;
-          state_reg <= ST_FP_MUL;
-
-        when ST_TANH_NUM_MUL_POST =>
-          s_reg <= tmp_reg;
-          state_reg <= ST_TANH_DEN_MUL_PREP;
-
-        when ST_TANH_DEN_MUL_PREP =>
-          mul_a_reg <= FP80_NINE;
-          mul_b_reg <= tanh_x2_reg;
-          mul_rm_reg <= FP_RND_NEAREST;
-          mul_rp_reg <= FP_PREC_EXTENDED;
-          cont_state_reg <= ST_TANH_DEN_MUL_POST;
-          state_reg <= ST_FP_MUL;
-
-        when ST_TANH_DEN_MUL_POST =>
-          add_a_reg <= FP80_TWENTY_SEVEN;
-          add_b_reg <= tmp_reg;
-          add_sub_reg <= false;
-          add_rm_reg <= FP_RND_NEAREST;
-          add_rp_reg <= FP_PREC_EXTENDED;
-          cont_state_reg <= ST_TANH_DEN_ADD_POST;
-          state_reg <= ST_FP_ADD;
-
-        when ST_TANH_DEN_ADD_POST =>
-          c_reg <= tmp_reg;
-          state_reg <= ST_TRIG_TAN_DIV;
-
-        -- New TANH via EXP pipeline states
         when ST_TANH_2X_POST =>
           -- tmp_reg = 2|x|, feed into EXP pipeline
           x_reg <= tmp_reg;
@@ -2387,16 +2259,7 @@ begin
           log_unbiased_exp_reg <= unbiased_exp_local;
           log_scale_reg <= FP80_LN2;
           log_exp_add_en_reg <= '1';
-          coeff0_reg <= FP80_ZERO;
-          coeff1_reg <= FP80_ONE;
-          coeff2_reg <= FP80_NEG_HALF;
-          coeff3_reg <= FP80_ONE_THIRD;
-          coeff4_reg <= FP80_NEG_ONE_FOURTH;
-          coeff5_reg <= FP80_ONE_FIFTH;
-          coeff6_reg <= FP80_NEG_ONE_SIXTH;
-          coeff7_reg <= FP80_ONE_SEVENTH;
-          coeff8_reg <= FP80_NEG_ONE_EIGHTH;
-          coeff9_reg <= FP80_ONE_NINTH;
+          coeff_set_reg <= COEFF_SET_LOG;
           poly_degree_reg <= 9;
           trans_input_adjust_en_reg <= '1';
           trans_input_adjust_sub_reg <= '1';
@@ -2621,16 +2484,7 @@ begin
           a_reg <= tmp_reg;
           log_scale_reg <= FP80_LN2;
           log_exp_add_en_reg <= '1';
-          coeff0_reg <= FP80_ZERO;
-          coeff1_reg <= FP80_ONE;
-          coeff2_reg <= FP80_NEG_HALF;
-          coeff3_reg <= FP80_ONE_THIRD;
-          coeff4_reg <= FP80_NEG_ONE_FOURTH;
-          coeff5_reg <= FP80_ONE_FIFTH;
-          coeff6_reg <= FP80_NEG_ONE_SIXTH;
-          coeff7_reg <= FP80_ONE_SEVENTH;
-          coeff8_reg <= FP80_NEG_ONE_EIGHTH;
-          coeff9_reg <= FP80_ONE_NINTH;
+          coeff_set_reg <= COEFF_SET_LOG;
           poly_degree_reg <= 9;
           trans_input_adjust_en_reg <= '1';
           trans_input_adjust_sub_reg <= '1';
@@ -2683,7 +2537,8 @@ begin
         when ST_LOG_TABLE_LATCH =>
           -- Latch c_i and ln(c_i) from tables
           c_reg <= log_center_q;           -- c_i (save for division)
-          coeff0_reg <= log_ln_center_q;   -- ln(c_i) as polynomial constant term
+          coeff0_override_en_reg <= '1';
+          coeff0_override_reg <= log_ln_center_q;   -- ln(c_i) overrides ROM coeff0
           state_reg <= ST_LOG_DELTA_PREP;
 
         when ST_LOG_DELTA_PREP =>
@@ -2710,7 +2565,7 @@ begin
           x_reg <= tmp_reg;
           -- Disable input adjust since we already computed u
           trans_input_adjust_en_reg <= '0';
-          -- coeff0_reg already set to ln(c_i) in ST_LOG_TABLE_LATCH
+          -- coeff0_override already set to ln(c_i) in ST_LOG_TABLE_LATCH
           -- Continue to polynomial via ST_TRANS_PREP (which will skip input adjust)
           state_reg <= ST_TRANS_PREP;
 
@@ -2764,35 +2619,40 @@ begin
           state_reg <= ST_TRANS_PREP;
 
         when ST_TRANS_POLY_INIT =>
-          case poly_degree_reg is
-            when 9 => poly_reg <= coeff9_reg; poly_idx_reg <= 8;
-            when 8 => poly_reg <= coeff8_reg; poly_idx_reg <= 7;
-            when 7 => poly_reg <= coeff7_reg; poly_idx_reg <= 6;
-            when 6 => poly_reg <= coeff6_reg; poly_idx_reg <= 5;
-            when others => poly_reg <= coeff5_reg; poly_idx_reg <= 4;
-          end case;
+          -- Issue BRAM read for highest coefficient
+          coeff_rom_addr_reg <= coeff_set_reg * 10 + poly_degree_reg;
+          poly_idx_reg <= poly_degree_reg - 1;
+          poly_init_flag <= '1';
+          state_reg <= ST_TRANS_POLY_INIT_WAIT;
+
+        when ST_TRANS_POLY_INIT_WAIT =>
+          -- Wait for BRAM read latency (coeff_rom_q valid next cycle)
           state_reg <= ST_TRANS_POLY_MUL_PREP;
 
         when ST_TRANS_POLY_MUL_PREP =>
           mul_a_reg <= x_reg;
-          mul_b_reg <= poly_reg;
+          if poly_init_flag = '1' then
+            -- First iteration: use BRAM output directly (valid after 2-cycle latency)
+            mul_b_reg <= coeff_rom_q;
+            poly_init_flag <= '0';
+          else
+            -- Subsequent iterations: use accumulated polynomial result
+            mul_b_reg <= poly_reg;
+          end if;
+          -- Pre-read coefficient for current poly_idx (needed at MUL_POST)
+          coeff_rom_addr_reg <= coeff_set_reg * 10 + poly_idx_reg;
           mul_rm_reg <= FP_RND_NEAREST;
           mul_rp_reg <= FP_PREC_EXTENDED;
           cont_state_reg <= ST_TRANS_POLY_MUL_POST;
           state_reg <= ST_FP_MUL;
 
         when ST_TRANS_POLY_MUL_POST =>
-          case poly_idx_reg is
-            when 8 => coeff_sel := coeff8_reg;
-            when 7 => coeff_sel := coeff7_reg;
-            when 6 => coeff_sel := coeff6_reg;
-            when 5 => coeff_sel := coeff5_reg;
-            when 4 => coeff_sel := coeff4_reg;
-            when 3 => coeff_sel := coeff3_reg;
-            when 2 => coeff_sel := coeff2_reg;
-            when 1 => coeff_sel := coeff1_reg;
-            when others => coeff_sel := coeff0_reg;
-          end case;
+          -- coeff_rom_q has coeff[poly_idx] (pre-read issued in MUL_PREP, 3+ cycles ago)
+          if poly_idx_reg = 0 and coeff0_override_en_reg = '1' then
+            coeff_sel := coeff0_override_reg;
+          else
+            coeff_sel := coeff_rom_q;
+          end if;
           add_a_reg <= coeff_sel;
           add_b_reg <= tmp_reg;
           add_sub_reg <= false;

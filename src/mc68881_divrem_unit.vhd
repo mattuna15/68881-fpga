@@ -179,9 +179,11 @@ architecture rtl of mc68881_divrem_unit is
       return shifted;
     end if;
 
-    if value(shift-1 downto 0) /= 0 then
-      sticky := '1';
-    end if;
+    for i in 0 to value'length-1 loop
+      if i < shift and value(i) = '1' then
+        sticky := '1';
+      end if;
+    end loop;
 
     shifted := shift_right(value, shift);
     if sticky = '1' then
@@ -220,9 +222,11 @@ architecture rtl of mc68881_divrem_unit is
     guard := mant_ext(lsb_keep-1);
     round_bit := mant_ext(lsb_keep-2);
     if lsb_keep > 2 then
-      if mant_ext(lsb_keep-3 downto 0) /= 0 then
-        sticky := '1';
-      end if;
+      for i in 0 to mant_ext'length-1 loop
+        if i <= lsb_keep-3 and mant_ext(i) = '1' then
+          sticky := '1';
+        end if;
+      end loop;
     end if;
 
     any_disc := guard or round_bit or sticky;
@@ -256,7 +260,11 @@ architecture rtl of mc68881_divrem_unit is
     end if;
 
     if drop_bits > 0 then
-      mant_main(drop_bits-1 downto 0) := (others => '0');
+      for i in 0 to mant_main'length-1 loop
+        if i < drop_bits then
+          mant_main(i) := '0';
+        end if;
+      end loop;
     end if;
 
     mant_out := mant_main;
@@ -481,6 +489,7 @@ begin
     variable b_exp_adj : integer := 0;
     variable a_mant_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable b_mant_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable quot_low_or : std_logic := '0';
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -829,8 +838,16 @@ begin
           exp_res_i := div_exp_base_reg + (lead_idx - top_idx);
           if lead_idx >= FP_MANT_EXT_WIDTH-1 then
             mant_ext := quot_reg(lead_idx downto lead_idx-(FP_MANT_EXT_WIDTH-1));
-            if lead_idx > FP_MANT_EXT_WIDTH and quot_reg(lead_idx-FP_MANT_EXT_WIDTH-1 downto 0) /= 0 then
-              mant_ext(0) := '1';
+            if lead_idx > FP_MANT_EXT_WIDTH then
+              quot_low_or := '0';
+              for i in 0 to quot_reg'length-1 loop
+                if i <= lead_idx-FP_MANT_EXT_WIDTH-1 and quot_reg(i) = '1' then
+                  quot_low_or := '1';
+                end if;
+              end loop;
+              if quot_low_or = '1' then
+                mant_ext(0) := '1';
+              end if;
             end if;
           else
             mant_ext := resize(shift_left(quot_reg, (FP_MANT_EXT_WIDTH-1)-lead_idx), FP_MANT_EXT_WIDTH);

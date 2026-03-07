@@ -1439,9 +1439,11 @@ package body mc68881_pkg is
     guard := mant_ext(lsb_keep-1);
     round_bit := mant_ext(lsb_keep-2);
     if lsb_keep > 2 then
-      if mant_ext(lsb_keep-3 downto 0) /= 0 then
-        sticky := '1';
-      end if;
+      for i in 0 to mant_ext'length-1 loop
+        if i <= lsb_keep-3 and mant_ext(i) = '1' then
+          sticky := '1';
+        end if;
+      end loop;
     end if;
 
     any_disc := guard or round_bit or sticky;
@@ -1475,7 +1477,11 @@ package body mc68881_pkg is
     end if;
 
     if drop_bits > 0 then
-      mant_main(drop_bits-1 downto 0) := (others => '0');
+      for i in 0 to mant_main'length-1 loop
+        if i < drop_bits then
+          mant_main(i) := '0';
+        end if;
+      end loop;
     end if;
 
     mant_out := mant_main;
@@ -1556,9 +1562,11 @@ package body mc68881_pkg is
       return result;
     end if;
 
-    if value(shift-1 downto 0) /= 0 then
-      sticky := '1';
-    end if;
+    for i in 0 to value'length-1 loop
+      if i < shift and value(i) = '1' then
+        sticky := '1';
+      end if;
+    end loop;
 
     result := shift_right(value, shift);
     if sticky = '1' then

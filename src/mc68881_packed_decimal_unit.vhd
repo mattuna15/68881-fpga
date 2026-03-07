@@ -50,6 +50,7 @@ architecture rtl of mc68881_packed_decimal_unit is
   type packed_state_t is (
     ST_IDLE,
     ST_ENC_CLASSIFY,
+    ST_ENC_SCALE_PREP,
     ST_SCALE_CHUNK,
     ST_SCALE_BITS,
     ST_ENC_TUNE,
@@ -601,21 +602,26 @@ begin
 
             exp10_reg <= exp10_local;
             work_fp_reg <= abs_val;
-            scale_exp_local := -exp10_local;
-            if scale_exp_local = 0 then
-              state_reg <= ST_ENC_TUNE;
+            state_reg <= ST_ENC_SCALE_PREP;
+          end if;
+
+        when ST_ENC_SCALE_PREP =>
+          -- Second pipeline stage: compute scale parameters from exp10_reg.
+          -- Splits the DSP multiply + carry chain path from ST_ENC_CLASSIFY.
+          scale_exp_local := -exp10_reg;
+          if scale_exp_local = 0 then
+            state_reg <= ST_ENC_TUNE;
+          else
+            if scale_exp_local < 0 then
+              scale_use_neg_reg <= '1';
+              scale_abs_exp_reg <= natural(-scale_exp_local);
             else
-              if scale_exp_local < 0 then
-                scale_use_neg_reg <= '1';
-                scale_abs_exp_reg <= natural(-scale_exp_local);
-              else
-                scale_use_neg_reg <= '0';
-                scale_abs_exp_reg <= natural(scale_exp_local);
-              end if;
-              scale_bit_idx_reg <= 0;
-              scale_return_state_reg <= ST_ENC_TUNE;
-              state_reg <= ST_SCALE_CHUNK;
+              scale_use_neg_reg <= '0';
+              scale_abs_exp_reg <= natural(scale_exp_local);
             end if;
+            scale_bit_idx_reg <= 0;
+            scale_return_state_reg <= ST_ENC_TUNE;
+            state_reg <= ST_SCALE_CHUNK;
           end if;
 
         when ST_SCALE_CHUNK =>

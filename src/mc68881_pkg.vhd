@@ -306,6 +306,7 @@ package mc68881_pkg is
     CIR_DECODE,
     CIR_XFER_SRC,
     CIR_XFER_SRC_WAIT,
+    CIR_XFER_SRC_WAIT2,
     CIR_EXECUTE,
     CIR_EXECUTE_DONE,
     CIR_XFER_DST,
@@ -599,11 +600,11 @@ package body mc68881_pkg is
     FPU_OP_DIV => (
       legacy_decode_id_valid => true, legacy_decode_id => 4,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"04",
-      op_class => OP_CLASS_ARITH, alu_latency => 73, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 74, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_DIV,
       arith_cycles => (
-        FPU_SRC_FPM => 103, FPU_SRC_MEM_INTEGER => 132, FPU_SRC_MEM_SINGLE => 124,
-        FPU_SRC_MEM_DOUBLE => 130, FPU_SRC_MEM_EXTENDED => 128, FPU_SRC_MEM_PACKED => 940
+        FPU_SRC_FPM => 104, FPU_SRC_MEM_INTEGER => 133, FPU_SRC_MEM_SINGLE => 125,
+        FPU_SRC_MEM_DOUBLE => 131, FPU_SRC_MEM_EXTENDED => 129, FPU_SRC_MEM_PACKED => 941
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
@@ -632,22 +633,22 @@ package body mc68881_pkg is
     FPU_OP_MOD => (
       legacy_decode_id_valid => true, legacy_decode_id => 8,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"08",
-      op_class => OP_CLASS_ARITH, alu_latency => 92, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 93, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
-        FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,
-        FPU_SRC_MEM_DOUBLE => 136, FPU_SRC_MEM_EXTENDED => 134, FPU_SRC_MEM_PACKED => 946
+        FPU_SRC_FPM => 110, FPU_SRC_MEM_INTEGER => 139, FPU_SRC_MEM_SINGLE => 131,
+        FPU_SRC_MEM_DOUBLE => 137, FPU_SRC_MEM_EXTENDED => 135, FPU_SRC_MEM_PACKED => 947
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_REM => (
       legacy_decode_id_valid => true, legacy_decode_id => 9,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"09",
-      op_class => OP_CLASS_ARITH, alu_latency => 110, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 111, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
-        FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,
-        FPU_SRC_MEM_DOUBLE => 136, FPU_SRC_MEM_EXTENDED => 134, FPU_SRC_MEM_PACKED => 946
+        FPU_SRC_FPM => 110, FPU_SRC_MEM_INTEGER => 139, FPU_SRC_MEM_SINGLE => 131,
+        FPU_SRC_MEM_DOUBLE => 137, FPU_SRC_MEM_EXTENDED => 135, FPU_SRC_MEM_PACKED => 947
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),

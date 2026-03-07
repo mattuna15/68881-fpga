@@ -77,6 +77,7 @@ architecture rtl of mc68881_divrem_unit is
     ST_CLASSIFY,
     ST_DIV_ITER,
     ST_POST_DIV,
+    ST_POST_DIV_ROUND,
     ST_SQRT_ITER,
     ST_SQRT_POST,
     ST_MOD_WAIT,
@@ -101,6 +102,12 @@ architecture rtl of mc68881_divrem_unit is
   signal sqrt_root_reg : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
   signal sqrt_iter_idx_reg : integer range 0 to FP_MANT_EXT_WIDTH-1 := 0;
   signal sqrt_exp_out_reg : integer := 0;
+
+  signal post_mant_ext_reg : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
+  signal post_exp_reg : integer := 0;
+  signal post_inexact_reg : std_logic := '0';
+  signal post_rm_reg : fp_round_mode_t := FP_RND_NEAREST;
+  signal post_rp_reg : fp_round_prec_t := FP_PREC_EXTENDED;
 
   signal div_result_reg : fp80_t := (others => '0');
   signal result_reg : fp80_t := (others => '0');
@@ -804,6 +811,7 @@ begin
           state_reg <= ST_DONE;
 
         when ST_POST_DIV =>
+          -- Cycle 1: leading-one detection, mantissa extraction, exponent calc
           top_idx := integer(DIV_Q_BITS);
           inexact_local := '0';
           if rem_reg /= 0 then
@@ -847,7 +855,21 @@ begin
             exp_res_i := 0;
           end if;
 
-          apply_rounding(div_sign_reg, mant_ext, exp_res_i, div_round_mode, div_round_prec, mant_main, exp_res_i, inexact_local);
+          -- Register intermediate results for rounding in next cycle
+          post_mant_ext_reg <= mant_ext;
+          post_exp_reg <= exp_res_i;
+          post_inexact_reg <= inexact_local;
+          post_rm_reg <= div_round_mode;
+          post_rp_reg <= div_round_prec;
+          state_reg <= ST_POST_DIV_ROUND;
+
+        when ST_POST_DIV_ROUND =>
+          -- Cycle 2: rounding and packing from registered intermediates
+          mant_ext := post_mant_ext_reg;
+          exp_res_i := post_exp_reg;
+          inexact_local := post_inexact_reg;
+
+          apply_rounding(div_sign_reg, mant_ext, exp_res_i, post_rm_reg, post_rp_reg, mant_main, exp_res_i, inexact_local);
 
           -- Promote to minimum normal if rounding set the integer bit
           if exp_res_i = 0 and mant_main(mant_main'left) = '1' then

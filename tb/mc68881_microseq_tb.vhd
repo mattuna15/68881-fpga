@@ -133,7 +133,7 @@ begin
       report "op_class FRESTORE mapping failed." severity failure;
     assert op_class(FPU_OP_NOP) = OP_CLASS_NONE
       report "op_class NOP mapping failed." severity failure;
-    assert op_alu_latency(FPU_OP_DIV) = 73
+    assert op_alu_latency(FPU_OP_DIV) = 74
       report "op_alu_latency DIV mapping failed." severity failure;
     assert op_alu_latency(FPU_OP_MOVE) = 0
       report "op_alu_latency MOVE mapping failed." severity failure;
@@ -212,7 +212,7 @@ begin
       true,
       true
     );
-    assert cycles = 953
+    assert cycles = 954
       report "op_cycle_count DIV packed mismatch." severity failure;
 
     cycles := op_cycle_count(

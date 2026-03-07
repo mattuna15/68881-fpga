@@ -3049,7 +3049,7 @@ begin
       status_frame_valid_reg <= '0';
       status_frame_busy_reg <= '0';
     elsif rising_edge(clk) then
-      if op_issue_pulse = '1' then
+      if op_issue_pulse = '1' or cir_state_reg = CIR_DECODE then
         status_valid_reg <= '0';
       elsif micro_active_reg = '1' and micro_remaining_reg = 0 and result_ready_reg = '1' then
         status_valid_reg <= '1';
@@ -3613,7 +3613,12 @@ begin
           end if;
 
         when CIR_XFER_SRC_WAIT =>
-          -- Hold state: launch ALU after format conversion path settles.
+          -- First hold state: format conversion path settles (MCP=4, 4-cycle
+          -- separation from last cir_operand_staging write).
+          cir_state_reg <= CIR_XFER_SRC_WAIT2;
+
+        when CIR_XFER_SRC_WAIT2 =>
+          -- Second hold state: launch ALU.
           cir_launch_alu <= '1';
           if op_class(cir_decoded_op) = OP_CLASS_MOVE then
             cir_state_reg <= CIR_IDLE;
@@ -3835,6 +3840,8 @@ begin
         cir_response_prim <= "0111" & "0000" &
           std_logic_vector(to_unsigned(cir_xfer_word_count * 4, 8));
       when CIR_XFER_SRC_WAIT =>
+        cir_response_prim <= CIR_PRIM_BUSY;
+      when CIR_XFER_SRC_WAIT2 =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_DST =>
         -- Transfer Operand from-CP: [15:13]=011, [12]=0, [7:0]=byte count

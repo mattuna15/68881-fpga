@@ -126,6 +126,13 @@ architecture sim of tb_mc68881_torture is
     else
       rel_tol := mul_fp80(scale, tolerance, FP_RND_NEAREST, FP_PREC_EXTENDED);
     end if;
+    -- Always log actual error for tolerance tuning.
+    report "ERRMEASURE " & test_name &
+           " abs_diff=" & to_hstring(diff) &
+           " tol=" & to_hstring(rel_tol) &
+           " expected=" & to_hstring(expected) &
+           " got=" & to_hstring(got)
+      severity note;
     assert compare_fp80(diff, rel_tol) <= 0
       report "Mismatch(tol): " & test_name &
              " expected=" & to_hstring(expected) &
@@ -225,13 +232,23 @@ begin
     constant FP80_NEG_INF : fp80_t := x"FFFF8000000000000000";
     constant FP80_QNAN    : fp80_t := x"7FFFC000000000000001";
     constant FP80_QUARTER : fp80_t := x"3FFD8000000000000000"; -- 0.25
-    -- Tolerances
+    -- Tolerances (tightest to widest)
+    constant FP80_TOL_1E16 : fp80_t := x"3FC9E69594BEC44DE000"; -- 1e-16
+    constant FP80_TOL_1E15 : fp80_t := x"3FCD901D7CF73AB0B000"; -- 1e-15
+    constant FP80_TOL_1E14 : fp80_t := x"3FD0B424DC35095CD800"; -- 1e-14
+    constant FP80_TOL_1E12 : fp80_t := x"3FD78CBCCC096F508800"; -- 1e-12
+    constant FP80_TOL_1E10 : fp80_t := x"3FDDDBE6FECEBDEDD800"; -- 1e-10
+    constant FP80_TOL_1E9  : fp80_t := x"3FE189705F4136B4A800"; -- 1e-9
+    constant FP80_TOL_1E8  : fp80_t := x"3FE4ABCC77118461D000"; -- 1e-8
+    constant FP80_TOL_1E7  : fp80_t := x"3FE7D6BF94D5E57A4000"; -- 1e-7
+    constant FP80_TOL_1E6  : fp80_t := x"3FEB8637BD05AF6C6800"; -- 1e-6
+    constant FP80_TOL_1E5  : fp80_t := x"3FEEA7C5AC471B478800"; -- 1e-5
+    constant FP80_TOL_1E4  : fp80_t := x"3FF1D1B71758E2196800"; -- 1e-4
     constant FP80_TOL_1E3  : fp80_t := x"3FF583126E978D4FE000"; -- 1e-3
     constant FP80_TOL_5E3  : fp80_t := x"3FF7A3D70A3D70A3D800"; -- 5e-3
     constant FP80_TOL_1E2  : fp80_t := x"3FF8A3D70A3D70A3D800"; -- 1e-2
     constant FP80_TOL_2E2  : fp80_t := x"3FF9A3D70A3D70A3D800"; -- 2e-2
     constant FP80_TOL_5E2  : fp80_t := x"3FFACCCCCCCCCCCCD000"; -- 5e-2
-
     constant FP80_TOL_1E1  : fp80_t := x"3FFBCCCCCCCCCCCCCCCD"; -- 1e-1
     constant FP80_TOL_2E1  : fp80_t := x"3FFCCCCCCCCCCCCCD000"; -- 2e-1 (wide; only for imprecise ops)
 
@@ -488,11 +505,11 @@ begin
     run_binary(FPU_OP_ADD, TV_ARG_TINY, TV_ARG_TINY, FP_RND_PLUS_INF, TV_ADD_TINY_TINY_RP, "ADD TINY+TINY RP");
     run_binary(FPU_OP_ADD, TV_ARG_TINY, TV_ARG_TINY, FP_RND_MINUS_INF, TV_ADD_TINY_TINY_RM, "ADD TINY+TINY RM");
 
-    -- ADD HUGE+ONE (1 is negligible vs HUGE; tolerance-checked)
-    run_binary_close(FPU_OP_ADD, TV_ARG_HUGE, TV_ARG_ONE, FP_RND_NEAREST, TV_ADD_HUGE_ONE_RN, FP80_TOL_1E3, "ADD HUGE+ONE RN");
-    run_binary_close(FPU_OP_ADD, TV_ARG_HUGE, TV_ARG_ONE, FP_RND_ZERO, TV_ADD_HUGE_ONE_RZ, FP80_TOL_1E3, "ADD HUGE+ONE RZ");
-    run_binary_close(FPU_OP_ADD, TV_ARG_HUGE, TV_ARG_ONE, FP_RND_PLUS_INF, TV_ADD_HUGE_ONE_RP, FP80_TOL_1E3, "ADD HUGE+ONE RP");
-    run_binary_close(FPU_OP_ADD, TV_ARG_HUGE, TV_ARG_ONE, FP_RND_MINUS_INF, TV_ADD_HUGE_ONE_RM, FP80_TOL_1E3, "ADD HUGE+ONE RM");
+    -- ADD HUGE+ONE (1 is negligible vs HUGE; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_ADD, TV_ARG_HUGE, TV_ARG_ONE, FP_RND_NEAREST, TV_ADD_HUGE_ONE_RN, "ADD HUGE+ONE RN");
+    run_binary(FPU_OP_ADD, TV_ARG_HUGE, TV_ARG_ONE, FP_RND_ZERO, TV_ADD_HUGE_ONE_RZ, "ADD HUGE+ONE RZ");
+    run_binary(FPU_OP_ADD, TV_ARG_HUGE, TV_ARG_ONE, FP_RND_PLUS_INF, TV_ADD_HUGE_ONE_RP, "ADD HUGE+ONE RP");
+    run_binary(FPU_OP_ADD, TV_ARG_HUGE, TV_ARG_ONE, FP_RND_MINUS_INF, TV_ADD_HUGE_ONE_RM, "ADD HUGE+ONE RM");
 
     -- ADD CANCEL: cancel_a + (-cancel_b) -- negate cancel_b by flipping bit 79
     run_binary(FPU_OP_ADD, TV_ARG_CANCEL_A, neg_fp80(TV_ARG_CANCEL_B), FP_RND_NEAREST, TV_ADD_CANCEL_RN, "ADD CANCEL RN");
@@ -500,11 +517,11 @@ begin
     run_binary(FPU_OP_ADD, TV_ARG_CANCEL_A, neg_fp80(TV_ARG_CANCEL_B), FP_RND_PLUS_INF, TV_ADD_CANCEL_RP, "ADD CANCEL RP");
     run_binary(FPU_OP_ADD, TV_ARG_CANCEL_A, neg_fp80(TV_ARG_CANCEL_B), FP_RND_MINUS_INF, TV_ADD_CANCEL_RM, "ADD CANCEL RM");
 
-    -- ADD THIRD+SEVENTH (repeating fractions; tolerance-checked)
-    run_binary_close(FPU_OP_ADD, TV_ARG_THIRD, TV_ARG_SEVENTH, FP_RND_NEAREST, TV_ADD_THIRD_SEVENTH_RN, FP80_TOL_1E3, "ADD 1/3+1/7 RN");
-    run_binary_close(FPU_OP_ADD, TV_ARG_THIRD, TV_ARG_SEVENTH, FP_RND_ZERO, TV_ADD_THIRD_SEVENTH_RZ, FP80_TOL_1E3, "ADD 1/3+1/7 RZ");
-    run_binary_close(FPU_OP_ADD, TV_ARG_THIRD, TV_ARG_SEVENTH, FP_RND_PLUS_INF, TV_ADD_THIRD_SEVENTH_RP, FP80_TOL_1E3, "ADD 1/3+1/7 RP");
-    run_binary_close(FPU_OP_ADD, TV_ARG_THIRD, TV_ARG_SEVENTH, FP_RND_MINUS_INF, TV_ADD_THIRD_SEVENTH_RM, FP80_TOL_1E3, "ADD 1/3+1/7 RM");
+    -- ADD THIRD+SEVENTH (repeating fractions; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_ADD, TV_ARG_THIRD, TV_ARG_SEVENTH, FP_RND_NEAREST, TV_ADD_THIRD_SEVENTH_RN, "ADD 1/3+1/7 RN");
+    run_binary(FPU_OP_ADD, TV_ARG_THIRD, TV_ARG_SEVENTH, FP_RND_ZERO, TV_ADD_THIRD_SEVENTH_RZ, "ADD 1/3+1/7 RZ");
+    run_binary(FPU_OP_ADD, TV_ARG_THIRD, TV_ARG_SEVENTH, FP_RND_PLUS_INF, TV_ADD_THIRD_SEVENTH_RP, "ADD 1/3+1/7 RP");
+    run_binary(FPU_OP_ADD, TV_ARG_THIRD, TV_ARG_SEVENTH, FP_RND_MINUS_INF, TV_ADD_THIRD_SEVENTH_RM, "ADD 1/3+1/7 RM");
 
     -- ADD ONE+HALF
     run_binary(FPU_OP_ADD, TV_ARG_ONE, TV_ARG_HALF, FP_RND_NEAREST, TV_ADD_ONE_HALF_RN, "ADD 1+0.5 RN");
@@ -535,17 +552,17 @@ begin
     run_binary(FPU_OP_SUB, TV_ARG_HUGE, TV_ARG_HUGE, FP_RND_PLUS_INF, TV_SUB_HUGE_HUGE_RP, "SUB HUGE-HUGE RP");
     run_binary(FPU_OP_SUB, TV_ARG_HUGE, TV_ARG_HUGE, FP_RND_MINUS_INF, TV_SUB_HUGE_HUGE_RM, "SUB HUGE-HUGE RM");
 
-    -- SUB ONE-THIRD (repeating fraction; tolerance-checked)
-    run_binary_close(FPU_OP_SUB, TV_ARG_ONE, TV_ARG_THIRD, FP_RND_NEAREST, TV_SUB_ONE_THIRD_RN, FP80_TOL_1E3, "SUB 1-1/3 RN");
-    run_binary_close(FPU_OP_SUB, TV_ARG_ONE, TV_ARG_THIRD, FP_RND_ZERO, TV_SUB_ONE_THIRD_RZ, FP80_TOL_1E3, "SUB 1-1/3 RZ");
-    run_binary_close(FPU_OP_SUB, TV_ARG_ONE, TV_ARG_THIRD, FP_RND_PLUS_INF, TV_SUB_ONE_THIRD_RP, FP80_TOL_1E3, "SUB 1-1/3 RP");
-    run_binary_close(FPU_OP_SUB, TV_ARG_ONE, TV_ARG_THIRD, FP_RND_MINUS_INF, TV_SUB_ONE_THIRD_RM, FP80_TOL_1E3, "SUB 1-1/3 RM");
+    -- SUB ONE-THIRD (repeating fraction; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_SUB, TV_ARG_ONE, TV_ARG_THIRD, FP_RND_NEAREST, TV_SUB_ONE_THIRD_RN, "SUB 1-1/3 RN");
+    run_binary(FPU_OP_SUB, TV_ARG_ONE, TV_ARG_THIRD, FP_RND_ZERO, TV_SUB_ONE_THIRD_RZ, "SUB 1-1/3 RZ");
+    run_binary(FPU_OP_SUB, TV_ARG_ONE, TV_ARG_THIRD, FP_RND_PLUS_INF, TV_SUB_ONE_THIRD_RP, "SUB 1-1/3 RP");
+    run_binary(FPU_OP_SUB, TV_ARG_ONE, TV_ARG_THIRD, FP_RND_MINUS_INF, TV_SUB_ONE_THIRD_RM, "SUB 1-1/3 RM");
 
-    -- SUB TINY-SMALL (extreme range difference; tolerance-checked)
-    run_binary_close(FPU_OP_SUB, TV_ARG_TINY, TV_ARG_SMALL, FP_RND_NEAREST, TV_SUB_TINY_SMALL_RN, FP80_TOL_1E3, "SUB TINY-SMALL RN");
-    run_binary_close(FPU_OP_SUB, TV_ARG_TINY, TV_ARG_SMALL, FP_RND_ZERO, TV_SUB_TINY_SMALL_RZ, FP80_TOL_1E3, "SUB TINY-SMALL RZ");
-    run_binary_close(FPU_OP_SUB, TV_ARG_TINY, TV_ARG_SMALL, FP_RND_PLUS_INF, TV_SUB_TINY_SMALL_RP, FP80_TOL_1E3, "SUB TINY-SMALL RP");
-    run_binary_close(FPU_OP_SUB, TV_ARG_TINY, TV_ARG_SMALL, FP_RND_MINUS_INF, TV_SUB_TINY_SMALL_RM, FP80_TOL_1E3, "SUB TINY-SMALL RM");
+    -- SUB TINY-SMALL (extreme range difference; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_SUB, TV_ARG_TINY, TV_ARG_SMALL, FP_RND_NEAREST, TV_SUB_TINY_SMALL_RN, "SUB TINY-SMALL RN");
+    run_binary(FPU_OP_SUB, TV_ARG_TINY, TV_ARG_SMALL, FP_RND_ZERO, TV_SUB_TINY_SMALL_RZ, "SUB TINY-SMALL RZ");
+    run_binary(FPU_OP_SUB, TV_ARG_TINY, TV_ARG_SMALL, FP_RND_PLUS_INF, TV_SUB_TINY_SMALL_RP, "SUB TINY-SMALL RP");
+    run_binary(FPU_OP_SUB, TV_ARG_TINY, TV_ARG_SMALL, FP_RND_MINUS_INF, TV_SUB_TINY_SMALL_RM, "SUB TINY-SMALL RM");
 
     -- SUB THREE-TWO
     run_binary(FPU_OP_SUB, TV_ARG_THREE, TV_ARG_TWO, FP_RND_NEAREST, TV_SUB_THREE_TWO_RN, "SUB 3-2 RN");
@@ -558,23 +575,23 @@ begin
     -- ================================================================
     -- MUL: 6 cases x 4 rounding modes = 24 tests
     -- ================================================================
-    -- MUL THIRD*THREE (repeating operand)
-    run_binary_close(FPU_OP_MUL, TV_ARG_THIRD, TV_ARG_THREE, FP_RND_NEAREST, TV_MUL_THIRD_THREE_RN, FP80_TOL_1E3, "MUL 1/3*3 RN");
-    run_binary_close(FPU_OP_MUL, TV_ARG_THIRD, TV_ARG_THREE, FP_RND_ZERO, TV_MUL_THIRD_THREE_RZ, FP80_TOL_1E3, "MUL 1/3*3 RZ");
-    run_binary_close(FPU_OP_MUL, TV_ARG_THIRD, TV_ARG_THREE, FP_RND_PLUS_INF, TV_MUL_THIRD_THREE_RP, FP80_TOL_1E3, "MUL 1/3*3 RP");
-    run_binary_close(FPU_OP_MUL, TV_ARG_THIRD, TV_ARG_THREE, FP_RND_MINUS_INF, TV_MUL_THIRD_THREE_RM, FP80_TOL_1E3, "MUL 1/3*3 RM");
+    -- MUL THIRD*THREE (repeating operand; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_MUL, TV_ARG_THIRD, TV_ARG_THREE, FP_RND_NEAREST, TV_MUL_THIRD_THREE_RN, "MUL 1/3*3 RN");
+    run_binary(FPU_OP_MUL, TV_ARG_THIRD, TV_ARG_THREE, FP_RND_ZERO, TV_MUL_THIRD_THREE_RZ, "MUL 1/3*3 RZ");
+    run_binary(FPU_OP_MUL, TV_ARG_THIRD, TV_ARG_THREE, FP_RND_PLUS_INF, TV_MUL_THIRD_THREE_RP, "MUL 1/3*3 RP");
+    run_binary(FPU_OP_MUL, TV_ARG_THIRD, TV_ARG_THREE, FP_RND_MINUS_INF, TV_MUL_THIRD_THREE_RM, "MUL 1/3*3 RM");
 
-    -- MUL SEVENTH*SEVEN (repeating operand)
-    run_binary_close(FPU_OP_MUL, TV_ARG_SEVENTH, fp80_from_int(7), FP_RND_NEAREST, TV_MUL_SEVENTH_SEVEN_RN, FP80_TOL_1E3, "MUL 1/7*7 RN");
-    run_binary_close(FPU_OP_MUL, TV_ARG_SEVENTH, fp80_from_int(7), FP_RND_ZERO, TV_MUL_SEVENTH_SEVEN_RZ, FP80_TOL_1E3, "MUL 1/7*7 RZ");
-    run_binary_close(FPU_OP_MUL, TV_ARG_SEVENTH, fp80_from_int(7), FP_RND_PLUS_INF, TV_MUL_SEVENTH_SEVEN_RP, FP80_TOL_1E3, "MUL 1/7*7 RP");
-    run_binary_close(FPU_OP_MUL, TV_ARG_SEVENTH, fp80_from_int(7), FP_RND_MINUS_INF, TV_MUL_SEVENTH_SEVEN_RM, FP80_TOL_1E3, "MUL 1/7*7 RM");
+    -- MUL SEVENTH*SEVEN (repeating operand; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_MUL, TV_ARG_SEVENTH, fp80_from_int(7), FP_RND_NEAREST, TV_MUL_SEVENTH_SEVEN_RN, "MUL 1/7*7 RN");
+    run_binary(FPU_OP_MUL, TV_ARG_SEVENTH, fp80_from_int(7), FP_RND_ZERO, TV_MUL_SEVENTH_SEVEN_RZ, "MUL 1/7*7 RZ");
+    run_binary(FPU_OP_MUL, TV_ARG_SEVENTH, fp80_from_int(7), FP_RND_PLUS_INF, TV_MUL_SEVENTH_SEVEN_RP, "MUL 1/7*7 RP");
+    run_binary(FPU_OP_MUL, TV_ARG_SEVENTH, fp80_from_int(7), FP_RND_MINUS_INF, TV_MUL_SEVENTH_SEVEN_RM, "MUL 1/7*7 RM");
 
-    -- MUL TINY*HALF (underflow edge case)
-    run_binary_close(FPU_OP_MUL, TV_ARG_TINY, TV_ARG_HALF, FP_RND_NEAREST, TV_MUL_TINY_HALF_RN, FP80_TOL_1E3, "MUL TINY*HALF RN");
-    run_binary_close(FPU_OP_MUL, TV_ARG_TINY, TV_ARG_HALF, FP_RND_ZERO, TV_MUL_TINY_HALF_RZ, FP80_TOL_1E3, "MUL TINY*HALF RZ");
-    run_binary_close(FPU_OP_MUL, TV_ARG_TINY, TV_ARG_HALF, FP_RND_PLUS_INF, TV_MUL_TINY_HALF_RP, FP80_TOL_1E3, "MUL TINY*HALF RP");
-    run_binary_close(FPU_OP_MUL, TV_ARG_TINY, TV_ARG_HALF, FP_RND_MINUS_INF, TV_MUL_TINY_HALF_RM, FP80_TOL_1E3, "MUL TINY*HALF RM");
+    -- MUL TINY*HALF (underflow edge case; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_MUL, TV_ARG_TINY, TV_ARG_HALF, FP_RND_NEAREST, TV_MUL_TINY_HALF_RN, "MUL TINY*HALF RN");
+    run_binary(FPU_OP_MUL, TV_ARG_TINY, TV_ARG_HALF, FP_RND_ZERO, TV_MUL_TINY_HALF_RZ, "MUL TINY*HALF RZ");
+    run_binary(FPU_OP_MUL, TV_ARG_TINY, TV_ARG_HALF, FP_RND_PLUS_INF, TV_MUL_TINY_HALF_RP, "MUL TINY*HALF RP");
+    run_binary(FPU_OP_MUL, TV_ARG_TINY, TV_ARG_HALF, FP_RND_MINUS_INF, TV_MUL_TINY_HALF_RM, "MUL TINY*HALF RM");
 
     -- MUL HUGE*TWO (overflow -> +inf)
     -- TODO: IEEE-754 says RZ/RM should produce max finite, not inf.
@@ -584,98 +601,98 @@ begin
     run_binary_inf(FPU_OP_MUL, TV_ARG_HUGE, TV_ARG_TWO, FP_RND_PLUS_INF, '0', "MUL HUGE*TWO RP");
     run_binary_inf(FPU_OP_MUL, TV_ARG_HUGE, TV_ARG_TWO, FP_RND_MINUS_INF, '0', "MUL HUGE*TWO RM");
 
-    -- MUL PI*E (irrational operands; tolerance-checked)
-    run_binary_close(FPU_OP_MUL, TV_ARG_PI, TV_ARG_E, FP_RND_NEAREST, TV_MUL_PI_E_RN, FP80_TOL_1E3, "MUL PI*E RN");
-    run_binary_close(FPU_OP_MUL, TV_ARG_PI, TV_ARG_E, FP_RND_ZERO, TV_MUL_PI_E_RZ, FP80_TOL_1E3, "MUL PI*E RZ");
-    run_binary_close(FPU_OP_MUL, TV_ARG_PI, TV_ARG_E, FP_RND_PLUS_INF, TV_MUL_PI_E_RP, FP80_TOL_1E3, "MUL PI*E RP");
-    run_binary_close(FPU_OP_MUL, TV_ARG_PI, TV_ARG_E, FP_RND_MINUS_INF, TV_MUL_PI_E_RM, FP80_TOL_1E3, "MUL PI*E RM");
+    -- MUL PI*E (irrational operands; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_MUL, TV_ARG_PI, TV_ARG_E, FP_RND_NEAREST, TV_MUL_PI_E_RN, "MUL PI*E RN");
+    run_binary(FPU_OP_MUL, TV_ARG_PI, TV_ARG_E, FP_RND_ZERO, TV_MUL_PI_E_RZ, "MUL PI*E RZ");
+    run_binary(FPU_OP_MUL, TV_ARG_PI, TV_ARG_E, FP_RND_PLUS_INF, TV_MUL_PI_E_RP, "MUL PI*E RP");
+    run_binary(FPU_OP_MUL, TV_ARG_PI, TV_ARG_E, FP_RND_MINUS_INF, TV_MUL_PI_E_RM, "MUL PI*E RM");
 
-    -- MUL NEG*POS: (-3)*2
-    run_binary_close(FPU_OP_MUL, neg_fp80(TV_ARG_THREE), TV_ARG_TWO, FP_RND_NEAREST, TV_MUL_NEG_POS_RN, FP80_TOL_1E3, "MUL NEG*POS RN");
-    run_binary_close(FPU_OP_MUL, neg_fp80(TV_ARG_THREE), TV_ARG_TWO, FP_RND_ZERO, TV_MUL_NEG_POS_RZ, FP80_TOL_1E3, "MUL NEG*POS RZ");
-    run_binary_close(FPU_OP_MUL, neg_fp80(TV_ARG_THREE), TV_ARG_TWO, FP_RND_PLUS_INF, TV_MUL_NEG_POS_RP, FP80_TOL_1E3, "MUL NEG*POS RP");
-    run_binary_close(FPU_OP_MUL, neg_fp80(TV_ARG_THREE), TV_ARG_TWO, FP_RND_MINUS_INF, TV_MUL_NEG_POS_RM, FP80_TOL_1E3, "MUL NEG*POS RM");
+    -- MUL NEG*POS: (-3)*2 (exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_MUL, neg_fp80(TV_ARG_THREE), TV_ARG_TWO, FP_RND_NEAREST, TV_MUL_NEG_POS_RN, "MUL NEG*POS RN");
+    run_binary(FPU_OP_MUL, neg_fp80(TV_ARG_THREE), TV_ARG_TWO, FP_RND_ZERO, TV_MUL_NEG_POS_RZ, "MUL NEG*POS RZ");
+    run_binary(FPU_OP_MUL, neg_fp80(TV_ARG_THREE), TV_ARG_TWO, FP_RND_PLUS_INF, TV_MUL_NEG_POS_RP, "MUL NEG*POS RP");
+    run_binary(FPU_OP_MUL, neg_fp80(TV_ARG_THREE), TV_ARG_TWO, FP_RND_MINUS_INF, TV_MUL_NEG_POS_RM, "MUL NEG*POS RM");
 
     report "MUL: 24 golden vector tests passed" severity note;
 
     -- ================================================================
     -- DIV: 6 cases x 4 rounding modes = 24 tests
     -- ================================================================
-    -- DIV ONE/THREE (repeating fraction)
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, TV_ARG_THREE, FP_RND_NEAREST, TV_DIV_ONE_THREE_RN, FP80_TOL_1E3, "DIV 1/3 RN");
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, TV_ARG_THREE, FP_RND_ZERO, TV_DIV_ONE_THREE_RZ, FP80_TOL_1E3, "DIV 1/3 RZ");
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, TV_ARG_THREE, FP_RND_PLUS_INF, TV_DIV_ONE_THREE_RP, FP80_TOL_1E3, "DIV 1/3 RP");
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, TV_ARG_THREE, FP_RND_MINUS_INF, TV_DIV_ONE_THREE_RM, FP80_TOL_1E3, "DIV 1/3 RM");
+    -- DIV ONE/THREE (repeating fraction; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, TV_ARG_THREE, FP_RND_NEAREST, TV_DIV_ONE_THREE_RN, "DIV 1/3 RN");
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, TV_ARG_THREE, FP_RND_ZERO, TV_DIV_ONE_THREE_RZ, "DIV 1/3 RZ");
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, TV_ARG_THREE, FP_RND_PLUS_INF, TV_DIV_ONE_THREE_RP, "DIV 1/3 RP");
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, TV_ARG_THREE, FP_RND_MINUS_INF, TV_DIV_ONE_THREE_RM, "DIV 1/3 RM");
 
-    -- DIV ONE/SEVEN (repeating fraction)
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(7), FP_RND_NEAREST, TV_DIV_ONE_SEVEN_RN, FP80_TOL_1E3, "DIV 1/7 RN");
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(7), FP_RND_ZERO, TV_DIV_ONE_SEVEN_RZ, FP80_TOL_1E3, "DIV 1/7 RZ");
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(7), FP_RND_PLUS_INF, TV_DIV_ONE_SEVEN_RP, FP80_TOL_1E3, "DIV 1/7 RP");
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(7), FP_RND_MINUS_INF, TV_DIV_ONE_SEVEN_RM, FP80_TOL_1E3, "DIV 1/7 RM");
+    -- DIV ONE/SEVEN (repeating fraction; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(7), FP_RND_NEAREST, TV_DIV_ONE_SEVEN_RN, "DIV 1/7 RN");
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(7), FP_RND_ZERO, TV_DIV_ONE_SEVEN_RZ, "DIV 1/7 RZ");
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(7), FP_RND_PLUS_INF, TV_DIV_ONE_SEVEN_RP, "DIV 1/7 RP");
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(7), FP_RND_MINUS_INF, TV_DIV_ONE_SEVEN_RM, "DIV 1/7 RM");
 
-    -- DIV ONE/TEN (repeating fraction)
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(10), FP_RND_NEAREST, TV_DIV_ONE_TEN_RN, FP80_TOL_1E3, "DIV 1/10 RN");
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(10), FP_RND_ZERO, TV_DIV_ONE_TEN_RZ, FP80_TOL_1E3, "DIV 1/10 RZ");
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(10), FP_RND_PLUS_INF, TV_DIV_ONE_TEN_RP, FP80_TOL_1E3, "DIV 1/10 RP");
-    run_binary_close(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(10), FP_RND_MINUS_INF, TV_DIV_ONE_TEN_RM, FP80_TOL_1E3, "DIV 1/10 RM");
+    -- DIV ONE/TEN (repeating fraction; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(10), FP_RND_NEAREST, TV_DIV_ONE_TEN_RN, "DIV 1/10 RN");
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(10), FP_RND_ZERO, TV_DIV_ONE_TEN_RZ, "DIV 1/10 RZ");
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(10), FP_RND_PLUS_INF, TV_DIV_ONE_TEN_RP, "DIV 1/10 RP");
+    run_binary(FPU_OP_DIV, TV_ARG_ONE, fp80_from_int(10), FP_RND_MINUS_INF, TV_DIV_ONE_TEN_RM, "DIV 1/10 RM");
 
-    -- DIV PI/E (irrational operands)
-    run_binary_close(FPU_OP_DIV, TV_ARG_PI, TV_ARG_E, FP_RND_NEAREST, TV_DIV_PI_E_RN, FP80_TOL_1E3, "DIV PI/E RN");
-    run_binary_close(FPU_OP_DIV, TV_ARG_PI, TV_ARG_E, FP_RND_ZERO, TV_DIV_PI_E_RZ, FP80_TOL_1E3, "DIV PI/E RZ");
-    run_binary_close(FPU_OP_DIV, TV_ARG_PI, TV_ARG_E, FP_RND_PLUS_INF, TV_DIV_PI_E_RP, FP80_TOL_1E3, "DIV PI/E RP");
-    run_binary_close(FPU_OP_DIV, TV_ARG_PI, TV_ARG_E, FP_RND_MINUS_INF, TV_DIV_PI_E_RM, FP80_TOL_1E3, "DIV PI/E RM");
+    -- DIV PI/E (irrational operands; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_DIV, TV_ARG_PI, TV_ARG_E, FP_RND_NEAREST, TV_DIV_PI_E_RN, "DIV PI/E RN");
+    run_binary(FPU_OP_DIV, TV_ARG_PI, TV_ARG_E, FP_RND_ZERO, TV_DIV_PI_E_RZ, "DIV PI/E RZ");
+    run_binary(FPU_OP_DIV, TV_ARG_PI, TV_ARG_E, FP_RND_PLUS_INF, TV_DIV_PI_E_RP, "DIV PI/E RP");
+    run_binary(FPU_OP_DIV, TV_ARG_PI, TV_ARG_E, FP_RND_MINUS_INF, TV_DIV_PI_E_RM, "DIV PI/E RM");
 
-    -- DIV TINY/TWO (subnormal edge case)
-    run_binary_close(FPU_OP_DIV, TV_ARG_TINY, TV_ARG_TWO, FP_RND_NEAREST, TV_DIV_TINY_TWO_RN, FP80_TOL_1E3, "DIV TINY/TWO RN");
-    run_binary_close(FPU_OP_DIV, TV_ARG_TINY, TV_ARG_TWO, FP_RND_ZERO, TV_DIV_TINY_TWO_RZ, FP80_TOL_1E3, "DIV TINY/TWO RZ");
-    run_binary_close(FPU_OP_DIV, TV_ARG_TINY, TV_ARG_TWO, FP_RND_PLUS_INF, TV_DIV_TINY_TWO_RP, FP80_TOL_1E3, "DIV TINY/TWO RP");
-    run_binary_close(FPU_OP_DIV, TV_ARG_TINY, TV_ARG_TWO, FP_RND_MINUS_INF, TV_DIV_TINY_TWO_RM, FP80_TOL_1E3, "DIV TINY/TWO RM");
+    -- DIV TINY/TWO (subnormal edge case; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_DIV, TV_ARG_TINY, TV_ARG_TWO, FP_RND_NEAREST, TV_DIV_TINY_TWO_RN, "DIV TINY/TWO RN");
+    run_binary(FPU_OP_DIV, TV_ARG_TINY, TV_ARG_TWO, FP_RND_ZERO, TV_DIV_TINY_TWO_RZ, "DIV TINY/TWO RZ");
+    run_binary(FPU_OP_DIV, TV_ARG_TINY, TV_ARG_TWO, FP_RND_PLUS_INF, TV_DIV_TINY_TWO_RP, "DIV TINY/TWO RP");
+    run_binary(FPU_OP_DIV, TV_ARG_TINY, TV_ARG_TWO, FP_RND_MINUS_INF, TV_DIV_TINY_TWO_RM, "DIV TINY/TWO RM");
 
-    -- DIV NEG/POS: (-1)/3 (repeating fraction)
-    run_binary_close(FPU_OP_DIV, FP80_NEG_ONE, TV_ARG_THREE, FP_RND_NEAREST, TV_DIV_NEG_POS_RN, FP80_TOL_1E3, "DIV NEG/POS RN");
-    run_binary_close(FPU_OP_DIV, FP80_NEG_ONE, TV_ARG_THREE, FP_RND_ZERO, TV_DIV_NEG_POS_RZ, FP80_TOL_1E3, "DIV NEG/POS RZ");
-    run_binary_close(FPU_OP_DIV, FP80_NEG_ONE, TV_ARG_THREE, FP_RND_PLUS_INF, TV_DIV_NEG_POS_RP, FP80_TOL_1E3, "DIV NEG/POS RP");
-    run_binary_close(FPU_OP_DIV, FP80_NEG_ONE, TV_ARG_THREE, FP_RND_MINUS_INF, TV_DIV_NEG_POS_RM, FP80_TOL_1E3, "DIV NEG/POS RM");
+    -- DIV NEG/POS: (-1)/3 (repeating fraction; exact match verified by ERRMEASURE)
+    run_binary(FPU_OP_DIV, FP80_NEG_ONE, TV_ARG_THREE, FP_RND_NEAREST, TV_DIV_NEG_POS_RN, "DIV NEG/POS RN");
+    run_binary(FPU_OP_DIV, FP80_NEG_ONE, TV_ARG_THREE, FP_RND_ZERO, TV_DIV_NEG_POS_RZ, "DIV NEG/POS RZ");
+    run_binary(FPU_OP_DIV, FP80_NEG_ONE, TV_ARG_THREE, FP_RND_PLUS_INF, TV_DIV_NEG_POS_RP, "DIV NEG/POS RP");
+    run_binary(FPU_OP_DIV, FP80_NEG_ONE, TV_ARG_THREE, FP_RND_MINUS_INF, TV_DIV_NEG_POS_RM, "DIV NEG/POS RM");
 
     report "DIV: 24 golden vector tests passed" severity note;
 
     -- ================================================================
     -- SQRT: 7 cases x 4 rounding modes = 28 tests
     -- ================================================================
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_TWO, FP_RND_NEAREST, TV_SQRT_TWO_RN, FP80_TOL_1E3, "SQRT(2) RN");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_TWO, FP_RND_ZERO, TV_SQRT_TWO_RZ, FP80_TOL_1E3, "SQRT(2) RZ");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_TWO, FP_RND_PLUS_INF, TV_SQRT_TWO_RP, FP80_TOL_1E3, "SQRT(2) RP");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_TWO, FP_RND_MINUS_INF, TV_SQRT_TWO_RM, FP80_TOL_1E3, "SQRT(2) RM");
+    run_monadic(FPU_OP_SQRT, TV_ARG_TWO, FP_RND_NEAREST, TV_SQRT_TWO_RN, "SQRT(2) RN");
+    run_monadic(FPU_OP_SQRT, TV_ARG_TWO, FP_RND_ZERO, TV_SQRT_TWO_RZ, "SQRT(2) RZ");
+    run_monadic(FPU_OP_SQRT, TV_ARG_TWO, FP_RND_PLUS_INF, TV_SQRT_TWO_RP, "SQRT(2) RP");
+    run_monadic(FPU_OP_SQRT, TV_ARG_TWO, FP_RND_MINUS_INF, TV_SQRT_TWO_RM, "SQRT(2) RM");
 
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_THREE, FP_RND_NEAREST, TV_SQRT_THREE_RN, FP80_TOL_1E3, "SQRT(3) RN");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_THREE, FP_RND_ZERO, TV_SQRT_THREE_RZ, FP80_TOL_1E3, "SQRT(3) RZ");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_THREE, FP_RND_PLUS_INF, TV_SQRT_THREE_RP, FP80_TOL_1E3, "SQRT(3) RP");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_THREE, FP_RND_MINUS_INF, TV_SQRT_THREE_RM, FP80_TOL_1E3, "SQRT(3) RM");
+    run_monadic(FPU_OP_SQRT, TV_ARG_THREE, FP_RND_NEAREST, TV_SQRT_THREE_RN, "SQRT(3) RN");
+    run_monadic(FPU_OP_SQRT, TV_ARG_THREE, FP_RND_ZERO, TV_SQRT_THREE_RZ, "SQRT(3) RZ");
+    run_monadic(FPU_OP_SQRT, TV_ARG_THREE, FP_RND_PLUS_INF, TV_SQRT_THREE_RP, "SQRT(3) RP");
+    run_monadic(FPU_OP_SQRT, TV_ARG_THREE, FP_RND_MINUS_INF, TV_SQRT_THREE_RM, "SQRT(3) RM");
 
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_HALF, FP_RND_NEAREST, TV_SQRT_HALF_RN, FP80_TOL_1E3, "SQRT(0.5) RN");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_HALF, FP_RND_ZERO, TV_SQRT_HALF_RZ, FP80_TOL_1E3, "SQRT(0.5) RZ");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_HALF, FP_RND_PLUS_INF, TV_SQRT_HALF_RP, FP80_TOL_1E3, "SQRT(0.5) RP");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_HALF, FP_RND_MINUS_INF, TV_SQRT_HALF_RM, FP80_TOL_1E3, "SQRT(0.5) RM");
+    run_monadic(FPU_OP_SQRT, TV_ARG_HALF, FP_RND_NEAREST, TV_SQRT_HALF_RN, "SQRT(0.5) RN");
+    run_monadic(FPU_OP_SQRT, TV_ARG_HALF, FP_RND_ZERO, TV_SQRT_HALF_RZ, "SQRT(0.5) RZ");
+    run_monadic(FPU_OP_SQRT, TV_ARG_HALF, FP_RND_PLUS_INF, TV_SQRT_HALF_RP, "SQRT(0.5) RP");
+    run_monadic(FPU_OP_SQRT, TV_ARG_HALF, FP_RND_MINUS_INF, TV_SQRT_HALF_RM, "SQRT(0.5) RM");
 
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_PI, FP_RND_NEAREST, TV_SQRT_PI_RN, FP80_TOL_1E3, "SQRT(PI) RN");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_PI, FP_RND_ZERO, TV_SQRT_PI_RZ, FP80_TOL_1E3, "SQRT(PI) RZ");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_PI, FP_RND_PLUS_INF, TV_SQRT_PI_RP, FP80_TOL_1E3, "SQRT(PI) RP");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_PI, FP_RND_MINUS_INF, TV_SQRT_PI_RM, FP80_TOL_1E3, "SQRT(PI) RM");
+    run_monadic(FPU_OP_SQRT, TV_ARG_PI, FP_RND_NEAREST, TV_SQRT_PI_RN, "SQRT(PI) RN");
+    run_monadic(FPU_OP_SQRT, TV_ARG_PI, FP_RND_ZERO, TV_SQRT_PI_RZ, "SQRT(PI) RZ");
+    run_monadic(FPU_OP_SQRT, TV_ARG_PI, FP_RND_PLUS_INF, TV_SQRT_PI_RP, "SQRT(PI) RP");
+    run_monadic(FPU_OP_SQRT, TV_ARG_PI, FP_RND_MINUS_INF, TV_SQRT_PI_RM, "SQRT(PI) RM");
 
     run_monadic(FPU_OP_SQRT, TV_ARG_TINY, FP_RND_NEAREST, TV_SQRT_TINY_RN, "SQRT(TINY) RN");
     run_monadic(FPU_OP_SQRT, TV_ARG_TINY, FP_RND_ZERO, TV_SQRT_TINY_RZ, "SQRT(TINY) RZ");
     run_monadic(FPU_OP_SQRT, TV_ARG_TINY, FP_RND_PLUS_INF, TV_SQRT_TINY_RP, "SQRT(TINY) RP");
     run_monadic(FPU_OP_SQRT, TV_ARG_TINY, FP_RND_MINUS_INF, TV_SQRT_TINY_RM, "SQRT(TINY) RM");
 
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_HUGE, FP_RND_NEAREST, TV_SQRT_HUGE_RN, FP80_TOL_1E3, "SQRT(HUGE) RN");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_HUGE, FP_RND_ZERO, TV_SQRT_HUGE_RZ, FP80_TOL_1E3, "SQRT(HUGE) RZ");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_HUGE, FP_RND_PLUS_INF, TV_SQRT_HUGE_RP, FP80_TOL_1E3, "SQRT(HUGE) RP");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_HUGE, FP_RND_MINUS_INF, TV_SQRT_HUGE_RM, FP80_TOL_1E3, "SQRT(HUGE) RM");
+    run_monadic(FPU_OP_SQRT, TV_ARG_HUGE, FP_RND_NEAREST, TV_SQRT_HUGE_RN, "SQRT(HUGE) RN");
+    run_monadic(FPU_OP_SQRT, TV_ARG_HUGE, FP_RND_ZERO, TV_SQRT_HUGE_RZ, "SQRT(HUGE) RZ");
+    run_monadic(FPU_OP_SQRT, TV_ARG_HUGE, FP_RND_PLUS_INF, TV_SQRT_HUGE_RP, "SQRT(HUGE) RP");
+    run_monadic(FPU_OP_SQRT, TV_ARG_HUGE, FP_RND_MINUS_INF, TV_SQRT_HUGE_RM, "SQRT(HUGE) RM");
 
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_NEAR_MAX, FP_RND_NEAREST, TV_SQRT_NEAR_MAX_RN, FP80_TOL_1E3, "SQRT(NEAR_MAX) RN");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_NEAR_MAX, FP_RND_ZERO, TV_SQRT_NEAR_MAX_RZ, FP80_TOL_1E3, "SQRT(NEAR_MAX) RZ");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_NEAR_MAX, FP_RND_PLUS_INF, TV_SQRT_NEAR_MAX_RP, FP80_TOL_1E3, "SQRT(NEAR_MAX) RP");
-    run_monadic_close(FPU_OP_SQRT, TV_ARG_NEAR_MAX, FP_RND_MINUS_INF, TV_SQRT_NEAR_MAX_RM, FP80_TOL_1E3, "SQRT(NEAR_MAX) RM");
+    run_monadic(FPU_OP_SQRT, TV_ARG_NEAR_MAX, FP_RND_NEAREST, TV_SQRT_NEAR_MAX_RN, "SQRT(NEAR_MAX) RN");
+    run_monadic(FPU_OP_SQRT, TV_ARG_NEAR_MAX, FP_RND_ZERO, TV_SQRT_NEAR_MAX_RZ, "SQRT(NEAR_MAX) RZ");
+    run_monadic(FPU_OP_SQRT, TV_ARG_NEAR_MAX, FP_RND_PLUS_INF, TV_SQRT_NEAR_MAX_RP, "SQRT(NEAR_MAX) RP");
+    run_monadic(FPU_OP_SQRT, TV_ARG_NEAR_MAX, FP_RND_MINUS_INF, TV_SQRT_NEAR_MAX_RM, "SQRT(NEAR_MAX) RM");
 
     report "SQRT: 28 golden vector tests passed" severity note;
 
@@ -683,182 +700,189 @@ begin
     -- Transcendentals (RN only)
     -- ================================================================
 
-    -- SIN
+    -- SIN (post-improvement: 0.1~23b, 0.5~28b, 1~26b, 1.5~27b, PI/4~23b,
+    --       ~PI/2~29b, PI=exact, 2PI~22b abs, 10~31b, 100~28b, 1234567~24b,
+    --       -0.7~36b, -2.3~26b)
     run_monadic(FPU_OP_SIN, TV_TRIG_ARG_0, FP_RND_NEAREST, TV_SIN_0, "SIN(0) exact");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_TINY, FP_RND_NEAREST, TV_SIN_TINY, FP80_TOL_1E3, "SIN(tiny)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_0P1, FP_RND_NEAREST, TV_SIN_0P1, FP80_TOL_2E2, "SIN(0.1)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_0P5, FP_RND_NEAREST, TV_SIN_0P5, FP80_TOL_2E2, "SIN(0.5)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_1, FP_RND_NEAREST, TV_SIN_1, FP80_TOL_2E2, "SIN(1)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_1P5, FP_RND_NEAREST, TV_SIN_1P5, FP80_TOL_2E2, "SIN(1.5)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_PI_4, FP_RND_NEAREST, TV_SIN_PI_4, FP80_TOL_2E2, "SIN(PI/4)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_PI_2_NEAR, FP_RND_NEAREST, TV_SIN_PI_2_NEAR, FP80_TOL_2E2, "SIN(~PI/2)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_PI, FP_RND_NEAREST, TV_SIN_PI, FP80_TOL_1E1, "SIN(PI)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_2PI, FP_RND_NEAREST, TV_SIN_2PI, FP80_TOL_1E1, "SIN(2PI)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_10, FP_RND_NEAREST, TV_SIN_10, FP80_TOL_2E2, "SIN(10)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_100, FP_RND_NEAREST, TV_SIN_100, FP80_TOL_5E2, "SIN(100)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_1234567, FP_RND_NEAREST, TV_SIN_1234567, FP80_TOL_2E2, "SIN(1234567)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_NEG_0P7, FP_RND_NEAREST, TV_SIN_NEG_0P7, FP80_TOL_2E2, "SIN(-0.7)");
-    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_NEG_2P3, FP_RND_NEAREST, TV_SIN_NEG_2P3, FP80_TOL_2E2, "SIN(-2.3)");
+    run_monadic(FPU_OP_SIN, TV_TRIG_ARG_TINY, FP_RND_NEAREST, TV_SIN_TINY, "SIN(tiny)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_0P1, FP_RND_NEAREST, TV_SIN_0P1, FP80_TOL_1E5, "SIN(0.1)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_0P5, FP_RND_NEAREST, TV_SIN_0P5, FP80_TOL_1E7, "SIN(0.5)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_1, FP_RND_NEAREST, TV_SIN_1, FP80_TOL_1E6, "SIN(1)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_1P5, FP_RND_NEAREST, TV_SIN_1P5, FP80_TOL_1E6, "SIN(1.5)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_PI_4, FP_RND_NEAREST, TV_SIN_PI_4, FP80_TOL_1E5, "SIN(PI/4)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_PI_2_NEAR, FP_RND_NEAREST, TV_SIN_PI_2_NEAR, FP80_TOL_1E7, "SIN(~PI/2)");
+    -- SIN(PI): returns exact zero. SIN(2PI): Cody-Waite limited (~3e-7 absolute)
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_PI, FP_RND_NEAREST, TV_SIN_PI, FP80_TOL_1E16, "SIN(PI)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_2PI, FP_RND_NEAREST, TV_SIN_2PI, FP80_TOL_1E5, "SIN(2PI)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_10, FP_RND_NEAREST, TV_SIN_10, FP80_TOL_1E8, "SIN(10)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_100, FP_RND_NEAREST, TV_SIN_100, FP80_TOL_1E7, "SIN(100)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_1234567, FP_RND_NEAREST, TV_SIN_1234567, FP80_TOL_1E6, "SIN(1234567)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_NEG_0P7, FP_RND_NEAREST, TV_SIN_NEG_0P7, FP80_TOL_1E9, "SIN(-0.7)");
+    run_monadic_close(FPU_OP_SIN, TV_TRIG_ARG_NEG_2P3, FP_RND_NEAREST, TV_SIN_NEG_2P3, FP80_TOL_1E6, "SIN(-2.3)");
     report "SIN: 15 transcendental tests passed" severity note;
 
-    -- COS
+    -- COS (post-improvement: 0.1~26b, 0.5~29b, 1~25b, 1.5~23b, PI/4~23b,
+    --       ~PI/2: Cody-Waite limited, PI=exact, 2PI~29b, 10~32b, 100~29b,
+    --       1234567~26b, -0.7~37b, -2.3~26b)
     run_monadic(FPU_OP_COS, TV_TRIG_ARG_0, FP_RND_NEAREST, TV_COS_0, "COS(0) exact");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_TINY, FP_RND_NEAREST, TV_COS_TINY, FP80_TOL_1E3, "COS(tiny)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_0P1, FP_RND_NEAREST, TV_COS_0P1, FP80_TOL_2E2, "COS(0.1)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_0P5, FP_RND_NEAREST, TV_COS_0P5, FP80_TOL_2E2, "COS(0.5)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_1, FP_RND_NEAREST, TV_COS_1, FP80_TOL_2E2, "COS(1)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_1P5, FP_RND_NEAREST, TV_COS_1P5, FP80_TOL_2E2, "COS(1.5)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_PI_4, FP_RND_NEAREST, TV_COS_PI_4, FP80_TOL_2E2, "COS(PI/4)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_PI_2_NEAR, FP_RND_NEAREST, TV_COS_PI_2_NEAR, FP80_TOL_1E1, "COS(~PI/2)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_PI, FP_RND_NEAREST, TV_COS_PI, FP80_TOL_2E2, "COS(PI)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_2PI, FP_RND_NEAREST, TV_COS_2PI, FP80_TOL_2E2, "COS(2PI)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_10, FP_RND_NEAREST, TV_COS_10, FP80_TOL_2E2, "COS(10)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_100, FP_RND_NEAREST, TV_COS_100, FP80_TOL_5E2, "COS(100)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_1234567, FP_RND_NEAREST, TV_COS_1234567, FP80_TOL_2E2, "COS(1234567)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_NEG_0P7, FP_RND_NEAREST, TV_COS_NEG_0P7, FP80_TOL_2E2, "COS(-0.7)");
-    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_NEG_2P3, FP_RND_NEAREST, TV_COS_NEG_2P3, FP80_TOL_2E2, "COS(-2.3)");
+    run_monadic(FPU_OP_COS, TV_TRIG_ARG_TINY, FP_RND_NEAREST, TV_COS_TINY, "COS(tiny)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_0P1, FP_RND_NEAREST, TV_COS_0P1, FP80_TOL_1E6, "COS(0.1)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_0P5, FP_RND_NEAREST, TV_COS_0P5, FP80_TOL_1E7, "COS(0.5)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_1, FP_RND_NEAREST, TV_COS_1, FP80_TOL_1E6, "COS(1)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_1P5, FP_RND_NEAREST, TV_COS_1P5, FP80_TOL_1E5, "COS(1.5)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_PI_4, FP_RND_NEAREST, TV_COS_PI_4, FP80_TOL_1E5, "COS(PI/4)");
+    -- COS(~PI/2): Cody-Waite limited (~3e-7 absolute, expected near zero)
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_PI_2_NEAR, FP_RND_NEAREST, TV_COS_PI_2_NEAR, FP80_TOL_1E5, "COS(~PI/2)");
+    run_monadic(FPU_OP_COS, TV_TRIG_ARG_PI, FP_RND_NEAREST, TV_COS_PI, "COS(PI)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_2PI, FP_RND_NEAREST, TV_COS_2PI, FP80_TOL_1E7, "COS(2PI)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_10, FP_RND_NEAREST, TV_COS_10, FP80_TOL_1E8, "COS(10)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_100, FP_RND_NEAREST, TV_COS_100, FP80_TOL_1E7, "COS(100)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_1234567, FP_RND_NEAREST, TV_COS_1234567, FP80_TOL_1E6, "COS(1234567)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_NEG_0P7, FP_RND_NEAREST, TV_COS_NEG_0P7, FP80_TOL_1E9, "COS(-0.7)");
+    run_monadic_close(FPU_OP_COS, TV_TRIG_ARG_NEG_2P3, FP_RND_NEAREST, TV_COS_NEG_2P3, FP80_TOL_1E6, "COS(-2.3)");
     report "COS: 15 transcendental tests passed" severity note;
 
-    -- TAN
+    -- TAN (post-improvement: 0.1~23b, 0.5~28b, 1~23b, 1.5~16b, PI/4~21b,
+    --       PI=exact, 2PI~22b abs, 10~31b, 100~27b, 1234567~24b, -0.7~35b, -2.3~25b)
     run_monadic(FPU_OP_TAN, TV_TRIG_ARG_0, FP_RND_NEAREST, TV_TAN_0, "TAN(0) exact");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_TINY, FP_RND_NEAREST, TV_TAN_TINY, FP80_TOL_1E3, "TAN(tiny)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_0P1, FP_RND_NEAREST, TV_TAN_0P1, FP80_TOL_2E2, "TAN(0.1)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_0P5, FP_RND_NEAREST, TV_TAN_0P5, FP80_TOL_5E2, "TAN(0.5)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_1, FP_RND_NEAREST, TV_TAN_1, FP80_TOL_5E2, "TAN(1)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_1P5, FP_RND_NEAREST, TV_TAN_1P5, FP80_TOL_5E2, "TAN(1.5)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_PI_4, FP_RND_NEAREST, TV_TAN_PI_4, FP80_TOL_5E2, "TAN(PI/4)");
-    -- TAN(~PI/2) skipped: tan near PI/2 is extremely sensitive to argument precision
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_PI, FP_RND_NEAREST, TV_TAN_PI, FP80_TOL_1E1, "TAN(PI)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_2PI, FP_RND_NEAREST, TV_TAN_2PI, FP80_TOL_1E1, "TAN(2PI)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_10, FP_RND_NEAREST, TV_TAN_10, FP80_TOL_5E2, "TAN(10)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_100, FP_RND_NEAREST, TV_TAN_100, FP80_TOL_5E2, "TAN(100)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_1234567, FP_RND_NEAREST, TV_TAN_1234567, FP80_TOL_5E2, "TAN(1234567)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_NEG_0P7, FP_RND_NEAREST, TV_TAN_NEG_0P7, FP80_TOL_5E2, "TAN(-0.7)");
-    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_NEG_2P3, FP_RND_NEAREST, TV_TAN_NEG_2P3, FP80_TOL_5E2, "TAN(-2.3)");
+    run_monadic(FPU_OP_TAN, TV_TRIG_ARG_TINY, FP_RND_NEAREST, TV_TAN_TINY, "TAN(tiny)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_0P1, FP_RND_NEAREST, TV_TAN_0P1, FP80_TOL_1E5, "TAN(0.1)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_0P5, FP_RND_NEAREST, TV_TAN_0P5, FP80_TOL_1E6, "TAN(0.5)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_1, FP_RND_NEAREST, TV_TAN_1, FP80_TOL_1E5, "TAN(1)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_1P5, FP_RND_NEAREST, TV_TAN_1P5, FP80_TOL_1E4, "TAN(1.5)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_PI_4, FP_RND_NEAREST, TV_TAN_PI_4, FP80_TOL_1E5, "TAN(PI/4)");
+    -- TAN(PI): returns exact zero. TAN(2PI): Cody-Waite limited (~3e-7 absolute)
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_PI, FP_RND_NEAREST, TV_TAN_PI, FP80_TOL_1E16, "TAN(PI)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_2PI, FP_RND_NEAREST, TV_TAN_2PI, FP80_TOL_1E5, "TAN(2PI)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_10, FP_RND_NEAREST, TV_TAN_10, FP80_TOL_1E7, "TAN(10)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_100, FP_RND_NEAREST, TV_TAN_100, FP80_TOL_1E6, "TAN(100)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_1234567, FP_RND_NEAREST, TV_TAN_1234567, FP80_TOL_1E5, "TAN(1234567)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_NEG_0P7, FP_RND_NEAREST, TV_TAN_NEG_0P7, FP80_TOL_1E9, "TAN(-0.7)");
+    run_monadic_close(FPU_OP_TAN, TV_TRIG_ARG_NEG_2P3, FP_RND_NEAREST, TV_TAN_NEG_2P3, FP80_TOL_1E6, "TAN(-2.3)");
     report "TAN: 14 transcendental tests passed" severity note;
 
-    -- ATAN: args are 0, 0.5, 1, 2, 10, 100, -1, -2
+    -- ATAN (post-improvement: ~55-62 bits precision, near bit-exact)
     run_monadic(FPU_OP_ATAN, FP80_ZERO, FP_RND_NEAREST, TV_ATAN_0, "ATAN(0) exact");
-    run_monadic_close(FPU_OP_ATAN, TV_ARG_HALF, FP_RND_NEAREST, TV_ATAN_0P5, FP80_TOL_1E1, "ATAN(0.5)");
-    run_monadic_close(FPU_OP_ATAN, TV_ARG_ONE, FP_RND_NEAREST, TV_ATAN_1, FP80_TOL_1E1, "ATAN(1)");
-    run_monadic_close(FPU_OP_ATAN, TV_ARG_TWO, FP_RND_NEAREST, TV_ATAN_2, FP80_TOL_1E1, "ATAN(2)");
-    run_monadic_close(FPU_OP_ATAN, fp80_from_int(10), FP_RND_NEAREST, TV_ATAN_10, FP80_TOL_1E1, "ATAN(10)");
-    run_monadic_close(FPU_OP_ATAN, fp80_from_int(100), FP_RND_NEAREST, TV_ATAN_100, FP80_TOL_1E1, "ATAN(100)");
-    run_monadic_close(FPU_OP_ATAN, FP80_NEG_ONE, FP_RND_NEAREST, TV_ATAN_NEG_1, FP80_TOL_1E1, "ATAN(-1)");
-    run_monadic_close(FPU_OP_ATAN, neg_fp80(TV_ARG_TWO), FP_RND_NEAREST, TV_ATAN_NEG_2, FP80_TOL_1E1, "ATAN(-2)");
+    run_monadic_close(FPU_OP_ATAN, TV_ARG_HALF, FP_RND_NEAREST, TV_ATAN_0P5, FP80_TOL_1E16, "ATAN(0.5)");
+    run_monadic_close(FPU_OP_ATAN, TV_ARG_ONE, FP_RND_NEAREST, TV_ATAN_1, FP80_TOL_1E15, "ATAN(1)");
+    run_monadic_close(FPU_OP_ATAN, TV_ARG_TWO, FP_RND_NEAREST, TV_ATAN_2, FP80_TOL_1E16, "ATAN(2)");
+    run_monadic_close(FPU_OP_ATAN, fp80_from_int(10), FP_RND_NEAREST, TV_ATAN_10, FP80_TOL_1E16, "ATAN(10)");
+    run_monadic_close(FPU_OP_ATAN, fp80_from_int(100), FP_RND_NEAREST, TV_ATAN_100, FP80_TOL_1E16, "ATAN(100)");
+    run_monadic_close(FPU_OP_ATAN, FP80_NEG_ONE, FP_RND_NEAREST, TV_ATAN_NEG_1, FP80_TOL_1E15, "ATAN(-1)");
+    run_monadic_close(FPU_OP_ATAN, neg_fp80(TV_ARG_TWO), FP_RND_NEAREST, TV_ATAN_NEG_2, FP80_TOL_1E16, "ATAN(-2)");
     report "ATAN: 8 transcendental tests passed" severity note;
 
-    -- ETOX: args are 0, 0.5, 1, 2, -1, -10, 10
+    -- ETOX (post-improvement: 0.5~32b, 1~38b, 2~27b, -1~40b, -10~54b, 10~26b rel)
     run_monadic(FPU_OP_ETOX, FP80_ZERO, FP_RND_NEAREST, TV_ETOX_0, "ETOX(0) exact");
-    run_monadic_close(FPU_OP_ETOX, TV_ARG_HALF, FP_RND_NEAREST, TV_ETOX_0P5, FP80_TOL_1E3, "ETOX(0.5)");
-    run_monadic_close(FPU_OP_ETOX, TV_ARG_ONE, FP_RND_NEAREST, TV_ETOX_1, FP80_TOL_1E3, "ETOX(1)");
-    run_monadic_close(FPU_OP_ETOX, TV_ARG_TWO, FP_RND_NEAREST, TV_ETOX_2, FP80_TOL_1E3, "ETOX(2)");
-    run_monadic_close(FPU_OP_ETOX, FP80_NEG_ONE, FP_RND_NEAREST, TV_ETOX_NEG_1, FP80_TOL_1E3, "ETOX(-1)");
-    run_monadic_close(FPU_OP_ETOX, neg_fp80(fp80_from_int(10)), FP_RND_NEAREST, TV_ETOX_NEG_10, FP80_TOL_1E2, "ETOX(-10)");
-    run_monadic_close(FPU_OP_ETOX, fp80_from_int(10), FP_RND_NEAREST, TV_ETOX_10, FP80_TOL_1E2, "ETOX(10)");
+    run_monadic_close(FPU_OP_ETOX, TV_ARG_HALF, FP_RND_NEAREST, TV_ETOX_0P5, FP80_TOL_1E8, "ETOX(0.5)");
+    run_monadic_close(FPU_OP_ETOX, TV_ARG_ONE, FP_RND_NEAREST, TV_ETOX_1, FP80_TOL_1E10, "ETOX(1)");
+    run_monadic_close(FPU_OP_ETOX, TV_ARG_TWO, FP_RND_NEAREST, TV_ETOX_2, FP80_TOL_1E7, "ETOX(2)");
+    run_monadic_close(FPU_OP_ETOX, FP80_NEG_ONE, FP_RND_NEAREST, TV_ETOX_NEG_1, FP80_TOL_1E10, "ETOX(-1)");
+    run_monadic_close(FPU_OP_ETOX, neg_fp80(fp80_from_int(10)), FP_RND_NEAREST, TV_ETOX_NEG_10, FP80_TOL_1E14, "ETOX(-10)");
+    run_monadic_close(FPU_OP_ETOX, fp80_from_int(10), FP_RND_NEAREST, TV_ETOX_10, FP80_TOL_1E10, "ETOX(10)");
     report "ETOX: 7 transcendental tests passed" severity note;
 
-    -- ETOXM1: args are 0, 0.5, 1
+    -- ETOXM1 (post-improvement: 0.5~32b, 1~22b)
     run_monadic(FPU_OP_ETOXM1, FP80_ZERO, FP_RND_NEAREST, TV_ETOXM1_0, "ETOXM1(0) exact");
-    run_monadic_close(FPU_OP_ETOXM1, TV_ARG_HALF, FP_RND_NEAREST, TV_ETOXM1_0P5, FP80_TOL_1E3, "ETOXM1(0.5)");
-    run_monadic_close(FPU_OP_ETOXM1, TV_ARG_ONE, FP_RND_NEAREST, TV_ETOXM1_1, FP80_TOL_1E3, "ETOXM1(1)");
+    run_monadic_close(FPU_OP_ETOXM1, TV_ARG_HALF, FP_RND_NEAREST, TV_ETOXM1_0P5, FP80_TOL_1E8, "ETOXM1(0.5)");
+    run_monadic_close(FPU_OP_ETOXM1, TV_ARG_ONE, FP_RND_NEAREST, TV_ETOXM1_1, FP80_TOL_1E5, "ETOXM1(1)");
     report "ETOXM1: 3 transcendental tests passed" severity note;
 
-    -- LOGN: args are 1, 2, e, 10, 0.5
+    -- LOGN (post-improvement: ~57 bits precision, near bit-exact)
     run_monadic(FPU_OP_LOGN, TV_ARG_ONE, FP_RND_NEAREST, TV_LOGN_1, "LOGN(1) exact");
-    run_monadic_close(FPU_OP_LOGN, TV_ARG_TWO, FP_RND_NEAREST, TV_LOGN_2, FP80_TOL_2E2, "LOGN(2)");
-    run_monadic_close(FPU_OP_LOGN, TV_ARG_E, FP_RND_NEAREST, TV_LOGN_E, FP80_TOL_2E2, "LOGN(e)");
-    run_monadic_close(FPU_OP_LOGN, fp80_from_int(10), FP_RND_NEAREST, TV_LOGN_10, FP80_TOL_2E2, "LOGN(10)");
-    run_monadic_close(FPU_OP_LOGN, TV_ARG_HALF, FP_RND_NEAREST, TV_LOGN_0P5, FP80_TOL_2E2, "LOGN(0.5)");
+    run_monadic(FPU_OP_LOGN, TV_ARG_TWO, FP_RND_NEAREST, TV_LOGN_2, "LOGN(2)");
+    run_monadic_close(FPU_OP_LOGN, TV_ARG_E, FP_RND_NEAREST, TV_LOGN_E, FP80_TOL_1E15, "LOGN(e)");
+    run_monadic_close(FPU_OP_LOGN, fp80_from_int(10), FP_RND_NEAREST, TV_LOGN_10, FP80_TOL_1E16, "LOGN(10)");
+    run_monadic(FPU_OP_LOGN, TV_ARG_HALF, FP_RND_NEAREST, TV_LOGN_0P5, "LOGN(0.5)");
     report "LOGN: 5 transcendental tests passed" severity note;
 
-    -- LOGNP1: args are 0, 0.5, 1
+    -- LOGNP1 (post-improvement: ~57 bits precision)
     run_monadic(FPU_OP_LOGNP1, FP80_ZERO, FP_RND_NEAREST, TV_LOGNP1_0, "LOGNP1(0) exact");
-    run_monadic_close(FPU_OP_LOGNP1, TV_ARG_HALF, FP_RND_NEAREST, TV_LOGNP1_0P5, FP80_TOL_2E2, "LOGNP1(0.5)");
-    run_monadic_close(FPU_OP_LOGNP1, TV_ARG_ONE, FP_RND_NEAREST, TV_LOGNP1_1, FP80_TOL_2E2, "LOGNP1(1)");
+    run_monadic_close(FPU_OP_LOGNP1, TV_ARG_HALF, FP_RND_NEAREST, TV_LOGNP1_0P5, FP80_TOL_1E15, "LOGNP1(0.5)");
+    run_monadic(FPU_OP_LOGNP1, TV_ARG_ONE, FP_RND_NEAREST, TV_LOGNP1_1, "LOGNP1(1)");
     report "LOGNP1: 3 transcendental tests passed" severity note;
 
-    -- LOG10: args are 1, 10, 100, 0.5, e
+    -- LOG10 (post-improvement: ~57-65 bits precision, near bit-exact)
     run_monadic(FPU_OP_LOG10, TV_ARG_ONE, FP_RND_NEAREST, TV_LOG10_1, "LOG10(1) exact");
-    run_monadic_close(FPU_OP_LOG10, fp80_from_int(10), FP_RND_NEAREST, TV_LOG10_10, FP80_TOL_2E2, "LOG10(10)");
-    run_monadic_close(FPU_OP_LOG10, fp80_from_int(100), FP_RND_NEAREST, TV_LOG10_100, FP80_TOL_2E2, "LOG10(100)");
-    run_monadic_close(FPU_OP_LOG10, TV_ARG_HALF, FP_RND_NEAREST, TV_LOG10_0P5, FP80_TOL_2E2, "LOG10(0.5)");
-    run_monadic_close(FPU_OP_LOG10, TV_ARG_E, FP_RND_NEAREST, TV_LOG10_E, FP80_TOL_2E2, "LOG10(e)");
+    run_monadic_close(FPU_OP_LOG10, fp80_from_int(10), FP_RND_NEAREST, TV_LOG10_10, FP80_TOL_1E16, "LOG10(10)");
+    run_monadic_close(FPU_OP_LOG10, fp80_from_int(100), FP_RND_NEAREST, TV_LOG10_100, FP80_TOL_1E16, "LOG10(100)");
+    run_monadic_close(FPU_OP_LOG10, TV_ARG_HALF, FP_RND_NEAREST, TV_LOG10_0P5, FP80_TOL_1E16, "LOG10(0.5)");
+    run_monadic_close(FPU_OP_LOG10, TV_ARG_E, FP_RND_NEAREST, TV_LOG10_E, FP80_TOL_1E16, "LOG10(e)");
     report "LOG10: 5 transcendental tests passed" severity note;
 
-    -- LOG2: args are 1, 2, 4, 0.5, e, 10
+    -- LOG2 (post-improvement: ~56-57 bits precision, near bit-exact)
     run_monadic(FPU_OP_LOG2, TV_ARG_ONE, FP_RND_NEAREST, TV_LOG2_1, "LOG2(1) exact");
-    run_monadic_close(FPU_OP_LOG2, TV_ARG_TWO, FP_RND_NEAREST, TV_LOG2_2, FP80_TOL_2E2, "LOG2(2)");
-    run_monadic_close(FPU_OP_LOG2, fp80_from_int(4), FP_RND_NEAREST, TV_LOG2_4, FP80_TOL_2E2, "LOG2(4)");
-    run_monadic_close(FPU_OP_LOG2, TV_ARG_HALF, FP_RND_NEAREST, TV_LOG2_0P5, FP80_TOL_2E2, "LOG2(0.5)");
-    run_monadic_close(FPU_OP_LOG2, TV_ARG_E, FP_RND_NEAREST, TV_LOG2_E, FP80_TOL_2E2, "LOG2(e)");
-    run_monadic_close(FPU_OP_LOG2, fp80_from_int(10), FP_RND_NEAREST, TV_LOG2_10, FP80_TOL_2E2, "LOG2(10)");
+    run_monadic(FPU_OP_LOG2, TV_ARG_TWO, FP_RND_NEAREST, TV_LOG2_2, "LOG2(2)");
+    run_monadic(FPU_OP_LOG2, fp80_from_int(4), FP_RND_NEAREST, TV_LOG2_4, "LOG2(4)");
+    run_monadic(FPU_OP_LOG2, TV_ARG_HALF, FP_RND_NEAREST, TV_LOG2_0P5, "LOG2(0.5)");
+    run_monadic_close(FPU_OP_LOG2, TV_ARG_E, FP_RND_NEAREST, TV_LOG2_E, FP80_TOL_1E15, "LOG2(e)");
+    run_monadic_close(FPU_OP_LOG2, fp80_from_int(10), FP_RND_NEAREST, TV_LOG2_10, FP80_TOL_1E16, "LOG2(10)");
     report "LOG2: 6 transcendental tests passed" severity note;
 
-    -- TWOTOX: args are 0, 1, 0.5, -1, 10, 0.25
+    -- TWOTOX (post-improvement: 0.5~38b, 0.25~48b)
     run_monadic(FPU_OP_TWOTOX, FP80_ZERO, FP_RND_NEAREST, TV_TWOTOX_0, "TWOTOX(0) exact");
     run_monadic(FPU_OP_TWOTOX, TV_ARG_ONE, FP_RND_NEAREST, TV_TWOTOX_1, "TWOTOX(1) exact");
-    run_monadic_close(FPU_OP_TWOTOX, TV_ARG_HALF, FP_RND_NEAREST, TV_TWOTOX_0P5, FP80_TOL_1E3, "TWOTOX(0.5)");
+    run_monadic_close(FPU_OP_TWOTOX, TV_ARG_HALF, FP_RND_NEAREST, TV_TWOTOX_0P5, FP80_TOL_1E10, "TWOTOX(0.5)");
     run_monadic(FPU_OP_TWOTOX, FP80_NEG_ONE, FP_RND_NEAREST, TV_TWOTOX_NEG_1, "TWOTOX(-1) exact");
-    run_monadic_close(FPU_OP_TWOTOX, fp80_from_int(10), FP_RND_NEAREST, TV_TWOTOX_10, FP80_TOL_1E3, "TWOTOX(10)");
-    run_monadic_close(FPU_OP_TWOTOX, FP80_QUARTER, FP_RND_NEAREST, TV_TWOTOX_0P25, FP80_TOL_1E3, "TWOTOX(0.25)");
+    run_monadic(FPU_OP_TWOTOX, fp80_from_int(10), FP_RND_NEAREST, TV_TWOTOX_10, "TWOTOX(10)");
+    run_monadic_close(FPU_OP_TWOTOX, FP80_QUARTER, FP_RND_NEAREST, TV_TWOTOX_0P25, FP80_TOL_1E12, "TWOTOX(0.25)");
     report "TWOTOX: 6 transcendental tests passed" severity note;
 
-    -- TENTOX: args are 0, 1, 0.5, -1, 2, -2
+    -- TENTOX (post-improvement: 1~41b, 0.5~32b, -1~47b, 2~28b, -2~40b)
     run_monadic(FPU_OP_TENTOX, FP80_ZERO, FP_RND_NEAREST, TV_TENTOX_0, "TENTOX(0) exact");
-    run_monadic_close(FPU_OP_TENTOX, TV_ARG_ONE, FP_RND_NEAREST, TV_TENTOX_1, FP80_TOL_1E2, "TENTOX(1)");
-    run_monadic_close(FPU_OP_TENTOX, TV_ARG_HALF, FP_RND_NEAREST, TV_TENTOX_0P5, FP80_TOL_1E2, "TENTOX(0.5)");
-    run_monadic_close(FPU_OP_TENTOX, FP80_NEG_ONE, FP_RND_NEAREST, TV_TENTOX_NEG_1, FP80_TOL_1E2, "TENTOX(-1)");
-    run_monadic_close(FPU_OP_TENTOX, TV_ARG_TWO, FP_RND_NEAREST, TV_TENTOX_2, FP80_TOL_1E2, "TENTOX(2)");
-    run_monadic_close(FPU_OP_TENTOX, neg_fp80(TV_ARG_TWO), FP_RND_NEAREST, TV_TENTOX_NEG_2, FP80_TOL_1E2, "TENTOX(-2)");
+    run_monadic_close(FPU_OP_TENTOX, TV_ARG_ONE, FP_RND_NEAREST, TV_TENTOX_1, FP80_TOL_1E10, "TENTOX(1)");
+    run_monadic_close(FPU_OP_TENTOX, TV_ARG_HALF, FP_RND_NEAREST, TV_TENTOX_0P5, FP80_TOL_1E8, "TENTOX(0.5)");
+    run_monadic_close(FPU_OP_TENTOX, FP80_NEG_ONE, FP_RND_NEAREST, TV_TENTOX_NEG_1, FP80_TOL_1E12, "TENTOX(-1)");
+    run_monadic_close(FPU_OP_TENTOX, TV_ARG_TWO, FP_RND_NEAREST, TV_TENTOX_2, FP80_TOL_1E9, "TENTOX(2)");
+    run_monadic_close(FPU_OP_TENTOX, neg_fp80(TV_ARG_TWO), FP_RND_NEAREST, TV_TENTOX_NEG_2, FP80_TOL_1E10, "TENTOX(-2)");
     report "TENTOX: 6 transcendental tests passed" severity note;
 
-    -- ASIN: args are 0, 0.5, -0.5, 0.9, tiny
+    -- ASIN (post-improvement: ~56 bits precision, near bit-exact)
     run_monadic(FPU_OP_ASIN, FP80_ZERO, FP_RND_NEAREST, TV_ASIN_0, "ASIN(0) exact");
-    run_monadic_close(FPU_OP_ASIN, TV_ARG_HALF, FP_RND_NEAREST, TV_ASIN_0P5, FP80_TOL_1E1, "ASIN(0.5)");
-    run_monadic_close(FPU_OP_ASIN, neg_fp80(TV_ARG_HALF), FP_RND_NEAREST, TV_ASIN_NEG_0P5, FP80_TOL_1E1, "ASIN(-0.5)");
-    run_monadic_close(FPU_OP_ASIN, GV_ARG_0P9, FP_RND_NEAREST, TV_ASIN_0P9, FP80_TOL_1E1, "ASIN(0.9)");
-    run_monadic_close(FPU_OP_ASIN, TV_TRIG_ARG_TINY, FP_RND_NEAREST, TV_ASIN_TINY, FP80_TOL_1E3, "ASIN(tiny)");
+    run_monadic_close(FPU_OP_ASIN, TV_ARG_HALF, FP_RND_NEAREST, TV_ASIN_0P5, FP80_TOL_1E15, "ASIN(0.5)");
+    run_monadic_close(FPU_OP_ASIN, neg_fp80(TV_ARG_HALF), FP_RND_NEAREST, TV_ASIN_NEG_0P5, FP80_TOL_1E15, "ASIN(-0.5)");
+    run_monadic_close(FPU_OP_ASIN, GV_ARG_0P9, FP_RND_NEAREST, TV_ASIN_0P9, FP80_TOL_1E15, "ASIN(0.9)");
+    run_monadic(FPU_OP_ASIN, TV_TRIG_ARG_TINY, FP_RND_NEAREST, TV_ASIN_TINY, "ASIN(tiny)");
     report "ASIN: 5 transcendental tests passed" severity note;
 
-    -- ACOS: args are 0, 0.5, -0.5, 1, -1
-    run_monadic_close(FPU_OP_ACOS, FP80_ZERO, FP_RND_NEAREST, TV_ACOS_0, FP80_TOL_1E1, "ACOS(0)");
-    run_monadic_close(FPU_OP_ACOS, TV_ARG_HALF, FP_RND_NEAREST, TV_ACOS_0P5, FP80_TOL_1E1, "ACOS(0.5)");
-    run_monadic_close(FPU_OP_ACOS, neg_fp80(TV_ARG_HALF), FP_RND_NEAREST, TV_ACOS_NEG_0P5, FP80_TOL_1E1, "ACOS(-0.5)");
-    run_monadic_close(FPU_OP_ACOS, TV_ARG_ONE, FP_RND_NEAREST, TV_ACOS_1, FP80_TOL_1E3, "ACOS(1)");
-    run_monadic_close(FPU_OP_ACOS, FP80_NEG_ONE, FP_RND_NEAREST, TV_ACOS_NEG_1, FP80_TOL_1E1, "ACOS(-1)");
+    -- ACOS (post-improvement: ~56 bits precision, near bit-exact)
+    run_monadic(FPU_OP_ACOS, FP80_ZERO, FP_RND_NEAREST, TV_ACOS_0, "ACOS(0)");
+    run_monadic_close(FPU_OP_ACOS, TV_ARG_HALF, FP_RND_NEAREST, TV_ACOS_0P5, FP80_TOL_1E15, "ACOS(0.5)");
+    run_monadic_close(FPU_OP_ACOS, neg_fp80(TV_ARG_HALF), FP_RND_NEAREST, TV_ACOS_NEG_0P5, FP80_TOL_1E15, "ACOS(-0.5)");
+    run_monadic(FPU_OP_ACOS, TV_ARG_ONE, FP_RND_NEAREST, TV_ACOS_1, "ACOS(1)");
+    run_monadic(FPU_OP_ACOS, FP80_NEG_ONE, FP_RND_NEAREST, TV_ACOS_NEG_1, "ACOS(-1)");
     report "ACOS: 5 transcendental tests passed" severity note;
 
-    -- SINH: args are 0, 0.5, 1, -1, 3
+    -- SINH (post-improvement: 0.5~37b, 1~26b, 3~8b)
     run_monadic(FPU_OP_SINH, FP80_ZERO, FP_RND_NEAREST, TV_SINH_0, "SINH(0) exact");
-    run_monadic_close(FPU_OP_SINH, TV_ARG_HALF, FP_RND_NEAREST, TV_SINH_0P5, FP80_TOL_2E2, "SINH(0.5)");
-    run_monadic_close(FPU_OP_SINH, TV_ARG_ONE, FP_RND_NEAREST, TV_SINH_1, FP80_TOL_2E2, "SINH(1)");
-    run_monadic_close(FPU_OP_SINH, FP80_NEG_ONE, FP_RND_NEAREST, TV_SINH_NEG_1, FP80_TOL_2E2, "SINH(-1)");
-    run_monadic_close(FPU_OP_SINH, fp80_from_int(3), FP_RND_NEAREST, TV_SINH_3, FP80_TOL_2E1, "SINH(3)");
+    run_monadic_close(FPU_OP_SINH, TV_ARG_HALF, FP_RND_NEAREST, TV_SINH_0P5, FP80_TOL_1E9, "SINH(0.5)");
+    run_monadic_close(FPU_OP_SINH, TV_ARG_ONE, FP_RND_NEAREST, TV_SINH_1, FP80_TOL_1E6, "SINH(1)");
+    run_monadic_close(FPU_OP_SINH, FP80_NEG_ONE, FP_RND_NEAREST, TV_SINH_NEG_1, FP80_TOL_1E6, "SINH(-1)");
+    run_monadic_close(FPU_OP_SINH, fp80_from_int(3), FP_RND_NEAREST, TV_SINH_3, FP80_TOL_1E2, "SINH(3)");
     report "SINH: 5 transcendental tests passed" severity note;
 
-    -- COSH: args are 0, 0.5, 1, -1, 3
+    -- COSH (post-improvement: 0.5~32b, 1~22b, 3~6b)
     run_monadic(FPU_OP_COSH, FP80_ZERO, FP_RND_NEAREST, TV_COSH_0, "COSH(0) exact");
-    run_monadic_close(FPU_OP_COSH, TV_ARG_HALF, FP_RND_NEAREST, TV_COSH_0P5, FP80_TOL_2E2, "COSH(0.5)");
-    run_monadic_close(FPU_OP_COSH, TV_ARG_ONE, FP_RND_NEAREST, TV_COSH_1, FP80_TOL_2E2, "COSH(1)");
-    run_monadic_close(FPU_OP_COSH, FP80_NEG_ONE, FP_RND_NEAREST, TV_COSH_NEG_1, FP80_TOL_2E2, "COSH(-1)");
-    run_monadic_close(FPU_OP_COSH, fp80_from_int(3), FP_RND_NEAREST, TV_COSH_3, FP80_TOL_2E1, "COSH(3)");
+    run_monadic_close(FPU_OP_COSH, TV_ARG_HALF, FP_RND_NEAREST, TV_COSH_0P5, FP80_TOL_1E8, "COSH(0.5)");
+    run_monadic_close(FPU_OP_COSH, TV_ARG_ONE, FP_RND_NEAREST, TV_COSH_1, FP80_TOL_1E5, "COSH(1)");
+    run_monadic_close(FPU_OP_COSH, FP80_NEG_ONE, FP_RND_NEAREST, TV_COSH_NEG_1, FP80_TOL_1E5, "COSH(-1)");
+    run_monadic_close(FPU_OP_COSH, fp80_from_int(3), FP_RND_NEAREST, TV_COSH_3, FP80_TOL_5E2, "COSH(3)");
     report "COSH: 5 transcendental tests passed" severity note;
 
-    -- TANH: args are 0, 0.5, 1, -1, 3
+    -- TANH via EXP pipeline (post-improvement: 0.5~42b, 1~32b, 3~42b)
     run_monadic(FPU_OP_TANH, FP80_ZERO, FP_RND_NEAREST, TV_TANH_0, "TANH(0) exact");
-    run_monadic_close(FPU_OP_TANH, TV_ARG_HALF, FP_RND_NEAREST, TV_TANH_0P5, FP80_TOL_1E1, "TANH(0.5)");
-    run_monadic_close(FPU_OP_TANH, TV_ARG_ONE, FP_RND_NEAREST, TV_TANH_1, FP80_TOL_1E1, "TANH(1)");
-    run_monadic_close(FPU_OP_TANH, FP80_NEG_ONE, FP_RND_NEAREST, TV_TANH_NEG_1, FP80_TOL_1E1, "TANH(-1)");
-    run_monadic_close(FPU_OP_TANH, fp80_from_int(3), FP_RND_NEAREST, TV_TANH_3, FP80_TOL_1E1, "TANH(3)");
+    run_monadic_close(FPU_OP_TANH, TV_ARG_HALF, FP_RND_NEAREST, TV_TANH_0P5, FP80_TOL_1E10, "TANH(0.5)");
+    run_monadic_close(FPU_OP_TANH, TV_ARG_ONE, FP_RND_NEAREST, TV_TANH_1, FP80_TOL_1E8, "TANH(1)");
+    run_monadic_close(FPU_OP_TANH, FP80_NEG_ONE, FP_RND_NEAREST, TV_TANH_NEG_1, FP80_TOL_1E8, "TANH(-1)");
+    run_monadic_close(FPU_OP_TANH, fp80_from_int(3), FP_RND_NEAREST, TV_TANH_3, FP80_TOL_1E10, "TANH(3)");
     report "TANH: 5 transcendental tests passed" severity note;
 
-    -- ATANH: args are 0, 0.5, -0.5, 0.9, tiny
+    -- ATANH (post-improvement: ~57-58 bits precision, near bit-exact)
     run_monadic(FPU_OP_ATANH, FP80_ZERO, FP_RND_NEAREST, TV_ATANH_0, "ATANH(0) exact");
-    run_monadic_close(FPU_OP_ATANH, TV_ARG_HALF, FP_RND_NEAREST, TV_ATANH_0P5, FP80_TOL_1E1, "ATANH(0.5)");
-    run_monadic_close(FPU_OP_ATANH, neg_fp80(TV_ARG_HALF), FP_RND_NEAREST, TV_ATANH_NEG_0P5, FP80_TOL_1E1, "ATANH(-0.5)");
-    run_monadic_close(FPU_OP_ATANH, GV_ARG_0P9, FP_RND_NEAREST, TV_ATANH_0P9, FP80_TOL_2E1, "ATANH(0.9)");
-    run_monadic_close(FPU_OP_ATANH, TV_TRIG_ARG_TINY, FP_RND_NEAREST, TV_ATANH_TINY, FP80_TOL_1E3, "ATANH(tiny)");
+    run_monadic_close(FPU_OP_ATANH, TV_ARG_HALF, FP_RND_NEAREST, TV_ATANH_0P5, FP80_TOL_1E16, "ATANH(0.5)");
+    run_monadic_close(FPU_OP_ATANH, neg_fp80(TV_ARG_HALF), FP_RND_NEAREST, TV_ATANH_NEG_0P5, FP80_TOL_1E15, "ATANH(-0.5)");
+    run_monadic_close(FPU_OP_ATANH, GV_ARG_0P9, FP_RND_NEAREST, TV_ATANH_0P9, FP80_TOL_1E16, "ATANH(0.9)");
+    run_monadic(FPU_OP_ATANH, TV_TRIG_ARG_TINY, FP_RND_NEAREST, TV_ATANH_TINY, "ATANH(tiny)");
     report "ATANH: 5 transcendental tests passed" severity note;
 
     -- ================================================================
@@ -972,7 +996,7 @@ begin
       sin2 := mul_fp80(sin_val, sin_val, FP_RND_NEAREST, FP_PREC_EXTENDED);
       cos2 := mul_fp80(cos_val, cos_val, FP_RND_NEAREST, FP_PREC_EXTENDED);
       sum_val := add_sub_fp80(sin2, cos2, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
-      check_fp80_close(sum_val, FP80_ONE, FP80_TOL_5E2, "sin^2(1)+cos^2(1)~1");
+      check_fp80_close(sum_val, FP80_ONE, FP80_TOL_1E8, "sin^2(1)+cos^2(1)~1");
       pass_count := pass_count + 1;
 
       -- Test with x = 0.5
@@ -996,26 +1020,26 @@ begin
       sin2 := mul_fp80(sin_val, sin_val, FP_RND_NEAREST, FP_PREC_EXTENDED);
       cos2 := mul_fp80(cos_val, cos_val, FP_RND_NEAREST, FP_PREC_EXTENDED);
       sum_val := add_sub_fp80(sin2, cos2, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
-      check_fp80_close(sum_val, FP80_ONE, FP80_TOL_5E2, "sin^2(0.5)+cos^2(0.5)~1");
+      check_fp80_close(sum_val, FP80_ONE, FP80_TOL_1E9, "sin^2(0.5)+cos^2(0.5)~1");
       pass_count := pass_count + 1;
 
     -- Identity 11: exp(ln(x)) ~ x for positive x
     -- x = 2
       run_monadic_capture(FPU_OP_LOGN, TV_ARG_TWO, FP_RND_NEAREST, ln_val);
       run_monadic_capture(FPU_OP_ETOX, ln_val, FP_RND_NEAREST, exp_ln_val);
-      check_fp80_close(exp_ln_val, TV_ARG_TWO, FP80_TOL_5E2, "exp(ln(2))~2");
+      check_fp80_close(exp_ln_val, TV_ARG_TWO, FP80_TOL_1E16, "exp(ln(2))~2");
       pass_count := pass_count + 1;
 
       -- x = e
       run_monadic_capture(FPU_OP_LOGN, TV_ARG_E, FP_RND_NEAREST, ln_val);
       run_monadic_capture(FPU_OP_ETOX, ln_val, FP_RND_NEAREST, exp_ln_val);
-      check_fp80_close(exp_ln_val, TV_ARG_E, FP80_TOL_5E2, "exp(ln(e))~e");
+      check_fp80_close(exp_ln_val, TV_ARG_E, FP80_TOL_1E10, "exp(ln(e))~e");
       pass_count := pass_count + 1;
 
       -- x = 0.5
       run_monadic_capture(FPU_OP_LOGN, TV_ARG_HALF, FP_RND_NEAREST, ln_val);
       run_monadic_capture(FPU_OP_ETOX, ln_val, FP_RND_NEAREST, exp_ln_val);
-      check_fp80_close(exp_ln_val, TV_ARG_HALF, FP80_TOL_5E2, "exp(ln(0.5))~0.5");
+      check_fp80_close(exp_ln_val, TV_ARG_HALF, FP80_TOL_1E16, "exp(ln(0.5))~0.5");
       pass_count := pass_count + 1;
 
     report "=== PHASE 2 COMPLETE ===" severity note;

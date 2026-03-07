@@ -148,9 +148,14 @@ B) Functional Completeness (Core Missing Ops)
 
 C) Exception Handling & Edge Cases
 ----------------------------------
-[~] C1. Add denormal handling coverage.
-    - Define flush/denormal rules per MC68881 behavior.
-    - In progress: subnormal input/output checks exist for sqrt/trig/trans and integer-conversion paths.
+[x] C1. Add denormal handling coverage.
+    - MC68881 normalizes denormalized inputs before arithmetic (biased exp 0 → true exp 1 - lz).
+    - Subnormal input normalization added to: add_sub_fp80, mul_fp80, div_fp80, fscale_fp80,
+      mc68881_fp80_mul_unit (ST_UNPACK), mc68881_fp80_addsub_unit (ST_UNPACK),
+      mc68881_divrem_unit (DIV and MOD/REM dispatch).
+    - Subnormal (gradual underflow) output added to: add_sub_fp80, mul_fp80, div_fp80,
+      mc68881_fp80_mul_unit (ST_NORM_ROUND), mc68881_fp80_addsub_unit (ST_NORM_ROUND).
+    - Tests: FADD(subnormal,0)=identity, FMUL(subnormal,2)=doubled, FDIV(subnormal,1)=identity.
 
 [x] C2. Improve NaN propagation details.
     - SNaN vs QNaN discrimination implemented (DEF-DIVREM-002, closed).
@@ -167,41 +172,35 @@ C) Exception Handling & Edge Cases
     - FIXED: FPCP-generated NaN pattern corrected. canonical_qnan/canonical_nan
       now returns all-ones mantissa (0xFFFFFFFFFFFFFFFF) per datasheet.
 
-[~] C3. Expand exception detection tests.
-    - Invalid, divzero, overflow, underflow, inexact for new ops.
-    - In progress: invalid/divzero coverage is exercised; overflow/underflow/inexact matrix is still incomplete.
-    - REVIEW FINDING (medium): Exception granularity is 5 bits instead of 8.
-      Code has INVALID, OVERFLOW, UNDERFLOW, DIVZERO, INEXACT. Datasheet defines
-      BSUN, SNAN, OPERR, OVFL, UNFL, DZ, INEX2, INEX1. Missing: BSUN (for B6
-      conditional instructions), SNAN vs OPERR distinction (different trap vectors
-      54 vs 52), INEX1 vs INEX2 (packed decimal input inexact).
-    - REVIEW FINDING (medium): Transcendental divide-by-zero not detected. FLOG(0),
-      FLOG2(0), FLOG10(0) should set DZ. FATANH(+/-1) should also set DZ. These
-      use EXC_POLICY_ARITH which has divzero disabled.
-    - FIXED: FTAN exception policy changed from EXC_POLICY_DIV to EXC_POLICY_ARITH.
-    - FIXED: FLOGN(0), FLOG10(0), FLOG2(0) now return -infinity and set DZ exception.
-      Added EXC_POLICY_LOG with divzero_on_zero_input flag. Trig unit split
-      zero/negative conditions to produce correct result per datasheet.
-    - REMAINING: FATANH(+/-1) and FLOGNP1(-1) still return NaN instead of +-infinity
-      with DZ. Requires trig unit DZ output port or per-op value comparison.
+[x] C3. Expand exception detection tests.
+    - FPSR EXC byte remapped to MC68881 8-bit layout: INEX1(0), INEX2(1), DZ(2),
+      UNFL(3), OVFL(4), OPERR(5), SNAN(6), BSUN(7).
+    - FPCR enable byte mirrors EXC at bits 15-8.
+    - INVALID split into SNAN (signaling NaN input) and OPERR (domain error).
+      OPERR guarded against NaN propagation (not a_nan and not b_nan).
+    - INEXACT mapped to INEX2 (arithmetic inexact). INEX1 reserved for packed decimal.
+    - FPSR AEXC byte: 5-bit MC68881 layout with IOP = SNAN|OPERR,
+      UNFL = UNFL AND (INEX2|INEX1), INEX = INEX2|INEX1|OVFL.
+    - CIR post-instruction vector selection: SNAN > OPERR > OVFL > UNFL > DZ > INEX2 > INEX1.
+      BSUN handled separately in CIR_COND_CHECK for conditional instructions.
+    - Tests: SNAN vs OPERR discrimination (CIR T46A/T46B), SNAN > DZ priority (T46).
+    - FATANH(+/-1) and FLOGNP1(-1) DZ already fixed in prior work.
 
-[~] C4. Complete FPCR/FPSR architectural fields.
-    - FPCR exception-enable byte semantics.
-    - FPSR condition code, quotient, exception status, accrued exception bytes.
-    - In progress: per-op policy flow (A8) and key FPSR behavior are in place; full architectural closure remains.
-    - FIXED: FPSR EXC/AEXC byte positions corrected. EXC status byte now at
-      bits 15-8, Accrued byte at bits 7-0 per datasheet.
-    - FIXED: EXC status byte now cleared then set per operation (Section 2.3.3).
-    - FIXED: AEXC combination logic corrected per datasheet:
-      AEXC(UNFL) = UNFL AND INEX; AEXC(INEX) = INEX OR OVFL.
-    - REVIEW FINDING (medium): FPCR exception enable byte (bits 15-8) stored but
-      never consulted. No exception trapping is implemented.
-    - FIXED: fpsr_cc_from_result now sets N bit independently from sign, per
-      Table 2-1. -Infinity correctly sets N=1,I=1; -Zero sets N=1,Z=1.
+[x] C4. Complete FPCR/FPSR architectural fields.
+    - FPCR exception-enable byte implemented: enables checked in CIR_EXECUTE_DONE
+      for 7 arithmetic exception types (SNAN, OPERR, OVFL, UNFL, DZ, INEX2, INEX1);
+      BSUN enable checked separately in CIR_COND_CHECK.
+    - FPSR EXC/AEXC byte positions at bits 15-8 and 7-0 per datasheet.
+    - EXC status byte cleared then set per operation (Section 2.3.3).
+    - AEXC combination logic per datasheet Table 2-2.
+    - CIR post-instruction exception trapping with correct vector selection.
+    - fpsr_cc_from_result sets N bit independently from sign per Table 2-1.
 
-[~] C5. Track FPIAR behavior across exceptions and restart points.
-    - Verify faulting instruction address capture and restore interactions.
-    - In progress: exception-time FPIAR capture checks exist for top-level flows; restart-corner coverage remains.
+[x] C5. Track FPIAR behavior across exceptions and restart points.
+    - fpiar_issue_snapshot_reg captures CIR instruction PC at issue time.
+    - On exception (exc_flags /= x"00"), FPIAR restored from snapshot per capture_fpiar_on_exception policy.
+    - FMOVEM read/write of FPIAR register fully functional.
+    - CIR dialog testbench verifies FPIAR capture across exception flows.
 
 D) Verification / Testbench Coverage
 ------------------------------------
@@ -459,13 +458,10 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - Keep `tb/tb_mc68881_known_defects.vhd` as a persistent recheck for this vector.
 
 ## TODO: Tighten Torture TB Transcendental Tolerances
-- The torture testbench (`tb/tb_mc68881_torture.vhd`) uses wide tolerances in
-  `check_fp80_close` for transcendental operations (SIN, COS, TAN, ATAN, etc.).
-  Current thresholds are 5-10% for most ops, 20% for SINH(3)/COSH(3)/ATANH(0.9).
-- Once transcendental accuracy is improved (better argument reduction, higher-order
-  polynomials, etc.), reduce the tolerance parameters to verify tighter ULP bounds.
-- Affected tests: Phase 1 transcendental golden vectors (~123 tests) and Phase 2
-  algebraic identities involving trig/exp/log (~13 tests).
+- Tolerances were tightened after the transcendental accuracy improvement series
+  (degree-9 Horner, Cody-Waite, table-assisted ATAN/LOG, TANH via EXP).
+- Current tolerances: 1e-5 to 1e-16 depending on operation (trig ~1e-7, LOG ~1e-16).
+  Previously 5-20%. Further tightening possible as polynomial precision improves.
 
 ## TODO: Torture TB Coverage Gaps
 - **Unused golden vectors**: ~8 generated vectors never tested: `TV_ETOXM1_TINY`,
@@ -484,6 +480,30 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   Affects MUL HUGE*TWO RZ/RM golden vectors (currently tested as +inf).
 - **Subnormal reference flush**: `fp80_hex_safe` flushes subnormal results to zero.
   DIV TINY/TWO and MUL TINY*HALF comments should note the reference is flushed to zero.
+
+## Implementation Snapshot (2026-03-07, 33 MHz Timing Closure)
+- Milestone:
+  - **33 MHz timing closure achieved** (WNS = +0.026ns, WHS = +0.044ns).
+  - Clock target raised from 10 MHz (100ns) to 33 MHz (30.303ns) — 3.3× speedup.
+  - Transcendental accuracy improvements: degree-9 Horner polynomial, BRAM
+    coefficient ROM (5 sets × 10 coeffs), table-assisted ATAN/LOG range reduction,
+    Cody-Waite argument reduction (trig/EXP), TANH via EXP pipeline.
+  - Accuracy: 30–55 bits across transcendental ops (previously 5–20 bits).
+  - Multi-cycle path constraints added for: operand staging → operand_reg (MCP=3),
+    operand_reg → MOVE destinations (MCP=2), move_cfg_decoded_reg → MOVE
+    destinations (MCP=2), log_unbiased_exp_reg → mul_a/log_exp_term (MCP=2),
+    a_reg → log/x_reg (MCP=7), simple ops (MCP=2), packed int_trunc (MCP=4).
+  - RTL hold states: ST_LOG_GETEXP_HOLD (trig LOG exponent conversion),
+    CIR_XFER_SRC_WAIT (operand staging format conversion).
+  - LUT increase from 52K to 65K due to BRAM coefficient ROM control logic,
+    table-assisted reduction tables, and extended polynomial evaluation.
+- Run data (non-incremental synthesis + implementation):
+  - Utilization (post-place): `Slice LUTs = 64583 / 133800 (48.27%)`
+  - DSPs: 33 / 740 (4.46%)
+  - Registers: 13418 / 267600 (5.01%)
+  - BRAM: 8 tiles / 365 (2.19%)
+  - Timing: `WNS=+0.026ns`, `TNS=0.000ns`, `WHS=+0.033ns`, `THS=0.000ns`
+  - 298/298 GHDL regression tests passing.
 
 ## Implementation Snapshot (2026-03-05, Phase 5)
 - Milestone:

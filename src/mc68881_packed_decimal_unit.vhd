@@ -145,7 +145,7 @@ architecture rtl of mc68881_packed_decimal_unit is
   signal rsp_invalid_reg : std_logic := '0';
 
   signal arith_stage_reg : arith_stage_t := AR_ST_IDLE;
-  signal arith_hold_count_reg : natural range 0 to 4 := 0;
+  signal arith_hold_count_reg : natural range 0 to 6 := 0;
   signal arith_commit_reg : arith_commit_t := AR_NONE;
   signal arith_tune_exp_delta_reg : integer range -1 to 1 := 0;
   signal arith_mul_a_reg : fp80_t := (others => '0');
@@ -898,9 +898,9 @@ begin
         end if;
         arith_int_arg_reg <= int_arg_v;
         -- For mul/add commits: 0 = not launched (sequential unit starts in AR_ST_WAIT)
-        -- For int commits: 1 hold cycle for fp80_to_int_trunc settle
+        -- For int commits: 3 hold cycles for fp80_to_int_trunc settle (MCP=4 at 33 MHz)
         if arith_commit = AR_ENC_DIGIT_INT or arith_commit = AR_ENC_POSTROUND then
-          arith_hold_count_reg <= 1;
+          arith_hold_count_reg <= 3;
         else
           arith_hold_count_reg <= 0;
         end if;

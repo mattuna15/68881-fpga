@@ -52,8 +52,19 @@ architecture sim of tb_mc68881_top is
   constant FPSR_EXC_BSUN    : natural := 7;
   constant FPSR_EXC_BASE    : natural := 8;
   constant FPSR_ACCR_BASE   : natural := 0;
-  constant FPSR_EXC_DIVZERO : natural := 3;
-  constant FPSR_EXC_INVALID : natural := 4;
+  -- MC68881 EXC byte bit positions (within byte):
+  constant FPSR_EXC_INEX2   : natural := 1;
+  constant FPSR_EXC_DZ      : natural := 2;
+  constant FPSR_EXC_UNFL    : natural := 3;
+  constant FPSR_EXC_OVFL    : natural := 4;
+  constant FPSR_EXC_OPERR   : natural := 5;
+  constant FPSR_EXC_SNAN    : natural := 6;
+  -- MC68881 AEXC byte bit positions:
+  constant FPSR_AEXC_INEX   : natural := 0;
+  constant FPSR_AEXC_DZ     : natural := 1;
+  constant FPSR_AEXC_UNFL   : natural := 2;
+  constant FPSR_AEXC_OVFL   : natural := 3;
+  constant FPSR_AEXC_IOP    : natural := 4;
   constant STATUS_CIR_RESPONSE_PENDING : natural := 4;
   constant STATUS_CIR_PROTOCOL_ERROR   : natural := 5;
   constant STATUS_CIR_TRAP_PENDING     : natural := 6;
@@ -710,10 +721,10 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after DIV by zero: " & to_hstring(rd_lo)
       severity note;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DIVZERO) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DZ) = '1'
       report "FPSR DIV-by-zero flag not set"
       severity failure;
-    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_DIVZERO) = '1'
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_AEXC_DZ) = '1'
       report "FPSR accrued DIV-by-zero flag not set"
       severity failure;
     assert rd_lo(FPSR_CC_INF) = '1' and rd_lo(FPSR_CC_NAN) = '0'
@@ -745,11 +756,11 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after DIV inf/inf: " & to_hstring(rd_lo)
       severity note;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FPSR invalid flag not set for DIV inf/inf"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_OPERR) = '1'
+      report "FPSR OPERR flag not set for DIV inf/inf"
       severity failure;
-    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
-      report "FPSR accrued invalid flag not set for DIV inf/inf"
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_AEXC_IOP) = '1'
+      report "FPSR accrued IOP flag not set for DIV inf/inf"
       severity failure;
     assert rd_lo(FPSR_CC_NAN) = '1' and rd_lo(FPSR_CC_INF) = '0'
       report "FPSR CC should report NAN for DIV inf/inf invalid exception"
@@ -776,11 +787,11 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after FSQRT negative: " & to_hstring(rd_lo)
       severity note;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FPSR invalid flag not set for FSQRT negative"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_OPERR) = '1'
+      report "FPSR OPERR flag not set for FSQRT negative"
       severity failure;
-    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
-      report "FPSR accrued invalid flag not set for FSQRT negative"
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_AEXC_IOP) = '1'
+      report "FPSR accrued IOP flag not set for FSQRT negative"
       severity failure;
     assert rd_lo(FPSR_CC_NAN) = '1'
       report "FPSR CC NAN flag not set for FSQRT negative result"
@@ -811,14 +822,14 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after FMOD by zero: " & to_hstring(rd_lo)
       severity note;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FPSR invalid flag not set for FMOD divide-by-zero"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_OPERR) = '1'
+      report "FPSR OPERR flag not set for FMOD divide-by-zero"
       severity failure;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DIVZERO) = '0'
-      report "FPSR DIVZERO should not be set for FMOD divide-by-zero"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DZ) = '0'
+      report "FPSR DZ should not be set for FMOD divide-by-zero"
       severity failure;
-    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
-      report "FPSR accrued invalid flag not set for FMOD divide-by-zero"
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_AEXC_IOP) = '1'
+      report "FPSR accrued IOP flag not set for FMOD divide-by-zero"
       severity failure;
     assert rd_lo(FPSR_CC_NAN) = '1'
       report "FPSR CC NAN flag not set for FMOD divide-by-zero result"
@@ -843,14 +854,14 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after FREM by zero: " & to_hstring(rd_lo)
       severity note;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FPSR invalid flag not set for FREM divide-by-zero"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_OPERR) = '1'
+      report "FPSR OPERR flag not set for FREM divide-by-zero"
       severity failure;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DIVZERO) = '0'
-      report "FPSR DIVZERO should not be set for FREM divide-by-zero"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DZ) = '0'
+      report "FPSR DZ should not be set for FREM divide-by-zero"
       severity failure;
-    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
-      report "FPSR accrued invalid flag not set for FREM divide-by-zero"
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_AEXC_IOP) = '1'
+      report "FPSR accrued IOP flag not set for FREM divide-by-zero"
       severity failure;
     assert rd_lo(FPSR_CC_NAN) = '1'
       report "FPSR CC NAN flag not set for FREM divide-by-zero result"
@@ -920,10 +931,8 @@ begin
       report "FTST +INF should set INF class bit"
       severity failure;
 
-    -- FTST NaN should set invalid + CC NAN and capture FPIAR.
+    -- FTST QNaN should set CC NAN but NOT raise SNAN or OPERR (NaN passthrough).
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000");
-    fpiar_seed := x"AA55AA55";
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
     op_a := x"7FFFC000000000000001";
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
@@ -931,18 +940,14 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000018"); -- FTST
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FTST NaN should raise invalid"
-      severity failure;
-    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
-      report "FTST NaN should accrue invalid"
-      severity failure;
     assert rd_lo(FPSR_CC_NAN) = '1'
-      report "FTST NaN should set CC NAN"
+      report "FTST QNaN should set CC NAN"
       severity failure;
-    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
-    assert rd_hi = fpiar_seed
-      report "FTST NaN exception should capture FPIAR"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_SNAN) = '0'
+      report "FTST QNaN should NOT raise SNAN"
+      severity failure;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_OPERR) = '0'
+      report "FTST QNaN should NOT raise OPERR (NaN passthrough, not domain error)"
       severity failure;
 
     -- B5: FTWOTOX functional smoke test (finite and positive for x=1).
@@ -974,10 +979,10 @@ begin
       report "FLOGN(0) should return -infinity, got=" & to_hstring(rd_full)
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DIVZERO) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DZ) = '1'
       report "FLOGN(0) should raise DZ"
       severity failure;
-    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_DIVZERO) = '1'
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_AEXC_DZ) = '1'
       report "FLOGN(0) should accrue DZ"
       severity failure;
     assert rd_lo(FPSR_CC_NEG) = '1' and rd_lo(FPSR_CC_INF) = '1'
@@ -999,7 +1004,7 @@ begin
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
     check_fp80(rd_full, fp80_from_int(5), "FADD result after FLOGN(0)");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DIVZERO) = '0'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_DZ) = '0'
       report "Stale DZ leaked into non-trig/non-divrem operation"
       severity failure;
 
@@ -1017,8 +1022,8 @@ begin
       report "FASIN(|x|>1) should return NaN"
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FASIN(|x|>1) should raise invalid"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_OPERR) = '1'
+      report "FASIN(|x|>1) should raise OPERR"
       severity failure;
     assert rd_lo(FPSR_CC_NAN) = '1'
       report "FASIN(|x|>1) should set CC NAN"
@@ -1198,9 +1203,6 @@ begin
     assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '1'
       report "FScc signaling unordered path should set EXC.BSUN"
       severity failure;
-    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_BSUN) = '1'
-      report "FScc signaling unordered path should set AEXC.BSUN"
-      severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
     assert rd_hi = fpiar_seed
       report "FScc signaling unordered exception should capture FPIAR"
@@ -1252,8 +1254,8 @@ begin
       report "FDBcc signaling unordered path should preserve loop counter"
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '1' and rd_lo(FPSR_ACCR_BASE + FPSR_EXC_BSUN) = '1'
-      report "FDBcc signaling unordered path should set EXC/AEXC BSUN"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '1'
+      report "FDBcc signaling unordered path should set EXC.BSUN"
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPIAR);
     assert rd_hi = fpiar_seed
@@ -1325,14 +1327,14 @@ begin
     -- EXC byte clear-then-set: conditional op should clear stale EXC flags.
     -- Pre-set EXC.INVALID via FPSR write, then issue a non-exceptional FScc.
     report "Conditional op should clear stale EXC byte from prior ops." severity note;
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04001000"); -- Z set + EXC.INVALID
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04004000"); -- Z set + EXC.SNAN
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '0'
-      report "Non-exceptional conditional op should clear stale EXC.INVALID"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_SNAN) = '0'
+      report "Non-exceptional conditional op should clear stale EXC.SNAN"
       severity failure;
     assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_BSUN) = '0'
       report "Non-exceptional conditional op should not set EXC.BSUN"
@@ -1701,8 +1703,8 @@ begin
     assert rd_lo(FPSR_CC_NAN) = '1'
       report "FCMP QNaN should set CC NAN"
       severity failure;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '0'
-      report "FCMP QNaN should NOT raise INVALID (only SNaN does)"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_SNAN) = '0'
+      report "FCMP QNaN should NOT raise SNAN (only SNaN does)"
       severity failure;
 
     -- FCMP with SNaN: SHOULD raise INVALID
@@ -1717,11 +1719,11 @@ begin
     assert rd_lo(FPSR_CC_NAN) = '1'
       report "FCMP SNaN should set CC NAN"
       severity failure;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FCMP SNaN should raise INVALID"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_SNAN) = '1'
+      report "FCMP SNaN should raise SNAN"
       severity failure;
-    assert rd_lo(FPSR_ACCR_BASE + FPSR_EXC_INVALID) = '1'
-      report "FCMP SNaN should accrue INVALID"
+    assert rd_lo(FPSR_ACCR_BASE + FPSR_AEXC_IOP) = '1'
+      report "FCMP SNaN should accrue IOP"
       severity failure;
 
     -- FCMP with SNaN in source (b operand): also raises INVALID
@@ -1733,8 +1735,8 @@ begin
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FPSR after FCMP 1,SNaN: " & to_hstring(rd_lo) severity note;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FCMP with SNaN in source should raise INVALID"
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_SNAN) = '1'
+      report "FCMP with SNaN in source should raise SNAN"
       severity failure;
 
     report "TB SUCCESS: all checks passed"

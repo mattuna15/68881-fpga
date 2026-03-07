@@ -469,6 +469,11 @@ begin
     variable mantissa_even : unsigned(SQRT_MANT_EVEN_WIDTH-1 downto 0) := (others => '0');
     variable sqrt_norm_shift : natural := 0;
     variable nan_prop : std_logic_vector(80 downto 0) := (others => '0');
+    variable lz_norm : natural := 0;
+    variable a_exp_adj : integer := 0;
+    variable b_exp_adj : integer := 0;
+    variable a_mant_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable b_mant_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -555,13 +560,32 @@ begin
               end if;
               state_reg <= ST_DONE;
             else
-              divisor_reg <= b_u.mant;
-              dividend_reg <= a_u.mant & to_unsigned(0, DIV_Q_BITS);
+              -- Normalize denormalized operands (MC68881 normalizes before arithmetic).
+              a_mant_norm := a_u.mant;
+              if a_u.exp = 0 and a_u.mant /= 0 then
+                lz_norm := clz(a_u.mant);
+                a_mant_norm := shift_left(a_u.mant, lz_norm);
+                a_exp_adj := 1 - lz_norm;
+              else
+                a_exp_adj := to_integer(a_u.exp);
+              end if;
+
+              b_mant_norm := b_u.mant;
+              if b_u.exp = 0 and b_u.mant /= 0 then
+                lz_norm := clz(b_u.mant);
+                b_mant_norm := shift_left(b_u.mant, lz_norm);
+                b_exp_adj := 1 - lz_norm;
+              else
+                b_exp_adj := to_integer(b_u.exp);
+              end if;
+
+              divisor_reg <= b_mant_norm;
+              dividend_reg <= a_mant_norm & to_unsigned(0, DIV_Q_BITS);
               rem_reg <= (others => '0');
               quot_reg <= (others => '0');
               iter_idx_reg <= DIVIDEND_BITS-1;
               div_sign_reg <= a_u.sign xor b_u.sign;
-              div_exp_base_reg <= to_integer(a_u.exp) - to_integer(b_u.exp) + FP_EXP_BIAS;
+              div_exp_base_reg <= a_exp_adj - b_exp_adj + FP_EXP_BIAS;
               state_reg <= ST_DIV_ITER;
             end if;
           elsif op_reg = FPU_OP_SQRT then
@@ -642,13 +666,32 @@ begin
               quotient_valid_reg <= '1';
               state_reg <= ST_DONE;
             else
-              divisor_reg <= b_u.mant;
-              dividend_reg <= a_u.mant & to_unsigned(0, DIV_Q_BITS);
+              -- Normalize denormalized operands (MC68881 normalizes before arithmetic).
+              a_mant_norm := a_u.mant;
+              if a_u.exp = 0 and a_u.mant /= 0 then
+                lz_norm := clz(a_u.mant);
+                a_mant_norm := shift_left(a_u.mant, lz_norm);
+                a_exp_adj := 1 - lz_norm;
+              else
+                a_exp_adj := to_integer(a_u.exp);
+              end if;
+
+              b_mant_norm := b_u.mant;
+              if b_u.exp = 0 and b_u.mant /= 0 then
+                lz_norm := clz(b_u.mant);
+                b_mant_norm := shift_left(b_u.mant, lz_norm);
+                b_exp_adj := 1 - lz_norm;
+              else
+                b_exp_adj := to_integer(b_u.exp);
+              end if;
+
+              divisor_reg <= b_mant_norm;
+              dividend_reg <= a_mant_norm & to_unsigned(0, DIV_Q_BITS);
               rem_reg <= (others => '0');
               quot_reg <= (others => '0');
               iter_idx_reg <= DIVIDEND_BITS-1;
               div_sign_reg <= a_u.sign xor b_u.sign;
-              div_exp_base_reg <= to_integer(a_u.exp) - to_integer(b_u.exp) + FP_EXP_BIAS;
+              div_exp_base_reg <= a_exp_adj - b_exp_adj + FP_EXP_BIAS;
               state_reg <= ST_DIV_ITER;
             end if;
           end if;

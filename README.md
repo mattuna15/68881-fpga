@@ -6,7 +6,7 @@ coprocessor targeting Xilinx 7-series FPGAs. The design implements the full
 MC68881 instruction set including all arithmetic, transcendental, program-control,
 system-control, and packed-decimal operations. It uses DSP-pipelined sequential
 FP units for the core arithmetic datapath with multi-cycle path constraints for
-timing closure.
+timing closure at 33 MHz.
 
 The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
 
@@ -15,7 +15,9 @@ The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
   FSGLDIV, FSGLMUL, FABS, FNEG, FINT, FINTRZ, FGETEXP, FGETMAN, FTST, FCMP.
 - **Transcendental engine**: FSIN, FCOS, FTAN, FSINCOS, FASIN, FACOS, FATAN,
   FATANH, FSINH, FCOSH, FTANH, FETOX, FETOXM1, FTWOTOX, FTENTOX, FLOGN,
-  FLOGNP1, FLOG2, FLOG10. BRAM-based seed tables with Taylor/CORDIC iteration.
+  FLOGNP1, FLOG2, FLOG10. BRAM coefficient ROM with degree-9 Horner polynomial
+  evaluation, table-assisted range reduction (ATAN, LOG), and Cody-Waite
+  argument reduction (trig, EXP).
 - **Data movement**: FMOVE (all formats including packed decimal `.P`),
   FMOVEM (register lists and control registers), FMOVECR (ROM constants).
 - **Program control**: FScc, FBcc, FDBcc, FTRAPcc, FNOP with BSUN trap gating.
@@ -33,32 +35,32 @@ The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
 
 | Resource | Used | Available | Util% |
 |----------|------|-----------|-------|
-| Slice LUTs | 52,361 | 133,800 | 39.13% |
-| Registers | 13,131 | 267,600 | 4.91% |
-| Block RAM | 5 tiles | 365 | 1.37% |
+| Slice LUTs | 64,583 | 133,800 | 48.27% |
+| Registers | 13,418 | 267,600 | 5.01% |
+| Block RAM | 8 tiles | 365 | 2.19% |
 | DSP48E1 | 33 | 740 | 4.46% |
 
-*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-05.
-Includes Section 7 CIR coprocessor interface with FSAVE/FRESTORE Busy frame support and
-full exception dialog paths; see "CIR feature gating" below.*
+*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-07.
+33 MHz target clock. Includes transcendental accuracy improvements (BRAM coefficient ROM,
+table-assisted ATAN/LOG, Cody-Waite trig/EXP), Section 7 CIR coprocessor interface, and
+full exception dialog paths.*
 
 ### Timing
-- Target clock: 10 MHz (100 ns period) — matches MC68881 bus timing.
-- Multi-cycle path constraints on sequential FP units (mul: 4 cycles, addsub: 6 cycles,
-  div: 6 cycles) and trig engine hold states.
-- Post-route WNS: **+16.631 ns** (83% slack margin at 100 ns period; effective Fmax ~12 MHz).
-- WHS (hold): no violations.
+- Target clock: **33 MHz** (30.303 ns period) — 3.3× faster than original MC68881.
+- Multi-cycle path constraints on sequential FP units, trig engine hold states,
+  format conversion paths (operand staging, MOVE dispatch, LOG exponent conversion).
+- Post-route WNS: **+0.026 ns** (timing met). WHS: **+0.033 ns** (no hold violations).
 
 ### Target device compatibility
 The design fits on several FPGA families. With CIR disabled (`ENABLE_CIR_g => false`),
-the core is ~58K LUTs and fits comfortably on smaller devices:
+the core is ~55K LUTs:
 
-| Device | LUTs | DSPs | Fit (full)? | Fit (no CIR)? |
-|--------|------|------|-------------|---------------|
-| Xilinx Artix-7 200T | 134,600 | 740 | Yes (39%) | Yes (34%) |
-| Xilinx Artix-7 100T | 63,400 | 240 | Yes (~83%) | Yes (~72%) |
-| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~74%) | Yes (~64%) |
-| Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
+| Device | LUTs | DSPs | Fit? |
+|--------|------|------|------|
+| Xilinx Artix-7 200T | 133,800 | 740 | Yes (48%) |
+| Xilinx Artix-7 100T | 63,400 | 240 | No (102%); Yes with CIR disabled (~87%) |
+| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~85%) |
+| Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes |
 
 All RTL is vendor-portable (inferred DSP/BRAM, no Xilinx IP cores). Porting to
 Intel/Quartus requires XDC-to-SDC constraint conversion and minor DSP inference
@@ -151,11 +153,26 @@ open_checkpoint mc68881_top.dcp
 report_utilization -hierarchical -hierarchical_depth 10 -file mc68881_top_util_hier.rpt
 ```
 
+### Transcendental accuracy
+The transcendental engine achieves 30–55 bits of accuracy across operations,
+verified by the torture testbench (298 self-checking tests):
+
+| Operation | Typical accuracy | Method |
+|-----------|-----------------|--------|
+| SIN, COS, TAN | 30–40 bits | Cody-Waite argument reduction, degree-9 Horner |
+| ASIN, ACOS, ATAN | 55–62 bits | Table-assisted polynomial (8 BRAM entries) |
+| EXP, ETOXM1 | 40–50 bits | Cody-Waite ln(2) splitting, degree-9 Horner |
+| LOG, LOG2, LOG10 | 56+ bits | Table-assisted range reduction (16 BRAM entries) |
+| SINH, COSH | 30–50 bits | Via EXP pipeline |
+| TANH | ~30 bits | Via EXP pipeline (replaces Padé approximant) |
+
 ## Transcendental architecture guardrails
 - The transcendental engine uses BRAM-style synchronous reads via
   `ST_SEED_READ -> ST_SEED_READ_WAIT -> ST_SEED_READ_LATCH`.
-- Do **not** replace this with combinational table indexing — it breaks BRAM
-  inference and increases LUT usage sharply.
+- Coefficient BRAM ROM stores 5 sets × 10 coefficients (EXP/LOG/ATAN/SINH/COSH);
+  requires 2-cycle read latency: `POLY_INIT` → `INIT_WAIT` → `MUL_PREP`.
+- Do **not** replace synchronous reads with combinational table indexing — it
+  breaks BRAM inference and increases LUT usage sharply.
 - Validate architecture changes with non-incremental synth utilization reports.
 
 ## CIR feature gating
@@ -165,35 +182,15 @@ use only the register-mapped peripheral interface. The CIR generic defaults to
 `true`.
 
 ## Remaining work
-- **Section 7 coprocessor interface (Phase 5)**: Close timing/cycle tests and
-  regression matrix. Phases 1-4 are complete (CIR types, dialog FSM, reg-to-reg,
-  memory-source/destination transfers, conditional dialog paths for
-  FBcc/FDBcc/FScc/FTRAPcc/FNOP, FSAVE/FRESTORE with Null/Idle/Busy frames,
-  exception dialog paths, FPIAR capture).
-- **Test coverage**: Denormal handling (C1), exception detection expansion (C3),
-  FPCR/FPSR architectural field completeness (C4), FPIAR tracking (C5),
-  per-opcode self-checking testbenches (D1), cycle-count verification (D4),
-  opcode matrix coverage (D5), format-specific FMOVE tests (D6).
-
-## Defect tracking
-All defects are currently closed. History is maintained in `docs/fpu-progress-checklist.md`:
-- `DEF-LUT-002` — FP unit sharing (closed 2026-03-03)
-- `DEF-LUT-001` — Sequential FP unit reuse (closed 2026-03-03)
-- `DEF-TIMING-001` — MCP-guarded combinational FP80 datapaths (closed 2026-03-02)
-- `DEF-DIVREM-002` — DIV NaN policy (closed 2026-03-02)
-- `DEF-DIVREM-001` — DIV/SQRT gradual underflow (closed 2026-03-02)
-- `DEF-PACKED-002` — Packed-decimal QoR (closed 2026-03-02)
-- `DEF-PACKED-001` — Packed-decimal integer subset (closed 2026-02-28)
-- `DEF-TRIG-001` — FCOS sign check (closed 2026-02-15)
+- **Test coverage**: Per-opcode self-checking testbenches (D1), cycle-count
+  verification (D4), opcode matrix coverage (D5), format-specific FMOVE tests (D6).
 
 ## Key documentation
 - Master checklist: `docs/fpu-progress-checklist.md`
+- GHDL test results (298 tests): `docs/tests.txt`
 - Programming reference: `docs/68881-programming.txt`
 - FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`
 - Technical summary: `docs/68881-tech-summary.pdf`
-- Motorola references:
-  - `docs/MC68881.PDF`
-  - `docs/AN-0947_MC68881_Floating-Point_Coprocessor_as_a_Peripheral_in_a_M68000_System_[Motorola_1987_37p].pdf`
 
 ## License
 See repository for license terms.

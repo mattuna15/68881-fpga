@@ -98,6 +98,12 @@ begin
     variable lsb_keep   : integer;
     variable exp_res    : unsigned(FP_EXP_WIDTH-1 downto 0);
     variable res_packed : fp80_t;
+    variable lz_norm    : natural;
+    variable a_exp_adj  : integer;
+    variable b_exp_adj  : integer;
+    variable a_mant_v   : unsigned(FP_MANT_WIDTH-1 downto 0);
+    variable b_mant_v   : unsigned(FP_MANT_WIDTH-1 downto 0);
+    variable denorm_shift : natural;
   begin
     if rising_edge(clk) then
     if reset_n = '0' then
@@ -129,9 +135,29 @@ begin
           end if;
 
         when ST_UNPACK =>
-          -- Unpack mantissas (sign/exp computed inline, not registered).
-          a_mant_reg <= unsigned(a_reg(FP_MANT_WIDTH-1 downto 0));
-          b_mant_reg <= unsigned(b_reg(FP_MANT_WIDTH-1 downto 0));
+          -- Unpack mantissas with subnormal normalization.
+          a_mant_v := unsigned(a_reg(FP_MANT_WIDTH-1 downto 0));
+          b_mant_v := unsigned(b_reg(FP_MANT_WIDTH-1 downto 0));
+
+          -- Normalize denormalized operands (MC68881 normalizes before arithmetic).
+          if unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) = 0 and a_mant_v /= 0 then
+            lz_norm := clz(a_mant_v);
+            a_mant_v := shift_left(a_mant_v, lz_norm);
+            a_exp_adj := 1 - lz_norm;
+          else
+            a_exp_adj := to_integer(unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)));
+          end if;
+
+          if unsigned(b_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) = 0 and b_mant_v /= 0 then
+            lz_norm := clz(b_mant_v);
+            b_mant_v := shift_left(b_mant_v, lz_norm);
+            b_exp_adj := 1 - lz_norm;
+          else
+            b_exp_adj := to_integer(unsigned(b_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)));
+          end if;
+
+          a_mant_reg <= a_mant_v;
+          b_mant_reg <= b_mant_v;
 
           -- Result sign.
           res_sign_reg <= a_reg(FP_WIDTH-1) xor b_reg(FP_WIDTH-1);
@@ -163,10 +189,8 @@ begin
             early_result_reg <= (others => '0');
           end if;
 
-          -- Biased exponent sum.
-          exp_res_reg <= to_integer(unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH))) +
-                         to_integer(unsigned(b_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH))) -
-                         FP_EXP_BIAS;
+          -- Biased exponent sum (using normalized exponents).
+          exp_res_reg <= a_exp_adj + b_exp_adj - FP_EXP_BIAS;
 
           state_reg <= ST_MULTIPLY;
 
@@ -260,9 +284,16 @@ begin
             mant_main(drop_bits - 1 downto 0) := (others => '0');
           end if;
 
-          -- Underflow check.
+          -- Underflow: produce subnormal output or flush to zero.
           if exp_var <= 0 then
-            result_reg <= (others => '0');
+            denorm_shift := 1 - exp_var;
+            if denorm_shift >= FP_MANT_WIDTH or mant_main = 0 then
+              result_reg <= (others => '0');
+            else
+              result_reg(FP_WIDTH-1) <= res_sign_reg;
+              result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '0');
+              result_reg(FP_MANT_WIDTH-1 downto 0) <= std_logic_vector(shift_right(mant_main, denorm_shift));
+            end if;
           -- Overflow check.
           elsif exp_var >= FP_EXP_MAX then
             result_reg(FP_WIDTH-1) <= res_sign_reg;

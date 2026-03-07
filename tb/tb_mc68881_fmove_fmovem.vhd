@@ -40,10 +40,20 @@ architecture sim of tb_mc68881_fmove_fmovem is
   constant ADDR_FPIAR : unsigned(4 downto 0) := to_unsigned(24, 5);
   constant FPSR_AEXC_BASE : natural := 0;
   constant FPSR_EXC_BASE : natural := 8;
-  constant FPSR_EXC_INVALID : natural := 4;
-  constant FPSR_EXC_OVERFLOW : natural := 2;
-  constant FPSR_EXC_UNDERFLOW : natural := 1;
-  constant FPSR_EXC_INEXACT : natural := 0;
+  -- MC68881 EXC byte bit positions:
+  constant FPSR_EXC_INEX1  : natural := 0;
+  constant FPSR_EXC_INEX2  : natural := 1;
+  constant FPSR_EXC_DZ     : natural := 2;
+  constant FPSR_EXC_UNFL   : natural := 3;
+  constant FPSR_EXC_OVFL   : natural := 4;
+  constant FPSR_EXC_OPERR  : natural := 5;
+  constant FPSR_EXC_SNAN   : natural := 6;
+  -- MC68881 AEXC byte bit positions:
+  constant FPSR_AEXC_INEX  : natural := 0;
+  constant FPSR_AEXC_DZ    : natural := 1;
+  constant FPSR_AEXC_UNFL  : natural := 2;
+  constant FPSR_AEXC_OVFL  : natural := 3;
+  constant FPSR_AEXC_IOP   : natural := 4;
 
   constant OP_FMOVE : std_logic_vector(31 downto 0) := x"00000005";
   constant OP_FMOVEM : std_logic_vector(31 downto 0) := x"00000006";
@@ -359,13 +369,13 @@ begin
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPSR);
     report "FMOVE single min-subnormal FPSR=" & to_hstring(rd_hi) severity note;
-    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_UNDERFLOW) = '1'
+    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_UNFL) = '1'
       report "FMOVE single gradual underflow should set FPSR EXC underflow"
       severity failure;
-    assert rd_hi(FPSR_AEXC_BASE + FPSR_EXC_UNDERFLOW) = '1'
+    assert rd_hi(FPSR_AEXC_BASE + FPSR_AEXC_UNFL) = '1'
       report "FMOVE single gradual underflow should set FPSR AEXC underflow"
       severity failure;
-    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_INEX2) = '1'
       report "FMOVE single gradual underflow should set FPSR EXC inexact"
       severity failure;
 
@@ -389,13 +399,13 @@ begin
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPSR);
     report "FMOVE single overflow RZ FPSR=" & to_hstring(rd_hi) severity note;
-    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_OVERFLOW) = '1'
+    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_OVFL) = '1'
       report "FMOVE single overflow in RZ should set FPSR EXC overflow"
       severity failure;
-    assert rd_hi(FPSR_AEXC_BASE + FPSR_EXC_OVERFLOW) = '1'
+    assert rd_hi(FPSR_AEXC_BASE + FPSR_AEXC_OVFL) = '1'
       report "FMOVE single overflow in RZ should set FPSR AEXC overflow"
       severity failure;
-    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_INEX2) = '1'
       report "FMOVE single overflow in RZ should set FPSR EXC inexact"
       severity failure;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000030");
@@ -463,13 +473,13 @@ begin
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_FPSR);
     report "FMOVE double min-subnormal FPSR=" & to_hstring(rd_ex) severity note;
-    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_UNDERFLOW) = '1'
+    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_UNFL) = '1'
       report "FMOVE double gradual underflow should set FPSR EXC underflow"
       severity failure;
-    assert rd_ex(FPSR_AEXC_BASE + FPSR_EXC_UNDERFLOW) = '1'
+    assert rd_ex(FPSR_AEXC_BASE + FPSR_AEXC_UNFL) = '1'
       report "FMOVE double gradual underflow should set FPSR AEXC underflow"
       severity failure;
-    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_INEX2) = '1'
       report "FMOVE double gradual underflow should set FPSR EXC inexact"
       severity failure;
 
@@ -498,10 +508,10 @@ begin
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_ex, ADDR_FPSR);
     report "FMOVE double overflow RZ FPSR=" & to_hstring(rd_ex) severity note;
-    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_OVERFLOW) = '1'
+    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_OVFL) = '1'
       report "FMOVE double overflow in RZ should set FPSR EXC overflow"
       severity failure;
-    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+    assert rd_ex(FPSR_EXC_BASE + FPSR_EXC_INEX2) = '1'
       report "FMOVE double overflow in RZ should set FPSR EXC inexact"
       severity failure;
     -- Double overflow RP: should produce +infinity (7FF00000_00000000)
@@ -553,7 +563,7 @@ begin
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_hi, ADDR_FPSR);
     report "FMOVE single neg overflow RM FPSR=" & to_hstring(rd_hi) severity note;
-    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_OVERFLOW) = '1'
+    assert rd_hi(FPSR_EXC_BASE + FPSR_EXC_OVFL) = '1'
       report "FMOVE single neg overflow in RM should set FPSR EXC overflow"
       severity failure;
 
@@ -794,14 +804,16 @@ begin
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FMOVE qNaN FPSR=" & to_hstring(rd_lo) severity note;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FMOVE qNaN should set FPSR EXC invalid"
-      severity failure;
-    assert rd_lo(FPSR_AEXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FMOVE qNaN should set FPSR AEXC invalid"
-      severity failure;
+    -- FMOVE QNaN is NaN propagation, not a domain error.
+    -- MC68881 should set CC.NAN but NOT raise SNAN or OPERR.
     assert rd_lo(FPSR_CC_NAN) = '1'
       report "FMOVE qNaN should set FPSR CC NAN bit"
+      severity failure;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_SNAN) = '0'
+      report "FMOVE qNaN should NOT raise SNAN"
+      severity failure;
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_OPERR) = '0'
+      report "FMOVE qNaN should NOT raise OPERR (NaN propagation, not domain error)"
       severity failure;
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, fpiar_word, ADDR_FPIAR);
     report "FMOVE qNaN FPIAR=" & to_hstring(fpiar_word) severity note;
@@ -1238,8 +1250,8 @@ begin
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FMOVE.P invalid BCD FPSR=" & to_hstring(rd_lo) severity note;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INVALID) = '1'
-      report "FMOVE.P invalid BCD should set EXC.INVALID, FPSR=" & to_hstring(rd_lo)
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_OPERR) = '1'
+      report "FMOVE.P invalid BCD should set EXC.OPERR, FPSR=" & to_hstring(rd_lo)
       severity failure;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- clean up
 
@@ -1327,7 +1339,7 @@ begin
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     report "FMOVE.P pi k=17 FPSR=" & to_hstring(rd_lo) severity note;
-    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INEXACT) = '1'
+    assert rd_lo(FPSR_EXC_BASE + FPSR_EXC_INEX2) = '1'
       report "FMOVE.P pi k=17 should set EXC.INEXACT, FPSR=" & to_hstring(rd_lo)
       severity failure;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- clean up

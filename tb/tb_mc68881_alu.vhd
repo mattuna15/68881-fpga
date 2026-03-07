@@ -1028,7 +1028,7 @@ begin
     run_monadic_close(FPU_OP_TENTOX, GV_ARG_0P5, GV_TENTOX_0P5, FP80_TOL_1E2, "GV TENTOX");
     run_monadic_close(FPU_OP_ATAN, GV_ARG_2, GV_ATAN_2, FP80_TOL_2E2, "GV ATAN 2");
     run_monadic_close(FPU_OP_ATAN, GV_ARG_M2, GV_ATAN_M2, FP80_TOL_2E2, "GV ATAN -2");
-    run_monadic_close(FPU_OP_TANH, GV_ARG_0P75, GV_TANH_0P75, FP80_TOL_2E2, "GV TANH");
+    run_monadic_close(FPU_OP_TANH, GV_ARG_0P75, GV_TANH_0P75, FP80_TOL_1E3, "GV TANH");
     -- Large-angle regression (forces ST_TRIG_REDUCE modulo 2*pi path).
     run_monadic_close(FPU_OP_SIN, GV_ARG_1234567, GV_SIN_1234567, FP80_TOL_2E2, "GV SIN 1234567");
     run_monadic_close(FPU_OP_COS, GV_ARG_1234567, GV_COS_1234567, FP80_TOL_2E2, "GV COS 1234567");
@@ -2325,7 +2325,7 @@ begin
     wait for 0 ns;
     wait until valid = '1';
     wait for 0 ns;
-    check_result_close(FP80_EXP_TANH_0P75, FP80_TOL_2E2, "FTANH 0.75");
+    check_result_close(FP80_EXP_TANH_0P75, FP80_TOL_1E3, "FTANH 0.75");
 
     op_sel <= FPU_OP_TANH;
     a_in   <= FP80_ARG_12P5;
@@ -2809,6 +2809,130 @@ begin
     run_monadic_exact(FPU_OP_TST, FP80_ARG_1P1, FP80_ARG_1P1, "FTST 1.1 passthrough");
     run_monadic_exact(FPU_OP_TST, FP80_ARG_M2P3, FP80_ARG_M2P3, "FTST -2.3 passthrough");
     run_monadic_exact(FPU_OP_TST, FP80_ARG_12P5, FP80_ARG_12P5, "FTST 12.5 passthrough");
+
+    -- Subnormal arithmetic: verify denormal inputs are correctly normalized
+    -- and subnormal outputs are correctly generated.
+
+    -- FADD(subnormal, 0) → subnormal unchanged (zero shortcut).
+    op_sel <= FPU_OP_ADD;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= FP80_ZERO;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(SUBNORMAL_POS, "ADD subnormal+0 identity");
+
+    -- FMUL(subnormal, 2.0) → exp=0, mant=2 (doubled subnormal).
+    op_sel <= FPU_OP_MUL;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= fp80_from_int(2);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(x"00000000000000000002", "MUL subnormal*2");
+
+    -- FDIV(subnormal, 1.0) → subnormal unchanged.
+    op_sel <= FPU_OP_DIV;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= FP80_ONE;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(SUBNORMAL_POS, "DIV subnormal/1 identity");
+
+    -- FADD(subnormal, subnormal) → exp=0, mant=2 (doubled).
+    op_sel <= FPU_OP_ADD;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= SUBNORMAL_POS;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(x"00000000000000000002", "ADD subnormal+subnormal");
+
+    -- FSUB(subnormal, subnormal) → positive zero.
+    op_sel <= FPU_OP_SUB;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= SUBNORMAL_POS;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(FP80_ZERO, "SUB subnormal-subnormal => +0");
+
+    -- FMUL(subnormal, subnormal) → complete underflow to +0.
+    op_sel <= FPU_OP_MUL;
+    a_in   <= SUBNORMAL_POS;
+    b_in   <= SUBNORMAL_POS;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(FP80_ZERO, "MUL subnormal*subnormal => +0 (underflow)");
+
+    -- FMUL(negative subnormal, 2.0) → negative subnormal, sign preserved.
+    op_sel <= FPU_OP_MUL;
+    a_in   <= SUBNORMAL_NEG;
+    b_in   <= fp80_from_int(2);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(x"80000000000000000002", "MUL neg subnormal*2 sign preserved");
+
+    -- FADD(+inf, -inf) → NaN (OPERR domain error).
+    op_sel <= FPU_OP_ADD;
+    a_in   <= FP80_POS_INF;
+    b_in   <= FP80_NEG_INF;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result_nan("ADD +inf + -inf => NaN (OPERR)");
+
+    -- FSUB underflow to subnormal: min_normal - (min_normal - ulp) → ulp subnormal.
+    -- Exercises addsub unit's denorm_shift output path in ST_NORM_ROUND.
+    op_sel <= FPU_OP_SUB;
+    a_in   <= FP80_MIN_NORMAL;  -- exp=1, mant=1.0
+    b_in   <= x"00017FFFFFFFFFFFFFFF";  -- exp=1, mant=1.0 - 1ulp
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(x"00000000000000000001", "SUB underflow to subnormal");
+
+    -- FSIN(SNaN) → quieted NaN with payload preserved.
+    -- Verifies SNAN handling through transcendental dispatch path.
+    op_sel <= FPU_OP_SIN;
+    a_in   <= SNAN_PAYLOAD_456;
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait until valid = '1';
+    wait for 0 ns;
+    check_result(QNAN_PAYLOAD_456, "SIN(SNaN) quieted payload preserved");
 
     std.env.stop;
     wait;

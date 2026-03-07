@@ -57,8 +57,8 @@ architecture rtl of mc68881_fp80_addsub_unit is
 
   -- Unpacked fields (b_sign not registered — sign_b_reg captures effective sign).
   signal a_sign_reg  : std_logic := '0';
-  signal a_exp_reg   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
-  signal b_exp_reg   : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+  signal a_exp_reg   : integer range -65536 to 65536 := 0;
+  signal b_exp_reg   : integer range -65536 to 65536 := 0;
   signal sign_b_reg  : std_logic := '0';  -- effective sign of b
 
   -- Extended mantissas (67 bits = 64 + 3 GRS).
@@ -66,7 +66,7 @@ architecture rtl of mc68881_fp80_addsub_unit is
   signal mant_b_ext_reg : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
 
   -- Result exponent after alignment.
-  signal exp_res_reg : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
+  signal exp_res_reg : integer range -65536 to 65536 := 0;
 
   -- Early exit.
   signal early_exit_reg    : std_logic := '0';
@@ -126,7 +126,7 @@ begin
     -- Variables for ST_ALIGN.
     variable a_ext_v    : unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
     variable b_ext_v    : unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
-    variable exp_v      : unsigned(FP_EXP_WIDTH-1 downto 0);
+    variable exp_v      : integer;
     variable diff_v     : natural;
     -- Variables for ST_ADDSUB.
     variable sum_v      : unsigned(FP_MANT_EXT_WIDTH downto 0);
@@ -135,7 +135,11 @@ begin
     variable lzc        : natural;
     variable shift_amt  : natural;
     variable norm_mant  : unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
-    variable norm_exp   : unsigned(FP_EXP_WIDTH-1 downto 0);
+    variable norm_exp   : integer;
+    -- Variables for ST_UNPACK subnormal normalization.
+    variable lz_norm    : natural;
+    variable a_mant_v   : unsigned(FP_MANT_WIDTH-1 downto 0);
+    variable b_mant_v   : unsigned(FP_MANT_WIDTH-1 downto 0);
     -- Variables for ST_NORM_ROUND.
     variable mant_ext   : unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
     variable mant_main  : unsigned(FP_MANT_WIDTH-1 downto 0);
@@ -150,6 +154,7 @@ begin
     variable drop_bits  : natural;
     variable lsb_keep   : integer;
     variable exp_out    : unsigned(FP_EXP_WIDTH-1 downto 0);
+    variable denorm_shift : natural;
   begin
     if rising_edge(clk) then
     if reset_n = '0' then
@@ -162,12 +167,12 @@ begin
       rm_reg <= FP_RND_NEAREST;
       rp_reg <= FP_PREC_EXTENDED;
       a_sign_reg <= '0';
-      a_exp_reg <= (others => '0');
-      b_exp_reg <= (others => '0');
+      a_exp_reg <= 0;
+      b_exp_reg <= 0;
       sign_b_reg <= '0';
       mant_a_ext_reg <= (others => '0');
       mant_b_ext_reg <= (others => '0');
-      exp_res_reg <= (others => '0');
+      exp_res_reg <= 0;
       early_exit_reg <= '0';
       early_result_reg <= (others => '0');
       mant_sum_reg <= (others => '0');
@@ -189,10 +194,27 @@ begin
           end if;
 
         when ST_UNPACK =>
-          -- Unpack operands.
+          -- Unpack operands with subnormal normalization.
           a_sign_reg <= a_reg(FP_WIDTH-1);
-          a_exp_reg  <= unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
-          b_exp_reg  <= unsigned(b_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH));
+
+          -- Normalize denormalized operands (MC68881 normalizes before arithmetic).
+          a_mant_v := unsigned(a_reg(FP_MANT_WIDTH-1 downto 0));
+          if unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) = 0 and a_mant_v /= 0 then
+            lz_norm := clz(a_mant_v);
+            a_mant_v := shift_left(a_mant_v, lz_norm);
+            a_exp_reg <= 1 - lz_norm;
+          else
+            a_exp_reg <= to_integer(unsigned(a_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)));
+          end if;
+
+          b_mant_v := unsigned(b_reg(FP_MANT_WIDTH-1 downto 0));
+          if unsigned(b_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)) = 0 and b_mant_v /= 0 then
+            lz_norm := clz(b_mant_v);
+            b_mant_v := shift_left(b_mant_v, lz_norm);
+            b_exp_reg <= 1 - lz_norm;
+          else
+            b_exp_reg <= to_integer(unsigned(b_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH)));
+          end if;
 
           -- Effective sign of b.
           if sub_reg then
@@ -201,9 +223,9 @@ begin
             sign_b_reg <= b_reg(FP_WIDTH-1);
           end if;
 
-          -- Extend mantissas with GRS bits.
-          mant_a_ext_reg <= unsigned(a_reg(FP_MANT_WIDTH-1 downto 0)) & (FP_GRS_BITS-1 downto 0 => '0');
-          mant_b_ext_reg <= unsigned(b_reg(FP_MANT_WIDTH-1 downto 0)) & (FP_GRS_BITS-1 downto 0 => '0');
+          -- Extend normalized mantissas with GRS bits.
+          mant_a_ext_reg <= a_mant_v & (FP_GRS_BITS-1 downto 0 => '0');
+          mant_b_ext_reg <= b_mant_v & (FP_GRS_BITS-1 downto 0 => '0');
 
           -- Check for early-exit special cases: NaN, infinity, zero.
           -- Order: NaN first (propagate), then infinity, then zero.
@@ -271,11 +293,11 @@ begin
             a_ext_v := mant_a_ext_reg;
             b_ext_v := mant_b_ext_reg;
             if a_exp_reg > b_exp_reg then
-              diff_v  := to_integer(a_exp_reg - b_exp_reg);
+              diff_v  := a_exp_reg - b_exp_reg;
               b_ext_v := shift_right_sticky(b_ext_v, diff_v);
               exp_v   := a_exp_reg;
             elsif b_exp_reg > a_exp_reg then
-              diff_v  := to_integer(b_exp_reg - a_exp_reg);
+              diff_v  := b_exp_reg - a_exp_reg;
               a_ext_v := shift_right_sticky(a_ext_v, diff_v);
               exp_v   := b_exp_reg;
             else
@@ -307,7 +329,7 @@ begin
               carry_mant(carry_mant'left) := '1';
               sum_v(sum_v'left) := '0';
               sum_v(sum_v'left-1 downto 0) := carry_mant;
-              if exp_res_reg /= FP_EXP_ALL_ONES then
+              if exp_res_reg < FP_EXP_MAX then
                 exp_res_reg <= exp_res_reg + 1;
               end if;
             end if;
@@ -339,17 +361,17 @@ begin
             if norm_mant = 0 then
               -- Zero result — leave as-is.
               null;
-            elsif norm_mant(norm_mant'left) = '0' then
+            elsif norm_mant(norm_mant'left) = '0' and norm_exp > 0 then
               -- Need to normalize: find shift amount via LZD.
               lzc := clz(norm_mant);
               -- Clamp shift to exponent (don't go below exp=0).
-              if lzc > to_integer(norm_exp) then
-                shift_amt := to_integer(norm_exp);
+              if lzc > norm_exp then
+                shift_amt := norm_exp;
               else
                 shift_amt := lzc;
               end if;
               norm_mant := shift_left(norm_mant, shift_amt);
-              norm_exp  := norm_exp - to_unsigned(shift_amt, FP_EXP_WIDTH);
+              norm_exp  := norm_exp - shift_amt;
             end if;
 
             mant_sum_reg(mant_sum_reg'left) <= '0';
@@ -362,7 +384,7 @@ begin
         when ST_NORM_ROUND =>
           -- Extract mantissa + GRS bits.
           mant_ext := mant_sum_reg(mant_sum_reg'left-1 downto 0);
-          exp_var  := to_integer(exp_res_reg);
+          exp_var  := exp_res_reg;
 
           -- Inline apply_rounding.
           mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
@@ -425,9 +447,16 @@ begin
             result_reg(FP_WIDTH-1) <= res_sign_reg;
             result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '1');
             result_reg(FP_MANT_WIDTH-1 downto 0) <= (others => '0');
-          -- Underflow.
+          -- Underflow: produce subnormal output or flush to zero.
           elsif exp_var <= 0 then
-            result_reg <= (others => '0');
+            denorm_shift := 1 - exp_var;
+            if denorm_shift >= FP_MANT_WIDTH or mant_main = 0 then
+              result_reg <= (others => '0');
+            else
+              result_reg(FP_WIDTH-1) <= res_sign_reg;
+              result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '0');
+              result_reg(FP_MANT_WIDTH-1 downto 0) <= std_logic_vector(shift_right(mant_main, denorm_shift));
+            end if;
           else
             -- Normal result: pack.
             exp_out := to_unsigned(exp_var, FP_EXP_WIDTH);

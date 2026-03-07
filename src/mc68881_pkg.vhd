@@ -285,7 +285,7 @@ package mc68881_pkg is
   function sgldiv_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
   function sglmul_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
 
-  -- ===== Section 7 Coprocessor Interface Types =====
+  -- ===== CIR Coprocessor Interface Types =====
 
   -- CIR register addresses (5-bit, maps to A[4:1] of CPU-space address).
   constant CIR_ADDR_RESPONSE     : unsigned(4 downto 0) := "00000";  -- $00

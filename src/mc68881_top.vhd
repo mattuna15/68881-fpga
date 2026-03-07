@@ -179,7 +179,7 @@ architecture rtl of mc68881_top is
   signal cir_trap_pending_reg : std_logic := '0';
   signal cir_protocol_violation_reg : std_logic := '0';
 
-  -- CIR dialog state machine signals (Section 7 coprocessor interface).
+  -- CIR dialog state machine signals (coprocessor interface).
   signal cir_state_reg         : cir_dialog_state_t := CIR_IDLE;
   signal cir_opword_reg        : std_logic_vector(15 downto 0) := (others => '0');
   signal cir_command_reg       : std_logic_vector(15 downto 0) := (others => '0');
@@ -3332,7 +3332,7 @@ begin
   end process;
 
   -- =====================================================================
-  -- Section 7 CIR Dialog Processes
+  -- CIR Coprocessor Interface Dialog Processes
   -- =====================================================================
 
   -- CIR register write handler — latches OpWord, Command, Condition, etc.

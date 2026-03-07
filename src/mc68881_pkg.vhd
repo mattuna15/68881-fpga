@@ -1285,38 +1285,41 @@ package body mc68881_pkg is
   end function;
 
   function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural is
-    function pick(best_case : natural; cache_case : natural; worst_case : natural) return natural is
-    begin
-      case cycle_case is
-        when EA_CYCLE_BEST => return best_case;
-        when EA_CYCLE_CACHE => return cache_case;
-        when others => return worst_case;
-      end case;
-    end function;
+    -- Cycle counts: (best_case, cache_case, worst_case) per addressing mode.
+    -- Nested function inlined to avoid GHDL synth closure limitation.
+    type ea_triple_t is array (0 to 2) of natural;
+    type ea_table_t is array (ea_mode_t) of ea_triple_t;
+    constant EA_TABLE : ea_table_t := (
+      EA_MODE_DN_AN                   => (0, 0, 0),
+      EA_MODE_AN_INDIRECT             => (0, 2, 2),
+      EA_MODE_AN_POSTINC              => (3, 6, 6),
+      EA_MODE_AN_PREDEC               => (3, 6, 6),
+      EA_MODE_D16_AN_PC               => (0, 2, 3),
+      EA_MODE_ABS_W                   => (0, 2, 3),
+      EA_MODE_ABS_L                   => (1, 4, 5),
+      EA_MODE_IMMEDIATE               => (0, 0, 0),
+      EA_MODE_D8_AN_PC_XN             => (1, 4, 5),
+      EA_MODE_D16_AN_PC_XN            => (3, 6, 7),
+      EA_MODE_B                       => (3, 6, 7),
+      EA_MODE_D16_B                   => (5, 8, 9),
+      EA_MODE_D32_B                   => (11, 14, 16),
+      EA_MODE_B_INDIRECT_I            => (8, 11, 12),
+      EA_MODE_B_INDIRECT_I_D16        => (8, 11, 12),
+      EA_MODE_B_INDIRECT_I_D32        => (10, 13, 15),
+      EA_MODE_D16_B_INDIRECT_I        => (10, 13, 14),
+      EA_MODE_D16_B_INDIRECT_I_D16    => (10, 13, 15),
+      EA_MODE_D16_B_INDIRECT_I_D32    => (12, 15, 17),
+      EA_MODE_D32_B_INDIRECT_I        => (16, 19, 21),
+      EA_MODE_D32_B_INDIRECT_I_D16    => (16, 19, 21),
+      EA_MODE_D32_B_INDIRECT_I_D32    => (18, 21, 24)
+    );
+    variable entry : ea_triple_t;
   begin
-    case mode is
-      when EA_MODE_DN_AN => return pick(0, 0, 0);
-      when EA_MODE_AN_INDIRECT => return pick(0, 2, 2);
-      when EA_MODE_AN_POSTINC => return pick(3, 6, 6);
-      when EA_MODE_AN_PREDEC => return pick(3, 6, 6);
-      when EA_MODE_D16_AN_PC => return pick(0, 2, 3);
-      when EA_MODE_ABS_W => return pick(0, 2, 3);
-      when EA_MODE_ABS_L => return pick(1, 4, 5);
-      when EA_MODE_IMMEDIATE => return pick(0, 0, 0);
-      when EA_MODE_D8_AN_PC_XN => return pick(1, 4, 5);
-      when EA_MODE_D16_AN_PC_XN => return pick(3, 6, 7);
-      when EA_MODE_B => return pick(3, 6, 7);
-      when EA_MODE_D16_B => return pick(5, 8, 9);
-      when EA_MODE_D32_B => return pick(11, 14, 16);
-      when EA_MODE_B_INDIRECT_I => return pick(8, 11, 12);
-      when EA_MODE_B_INDIRECT_I_D16 => return pick(8, 11, 12);
-      when EA_MODE_B_INDIRECT_I_D32 => return pick(10, 13, 15);
-      when EA_MODE_D16_B_INDIRECT_I => return pick(10, 13, 14);
-      when EA_MODE_D16_B_INDIRECT_I_D16 => return pick(10, 13, 15);
-      when EA_MODE_D16_B_INDIRECT_I_D32 => return pick(12, 15, 17);
-      when EA_MODE_D32_B_INDIRECT_I => return pick(16, 19, 21);
-      when EA_MODE_D32_B_INDIRECT_I_D16 => return pick(16, 19, 21);
-      when EA_MODE_D32_B_INDIRECT_I_D32 => return pick(18, 21, 24);
+    entry := EA_TABLE(mode);
+    case cycle_case is
+      when EA_CYCLE_BEST  => return entry(0);
+      when EA_CYCLE_CACHE => return entry(1);
+      when others         => return entry(2);
     end case;
   end function;
 

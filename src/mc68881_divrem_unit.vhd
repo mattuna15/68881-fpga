@@ -729,20 +729,25 @@ begin
             iter_idx_reg <= iter_idx_reg - 1;
           else
             rem_next := shift_left(rem_reg, 2);
-            rem_next(1 downto 0) := dividend_reg(iter_idx_reg downto iter_idx_reg-1);
+            rem_next(1) := dividend_reg(iter_idx_reg);
+            rem_next(0) := dividend_reg(iter_idx_reg-1);
             div_mul2 := shift_left(divisor_ext, 1);
             div_mul3 := divisor_ext + div_mul2;
             if rem_next >= div_mul3 then
               rem_next := rem_next - div_mul3;
-              quot_next(iter_idx_reg downto iter_idx_reg-1) := "11";
+              quot_next(iter_idx_reg) := '1';
+              quot_next(iter_idx_reg-1) := '1';
             elsif rem_next >= div_mul2 then
               rem_next := rem_next - div_mul2;
-              quot_next(iter_idx_reg downto iter_idx_reg-1) := "10";
+              quot_next(iter_idx_reg) := '1';
+              quot_next(iter_idx_reg-1) := '0';
             elsif rem_next >= divisor_ext then
               rem_next := rem_next - divisor_ext;
-              quot_next(iter_idx_reg downto iter_idx_reg-1) := "01";
+              quot_next(iter_idx_reg) := '0';
+              quot_next(iter_idx_reg-1) := '1';
             else
-              quot_next(iter_idx_reg downto iter_idx_reg-1) := "00";
+              quot_next(iter_idx_reg) := '0';
+              quot_next(iter_idx_reg-1) := '0';
             end if;
             rem_reg <= rem_next;
             quot_reg <= quot_next;
@@ -757,7 +762,8 @@ begin
         when ST_SQRT_ITER =>
           pair_hi := SQRT_RADICAND_BITS-1 - (sqrt_iter_idx_reg * 2);
           rem_next := shift_left(rem_reg, 2);
-          rem_next(1 downto 0) := sqrt_radicand_reg(pair_hi downto pair_hi-1);
+          rem_next(1) := sqrt_radicand_reg(pair_hi);
+          rem_next(0) := sqrt_radicand_reg(pair_hi-1);
           trial := shift_left(resize(sqrt_root_reg, REM_WIDTH), 2) + to_unsigned(1, REM_WIDTH);
           root_next := shift_left(sqrt_root_reg, 1);
           if rem_next >= trial then
@@ -837,7 +843,7 @@ begin
 
           exp_res_i := div_exp_base_reg + (lead_idx - top_idx);
           if lead_idx >= FP_MANT_EXT_WIDTH-1 then
-            mant_ext := quot_reg(lead_idx downto lead_idx-(FP_MANT_EXT_WIDTH-1));
+            mant_ext := resize(shift_right(quot_reg, lead_idx-(FP_MANT_EXT_WIDTH-1)), FP_MANT_EXT_WIDTH);
             if lead_idx > FP_MANT_EXT_WIDTH then
               quot_low_or := '0';
               for i in 0 to quot_reg'length-1 loop

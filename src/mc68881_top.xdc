@@ -99,6 +99,26 @@ set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_hi_reg_reg*/D}]
 set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_hi_reg_reg*/D}]
 
+# --- fp_reg_file_reg -> MOVE REG_TO_MEM destinations (2-cycle MCP = 60.6ns) ---
+# MOVE REG_TO_MEM reads fp_reg_file_reg(src_idx), does format conversion
+# (fp80_to_single/double rounding + inexact comparison), writes exc_event_force_*.
+# fp_reg_file_reg is written by prior ALU/MOVE completion, >=3 CIR pipeline
+# cycles before next MOVE dispatch.
+set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_force_inexact_reg_reg/D}]
+set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_force_inexact_reg_reg/D}]
+
+set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_force_overflow_reg_reg/D}]
+set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_force_overflow_reg_reg/D}]
+
+set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_force_underflow_reg_reg/D}]
+set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_force_underflow_reg_reg/D}]
+
+set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_result_reg_reg*/D}]
+set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_result_reg_reg*/D}]
+
+set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_opa_reg_reg*/D}]
+set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_opa_reg_reg*/D}]
+
 # --- move_cfg_decoded_reg -> MOVE handler destinations (2-cycle MCP = 60.6ns) ---
 # move_cfg_decoded_reg loaded via ADDR_MOVE_CFG bus write, at least 4+ bus
 # cycles before MOVE dispatch fires via cir_launch_alu.

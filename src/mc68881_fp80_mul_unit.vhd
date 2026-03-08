@@ -84,7 +84,6 @@ begin
     variable sticky     : std_logic;
     variable any_disc   : std_logic;
     variable increment  : std_logic;
-    variable drop_bits  : natural;
     variable exp_res    : unsigned(FP_EXP_WIDTH-1 downto 0);
     variable res_packed : fp80_t;
     variable lz_norm    : natural;
@@ -230,17 +229,14 @@ begin
               guard     := mant_ext(42);
               round_bit := mant_ext(41);
               if mant_ext(40 downto 0) /= 0 then sticky := '1'; end if;
-              drop_bits := 40;
             when FP_PREC_DOUBLE =>
               guard     := mant_ext(13);
               round_bit := mant_ext(12);
               if mant_ext(11 downto 0) /= 0 then sticky := '1'; end if;
-              drop_bits := 11;
             when others =>  -- extended
               guard     := mant_ext(2);
               round_bit := mant_ext(1);
               if mant_ext(0) = '1' then sticky := '1'; end if;
-              drop_bits := 0;
           end case;
 
           any_disc  := guard or round_bit or sticky;

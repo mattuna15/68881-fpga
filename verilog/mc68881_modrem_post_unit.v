@@ -1959,89 +1959,89 @@ module mc68881_modrem_post_unit
   assign n948 = {1'b0, n947};
   assign n961 = n948[78:0]; // extract
   assign n962 = {1'b0, n961};
-  /* mc68881_pkg.vhd:2206:9  */
+  /* mc68881_pkg.vhd:2203:9  */
   assign n967 = n948[79]; // extract
-  /* mc68881_pkg.vhd:2206:22  */
+  /* mc68881_pkg.vhd:2203:22  */
   assign n969 = n967 != 1'b0;
-  /* mc68881_pkg.vhd:2207:11  */
+  /* mc68881_pkg.vhd:2204:11  */
   assign n970 = n948[79]; // extract
-  /* mc68881_pkg.vhd:2207:7  */
+  /* mc68881_pkg.vhd:2204:7  */
   assign n974 = n970 ? 1'b0 : 1'b1;
-  /* mc68881_pkg.vhd:2207:7  */
+  /* mc68881_pkg.vhd:2204:7  */
   assign n978 = n970 ? 32'b11111111111111111111111111111111 : 32'bX;
-  /* mc68881_pkg.vhd:2210:7  */
+  /* mc68881_pkg.vhd:2207:7  */
   assign n981 = n974 ? 1'b0 : n974;
-  /* mc68881_pkg.vhd:2210:7  */
+  /* mc68881_pkg.vhd:2207:7  */
   assign n984 = n974 ? 32'b00000000000000000000000000000001 : n978;
-  /* mc68881_pkg.vhd:2206:5  */
+  /* mc68881_pkg.vhd:2203:5  */
   assign n986 = n969 ? n981 : 1'b1;
-  /* mc68881_pkg.vhd:2206:5  */
+  /* mc68881_pkg.vhd:2203:5  */
   assign n991 = n969 ? n984 : 32'bX;
-  /* mc68881_pkg.vhd:1538:25  */
+  /* mc68881_pkg.vhd:1535:25  */
   assign n1003 = n962[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
+  /* mc68881_pkg.vhd:1536:34  */
   assign n1006 = n962[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
+  /* mc68881_pkg.vhd:1537:34  */
   assign n1008 = n962[63:0]; // extract
   assign n1009 = {n1008, n1006, n1003};
-  /* mc68881_pkg.vhd:1538:25  */
+  /* mc68881_pkg.vhd:1535:25  */
   assign n1017 = n1016[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
+  /* mc68881_pkg.vhd:1536:34  */
   assign n1021 = n1020[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
+  /* mc68881_pkg.vhd:1537:34  */
   assign n1024 = n1023[63:0]; // extract
   assign n1025 = {n1024, n1021, n1017};
-  /* mc68881_pkg.vhd:2184:12  */
+  /* mc68881_pkg.vhd:2181:12  */
   assign n1026 = n1009[15:1]; // extract
-  /* mc68881_pkg.vhd:2184:22  */
+  /* mc68881_pkg.vhd:2181:22  */
   assign n1027 = n1025[15:1]; // extract
-  /* mc68881_pkg.vhd:2184:16  */
+  /* mc68881_pkg.vhd:2181:16  */
   assign n1028 = $unsigned(n1026) > $unsigned(n1027);
-  /* mc68881_pkg.vhd:2186:15  */
+  /* mc68881_pkg.vhd:2183:15  */
   assign n1030 = n1009[15:1]; // extract
-  /* mc68881_pkg.vhd:2186:25  */
+  /* mc68881_pkg.vhd:2183:25  */
   assign n1031 = n1025[15:1]; // extract
-  /* mc68881_pkg.vhd:2186:19  */
+  /* mc68881_pkg.vhd:2183:19  */
   assign n1032 = $unsigned(n1030) < $unsigned(n1031);
-  /* mc68881_pkg.vhd:2188:15  */
+  /* mc68881_pkg.vhd:2185:15  */
   assign n1034 = n1009[79:16]; // extract
-  /* mc68881_pkg.vhd:2188:26  */
+  /* mc68881_pkg.vhd:2185:26  */
   assign n1035 = n1025[79:16]; // extract
-  /* mc68881_pkg.vhd:2188:20  */
+  /* mc68881_pkg.vhd:2185:20  */
   assign n1036 = $unsigned(n1034) > $unsigned(n1035);
-  /* mc68881_pkg.vhd:2190:15  */
+  /* mc68881_pkg.vhd:2187:15  */
   assign n1038 = n1009[79:16]; // extract
-  /* mc68881_pkg.vhd:2190:26  */
+  /* mc68881_pkg.vhd:2187:26  */
   assign n1039 = n1025[79:16]; // extract
-  /* mc68881_pkg.vhd:2190:20  */
+  /* mc68881_pkg.vhd:2187:20  */
   assign n1040 = $unsigned(n1038) < $unsigned(n1039);
-  /* mc68881_pkg.vhd:2190:5  */
+  /* mc68881_pkg.vhd:2187:5  */
   assign n1043 = n1040 ? 32'b11111111111111111111111111111111 : 32'b00000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2188:5  */
+  /* mc68881_pkg.vhd:2185:5  */
   assign n1044 = n1036 ? 32'b00000000000000000000000000000001 : n1043;
-  /* mc68881_pkg.vhd:2186:5  */
+  /* mc68881_pkg.vhd:2183:5  */
   assign n1045 = n1032 ? 32'b11111111111111111111111111111111 : n1044;
-  /* mc68881_pkg.vhd:2184:5  */
+  /* mc68881_pkg.vhd:2181:5  */
   assign n1046 = n1028 ? 32'b00000000000000000000000000000001 : n1045;
-  /* mc68881_pkg.vhd:2213:5  */
+  /* mc68881_pkg.vhd:2210:5  */
   assign n1048 = n986 ? n1046 : 32'b00000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2214:9  */
+  /* mc68881_pkg.vhd:2211:9  */
   assign n1050 = n948[79]; // extract
-  /* mc68881_pkg.vhd:2215:14  */
+  /* mc68881_pkg.vhd:2212:14  */
   assign n1051 = -n1048;
-  /* mc68881_pkg.vhd:2214:5  */
+  /* mc68881_pkg.vhd:2211:5  */
   assign n1053 = n1060 ? 1'b0 : n986;
-  /* mc68881_pkg.vhd:2214:5  */
+  /* mc68881_pkg.vhd:2211:5  */
   assign n1056 = n1062 ? n1051 : n991;
-  /* mc68881_pkg.vhd:2214:5  */
+  /* mc68881_pkg.vhd:2211:5  */
   assign n1057 = n986 & n1050;
-  /* mc68881_pkg.vhd:2214:5  */
+  /* mc68881_pkg.vhd:2211:5  */
   assign n1059 = n986 & n1050;
-  /* mc68881_pkg.vhd:2214:5  */
+  /* mc68881_pkg.vhd:2211:5  */
   assign n1060 = n1057 & n986;
-  /* mc68881_pkg.vhd:2214:5  */
+  /* mc68881_pkg.vhd:2211:5  */
   assign n1062 = n1059 & n986;
-  /* mc68881_pkg.vhd:2217:5  */
+  /* mc68881_pkg.vhd:2214:5  */
   assign n1067 = n1053 ? n1048 : n1056;
   /* mc68881_modrem_post_unit.vhd:313:24  */
   assign n1069 = $signed(n1067) > $signed(32'b00000000000000000000000000000000);

@@ -23,3314 +23,3314 @@ module mc68881_fp80_mul_unit
   reg [127:0] mant_prod_reg;
   reg done_reg;
   reg [79:0] result_reg;
-  wire n41;
-  wire [1:0] n43;
+  wire n40;
+  wire [1:0] n42;
+  wire [79:0] n43;
   wire [79:0] n44;
-  wire [79:0] n45;
+  wire [1:0] n45;
   wire [1:0] n46;
-  wire [1:0] n47;
-  wire n49;
+  wire n48;
+  wire [63:0] n49;
   wire [63:0] n50;
-  wire [63:0] n51;
-  wire [14:0] n52;
-  wire n54;
+  wire [14:0] n51;
+  wire n53;
+  wire n55;
   wire n56;
-  wire n57;
-  wire [31:0] n64;
-  wire n66;
-  wire [31:0] n67;
-  wire [63:0] n69;
-  wire [30:0] n72;
-  wire [63:0] n74;
-  wire [15:0] n75;
-  wire n77;
-  wire [31:0] n78;
-  wire [31:0] n80;
-  wire [30:0] n81;
-  wire [47:0] n82;
-  wire [63:0] n84;
-  wire [30:0] n85;
-  wire [63:0] n86;
-  wire [7:0] n87;
-  wire n89;
-  wire [31:0] n90;
-  wire [31:0] n92;
-  wire [30:0] n93;
-  wire [55:0] n94;
-  wire [63:0] n96;
-  wire [30:0] n97;
-  wire [63:0] n98;
-  wire [3:0] n99;
-  wire n101;
-  wire [31:0] n102;
-  wire [31:0] n104;
-  wire [30:0] n105;
-  wire [59:0] n106;
-  wire [63:0] n108;
-  wire [30:0] n109;
-  wire [63:0] n110;
-  wire [1:0] n111;
-  wire n113;
-  wire [31:0] n114;
-  wire [31:0] n116;
-  wire [30:0] n117;
-  wire [61:0] n118;
-  wire [63:0] n120;
-  wire [30:0] n121;
-  wire [63:0] n122;
+  wire [31:0] n63;
+  wire n65;
+  wire [31:0] n66;
+  wire [63:0] n68;
+  wire [30:0] n71;
+  wire [63:0] n73;
+  wire [15:0] n74;
+  wire n76;
+  wire [31:0] n77;
+  wire [31:0] n79;
+  wire [30:0] n80;
+  wire [47:0] n81;
+  wire [63:0] n83;
+  wire [30:0] n84;
+  wire [63:0] n85;
+  wire [7:0] n86;
+  wire n88;
+  wire [31:0] n89;
+  wire [31:0] n91;
+  wire [30:0] n92;
+  wire [55:0] n93;
+  wire [63:0] n95;
+  wire [30:0] n96;
+  wire [63:0] n97;
+  wire [3:0] n98;
+  wire n100;
+  wire [31:0] n101;
+  wire [31:0] n103;
+  wire [30:0] n104;
+  wire [59:0] n105;
+  wire [63:0] n107;
+  wire [30:0] n108;
+  wire [63:0] n109;
+  wire [1:0] n110;
+  wire n112;
+  wire [31:0] n113;
+  wire [31:0] n115;
+  wire [30:0] n116;
+  wire [61:0] n117;
+  wire [63:0] n119;
+  wire [30:0] n120;
+  wire [63:0] n121;
+  wire n122;
   wire n123;
-  wire n124;
-  wire [31:0] n125;
-  wire [31:0] n127;
+  wire [31:0] n124;
+  wire [31:0] n126;
+  wire [30:0] n127;
   wire [30:0] n128;
-  wire [30:0] n129;
-  wire [63:0] n130;
-  wire [31:0] n131;
-  wire [31:0] n133;
-  wire [14:0] n134;
-  wire [30:0] n135;
-  wire [31:0] n136;
-  wire [31:0] n138;
-  wire [63:0] n139;
-  wire [14:0] n140;
-  wire n142;
+  wire [63:0] n129;
+  wire [31:0] n130;
+  wire [31:0] n132;
+  wire [14:0] n133;
+  wire [30:0] n134;
+  wire [31:0] n135;
+  wire [31:0] n137;
+  wire [63:0] n138;
+  wire [14:0] n139;
+  wire n141;
+  wire n143;
   wire n144;
-  wire n145;
-  wire [31:0] n152;
-  wire n154;
-  wire [31:0] n155;
-  wire [63:0] n157;
-  wire [30:0] n160;
-  wire [63:0] n162;
-  wire [15:0] n163;
-  wire n165;
-  wire [31:0] n166;
-  wire [31:0] n168;
-  wire [30:0] n169;
-  wire [47:0] n170;
-  wire [63:0] n172;
-  wire [30:0] n173;
-  wire [63:0] n174;
-  wire [7:0] n175;
-  wire n177;
-  wire [31:0] n178;
-  wire [31:0] n180;
-  wire [30:0] n181;
-  wire [55:0] n182;
-  wire [63:0] n184;
-  wire [30:0] n185;
-  wire [63:0] n186;
-  wire [3:0] n187;
-  wire n189;
-  wire [31:0] n190;
-  wire [31:0] n192;
-  wire [30:0] n193;
-  wire [59:0] n194;
-  wire [63:0] n196;
-  wire [30:0] n197;
-  wire [63:0] n198;
-  wire [1:0] n199;
-  wire n201;
-  wire [31:0] n202;
-  wire [31:0] n204;
-  wire [30:0] n205;
-  wire [61:0] n206;
-  wire [63:0] n208;
-  wire [30:0] n209;
-  wire [63:0] n210;
+  wire [31:0] n151;
+  wire n153;
+  wire [31:0] n154;
+  wire [63:0] n156;
+  wire [30:0] n159;
+  wire [63:0] n161;
+  wire [15:0] n162;
+  wire n164;
+  wire [31:0] n165;
+  wire [31:0] n167;
+  wire [30:0] n168;
+  wire [47:0] n169;
+  wire [63:0] n171;
+  wire [30:0] n172;
+  wire [63:0] n173;
+  wire [7:0] n174;
+  wire n176;
+  wire [31:0] n177;
+  wire [31:0] n179;
+  wire [30:0] n180;
+  wire [55:0] n181;
+  wire [63:0] n183;
+  wire [30:0] n184;
+  wire [63:0] n185;
+  wire [3:0] n186;
+  wire n188;
+  wire [31:0] n189;
+  wire [31:0] n191;
+  wire [30:0] n192;
+  wire [59:0] n193;
+  wire [63:0] n195;
+  wire [30:0] n196;
+  wire [63:0] n197;
+  wire [1:0] n198;
+  wire n200;
+  wire [31:0] n201;
+  wire [31:0] n203;
+  wire [30:0] n204;
+  wire [61:0] n205;
+  wire [63:0] n207;
+  wire [30:0] n208;
+  wire [63:0] n209;
+  wire n210;
   wire n211;
-  wire n212;
-  wire [31:0] n213;
-  wire [31:0] n215;
+  wire [31:0] n212;
+  wire [31:0] n214;
+  wire [30:0] n215;
   wire [30:0] n216;
-  wire [30:0] n217;
-  wire [63:0] n218;
-  wire [31:0] n219;
-  wire [31:0] n221;
-  wire [14:0] n222;
-  wire [30:0] n223;
-  wire [31:0] n224;
-  wire [31:0] n226;
-  wire [63:0] n227;
+  wire [63:0] n217;
+  wire [31:0] n218;
+  wire [31:0] n220;
+  wire [14:0] n221;
+  wire [30:0] n222;
+  wire [31:0] n223;
+  wire [31:0] n225;
+  wire [63:0] n226;
+  wire n227;
   wire n228;
   wire n229;
-  wire n230;
-  wire n242;
-  wire [14:0] n245;
-  wire [63:0] n247;
-  wire [79:0] n248;
-  wire [14:0] n249;
-  wire n251;
-  wire n263;
-  wire [14:0] n266;
-  wire [63:0] n268;
-  wire [79:0] n269;
-  localparam [63:0] n272 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  wire [62:0] n273;
-  wire [14:0] n274;
-  wire n276;
-  wire [63:0] n277;
-  wire n279;
+  wire n241;
+  wire [14:0] n244;
+  wire [63:0] n246;
+  wire [79:0] n247;
+  wire [14:0] n248;
+  wire n250;
+  wire n262;
+  wire [14:0] n265;
+  wire [63:0] n267;
+  wire [79:0] n268;
+  localparam [63:0] n271 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  wire [62:0] n272;
+  wire [14:0] n273;
+  wire n275;
+  wire [63:0] n276;
+  wire n278;
+  wire [63:0] n279;
   wire [63:0] n280;
-  wire [63:0] n281;
+  wire n281;
   wire n282;
   wire n283;
   wire n284;
   wire n285;
-  wire n286;
-  wire n298;
-  wire [14:0] n301;
-  wire [63:0] n303;
-  wire [79:0] n304;
-  wire [14:0] n305;
-  wire n307;
-  wire n319;
-  wire [14:0] n322;
-  wire [63:0] n324;
-  wire [79:0] n325;
-  localparam [63:0] n328 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  wire [62:0] n329;
-  wire [14:0] n330;
-  wire n332;
-  wire [63:0] n333;
-  wire n335;
+  wire n297;
+  wire [14:0] n300;
+  wire [63:0] n302;
+  wire [79:0] n303;
+  wire [14:0] n304;
+  wire n306;
+  wire n318;
+  wire [14:0] n321;
+  wire [63:0] n323;
+  wire [79:0] n324;
+  localparam [63:0] n327 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  wire [62:0] n328;
+  wire [14:0] n329;
+  wire n331;
+  wire [63:0] n332;
+  wire n334;
+  wire [63:0] n335;
   wire [63:0] n336;
-  wire [63:0] n337;
+  wire n337;
   wire n338;
   wire n339;
   wire n340;
   wire n341;
   wire n342;
-  wire n343;
-  wire n356;
-  wire [14:0] n359;
-  wire [63:0] n361;
-  wire [79:0] n362;
-  wire [14:0] n363;
-  wire n365;
-  wire n377;
-  wire [14:0] n380;
-  wire [63:0] n382;
-  wire [79:0] n383;
-  localparam [63:0] n386 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  wire [62:0] n387;
-  wire [14:0] n388;
-  wire n390;
-  wire [63:0] n391;
-  wire n393;
+  wire n355;
+  wire [14:0] n358;
+  wire [63:0] n360;
+  wire [79:0] n361;
+  wire [14:0] n362;
+  wire n364;
+  wire n376;
+  wire [14:0] n379;
+  wire [63:0] n381;
+  wire [79:0] n382;
+  localparam [63:0] n385 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  wire [62:0] n386;
+  wire [14:0] n387;
+  wire n389;
+  wire [63:0] n390;
+  wire n392;
+  wire [63:0] n393;
   wire [63:0] n394;
-  wire [63:0] n395;
+  wire n395;
   wire n396;
   wire n397;
   wire n398;
   wire n399;
-  wire n400;
-  wire n412;
-  wire [14:0] n415;
-  wire [63:0] n417;
-  wire [79:0] n418;
-  wire [14:0] n419;
-  wire n421;
-  wire n433;
-  wire [14:0] n436;
-  wire [63:0] n438;
-  wire [79:0] n439;
-  localparam [63:0] n442 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  wire [62:0] n443;
-  wire [14:0] n444;
-  wire n446;
-  wire [63:0] n447;
-  wire n449;
+  wire n411;
+  wire [14:0] n414;
+  wire [63:0] n416;
+  wire [79:0] n417;
+  wire [14:0] n418;
+  wire n420;
+  wire n432;
+  wire [14:0] n435;
+  wire [63:0] n437;
+  wire [79:0] n438;
+  localparam [63:0] n441 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  wire [62:0] n442;
+  wire [14:0] n443;
+  wire n445;
+  wire [63:0] n446;
+  wire n448;
+  wire [63:0] n449;
   wire [63:0] n450;
-  wire [63:0] n451;
+  wire n451;
   wire n452;
   wire n453;
   wire n454;
   wire n455;
-  wire n456;
-  wire n474;
-  wire [14:0] n477;
-  wire [63:0] n479;
-  wire [79:0] n480;
-  wire [14:0] n481;
+  wire n473;
+  wire [14:0] n476;
+  wire [63:0] n478;
+  wire [79:0] n479;
+  wire [14:0] n480;
+  wire n482;
   wire n483;
   wire n484;
   wire n485;
-  wire n486;
-  wire [62:0] n487;
+  wire [62:0] n486;
+  wire n488;
   wire n489;
-  wire n490;
-  wire n502;
-  wire [14:0] n505;
-  wire [63:0] n507;
-  wire [79:0] n508;
-  wire [14:0] n509;
+  wire n501;
+  wire [14:0] n504;
+  wire [63:0] n506;
+  wire [79:0] n507;
+  wire [14:0] n508;
+  wire n510;
   wire n511;
   wire n512;
   wire n513;
-  wire n514;
-  wire [62:0] n515;
+  wire [62:0] n514;
+  wire n516;
   wire n517;
-  wire n518;
-  wire n520;
-  wire n523;
-  wire n525;
+  wire n519;
+  wire n522;
+  wire n524;
+  wire [79:0] n525;
   wire [79:0] n526;
   wire [79:0] n527;
   wire [79:0] n528;
-  wire [79:0] n529;
-  wire [15:0] n532;
-  wire [62:0] n533;
-  wire [79:0] n534;
-  wire [80:0] n535;
-  wire [79:0] n537;
-  wire n549;
-  wire [14:0] n552;
-  wire [63:0] n554;
-  wire [79:0] n555;
-  localparam [63:0] n558 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  wire [62:0] n559;
-  wire [14:0] n560;
-  wire n562;
-  wire [63:0] n563;
-  wire n565;
+  wire [15:0] n531;
+  wire [62:0] n532;
+  wire [79:0] n533;
+  wire [80:0] n534;
+  wire [79:0] n536;
+  wire n548;
+  wire [14:0] n551;
+  wire [63:0] n553;
+  wire [79:0] n554;
+  localparam [63:0] n557 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  wire [62:0] n558;
+  wire [14:0] n559;
+  wire n561;
+  wire [63:0] n562;
+  wire n564;
+  wire [63:0] n565;
   wire [63:0] n566;
-  wire [63:0] n567;
+  wire n567;
   wire n568;
   wire n569;
-  wire n570;
-  wire n582;
-  wire [14:0] n585;
-  wire [63:0] n587;
-  wire [79:0] n588;
-  localparam [63:0] n591 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  wire [62:0] n592;
-  wire [14:0] n593;
-  wire n595;
-  wire [63:0] n596;
-  wire n598;
+  wire n581;
+  wire [14:0] n584;
+  wire [63:0] n586;
+  wire [79:0] n587;
+  localparam [63:0] n590 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  wire [62:0] n591;
+  wire [14:0] n592;
+  wire n594;
+  wire [63:0] n595;
+  wire n597;
+  wire [63:0] n598;
   wire [63:0] n599;
-  wire [63:0] n600;
+  wire n600;
   wire n601;
   wire n602;
   wire n603;
-  wire n604;
-  wire n616;
-  wire [14:0] n619;
-  wire [63:0] n621;
-  wire [79:0] n622;
-  wire [14:0] n623;
-  wire n625;
-  wire [63:0] n626;
+  wire n615;
+  wire [14:0] n618;
+  wire [63:0] n620;
+  wire [79:0] n621;
+  wire [14:0] n622;
+  wire n624;
+  wire [63:0] n625;
+  wire n627;
   wire n628;
-  wire n629;
-  wire n641;
-  wire [14:0] n644;
-  wire [63:0] n646;
-  wire [79:0] n647;
-  wire [14:0] n648;
-  wire n650;
-  wire [63:0] n651;
+  wire n640;
+  wire [14:0] n643;
+  wire [63:0] n645;
+  wire [79:0] n646;
+  wire [14:0] n647;
+  wire n649;
+  wire [63:0] n650;
+  wire n652;
   wire n653;
   wire n654;
-  wire n655;
+  wire n658;
   wire n659;
   wire n660;
-  wire n661;
+  wire [79:0] n663;
   wire [79:0] n664;
   wire [79:0] n665;
-  wire [79:0] n666;
-  wire n678;
-  wire [14:0] n681;
-  wire [63:0] n683;
-  wire [79:0] n684;
-  wire [14:0] n685;
-  wire n687;
-  wire [63:0] n688;
+  wire n677;
+  wire [14:0] n680;
+  wire [63:0] n682;
+  wire [79:0] n683;
+  wire [14:0] n684;
+  wire n686;
+  wire [63:0] n687;
+  wire n689;
   wire n690;
-  wire n691;
-  wire n703;
-  wire [14:0] n706;
-  wire [63:0] n708;
-  wire [79:0] n709;
-  wire [14:0] n710;
-  wire n712;
-  wire [63:0] n713;
+  wire n702;
+  wire [14:0] n705;
+  wire [63:0] n707;
+  wire [79:0] n708;
+  wire [14:0] n709;
+  wire n711;
+  wire [63:0] n712;
+  wire n714;
   wire n715;
   wire n716;
-  wire n717;
-  wire n720;
-  wire [79:0] n722;
-  wire n724;
-  wire [79:0] n725;
-  wire n727;
-  wire [79:0] n729;
-  wire [31:0] n730;
-  wire [31:0] n732;
-  wire [17:0] n733;
-  wire n735;
+  wire n719;
+  wire [79:0] n721;
+  wire n723;
+  wire [79:0] n724;
+  wire n726;
+  wire [79:0] n728;
+  wire [31:0] n729;
+  wire [31:0] n731;
+  wire [17:0] n732;
+  wire n734;
+  wire [127:0] n735;
   wire [127:0] n736;
   wire [127:0] n737;
-  wire [127:0] n738;
-  wire [1:0] n741;
-  wire [127:0] n742;
-  wire n745;
-  wire [79:0] n746;
-  wire n748;
-  wire [31:0] n749;
-  wire n750;
-  wire [31:0] n752;
+  wire [1:0] n740;
+  wire [127:0] n741;
+  wire n744;
+  wire [79:0] n745;
+  wire n747;
+  wire [31:0] n748;
+  wire n749;
+  wire [31:0] n751;
+  wire [31:0] n754;
   wire [31:0] n755;
-  wire [31:0] n756;
-  wire [6:0] n759;
-  wire [6:0] n761;
-  wire [66:0] n763;
-  wire [31:0] n765;
-  wire n767;
+  wire [6:0] n758;
+  wire [6:0] n760;
+  wire [66:0] n762;
+  wire [31:0] n764;
+  wire n766;
+  wire n768;
   wire n769;
   wire n770;
-  wire n771;
-  wire n774;
+  wire n773;
+  wire n775;
   wire n776;
   wire n777;
-  wire n778;
-  wire n780;
+  wire n779;
+  wire n781;
   wire n782;
   wire n783;
-  wire n784;
-  wire n786;
+  wire n785;
+  wire n787;
   wire n788;
   wire n789;
-  wire n790;
-  wire n792;
+  wire n791;
+  wire n793;
   wire n794;
   wire n795;
-  wire n796;
-  wire n798;
+  wire n797;
+  wire n799;
   wire n800;
   wire n801;
-  wire n802;
-  wire n804;
+  wire n803;
+  wire n805;
   wire n806;
   wire n807;
-  wire n808;
-  wire n810;
+  wire n809;
+  wire n811;
   wire n812;
   wire n813;
-  wire n814;
-  wire n816;
+  wire n815;
+  wire n817;
   wire n818;
   wire n819;
-  wire n820;
-  wire n822;
+  wire n821;
+  wire n823;
   wire n824;
   wire n825;
-  wire n826;
-  wire n828;
+  wire n827;
+  wire n829;
   wire n830;
   wire n831;
-  wire n832;
-  wire n834;
+  wire n833;
+  wire n835;
   wire n836;
   wire n837;
-  wire n838;
-  wire n840;
+  wire n839;
+  wire n841;
   wire n842;
   wire n843;
-  wire n844;
-  wire n846;
+  wire n845;
+  wire n847;
   wire n848;
   wire n849;
-  wire n850;
-  wire n852;
+  wire n851;
+  wire n853;
   wire n854;
   wire n855;
-  wire n856;
-  wire n858;
+  wire n857;
+  wire n859;
   wire n860;
   wire n861;
-  wire n862;
-  wire n864;
+  wire n863;
+  wire n865;
   wire n866;
   wire n867;
-  wire n868;
-  wire n870;
+  wire n869;
+  wire n871;
   wire n872;
   wire n873;
-  wire n874;
-  wire n876;
+  wire n875;
+  wire n877;
   wire n878;
   wire n879;
-  wire n880;
-  wire n882;
+  wire n881;
+  wire n883;
   wire n884;
   wire n885;
-  wire n886;
-  wire n888;
+  wire n887;
+  wire n889;
   wire n890;
   wire n891;
-  wire n892;
-  wire n894;
+  wire n893;
+  wire n895;
   wire n896;
   wire n897;
-  wire n898;
-  wire n900;
+  wire n899;
+  wire n901;
   wire n902;
   wire n903;
-  wire n904;
-  wire n906;
+  wire n905;
+  wire n907;
   wire n908;
   wire n909;
-  wire n910;
-  wire n912;
+  wire n911;
+  wire n913;
   wire n914;
   wire n915;
-  wire n916;
-  wire n918;
+  wire n917;
+  wire n919;
   wire n920;
   wire n921;
-  wire n922;
-  wire n924;
+  wire n923;
+  wire n925;
   wire n926;
   wire n927;
-  wire n928;
-  wire n930;
+  wire n929;
+  wire n931;
   wire n932;
   wire n933;
-  wire n934;
-  wire n936;
+  wire n935;
+  wire n937;
   wire n938;
   wire n939;
-  wire n940;
-  wire n942;
+  wire n941;
+  wire n943;
   wire n944;
   wire n945;
-  wire n946;
-  wire n948;
+  wire n947;
+  wire n949;
   wire n950;
   wire n951;
-  wire n952;
-  wire n954;
+  wire n953;
+  wire n955;
   wire n956;
   wire n957;
-  wire n958;
-  wire n960;
+  wire n959;
+  wire n961;
   wire n962;
   wire n963;
-  wire n964;
-  wire n966;
+  wire n965;
+  wire n967;
   wire n968;
   wire n969;
-  wire n970;
-  wire n972;
+  wire n971;
+  wire n973;
   wire n974;
   wire n975;
-  wire n976;
-  wire n978;
+  wire n977;
+  wire n979;
   wire n980;
   wire n981;
-  wire n982;
-  wire n984;
+  wire n983;
+  wire n985;
   wire n986;
   wire n987;
-  wire n988;
-  wire n990;
+  wire n989;
+  wire n991;
   wire n992;
   wire n993;
-  wire n994;
-  wire n996;
+  wire n995;
+  wire n997;
   wire n998;
   wire n999;
-  wire n1000;
-  wire n1002;
+  wire n1001;
+  wire n1003;
   wire n1004;
   wire n1005;
-  wire n1006;
-  wire n1008;
+  wire n1007;
+  wire n1009;
   wire n1010;
   wire n1011;
-  wire n1012;
-  wire n1014;
+  wire n1013;
+  wire n1015;
   wire n1016;
   wire n1017;
-  wire n1018;
-  wire n1020;
+  wire n1019;
+  wire n1021;
   wire n1022;
   wire n1023;
-  wire n1024;
-  wire n1026;
+  wire n1025;
+  wire n1027;
   wire n1028;
   wire n1029;
-  wire n1030;
-  wire n1032;
+  wire n1031;
+  wire n1033;
   wire n1034;
   wire n1035;
-  wire n1036;
-  wire n1038;
+  wire n1037;
+  wire n1039;
   wire n1040;
   wire n1041;
-  wire n1042;
-  wire n1044;
+  wire n1043;
+  wire n1045;
   wire n1046;
   wire n1047;
-  wire n1048;
-  wire n1050;
+  wire n1049;
+  wire n1051;
   wire n1052;
   wire n1053;
-  wire n1054;
-  wire n1056;
+  wire n1055;
+  wire n1057;
   wire n1058;
   wire n1059;
-  wire n1060;
-  wire n1062;
+  wire n1061;
+  wire n1063;
   wire n1064;
   wire n1065;
-  wire n1066;
-  wire n1068;
+  wire n1067;
+  wire n1069;
   wire n1070;
   wire n1071;
-  wire n1072;
-  wire n1074;
+  wire n1073;
+  wire n1075;
   wire n1076;
   wire n1077;
-  wire n1078;
-  wire n1080;
+  wire n1079;
+  wire n1081;
   wire n1082;
   wire n1083;
-  wire n1084;
-  wire n1086;
+  wire n1085;
+  wire n1087;
   wire n1088;
   wire n1089;
-  wire n1090;
-  wire n1092;
+  wire n1091;
+  wire n1093;
   wire n1094;
   wire n1095;
-  wire n1096;
-  wire n1098;
+  wire n1097;
+  wire n1099;
   wire n1100;
   wire n1101;
-  wire n1102;
-  wire n1104;
+  wire n1103;
+  wire n1105;
   wire n1106;
   wire n1107;
-  wire n1108;
-  wire n1110;
+  wire n1109;
+  wire n1111;
   wire n1112;
   wire n1113;
-  wire n1114;
-  wire n1116;
+  wire n1115;
+  wire n1117;
   wire n1118;
   wire n1119;
-  wire n1120;
-  wire n1122;
+  wire n1121;
+  wire n1123;
   wire n1124;
   wire n1125;
-  wire n1126;
-  wire n1128;
+  wire n1127;
+  wire n1129;
   wire n1130;
   wire n1131;
-  wire n1132;
-  wire n1134;
+  wire n1133;
+  wire n1135;
   wire n1136;
   wire n1137;
-  wire n1138;
-  wire n1140;
+  wire n1139;
+  wire n1141;
   wire n1142;
   wire n1143;
-  wire n1144;
-  wire n1146;
+  wire n1145;
+  wire n1147;
   wire n1148;
   wire n1149;
-  wire n1150;
-  wire n1152;
+  wire n1151;
+  wire n1153;
   wire n1154;
   wire n1155;
-  wire n1156;
-  wire n1158;
+  wire n1157;
+  wire n1159;
   wire n1160;
   wire n1161;
-  wire n1162;
-  wire n1164;
+  wire n1163;
+  wire n1165;
   wire n1166;
   wire n1167;
-  wire n1168;
-  wire n1170;
+  wire n1169;
+  wire n1171;
   wire n1172;
   wire n1173;
-  wire n1174;
-  wire n1176;
+  wire n1175;
+  wire n1177;
   wire n1178;
   wire n1179;
-  wire n1180;
-  wire n1182;
+  wire n1181;
+  wire n1183;
   wire n1184;
   wire n1185;
-  wire n1186;
-  wire n1188;
+  wire n1187;
+  wire n1189;
   wire n1190;
   wire n1191;
-  wire n1192;
-  wire n1194;
+  wire n1193;
+  wire n1195;
   wire n1196;
   wire n1197;
-  wire n1198;
-  wire n1200;
+  wire n1199;
+  wire n1201;
   wire n1202;
   wire n1203;
-  wire n1204;
-  wire n1206;
+  wire n1205;
+  wire n1207;
   wire n1208;
   wire n1209;
-  wire n1210;
-  wire n1212;
+  wire n1211;
+  wire n1213;
   wire n1214;
   wire n1215;
-  wire n1216;
-  wire n1218;
+  wire n1217;
+  wire n1219;
   wire n1220;
   wire n1221;
-  wire n1222;
-  wire n1224;
+  wire n1223;
+  wire n1225;
   wire n1226;
   wire n1227;
-  wire n1228;
-  wire n1230;
+  wire n1229;
+  wire n1231;
   wire n1232;
   wire n1233;
-  wire n1234;
-  wire n1236;
+  wire n1235;
+  wire n1237;
   wire n1238;
   wire n1239;
-  wire n1240;
-  wire n1242;
+  wire n1241;
+  wire n1243;
   wire n1244;
   wire n1245;
-  wire n1246;
-  wire n1248;
+  wire n1247;
+  wire n1249;
   wire n1250;
   wire n1251;
-  wire n1252;
-  wire n1254;
+  wire n1253;
+  wire n1255;
   wire n1256;
   wire n1257;
-  wire n1258;
-  wire n1260;
+  wire n1259;
+  wire n1261;
   wire n1262;
   wire n1263;
-  wire n1264;
-  wire n1266;
+  wire n1265;
+  wire n1267;
   wire n1268;
   wire n1269;
-  wire n1270;
-  wire n1272;
+  wire n1271;
+  wire n1273;
   wire n1274;
   wire n1275;
-  wire n1276;
-  wire n1278;
+  wire n1277;
+  wire n1279;
   wire n1280;
   wire n1281;
-  wire n1282;
-  wire n1284;
+  wire n1283;
+  wire n1285;
   wire n1286;
   wire n1287;
-  wire n1288;
-  wire n1290;
+  wire n1289;
+  wire n1291;
   wire n1292;
   wire n1293;
-  wire n1294;
-  wire n1296;
+  wire n1295;
+  wire n1297;
   wire n1298;
   wire n1299;
-  wire n1300;
-  wire n1302;
+  wire n1301;
+  wire n1303;
   wire n1304;
   wire n1305;
-  wire n1306;
-  wire n1308;
+  wire n1307;
+  wire n1309;
   wire n1310;
   wire n1311;
-  wire n1312;
-  wire n1314;
+  wire n1313;
+  wire n1315;
   wire n1316;
   wire n1317;
-  wire n1318;
-  wire n1320;
+  wire n1319;
+  wire n1321;
   wire n1322;
   wire n1323;
-  wire n1324;
-  wire n1326;
+  wire n1325;
+  wire n1327;
   wire n1328;
   wire n1329;
-  wire n1330;
-  wire n1332;
+  wire n1331;
+  wire n1333;
   wire n1334;
   wire n1335;
-  wire n1336;
-  wire n1338;
+  wire n1337;
+  wire n1339;
   wire n1340;
   wire n1341;
-  wire n1342;
-  wire n1344;
+  wire n1343;
+  wire n1345;
   wire n1346;
   wire n1347;
-  wire n1348;
-  wire n1350;
+  wire n1349;
+  wire n1351;
   wire n1352;
   wire n1353;
-  wire n1354;
-  wire n1356;
+  wire n1355;
+  wire n1357;
   wire n1358;
   wire n1359;
-  wire n1360;
-  wire n1362;
+  wire n1361;
+  wire n1363;
   wire n1364;
   wire n1365;
-  wire n1366;
-  wire n1368;
+  wire n1367;
+  wire n1369;
   wire n1370;
   wire n1371;
-  wire n1372;
-  wire n1374;
+  wire n1373;
+  wire n1375;
   wire n1376;
   wire n1377;
-  wire n1378;
-  wire n1380;
+  wire n1379;
+  wire n1381;
   wire n1382;
   wire n1383;
-  wire n1384;
-  wire n1386;
+  wire n1385;
+  wire n1387;
   wire n1388;
   wire n1389;
-  wire n1390;
-  wire n1392;
+  wire n1391;
+  wire n1393;
   wire n1394;
   wire n1395;
-  wire n1396;
-  wire n1398;
+  wire n1397;
+  wire n1399;
   wire n1400;
   wire n1401;
-  wire n1402;
-  wire n1404;
+  wire n1403;
+  wire n1405;
   wire n1406;
   wire n1407;
-  wire n1408;
-  wire n1410;
+  wire n1409;
+  wire n1411;
   wire n1412;
   wire n1413;
-  wire n1414;
-  wire n1416;
+  wire n1415;
+  wire n1417;
   wire n1418;
   wire n1419;
-  wire n1420;
-  wire n1422;
+  wire n1421;
+  wire n1423;
   wire n1424;
   wire n1425;
-  wire n1426;
-  wire n1428;
+  wire n1427;
+  wire n1429;
   wire n1430;
   wire n1431;
-  wire n1432;
-  wire n1434;
+  wire n1433;
+  wire n1435;
   wire n1436;
   wire n1437;
-  wire n1438;
-  wire n1440;
+  wire n1439;
+  wire n1441;
   wire n1442;
   wire n1443;
-  wire n1444;
-  wire n1446;
+  wire n1445;
+  wire n1447;
   wire n1448;
   wire n1449;
-  wire n1450;
-  wire n1452;
+  wire n1451;
+  wire n1453;
   wire n1454;
   wire n1455;
-  wire n1456;
-  wire n1458;
+  wire n1457;
+  wire n1459;
   wire n1460;
   wire n1461;
-  wire n1462;
-  wire n1464;
+  wire n1463;
+  wire n1465;
   wire n1466;
   wire n1467;
-  wire n1468;
-  wire n1470;
+  wire n1469;
+  wire n1471;
   wire n1472;
   wire n1473;
-  wire n1474;
-  wire n1476;
+  wire n1475;
+  wire n1477;
   wire n1478;
   wire n1479;
-  wire n1480;
-  wire n1482;
+  wire n1481;
+  wire n1483;
   wire n1484;
   wire n1485;
-  wire n1486;
-  wire n1488;
+  wire n1487;
+  wire n1489;
   wire n1490;
   wire n1491;
-  wire n1492;
-  wire n1494;
+  wire n1493;
+  wire n1495;
   wire n1496;
   wire n1497;
-  wire n1498;
-  wire n1500;
+  wire n1499;
+  wire n1501;
   wire n1502;
   wire n1503;
-  wire n1504;
-  wire n1506;
+  wire n1505;
+  wire n1507;
   wire n1508;
   wire n1509;
-  wire n1510;
-  wire n1512;
+  wire n1511;
+  wire n1513;
   wire n1514;
   wire n1515;
-  wire n1516;
-  wire n1518;
+  wire n1517;
+  wire n1519;
   wire n1520;
   wire n1521;
-  wire n1522;
-  wire n1524;
+  wire n1523;
+  wire n1525;
   wire n1526;
   wire n1527;
-  wire n1528;
-  wire n1530;
+  wire n1529;
+  wire n1531;
   wire n1532;
   wire n1533;
-  wire n1534;
-  wire n1536;
-  wire n1538;
+  wire n1535;
+  wire n1537;
+  wire n1539;
   wire n1540;
-  wire n1541;
-  wire [65:0] n1542;
-  wire [66:0] n1543;
-  wire [63:0] n1544;
-  wire [66:0] n1545;
-  wire n1546;
-  wire [66:0] n1547;
-  wire n1548;
-  wire [66:0] n1549;
-  wire [40:0] n1550;
-  wire n1552;
-  wire n1555;
-  wire n1557;
-  wire [66:0] n1558;
-  wire n1559;
-  wire [66:0] n1560;
-  wire n1561;
-  wire [66:0] n1562;
-  wire [11:0] n1563;
-  wire n1565;
-  wire n1568;
-  wire n1570;
-  wire [66:0] n1571;
-  wire n1572;
-  wire [66:0] n1573;
-  wire n1574;
-  wire [66:0] n1575;
-  wire n1576;
-  wire n1579;
-  wire [1:0] n1580;
+  wire [65:0] n1541;
+  wire [66:0] n1542;
+  wire [63:0] n1543;
+  wire [66:0] n1544;
+  wire n1545;
+  wire [66:0] n1546;
+  wire n1547;
+  wire [66:0] n1548;
+  wire [40:0] n1549;
+  wire n1551;
+  wire n1554;
+  wire n1556;
+  wire [66:0] n1557;
+  wire n1558;
+  wire [66:0] n1559;
+  wire n1560;
+  wire [66:0] n1561;
+  wire [11:0] n1562;
+  wire n1564;
+  wire n1567;
+  wire n1569;
+  wire [66:0] n1570;
+  wire n1571;
+  wire [66:0] n1572;
+  wire n1573;
+  wire [66:0] n1574;
+  wire n1575;
+  wire n1578;
+  wire [1:0] n1579;
+  reg n1580;
   reg n1581;
   reg n1582;
-  reg n1583;
+  wire n1584;
+  wire n1585;
+  wire n1586;
+  wire n1587;
+  wire n1588;
   wire n1589;
-  wire n1590;
-  wire n1591;
   wire n1592;
-  wire n1593;
   wire n1594;
+  wire n1595;
+  wire n1596;
   wire n1597;
-  wire n1599;
-  wire n1600;
+  wire n1598;
   wire n1601;
-  wire n1602;
   wire n1603;
+  wire n1604;
+  wire n1605;
   wire n1606;
-  wire n1608;
-  wire n1609;
+  wire n1607;
   wire n1610;
-  wire n1611;
-  wire n1612;
-  wire n1615;
-  wire [1:0] n1616;
-  reg n1617;
-  wire n1619;
-  wire n1621;
+  wire [1:0] n1611;
+  reg n1612;
+  wire n1614;
+  wire n1616;
+  wire n1617;
+  wire n1620;
   wire n1622;
-  wire n1625;
+  wire n1623;
+  wire n1624;
   wire n1627;
-  wire n1628;
   wire n1629;
-  wire n1632;
-  wire n1634;
-  wire [3:0] n1635;
-  reg n1638;
-  wire [64:0] n1641;
-  wire [64:0] n1643;
-  wire n1645;
-  wire [64:0] n1647;
-  wire [64:0] n1649;
-  wire n1651;
-  wire [64:0] n1653;
-  wire [64:0] n1655;
-  wire [1:0] n1656;
-  reg [64:0] n1657;
-  wire n1658;
-  wire [63:0] n1659;
-  wire [63:0] n1661;
-  wire n1662;
-  wire n1664;
-  wire n1665;
-  wire [61:0] n1668;
-  wire [31:0] n1670;
-  wire [63:0] n1671;
-  wire [63:0] n1672;
-  wire [63:0] n1673;
-  wire [31:0] n1674;
-  wire [63:0] n1675;
-  wire n1677;
-  localparam [39:0] n1678 = 40'b0000000000000000000000000000000000000000;
-  wire n1680;
-  wire n1683;
-  wire [1:0] n1684;
-  wire [10:0] n1685;
-  wire [10:0] n1686;
-  reg [10:0] n1687;
-  wire [28:0] n1688;
-  wire [28:0] n1689;
-  reg [28:0] n1690;
-  wire [23:0] n1692;
-  wire n1694;
-  wire [31:0] n1696;
-  wire [30:0] n1697;
-  wire [31:0] n1698;
-  wire n1700;
+  wire [3:0] n1630;
+  reg n1633;
+  wire [64:0] n1636;
+  wire [64:0] n1638;
+  wire n1640;
+  wire [64:0] n1642;
+  wire [64:0] n1644;
+  wire n1646;
+  wire [64:0] n1648;
+  wire [64:0] n1650;
+  wire [1:0] n1651;
+  reg [64:0] n1652;
+  wire n1653;
+  wire [63:0] n1654;
+  wire [63:0] n1656;
+  wire n1657;
+  wire n1659;
+  wire n1660;
+  wire [61:0] n1663;
+  wire [31:0] n1665;
+  wire [63:0] n1666;
+  wire [63:0] n1667;
+  wire [63:0] n1668;
+  wire [31:0] n1669;
+  wire [63:0] n1670;
+  wire n1672;
+  localparam [39:0] n1673 = 40'b0000000000000000000000000000000000000000;
+  wire n1675;
+  wire n1678;
+  wire [1:0] n1679;
+  wire [10:0] n1680;
+  wire [10:0] n1681;
+  reg [10:0] n1682;
+  wire [28:0] n1683;
+  wire [28:0] n1684;
+  reg [28:0] n1685;
+  wire [23:0] n1687;
+  wire n1689;
+  wire [31:0] n1691;
+  wire [30:0] n1692;
+  wire [31:0] n1693;
+  wire n1695;
+  wire [63:0] n1696;
+  wire n1698;
+  wire n1699;
   wire [63:0] n1701;
-  wire n1703;
-  wire n1704;
-  wire [63:0] n1706;
-  wire [63:0] n1707;
-  wire [79:0] n1708;
-  wire [79:0] n1710;
-  wire n1712;
-  wire [30:0] n1715;
-  wire [14:0] n1716;
-  wire [63:0] n1717;
-  wire [79:0] n1718;
-  wire [79:0] n1719;
-  wire [79:0] n1720;
-  wire [79:0] n1722;
-  wire n1726;
-  wire [3:0] n1727;
-  reg [1:0] n1731;
-  reg [79:0] n1733;
-  reg [79:0] n1735;
-  reg [1:0] n1737;
-  reg [1:0] n1739;
-  reg [63:0] n1741;
-  reg [63:0] n1743;
-  reg n1745;
-  reg [17:0] n1747;
-  reg n1749;
-  reg [79:0] n1751;
-  reg [127:0] n1753;
-  reg n1757;
-  reg [79:0] n1760;
-  wire [1:0] n1813;
-  wire [79:0] n1815;
-  wire [79:0] n1817;
-  wire [1:0] n1819;
-  wire [1:0] n1821;
-  wire [63:0] n1823;
-  wire [63:0] n1825;
-  wire n1827;
-  wire [17:0] n1829;
-  wire n1831;
-  wire [79:0] n1833;
-  wire [127:0] n1835;
-  wire n1837;
-  wire [79:0] n1839;
-  wire n1919;
-  wire n1920;
-  reg [1:0] n1922;
-  reg [79:0] n1923;
-  reg [79:0] n1924;
-  reg [1:0] n1925;
-  reg [1:0] n1926;
-  reg [63:0] n1927;
-  reg [63:0] n1928;
-  reg n1929;
-  reg [17:0] n1930;
-  reg n1931;
-  reg [79:0] n1932;
-  reg [127:0] n1933;
-  reg n1934;
-  reg [79:0] n1935;
-  assign busy = n1920; //(module output)
+  wire [63:0] n1702;
+  wire [79:0] n1703;
+  wire [79:0] n1705;
+  wire n1707;
+  wire [30:0] n1710;
+  wire [14:0] n1711;
+  wire [63:0] n1712;
+  wire [79:0] n1713;
+  wire [79:0] n1714;
+  wire [79:0] n1715;
+  wire [79:0] n1717;
+  wire n1721;
+  wire [3:0] n1722;
+  reg [1:0] n1726;
+  reg [79:0] n1728;
+  reg [79:0] n1730;
+  reg [1:0] n1732;
+  reg [1:0] n1734;
+  reg [63:0] n1736;
+  reg [63:0] n1738;
+  reg n1740;
+  reg [17:0] n1742;
+  reg n1744;
+  reg [79:0] n1746;
+  reg [127:0] n1748;
+  reg n1752;
+  reg [79:0] n1755;
+  wire [1:0] n1806;
+  wire [79:0] n1808;
+  wire [79:0] n1810;
+  wire [1:0] n1812;
+  wire [1:0] n1814;
+  wire [63:0] n1816;
+  wire [63:0] n1818;
+  wire n1820;
+  wire [17:0] n1822;
+  wire n1824;
+  wire [79:0] n1826;
+  wire [127:0] n1828;
+  wire n1830;
+  wire [79:0] n1832;
+  wire n1909;
+  wire n1910;
+  reg [1:0] n1912;
+  reg [79:0] n1913;
+  reg [79:0] n1914;
+  reg [1:0] n1915;
+  reg [1:0] n1916;
+  reg [63:0] n1917;
+  reg [63:0] n1918;
+  reg n1919;
+  reg [17:0] n1920;
+  reg n1921;
+  reg [79:0] n1922;
+  reg [127:0] n1923;
+  reg n1924;
+  reg [79:0] n1925;
+  assign busy = n1910; //(module output)
   assign done = done_reg; //(module output)
   assign result = result_reg; //(module output)
   /* mc68881_fp80_mul_unit.vhd:42:10  */
   always @*
-    state_reg = n1922; // (isignal)
+    state_reg = n1912; // (isignal)
   initial
     state_reg = 2'b00;
   /* mc68881_fp80_mul_unit.vhd:45:10  */
   always @*
-    a_reg = n1923; // (isignal)
+    a_reg = n1913; // (isignal)
   initial
     a_reg = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
   /* mc68881_fp80_mul_unit.vhd:46:10  */
   always @*
-    b_reg = n1924; // (isignal)
+    b_reg = n1914; // (isignal)
   initial
     b_reg = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
   /* mc68881_fp80_mul_unit.vhd:47:10  */
   always @*
-    rm_reg = n1925; // (isignal)
+    rm_reg = n1915; // (isignal)
   initial
     rm_reg = 2'b00;
   /* mc68881_fp80_mul_unit.vhd:48:10  */
   always @*
-    rp_reg = n1926; // (isignal)
+    rp_reg = n1916; // (isignal)
   initial
     rp_reg = 2'b00;
   /* mc68881_fp80_mul_unit.vhd:51:10  */
   always @*
-    a_mant_reg = n1927; // (isignal)
+    a_mant_reg = n1917; // (isignal)
   initial
     a_mant_reg = 64'b0000000000000000000000000000000000000000000000000000000000000000;
   /* mc68881_fp80_mul_unit.vhd:52:10  */
   always @*
-    b_mant_reg = n1928; // (isignal)
+    b_mant_reg = n1918; // (isignal)
   initial
     b_mant_reg = 64'b0000000000000000000000000000000000000000000000000000000000000000;
   /* mc68881_fp80_mul_unit.vhd:55:10  */
   always @*
-    res_sign_reg = n1929; // (isignal)
+    res_sign_reg = n1919; // (isignal)
   initial
     res_sign_reg = 1'b0;
   /* mc68881_fp80_mul_unit.vhd:56:10  */
   always @*
-    exp_res_reg = n1930; // (isignal)
+    exp_res_reg = n1920; // (isignal)
   initial
     exp_res_reg = 18'b000000000000000000;
   /* mc68881_fp80_mul_unit.vhd:57:10  */
   always @*
-    early_exit_reg = n1931; // (isignal)
+    early_exit_reg = n1921; // (isignal)
   initial
     early_exit_reg = 1'b0;
   /* mc68881_fp80_mul_unit.vhd:58:10  */
   always @*
-    early_result_reg = n1932; // (isignal)
+    early_result_reg = n1922; // (isignal)
   initial
     early_result_reg = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
   /* mc68881_fp80_mul_unit.vhd:61:10  */
   always @*
-    mant_prod_reg = n1933; // (isignal)
+    mant_prod_reg = n1923; // (isignal)
   initial
     mant_prod_reg = 128'b00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000;
   /* mc68881_fp80_mul_unit.vhd:64:10  */
   always @*
-    done_reg = n1934; // (isignal)
+    done_reg = n1924; // (isignal)
   initial
     done_reg = 1'b0;
   /* mc68881_fp80_mul_unit.vhd:65:10  */
   always @*
-    result_reg = n1935; // (isignal)
+    result_reg = n1925; // (isignal)
   initial
     result_reg = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_fp80_mul_unit.vhd:98:16  */
-  assign n41 = ~reset_n;
-  /* mc68881_fp80_mul_unit.vhd:118:11  */
-  assign n43 = start ? 2'b01 : state_reg;
-  /* mc68881_fp80_mul_unit.vhd:118:11  */
-  assign n44 = start ? a_in : a_reg;
-  /* mc68881_fp80_mul_unit.vhd:118:11  */
-  assign n45 = start ? b_in : b_reg;
-  /* mc68881_fp80_mul_unit.vhd:118:11  */
-  assign n46 = start ? round_mode : rm_reg;
-  /* mc68881_fp80_mul_unit.vhd:118:11  */
-  assign n47 = start ? round_prec : rp_reg;
-  /* mc68881_fp80_mul_unit.vhd:117:9  */
-  assign n49 = state_reg == 2'b00;
+  /* mc68881_fp80_mul_unit.vhd:97:16  */
+  assign n40 = ~reset_n;
+  /* mc68881_fp80_mul_unit.vhd:117:11  */
+  assign n42 = start ? 2'b01 : state_reg;
+  /* mc68881_fp80_mul_unit.vhd:117:11  */
+  assign n43 = start ? a_in : a_reg;
+  /* mc68881_fp80_mul_unit.vhd:117:11  */
+  assign n44 = start ? b_in : b_reg;
+  /* mc68881_fp80_mul_unit.vhd:117:11  */
+  assign n45 = start ? round_mode : rm_reg;
+  /* mc68881_fp80_mul_unit.vhd:117:11  */
+  assign n46 = start ? round_prec : rp_reg;
+  /* mc68881_fp80_mul_unit.vhd:116:9  */
+  assign n48 = state_reg == 2'b00;
+  /* mc68881_fp80_mul_unit.vhd:127:37  */
+  assign n49 = a_reg[63:0]; // extract
   /* mc68881_fp80_mul_unit.vhd:128:37  */
-  assign n50 = a_reg[63:0]; // extract
-  /* mc68881_fp80_mul_unit.vhd:129:37  */
-  assign n51 = b_reg[63:0]; // extract
-  /* mc68881_fp80_mul_unit.vhd:132:28  */
-  assign n52 = a_reg[78:64]; // extract
-  /* mc68881_fp80_mul_unit.vhd:132:73  */
-  assign n54 = n52 == 15'b000000000000000;
-  /* mc68881_fp80_mul_unit.vhd:132:90  */
-  assign n56 = n50 != 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_fp80_mul_unit.vhd:132:77  */
-  assign n57 = n56 & n54;
-  /* mc68881_pkg.vhd:2502:9  */
-  assign n64 = a_reg[63:32]; // extract
-  /* mc68881_pkg.vhd:2502:37  */
-  assign n66 = n64 == 32'b00000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2504:13  */
-  assign n67 = a_reg[31:0]; // extract
-  /* mc68881_pkg.vhd:2504:36  */
-  assign n69 = {n67, 32'b00000000000000000000000000000000};
-  /* mc68881_pkg.vhd:2502:5  */
-  assign n72 = n66 ? 31'b0000000000000000000000000100000 : 31'b0000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2502:5  */
-  assign n74 = n66 ? n69 : n50;
-  /* mc68881_pkg.vhd:2506:9  */
-  assign n75 = n74[63:48]; // extract
-  /* mc68881_pkg.vhd:2506:37  */
-  assign n77 = n75 == 16'b0000000000000000;
-  /* mc68881_pkg.vhd:2507:18  */
-  assign n78 = {1'b0, n72};  //  uext
-  /* mc68881_pkg.vhd:2507:18  */
-  assign n80 = n78 + 32'b00000000000000000000000000010000;
-  /* mc68881_pkg.vhd:2507:7  */
-  assign n81 = n80[30:0];  // trunc
-  /* mc68881_pkg.vhd:2508:13  */
-  assign n82 = n74[47:0]; // extract
-  /* mc68881_pkg.vhd:2508:36  */
-  assign n84 = {n82, 16'b0000000000000000};
-  /* mc68881_pkg.vhd:2506:5  */
-  assign n85 = n77 ? n81 : n72;
-  /* mc68881_pkg.vhd:2506:5  */
-  assign n86 = n77 ? n84 : n74;
-  /* mc68881_pkg.vhd:2510:9  */
-  assign n87 = n86[63:56]; // extract
-  /* mc68881_pkg.vhd:2510:36  */
-  assign n89 = n87 == 8'b00000000;
-  /* mc68881_pkg.vhd:2511:18  */
-  assign n90 = {1'b0, n85};  //  uext
-  /* mc68881_pkg.vhd:2511:18  */
-  assign n92 = n90 + 32'b00000000000000000000000000001000;
-  /* mc68881_pkg.vhd:2511:7  */
-  assign n93 = n92[30:0];  // trunc
-  /* mc68881_pkg.vhd:2512:13  */
-  assign n94 = n86[55:0]; // extract
-  /* mc68881_pkg.vhd:2512:35  */
-  assign n96 = {n94, 8'b00000000};
-  /* mc68881_pkg.vhd:2510:5  */
-  assign n97 = n89 ? n93 : n85;
-  /* mc68881_pkg.vhd:2510:5  */
-  assign n98 = n89 ? n96 : n86;
-  /* mc68881_pkg.vhd:2514:9  */
-  assign n99 = n98[63:60]; // extract
-  /* mc68881_pkg.vhd:2514:36  */
-  assign n101 = n99 == 4'b0000;
-  /* mc68881_pkg.vhd:2515:18  */
-  assign n102 = {1'b0, n97};  //  uext
-  /* mc68881_pkg.vhd:2515:18  */
-  assign n104 = n102 + 32'b00000000000000000000000000000100;
-  /* mc68881_pkg.vhd:2515:7  */
-  assign n105 = n104[30:0];  // trunc
-  /* mc68881_pkg.vhd:2516:13  */
-  assign n106 = n98[59:0]; // extract
-  /* mc68881_pkg.vhd:2516:35  */
-  assign n108 = {n106, 4'b0000};
-  /* mc68881_pkg.vhd:2514:5  */
-  assign n109 = n101 ? n105 : n97;
-  /* mc68881_pkg.vhd:2514:5  */
-  assign n110 = n101 ? n108 : n98;
-  /* mc68881_pkg.vhd:2518:9  */
-  assign n111 = n110[63:62]; // extract
-  /* mc68881_pkg.vhd:2518:36  */
-  assign n113 = n111 == 2'b00;
+  assign n50 = b_reg[63:0]; // extract
+  /* mc68881_fp80_mul_unit.vhd:131:28  */
+  assign n51 = a_reg[78:64]; // extract
+  /* mc68881_fp80_mul_unit.vhd:131:73  */
+  assign n53 = n51 == 15'b000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:131:90  */
+  assign n55 = n49 != 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:131:77  */
+  assign n56 = n55 & n53;
+  /* mc68881_pkg.vhd:2499:9  */
+  assign n63 = a_reg[63:32]; // extract
+  /* mc68881_pkg.vhd:2499:37  */
+  assign n65 = n63 == 32'b00000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2501:13  */
+  assign n66 = a_reg[31:0]; // extract
+  /* mc68881_pkg.vhd:2501:36  */
+  assign n68 = {n66, 32'b00000000000000000000000000000000};
+  /* mc68881_pkg.vhd:2499:5  */
+  assign n71 = n65 ? 31'b0000000000000000000000000100000 : 31'b0000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2499:5  */
+  assign n73 = n65 ? n68 : n49;
+  /* mc68881_pkg.vhd:2503:9  */
+  assign n74 = n73[63:48]; // extract
+  /* mc68881_pkg.vhd:2503:37  */
+  assign n76 = n74 == 16'b0000000000000000;
+  /* mc68881_pkg.vhd:2504:18  */
+  assign n77 = {1'b0, n71};  //  uext
+  /* mc68881_pkg.vhd:2504:18  */
+  assign n79 = n77 + 32'b00000000000000000000000000010000;
+  /* mc68881_pkg.vhd:2504:7  */
+  assign n80 = n79[30:0];  // trunc
+  /* mc68881_pkg.vhd:2505:13  */
+  assign n81 = n73[47:0]; // extract
+  /* mc68881_pkg.vhd:2505:36  */
+  assign n83 = {n81, 16'b0000000000000000};
+  /* mc68881_pkg.vhd:2503:5  */
+  assign n84 = n76 ? n80 : n71;
+  /* mc68881_pkg.vhd:2503:5  */
+  assign n85 = n76 ? n83 : n73;
+  /* mc68881_pkg.vhd:2507:9  */
+  assign n86 = n85[63:56]; // extract
+  /* mc68881_pkg.vhd:2507:36  */
+  assign n88 = n86 == 8'b00000000;
+  /* mc68881_pkg.vhd:2508:18  */
+  assign n89 = {1'b0, n84};  //  uext
+  /* mc68881_pkg.vhd:2508:18  */
+  assign n91 = n89 + 32'b00000000000000000000000000001000;
+  /* mc68881_pkg.vhd:2508:7  */
+  assign n92 = n91[30:0];  // trunc
+  /* mc68881_pkg.vhd:2509:13  */
+  assign n93 = n85[55:0]; // extract
+  /* mc68881_pkg.vhd:2509:35  */
+  assign n95 = {n93, 8'b00000000};
+  /* mc68881_pkg.vhd:2507:5  */
+  assign n96 = n88 ? n92 : n84;
+  /* mc68881_pkg.vhd:2507:5  */
+  assign n97 = n88 ? n95 : n85;
+  /* mc68881_pkg.vhd:2511:9  */
+  assign n98 = n97[63:60]; // extract
+  /* mc68881_pkg.vhd:2511:36  */
+  assign n100 = n98 == 4'b0000;
+  /* mc68881_pkg.vhd:2512:18  */
+  assign n101 = {1'b0, n96};  //  uext
+  /* mc68881_pkg.vhd:2512:18  */
+  assign n103 = n101 + 32'b00000000000000000000000000000100;
+  /* mc68881_pkg.vhd:2512:7  */
+  assign n104 = n103[30:0];  // trunc
+  /* mc68881_pkg.vhd:2513:13  */
+  assign n105 = n97[59:0]; // extract
+  /* mc68881_pkg.vhd:2513:35  */
+  assign n107 = {n105, 4'b0000};
+  /* mc68881_pkg.vhd:2511:5  */
+  assign n108 = n100 ? n104 : n96;
+  /* mc68881_pkg.vhd:2511:5  */
+  assign n109 = n100 ? n107 : n97;
+  /* mc68881_pkg.vhd:2515:9  */
+  assign n110 = n109[63:62]; // extract
+  /* mc68881_pkg.vhd:2515:36  */
+  assign n112 = n110 == 2'b00;
+  /* mc68881_pkg.vhd:2516:18  */
+  assign n113 = {1'b0, n108};  //  uext
+  /* mc68881_pkg.vhd:2516:18  */
+  assign n115 = n113 + 32'b00000000000000000000000000000010;
+  /* mc68881_pkg.vhd:2516:7  */
+  assign n116 = n115[30:0];  // trunc
+  /* mc68881_pkg.vhd:2517:13  */
+  assign n117 = n109[61:0]; // extract
+  /* mc68881_pkg.vhd:2517:35  */
+  assign n119 = {n117, 2'b00};
+  /* mc68881_pkg.vhd:2515:5  */
+  assign n120 = n112 ? n116 : n108;
+  /* mc68881_pkg.vhd:2515:5  */
+  assign n121 = n112 ? n119 : n109;
+  /* mc68881_pkg.vhd:2519:9  */
+  assign n122 = n121[63]; // extract
   /* mc68881_pkg.vhd:2519:18  */
-  assign n114 = {1'b0, n109};  //  uext
+  assign n123 = ~n122;
+  /* mc68881_pkg.vhd:2520:18  */
+  assign n124 = {1'b0, n120};  //  uext
+  /* mc68881_pkg.vhd:2520:18  */
+  assign n126 = n124 + 32'b00000000000000000000000000000001;
+  /* mc68881_pkg.vhd:2520:7  */
+  assign n127 = n126[30:0];  // trunc
+  /* mc68881_pkg.vhd:2519:5  */
+  assign n128 = n123 ? n127 : n120;
+  /* mc68881_fp80_mul_unit.vhd:133:25  */
+  assign n129 = n49 << n128;
+  /* mc68881_fp80_mul_unit.vhd:134:28  */
+  assign n130 = {1'b0, n128};  //  uext
+  /* mc68881_fp80_mul_unit.vhd:134:28  */
+  assign n132 = 32'b00000000000000000000000000000001 - n130;
+  /* mc68881_fp80_mul_unit.vhd:136:51  */
+  assign n133 = a_reg[78:64]; // extract
+  /* mc68881_fp80_mul_unit.vhd:136:26  */
+  assign n134 = {16'b0, n133};  //  uext
+  /* mc68881_fp80_mul_unit.vhd:136:13  */
+  assign n135 = {1'b0, n134};  //  uext
+  /* mc68881_fp80_mul_unit.vhd:131:11  */
+  assign n137 = n56 ? n132 : n135;
+  /* mc68881_fp80_mul_unit.vhd:131:11  */
+  assign n138 = n56 ? n129 : n49;
+  /* mc68881_fp80_mul_unit.vhd:139:28  */
+  assign n139 = b_reg[78:64]; // extract
+  /* mc68881_fp80_mul_unit.vhd:139:73  */
+  assign n141 = n139 == 15'b000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:139:90  */
+  assign n143 = n50 != 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:139:77  */
+  assign n144 = n143 & n141;
+  /* mc68881_pkg.vhd:2499:9  */
+  assign n151 = b_reg[63:32]; // extract
+  /* mc68881_pkg.vhd:2499:37  */
+  assign n153 = n151 == 32'b00000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2501:13  */
+  assign n154 = b_reg[31:0]; // extract
+  /* mc68881_pkg.vhd:2501:36  */
+  assign n156 = {n154, 32'b00000000000000000000000000000000};
+  /* mc68881_pkg.vhd:2499:5  */
+  assign n159 = n153 ? 31'b0000000000000000000000000100000 : 31'b0000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2499:5  */
+  assign n161 = n153 ? n156 : n50;
+  /* mc68881_pkg.vhd:2503:9  */
+  assign n162 = n161[63:48]; // extract
+  /* mc68881_pkg.vhd:2503:37  */
+  assign n164 = n162 == 16'b0000000000000000;
+  /* mc68881_pkg.vhd:2504:18  */
+  assign n165 = {1'b0, n159};  //  uext
+  /* mc68881_pkg.vhd:2504:18  */
+  assign n167 = n165 + 32'b00000000000000000000000000010000;
+  /* mc68881_pkg.vhd:2504:7  */
+  assign n168 = n167[30:0];  // trunc
+  /* mc68881_pkg.vhd:2505:13  */
+  assign n169 = n161[47:0]; // extract
+  /* mc68881_pkg.vhd:2505:36  */
+  assign n171 = {n169, 16'b0000000000000000};
+  /* mc68881_pkg.vhd:2503:5  */
+  assign n172 = n164 ? n168 : n159;
+  /* mc68881_pkg.vhd:2503:5  */
+  assign n173 = n164 ? n171 : n161;
+  /* mc68881_pkg.vhd:2507:9  */
+  assign n174 = n173[63:56]; // extract
+  /* mc68881_pkg.vhd:2507:36  */
+  assign n176 = n174 == 8'b00000000;
+  /* mc68881_pkg.vhd:2508:18  */
+  assign n177 = {1'b0, n172};  //  uext
+  /* mc68881_pkg.vhd:2508:18  */
+  assign n179 = n177 + 32'b00000000000000000000000000001000;
+  /* mc68881_pkg.vhd:2508:7  */
+  assign n180 = n179[30:0];  // trunc
+  /* mc68881_pkg.vhd:2509:13  */
+  assign n181 = n173[55:0]; // extract
+  /* mc68881_pkg.vhd:2509:35  */
+  assign n183 = {n181, 8'b00000000};
+  /* mc68881_pkg.vhd:2507:5  */
+  assign n184 = n176 ? n180 : n172;
+  /* mc68881_pkg.vhd:2507:5  */
+  assign n185 = n176 ? n183 : n173;
+  /* mc68881_pkg.vhd:2511:9  */
+  assign n186 = n185[63:60]; // extract
+  /* mc68881_pkg.vhd:2511:36  */
+  assign n188 = n186 == 4'b0000;
+  /* mc68881_pkg.vhd:2512:18  */
+  assign n189 = {1'b0, n184};  //  uext
+  /* mc68881_pkg.vhd:2512:18  */
+  assign n191 = n189 + 32'b00000000000000000000000000000100;
+  /* mc68881_pkg.vhd:2512:7  */
+  assign n192 = n191[30:0];  // trunc
+  /* mc68881_pkg.vhd:2513:13  */
+  assign n193 = n185[59:0]; // extract
+  /* mc68881_pkg.vhd:2513:35  */
+  assign n195 = {n193, 4'b0000};
+  /* mc68881_pkg.vhd:2511:5  */
+  assign n196 = n188 ? n192 : n184;
+  /* mc68881_pkg.vhd:2511:5  */
+  assign n197 = n188 ? n195 : n185;
+  /* mc68881_pkg.vhd:2515:9  */
+  assign n198 = n197[63:62]; // extract
+  /* mc68881_pkg.vhd:2515:36  */
+  assign n200 = n198 == 2'b00;
+  /* mc68881_pkg.vhd:2516:18  */
+  assign n201 = {1'b0, n196};  //  uext
+  /* mc68881_pkg.vhd:2516:18  */
+  assign n203 = n201 + 32'b00000000000000000000000000000010;
+  /* mc68881_pkg.vhd:2516:7  */
+  assign n204 = n203[30:0];  // trunc
+  /* mc68881_pkg.vhd:2517:13  */
+  assign n205 = n197[61:0]; // extract
+  /* mc68881_pkg.vhd:2517:35  */
+  assign n207 = {n205, 2'b00};
+  /* mc68881_pkg.vhd:2515:5  */
+  assign n208 = n200 ? n204 : n196;
+  /* mc68881_pkg.vhd:2515:5  */
+  assign n209 = n200 ? n207 : n197;
+  /* mc68881_pkg.vhd:2519:9  */
+  assign n210 = n209[63]; // extract
   /* mc68881_pkg.vhd:2519:18  */
-  assign n116 = n114 + 32'b00000000000000000000000000000010;
-  /* mc68881_pkg.vhd:2519:7  */
-  assign n117 = n116[30:0];  // trunc
-  /* mc68881_pkg.vhd:2520:13  */
-  assign n118 = n110[61:0]; // extract
-  /* mc68881_pkg.vhd:2520:35  */
-  assign n120 = {n118, 2'b00};
-  /* mc68881_pkg.vhd:2518:5  */
-  assign n121 = n113 ? n117 : n109;
-  /* mc68881_pkg.vhd:2518:5  */
-  assign n122 = n113 ? n120 : n110;
-  /* mc68881_pkg.vhd:2522:9  */
-  assign n123 = n122[63]; // extract
-  /* mc68881_pkg.vhd:2522:18  */
-  assign n124 = ~n123;
-  /* mc68881_pkg.vhd:2523:18  */
-  assign n125 = {1'b0, n121};  //  uext
-  /* mc68881_pkg.vhd:2523:18  */
-  assign n127 = n125 + 32'b00000000000000000000000000000001;
-  /* mc68881_pkg.vhd:2523:7  */
-  assign n128 = n127[30:0];  // trunc
-  /* mc68881_pkg.vhd:2522:5  */
-  assign n129 = n124 ? n128 : n121;
-  /* mc68881_fp80_mul_unit.vhd:134:25  */
-  assign n130 = n50 << n129;
-  /* mc68881_fp80_mul_unit.vhd:135:28  */
-  assign n131 = {1'b0, n129};  //  uext
-  /* mc68881_fp80_mul_unit.vhd:135:28  */
-  assign n133 = 32'b00000000000000000000000000000001 - n131;
-  /* mc68881_fp80_mul_unit.vhd:137:51  */
-  assign n134 = a_reg[78:64]; // extract
-  /* mc68881_fp80_mul_unit.vhd:137:26  */
-  assign n135 = {16'b0, n134};  //  uext
-  /* mc68881_fp80_mul_unit.vhd:137:13  */
-  assign n136 = {1'b0, n135};  //  uext
-  /* mc68881_fp80_mul_unit.vhd:132:11  */
-  assign n138 = n57 ? n133 : n136;
-  /* mc68881_fp80_mul_unit.vhd:132:11  */
-  assign n139 = n57 ? n130 : n50;
-  /* mc68881_fp80_mul_unit.vhd:140:28  */
-  assign n140 = b_reg[78:64]; // extract
-  /* mc68881_fp80_mul_unit.vhd:140:73  */
-  assign n142 = n140 == 15'b000000000000000;
-  /* mc68881_fp80_mul_unit.vhd:140:90  */
-  assign n144 = n51 != 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_fp80_mul_unit.vhd:140:77  */
-  assign n145 = n144 & n142;
-  /* mc68881_pkg.vhd:2502:9  */
-  assign n152 = b_reg[63:32]; // extract
-  /* mc68881_pkg.vhd:2502:37  */
-  assign n154 = n152 == 32'b00000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2504:13  */
-  assign n155 = b_reg[31:0]; // extract
-  /* mc68881_pkg.vhd:2504:36  */
-  assign n157 = {n155, 32'b00000000000000000000000000000000};
-  /* mc68881_pkg.vhd:2502:5  */
-  assign n160 = n154 ? 31'b0000000000000000000000000100000 : 31'b0000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2502:5  */
-  assign n162 = n154 ? n157 : n51;
-  /* mc68881_pkg.vhd:2506:9  */
-  assign n163 = n162[63:48]; // extract
-  /* mc68881_pkg.vhd:2506:37  */
-  assign n165 = n163 == 16'b0000000000000000;
-  /* mc68881_pkg.vhd:2507:18  */
-  assign n166 = {1'b0, n160};  //  uext
-  /* mc68881_pkg.vhd:2507:18  */
-  assign n168 = n166 + 32'b00000000000000000000000000010000;
-  /* mc68881_pkg.vhd:2507:7  */
-  assign n169 = n168[30:0];  // trunc
-  /* mc68881_pkg.vhd:2508:13  */
-  assign n170 = n162[47:0]; // extract
-  /* mc68881_pkg.vhd:2508:36  */
-  assign n172 = {n170, 16'b0000000000000000};
-  /* mc68881_pkg.vhd:2506:5  */
-  assign n173 = n165 ? n169 : n160;
-  /* mc68881_pkg.vhd:2506:5  */
-  assign n174 = n165 ? n172 : n162;
-  /* mc68881_pkg.vhd:2510:9  */
-  assign n175 = n174[63:56]; // extract
-  /* mc68881_pkg.vhd:2510:36  */
-  assign n177 = n175 == 8'b00000000;
-  /* mc68881_pkg.vhd:2511:18  */
-  assign n178 = {1'b0, n173};  //  uext
-  /* mc68881_pkg.vhd:2511:18  */
-  assign n180 = n178 + 32'b00000000000000000000000000001000;
-  /* mc68881_pkg.vhd:2511:7  */
-  assign n181 = n180[30:0];  // trunc
-  /* mc68881_pkg.vhd:2512:13  */
-  assign n182 = n174[55:0]; // extract
-  /* mc68881_pkg.vhd:2512:35  */
-  assign n184 = {n182, 8'b00000000};
-  /* mc68881_pkg.vhd:2510:5  */
-  assign n185 = n177 ? n181 : n173;
-  /* mc68881_pkg.vhd:2510:5  */
-  assign n186 = n177 ? n184 : n174;
-  /* mc68881_pkg.vhd:2514:9  */
-  assign n187 = n186[63:60]; // extract
-  /* mc68881_pkg.vhd:2514:36  */
-  assign n189 = n187 == 4'b0000;
-  /* mc68881_pkg.vhd:2515:18  */
-  assign n190 = {1'b0, n185};  //  uext
-  /* mc68881_pkg.vhd:2515:18  */
-  assign n192 = n190 + 32'b00000000000000000000000000000100;
-  /* mc68881_pkg.vhd:2515:7  */
-  assign n193 = n192[30:0];  // trunc
-  /* mc68881_pkg.vhd:2516:13  */
-  assign n194 = n186[59:0]; // extract
-  /* mc68881_pkg.vhd:2516:35  */
-  assign n196 = {n194, 4'b0000};
-  /* mc68881_pkg.vhd:2514:5  */
-  assign n197 = n189 ? n193 : n185;
-  /* mc68881_pkg.vhd:2514:5  */
-  assign n198 = n189 ? n196 : n186;
-  /* mc68881_pkg.vhd:2518:9  */
-  assign n199 = n198[63:62]; // extract
-  /* mc68881_pkg.vhd:2518:36  */
-  assign n201 = n199 == 2'b00;
-  /* mc68881_pkg.vhd:2519:18  */
-  assign n202 = {1'b0, n197};  //  uext
-  /* mc68881_pkg.vhd:2519:18  */
-  assign n204 = n202 + 32'b00000000000000000000000000000010;
-  /* mc68881_pkg.vhd:2519:7  */
-  assign n205 = n204[30:0];  // trunc
-  /* mc68881_pkg.vhd:2520:13  */
-  assign n206 = n198[61:0]; // extract
-  /* mc68881_pkg.vhd:2520:35  */
-  assign n208 = {n206, 2'b00};
-  /* mc68881_pkg.vhd:2518:5  */
-  assign n209 = n201 ? n205 : n197;
-  /* mc68881_pkg.vhd:2518:5  */
-  assign n210 = n201 ? n208 : n198;
-  /* mc68881_pkg.vhd:2522:9  */
-  assign n211 = n210[63]; // extract
-  /* mc68881_pkg.vhd:2522:18  */
-  assign n212 = ~n211;
-  /* mc68881_pkg.vhd:2523:18  */
-  assign n213 = {1'b0, n209};  //  uext
-  /* mc68881_pkg.vhd:2523:18  */
-  assign n215 = n213 + 32'b00000000000000000000000000000001;
-  /* mc68881_pkg.vhd:2523:7  */
-  assign n216 = n215[30:0];  // trunc
-  /* mc68881_pkg.vhd:2522:5  */
-  assign n217 = n212 ? n216 : n209;
-  /* mc68881_fp80_mul_unit.vhd:142:25  */
-  assign n218 = n51 << n217;
-  /* mc68881_fp80_mul_unit.vhd:143:28  */
-  assign n219 = {1'b0, n217};  //  uext
-  /* mc68881_fp80_mul_unit.vhd:143:28  */
-  assign n221 = 32'b00000000000000000000000000000001 - n219;
-  /* mc68881_fp80_mul_unit.vhd:145:51  */
-  assign n222 = b_reg[78:64]; // extract
-  /* mc68881_fp80_mul_unit.vhd:145:26  */
-  assign n223 = {16'b0, n222};  //  uext
-  /* mc68881_fp80_mul_unit.vhd:145:13  */
-  assign n224 = {1'b0, n223};  //  uext
-  /* mc68881_fp80_mul_unit.vhd:140:11  */
-  assign n226 = n145 ? n221 : n224;
-  /* mc68881_fp80_mul_unit.vhd:140:11  */
-  assign n227 = n145 ? n218 : n51;
-  /* mc68881_fp80_mul_unit.vhd:152:32  */
-  assign n228 = a_reg[79]; // extract
-  /* mc68881_fp80_mul_unit.vhd:152:54  */
-  assign n229 = b_reg[79]; // extract
-  /* mc68881_fp80_mul_unit.vhd:152:45  */
-  assign n230 = n228 ^ n229;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n242 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n245 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n247 = a_reg[63:0]; // extract
-  assign n248 = {n247, n245, n242};
-  /* mc68881_pkg.vhd:2101:20  */
-  assign n249 = n248[15:1]; // extract
-  /* mc68881_pkg.vhd:2101:24  */
-  assign n251 = n249 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n263 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n266 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n268 = a_reg[63:0]; // extract
-  assign n269 = {n268, n266, n263};
-  assign n273 = n272[62:0]; // extract
-  /* mc68881_pkg.vhd:2094:20  */
-  assign n274 = n269[15:1]; // extract
-  /* mc68881_pkg.vhd:2094:24  */
-  assign n276 = n274 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2095:16  */
-  assign n277 = n269[79:16]; // extract
-  /* mc68881_pkg.vhd:2095:21  */
-  assign n279 = n277 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2095:36  */
-  assign n280 = n269[79:16]; // extract
-  assign n281 = {1'b1, n273};
-  /* mc68881_pkg.vhd:2095:41  */
-  assign n282 = n280 == n281;
-  /* mc68881_pkg.vhd:2095:25  */
-  assign n283 = n279 | n282;
-  /* mc68881_pkg.vhd:2094:42  */
-  assign n284 = n283 & n276;
-  /* mc68881_pkg.vhd:2101:46  */
-  assign n285 = ~n284;
-  /* mc68881_pkg.vhd:2101:42  */
-  assign n286 = n285 & n251;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n298 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n301 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n303 = b_reg[63:0]; // extract
-  assign n304 = {n303, n301, n298};
-  /* mc68881_pkg.vhd:2101:20  */
-  assign n305 = n304[15:1]; // extract
-  /* mc68881_pkg.vhd:2101:24  */
-  assign n307 = n305 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n319 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n322 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n324 = b_reg[63:0]; // extract
-  assign n325 = {n324, n322, n319};
-  assign n329 = n328[62:0]; // extract
-  /* mc68881_pkg.vhd:2094:20  */
-  assign n330 = n325[15:1]; // extract
-  /* mc68881_pkg.vhd:2094:24  */
-  assign n332 = n330 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2095:16  */
-  assign n333 = n325[79:16]; // extract
-  /* mc68881_pkg.vhd:2095:21  */
-  assign n335 = n333 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2095:36  */
-  assign n336 = n325[79:16]; // extract
-  assign n337 = {1'b1, n329};
-  /* mc68881_pkg.vhd:2095:41  */
-  assign n338 = n336 == n337;
-  /* mc68881_pkg.vhd:2095:25  */
-  assign n339 = n335 | n338;
-  /* mc68881_pkg.vhd:2094:42  */
-  assign n340 = n339 & n332;
-  /* mc68881_pkg.vhd:2101:46  */
-  assign n341 = ~n340;
-  /* mc68881_pkg.vhd:2101:42  */
-  assign n342 = n341 & n307;
-  /* mc68881_fp80_mul_unit.vhd:157:33  */
-  assign n343 = n286 | n342;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n356 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n359 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n361 = a_reg[63:0]; // extract
-  assign n362 = {n361, n359, n356};
-  /* mc68881_pkg.vhd:2101:20  */
-  assign n363 = n362[15:1]; // extract
-  /* mc68881_pkg.vhd:2101:24  */
-  assign n365 = n363 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n377 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n380 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n382 = a_reg[63:0]; // extract
-  assign n383 = {n382, n380, n377};
-  assign n387 = n386[62:0]; // extract
-  /* mc68881_pkg.vhd:2094:20  */
-  assign n388 = n383[15:1]; // extract
-  /* mc68881_pkg.vhd:2094:24  */
-  assign n390 = n388 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2095:16  */
-  assign n391 = n383[79:16]; // extract
-  /* mc68881_pkg.vhd:2095:21  */
-  assign n393 = n391 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2095:36  */
-  assign n394 = n383[79:16]; // extract
-  assign n395 = {1'b1, n387};
-  /* mc68881_pkg.vhd:2095:41  */
-  assign n396 = n394 == n395;
-  /* mc68881_pkg.vhd:2095:25  */
-  assign n397 = n393 | n396;
-  /* mc68881_pkg.vhd:2094:42  */
-  assign n398 = n397 & n390;
-  /* mc68881_pkg.vhd:2101:46  */
-  assign n399 = ~n398;
-  /* mc68881_pkg.vhd:2101:42  */
-  assign n400 = n399 & n365;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n412 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n415 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n417 = b_reg[63:0]; // extract
-  assign n418 = {n417, n415, n412};
-  /* mc68881_pkg.vhd:2101:20  */
-  assign n419 = n418[15:1]; // extract
-  /* mc68881_pkg.vhd:2101:24  */
-  assign n421 = n419 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n433 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n436 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n438 = b_reg[63:0]; // extract
-  assign n439 = {n438, n436, n433};
-  assign n443 = n442[62:0]; // extract
-  /* mc68881_pkg.vhd:2094:20  */
-  assign n444 = n439[15:1]; // extract
-  /* mc68881_pkg.vhd:2094:24  */
-  assign n446 = n444 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2095:16  */
-  assign n447 = n439[79:16]; // extract
-  /* mc68881_pkg.vhd:2095:21  */
-  assign n449 = n447 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2095:36  */
-  assign n450 = n439[79:16]; // extract
-  assign n451 = {1'b1, n443};
-  /* mc68881_pkg.vhd:2095:41  */
-  assign n452 = n450 == n451;
-  /* mc68881_pkg.vhd:2095:25  */
-  assign n453 = n449 | n452;
-  /* mc68881_pkg.vhd:2094:42  */
-  assign n454 = n453 & n446;
-  /* mc68881_pkg.vhd:2101:46  */
-  assign n455 = ~n454;
-  /* mc68881_pkg.vhd:2101:42  */
-  assign n456 = n455 & n421;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n474 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n477 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n479 = a_reg[63:0]; // extract
-  assign n480 = {n479, n477, n474};
-  /* mc68881_pkg.vhd:2108:20  */
-  assign n481 = n480[15:1]; // extract
-  /* mc68881_pkg.vhd:2108:24  */
-  assign n483 = n481 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2109:24  */
-  assign n484 = n480[79]; // extract
-  /* mc68881_pkg.vhd:2109:42  */
-  assign n485 = ~n484;
-  /* mc68881_pkg.vhd:2108:42  */
-  assign n486 = n485 & n483;
-  /* mc68881_pkg.vhd:2110:24  */
-  assign n487 = n480[78:16]; // extract
-  /* mc68881_pkg.vhd:2110:51  */
-  assign n489 = n487 != 63'b000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2109:48  */
-  assign n490 = n489 & n486;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n502 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n505 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n507 = b_reg[63:0]; // extract
-  assign n508 = {n507, n505, n502};
-  /* mc68881_pkg.vhd:2108:20  */
-  assign n509 = n508[15:1]; // extract
-  /* mc68881_pkg.vhd:2108:24  */
-  assign n511 = n509 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2109:24  */
-  assign n512 = n508[79]; // extract
-  /* mc68881_pkg.vhd:2109:42  */
-  assign n513 = ~n512;
-  /* mc68881_pkg.vhd:2108:42  */
-  assign n514 = n513 & n511;
-  /* mc68881_pkg.vhd:2110:24  */
-  assign n515 = n508[78:16]; // extract
-  /* mc68881_pkg.vhd:2110:51  */
-  assign n517 = n515 != 63'b000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2109:48  */
-  assign n518 = n517 & n514;
-  /* mc68881_pkg.vhd:2147:18  */
-  assign n520 = n490 | n518;
-  /* mc68881_pkg.vhd:2147:5  */
-  assign n523 = n520 ? 1'b1 : 1'b0;
-  /* mc68881_pkg.vhd:2151:14  */
-  assign n525 = n456 & n400;
-  /* mc68881_pkg.vhd:2155:7  */
-  assign n526 = n518 ? b_reg : a_reg;
-  /* mc68881_pkg.vhd:2153:7  */
-  assign n527 = n490 ? a_reg : n526;
-  /* mc68881_pkg.vhd:2160:5  */
-  assign n528 = n400 ? a_reg : b_reg;
-  /* mc68881_pkg.vhd:2151:5  */
-  assign n529 = n525 ? n527 : n528;
-  assign n532 = n529[79:64]; // extract
-  assign n533 = n529[62:0]; // extract
-  assign n534 = {n532, 1'b1, n533};
-  /* mc68881_pkg.vhd:2169:23  */
-  assign n535 = {n523, n534};
-  /* mc68881_fp80_mul_unit.vhd:161:68  */
-  assign n537 = n535[79:0]; // extract
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n549 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n552 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n554 = a_reg[63:0]; // extract
-  assign n555 = {n554, n552, n549};
-  assign n559 = n558[62:0]; // extract
-  /* mc68881_pkg.vhd:2094:20  */
-  assign n560 = n555[15:1]; // extract
-  /* mc68881_pkg.vhd:2094:24  */
-  assign n562 = n560 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2095:16  */
-  assign n563 = n555[79:16]; // extract
-  /* mc68881_pkg.vhd:2095:21  */
-  assign n565 = n563 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2095:36  */
-  assign n566 = n555[79:16]; // extract
-  assign n567 = {1'b1, n559};
-  /* mc68881_pkg.vhd:2095:41  */
-  assign n568 = n566 == n567;
-  /* mc68881_pkg.vhd:2095:25  */
-  assign n569 = n565 | n568;
-  /* mc68881_pkg.vhd:2094:42  */
-  assign n570 = n569 & n562;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n582 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n585 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n587 = b_reg[63:0]; // extract
-  assign n588 = {n587, n585, n582};
-  assign n592 = n591[62:0]; // extract
-  /* mc68881_pkg.vhd:2094:20  */
-  assign n593 = n588[15:1]; // extract
-  /* mc68881_pkg.vhd:2094:24  */
-  assign n595 = n593 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2095:16  */
-  assign n596 = n588[79:16]; // extract
-  /* mc68881_pkg.vhd:2095:21  */
-  assign n598 = n596 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2095:36  */
-  assign n599 = n588[79:16]; // extract
-  assign n600 = {1'b1, n592};
-  /* mc68881_pkg.vhd:2095:41  */
-  assign n601 = n599 == n600;
-  /* mc68881_pkg.vhd:2095:25  */
-  assign n602 = n598 | n601;
-  /* mc68881_pkg.vhd:2094:42  */
-  assign n603 = n602 & n595;
-  /* mc68881_fp80_mul_unit.vhd:162:36  */
-  assign n604 = n570 | n603;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n616 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n619 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n621 = a_reg[63:0]; // extract
-  assign n622 = {n621, n619, n616};
-  /* mc68881_pkg.vhd:2086:20  */
-  assign n623 = n622[15:1]; // extract
-  /* mc68881_pkg.vhd:2086:24  */
-  assign n625 = n623 == 15'b000000000000000;
-  /* mc68881_pkg.vhd:2086:40  */
-  assign n626 = n622[79:16]; // extract
-  /* mc68881_pkg.vhd:2086:45  */
-  assign n628 = n626 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2086:28  */
-  assign n629 = n628 & n625;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n641 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n644 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n646 = b_reg[63:0]; // extract
-  assign n647 = {n646, n644, n641};
-  /* mc68881_pkg.vhd:2086:20  */
-  assign n648 = n647[15:1]; // extract
-  /* mc68881_pkg.vhd:2086:24  */
-  assign n650 = n648 == 15'b000000000000000;
-  /* mc68881_pkg.vhd:2086:40  */
-  assign n651 = n647[79:16]; // extract
-  /* mc68881_pkg.vhd:2086:45  */
-  assign n653 = n651 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2086:28  */
-  assign n654 = n653 & n650;
-  /* mc68881_fp80_mul_unit.vhd:164:36  */
-  assign n655 = n629 | n654;
-  /* mc68881_fp80_mul_unit.vhd:171:52  */
-  assign n659 = a_reg[79]; // extract
-  /* mc68881_fp80_mul_unit.vhd:171:74  */
-  assign n660 = b_reg[79]; // extract
-  /* mc68881_fp80_mul_unit.vhd:171:65  */
-  assign n661 = n659 ^ n660;
-  assign n664 = {n661, 15'b111111111111111, 64'b0000000000000000000000000000000000000000000000000000000000000000};
-  assign n665 = {1'b0, 15'b111111111111111, 64'b1111111111111111111111111111111111111111111111111111111111111111};
-  /* mc68881_fp80_mul_unit.vhd:164:13  */
-  assign n666 = n655 ? n665 : n664;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n678 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n681 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n683 = a_reg[63:0]; // extract
-  assign n684 = {n683, n681, n678};
-  /* mc68881_pkg.vhd:2086:20  */
-  assign n685 = n684[15:1]; // extract
-  /* mc68881_pkg.vhd:2086:24  */
-  assign n687 = n685 == 15'b000000000000000;
-  /* mc68881_pkg.vhd:2086:40  */
-  assign n688 = n684[79:16]; // extract
-  /* mc68881_pkg.vhd:2086:45  */
-  assign n690 = n688 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2086:28  */
-  assign n691 = n690 & n687;
-  /* mc68881_pkg.vhd:1538:25  */
-  assign n703 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1539:34  */
-  assign n706 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1540:34  */
-  assign n708 = b_reg[63:0]; // extract
-  assign n709 = {n708, n706, n703};
-  /* mc68881_pkg.vhd:2086:20  */
-  assign n710 = n709[15:1]; // extract
-  /* mc68881_pkg.vhd:2086:24  */
-  assign n712 = n710 == 15'b000000000000000;
-  /* mc68881_pkg.vhd:2086:40  */
-  assign n713 = n709[79:16]; // extract
-  /* mc68881_pkg.vhd:2086:45  */
-  assign n715 = n713 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2086:28  */
-  assign n716 = n715 & n712;
-  /* mc68881_fp80_mul_unit.vhd:175:37  */
-  assign n717 = n691 | n716;
-  /* mc68881_fp80_mul_unit.vhd:175:11  */
-  assign n720 = n717 ? 1'b1 : 1'b0;
-  /* mc68881_fp80_mul_unit.vhd:175:11  */
-  assign n722 = n717 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : early_result_reg;
-  /* mc68881_fp80_mul_unit.vhd:162:11  */
-  assign n724 = n604 ? 1'b1 : n720;
-  /* mc68881_fp80_mul_unit.vhd:162:11  */
-  assign n725 = n604 ? n666 : n722;
-  /* mc68881_fp80_mul_unit.vhd:157:11  */
-  assign n727 = n343 ? 1'b1 : n724;
-  /* mc68881_fp80_mul_unit.vhd:157:11  */
-  assign n729 = n343 ? n537 : n725;
-  /* mc68881_fp80_mul_unit.vhd:182:36  */
-  assign n730 = n138 + n226;
-  /* mc68881_fp80_mul_unit.vhd:182:48  */
-  assign n732 = n730 - 32'b00000000000000000011111111111111;
-  /* mc68881_fp80_mul_unit.vhd:182:26  */
-  assign n733 = n732[17:0];  // trunc
-  /* mc68881_fp80_mul_unit.vhd:126:9  */
-  assign n735 = state_reg == 2'b01;
-  /* mc68881_fp80_mul_unit.vhd:194:41  */
-  assign n736 = {64'b0, a_mant_reg};  //  uext
-  /* mc68881_fp80_mul_unit.vhd:194:41  */
-  assign n737 = {64'b0, b_mant_reg};  //  uext
-  /* mc68881_fp80_mul_unit.vhd:194:41  */
-  assign n738 = n736 * n737; // umul
-  /* mc68881_fp80_mul_unit.vhd:187:11  */
-  assign n741 = early_exit_reg ? 2'b00 : 2'b11;
-  /* mc68881_fp80_mul_unit.vhd:187:11  */
-  assign n742 = early_exit_reg ? mant_prod_reg : n738;
-  /* mc68881_fp80_mul_unit.vhd:187:11  */
-  assign n745 = early_exit_reg ? 1'b1 : 1'b0;
-  /* mc68881_fp80_mul_unit.vhd:187:11  */
-  assign n746 = early_exit_reg ? early_result_reg : result_reg;
-  /* mc68881_fp80_mul_unit.vhd:186:9  */
-  assign n748 = state_reg == 2'b10;
+  assign n211 = ~n210;
+  /* mc68881_pkg.vhd:2520:18  */
+  assign n212 = {1'b0, n208};  //  uext
+  /* mc68881_pkg.vhd:2520:18  */
+  assign n214 = n212 + 32'b00000000000000000000000000000001;
+  /* mc68881_pkg.vhd:2520:7  */
+  assign n215 = n214[30:0];  // trunc
+  /* mc68881_pkg.vhd:2519:5  */
+  assign n216 = n211 ? n215 : n208;
+  /* mc68881_fp80_mul_unit.vhd:141:25  */
+  assign n217 = n50 << n216;
+  /* mc68881_fp80_mul_unit.vhd:142:28  */
+  assign n218 = {1'b0, n216};  //  uext
+  /* mc68881_fp80_mul_unit.vhd:142:28  */
+  assign n220 = 32'b00000000000000000000000000000001 - n218;
+  /* mc68881_fp80_mul_unit.vhd:144:51  */
+  assign n221 = b_reg[78:64]; // extract
+  /* mc68881_fp80_mul_unit.vhd:144:26  */
+  assign n222 = {16'b0, n221};  //  uext
+  /* mc68881_fp80_mul_unit.vhd:144:13  */
+  assign n223 = {1'b0, n222};  //  uext
+  /* mc68881_fp80_mul_unit.vhd:139:11  */
+  assign n225 = n144 ? n220 : n223;
+  /* mc68881_fp80_mul_unit.vhd:139:11  */
+  assign n226 = n144 ? n217 : n50;
+  /* mc68881_fp80_mul_unit.vhd:151:32  */
+  assign n227 = a_reg[79]; // extract
+  /* mc68881_fp80_mul_unit.vhd:151:54  */
+  assign n228 = b_reg[79]; // extract
+  /* mc68881_fp80_mul_unit.vhd:151:45  */
+  assign n229 = n227 ^ n228;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n241 = a_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n244 = a_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n246 = a_reg[63:0]; // extract
+  assign n247 = {n246, n244, n241};
+  /* mc68881_pkg.vhd:2098:20  */
+  assign n248 = n247[15:1]; // extract
+  /* mc68881_pkg.vhd:2098:24  */
+  assign n250 = n248 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n262 = a_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n265 = a_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n267 = a_reg[63:0]; // extract
+  assign n268 = {n267, n265, n262};
+  assign n272 = n271[62:0]; // extract
+  /* mc68881_pkg.vhd:2091:20  */
+  assign n273 = n268[15:1]; // extract
+  /* mc68881_pkg.vhd:2091:24  */
+  assign n275 = n273 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:2092:16  */
+  assign n276 = n268[79:16]; // extract
+  /* mc68881_pkg.vhd:2092:21  */
+  assign n278 = n276 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2092:36  */
+  assign n279 = n268[79:16]; // extract
+  assign n280 = {1'b1, n272};
+  /* mc68881_pkg.vhd:2092:41  */
+  assign n281 = n279 == n280;
+  /* mc68881_pkg.vhd:2092:25  */
+  assign n282 = n278 | n281;
+  /* mc68881_pkg.vhd:2091:42  */
+  assign n283 = n282 & n275;
+  /* mc68881_pkg.vhd:2098:46  */
+  assign n284 = ~n283;
+  /* mc68881_pkg.vhd:2098:42  */
+  assign n285 = n284 & n250;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n297 = b_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n300 = b_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n302 = b_reg[63:0]; // extract
+  assign n303 = {n302, n300, n297};
+  /* mc68881_pkg.vhd:2098:20  */
+  assign n304 = n303[15:1]; // extract
+  /* mc68881_pkg.vhd:2098:24  */
+  assign n306 = n304 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n318 = b_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n321 = b_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n323 = b_reg[63:0]; // extract
+  assign n324 = {n323, n321, n318};
+  assign n328 = n327[62:0]; // extract
+  /* mc68881_pkg.vhd:2091:20  */
+  assign n329 = n324[15:1]; // extract
+  /* mc68881_pkg.vhd:2091:24  */
+  assign n331 = n329 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:2092:16  */
+  assign n332 = n324[79:16]; // extract
+  /* mc68881_pkg.vhd:2092:21  */
+  assign n334 = n332 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2092:36  */
+  assign n335 = n324[79:16]; // extract
+  assign n336 = {1'b1, n328};
+  /* mc68881_pkg.vhd:2092:41  */
+  assign n337 = n335 == n336;
+  /* mc68881_pkg.vhd:2092:25  */
+  assign n338 = n334 | n337;
+  /* mc68881_pkg.vhd:2091:42  */
+  assign n339 = n338 & n331;
+  /* mc68881_pkg.vhd:2098:46  */
+  assign n340 = ~n339;
+  /* mc68881_pkg.vhd:2098:42  */
+  assign n341 = n340 & n306;
+  /* mc68881_fp80_mul_unit.vhd:156:33  */
+  assign n342 = n285 | n341;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n355 = a_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n358 = a_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n360 = a_reg[63:0]; // extract
+  assign n361 = {n360, n358, n355};
+  /* mc68881_pkg.vhd:2098:20  */
+  assign n362 = n361[15:1]; // extract
+  /* mc68881_pkg.vhd:2098:24  */
+  assign n364 = n362 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n376 = a_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n379 = a_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n381 = a_reg[63:0]; // extract
+  assign n382 = {n381, n379, n376};
+  assign n386 = n385[62:0]; // extract
+  /* mc68881_pkg.vhd:2091:20  */
+  assign n387 = n382[15:1]; // extract
+  /* mc68881_pkg.vhd:2091:24  */
+  assign n389 = n387 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:2092:16  */
+  assign n390 = n382[79:16]; // extract
+  /* mc68881_pkg.vhd:2092:21  */
+  assign n392 = n390 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2092:36  */
+  assign n393 = n382[79:16]; // extract
+  assign n394 = {1'b1, n386};
+  /* mc68881_pkg.vhd:2092:41  */
+  assign n395 = n393 == n394;
+  /* mc68881_pkg.vhd:2092:25  */
+  assign n396 = n392 | n395;
+  /* mc68881_pkg.vhd:2091:42  */
+  assign n397 = n396 & n389;
+  /* mc68881_pkg.vhd:2098:46  */
+  assign n398 = ~n397;
+  /* mc68881_pkg.vhd:2098:42  */
+  assign n399 = n398 & n364;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n411 = b_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n414 = b_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n416 = b_reg[63:0]; // extract
+  assign n417 = {n416, n414, n411};
+  /* mc68881_pkg.vhd:2098:20  */
+  assign n418 = n417[15:1]; // extract
+  /* mc68881_pkg.vhd:2098:24  */
+  assign n420 = n418 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n432 = b_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n435 = b_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n437 = b_reg[63:0]; // extract
+  assign n438 = {n437, n435, n432};
+  assign n442 = n441[62:0]; // extract
+  /* mc68881_pkg.vhd:2091:20  */
+  assign n443 = n438[15:1]; // extract
+  /* mc68881_pkg.vhd:2091:24  */
+  assign n445 = n443 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:2092:16  */
+  assign n446 = n438[79:16]; // extract
+  /* mc68881_pkg.vhd:2092:21  */
+  assign n448 = n446 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2092:36  */
+  assign n449 = n438[79:16]; // extract
+  assign n450 = {1'b1, n442};
+  /* mc68881_pkg.vhd:2092:41  */
+  assign n451 = n449 == n450;
+  /* mc68881_pkg.vhd:2092:25  */
+  assign n452 = n448 | n451;
+  /* mc68881_pkg.vhd:2091:42  */
+  assign n453 = n452 & n445;
+  /* mc68881_pkg.vhd:2098:46  */
+  assign n454 = ~n453;
+  /* mc68881_pkg.vhd:2098:42  */
+  assign n455 = n454 & n420;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n473 = a_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n476 = a_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n478 = a_reg[63:0]; // extract
+  assign n479 = {n478, n476, n473};
+  /* mc68881_pkg.vhd:2105:20  */
+  assign n480 = n479[15:1]; // extract
+  /* mc68881_pkg.vhd:2105:24  */
+  assign n482 = n480 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:2106:24  */
+  assign n483 = n479[79]; // extract
+  /* mc68881_pkg.vhd:2106:42  */
+  assign n484 = ~n483;
+  /* mc68881_pkg.vhd:2105:42  */
+  assign n485 = n484 & n482;
+  /* mc68881_pkg.vhd:2107:24  */
+  assign n486 = n479[78:16]; // extract
+  /* mc68881_pkg.vhd:2107:51  */
+  assign n488 = n486 != 63'b000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2106:48  */
+  assign n489 = n488 & n485;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n501 = b_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n504 = b_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n506 = b_reg[63:0]; // extract
+  assign n507 = {n506, n504, n501};
+  /* mc68881_pkg.vhd:2105:20  */
+  assign n508 = n507[15:1]; // extract
+  /* mc68881_pkg.vhd:2105:24  */
+  assign n510 = n508 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:2106:24  */
+  assign n511 = n507[79]; // extract
+  /* mc68881_pkg.vhd:2106:42  */
+  assign n512 = ~n511;
+  /* mc68881_pkg.vhd:2105:42  */
+  assign n513 = n512 & n510;
+  /* mc68881_pkg.vhd:2107:24  */
+  assign n514 = n507[78:16]; // extract
+  /* mc68881_pkg.vhd:2107:51  */
+  assign n516 = n514 != 63'b000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2106:48  */
+  assign n517 = n516 & n513;
+  /* mc68881_pkg.vhd:2144:18  */
+  assign n519 = n489 | n517;
+  /* mc68881_pkg.vhd:2144:5  */
+  assign n522 = n519 ? 1'b1 : 1'b0;
+  /* mc68881_pkg.vhd:2148:14  */
+  assign n524 = n455 & n399;
+  /* mc68881_pkg.vhd:2152:7  */
+  assign n525 = n517 ? b_reg : a_reg;
+  /* mc68881_pkg.vhd:2150:7  */
+  assign n526 = n489 ? a_reg : n525;
+  /* mc68881_pkg.vhd:2157:5  */
+  assign n527 = n399 ? a_reg : b_reg;
+  /* mc68881_pkg.vhd:2148:5  */
+  assign n528 = n524 ? n526 : n527;
+  assign n531 = n528[79:64]; // extract
+  assign n532 = n528[62:0]; // extract
+  assign n533 = {n531, 1'b1, n532};
+  /* mc68881_pkg.vhd:2166:23  */
+  assign n534 = {n522, n533};
+  /* mc68881_fp80_mul_unit.vhd:160:68  */
+  assign n536 = n534[79:0]; // extract
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n548 = a_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n551 = a_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n553 = a_reg[63:0]; // extract
+  assign n554 = {n553, n551, n548};
+  assign n558 = n557[62:0]; // extract
+  /* mc68881_pkg.vhd:2091:20  */
+  assign n559 = n554[15:1]; // extract
+  /* mc68881_pkg.vhd:2091:24  */
+  assign n561 = n559 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:2092:16  */
+  assign n562 = n554[79:16]; // extract
+  /* mc68881_pkg.vhd:2092:21  */
+  assign n564 = n562 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2092:36  */
+  assign n565 = n554[79:16]; // extract
+  assign n566 = {1'b1, n558};
+  /* mc68881_pkg.vhd:2092:41  */
+  assign n567 = n565 == n566;
+  /* mc68881_pkg.vhd:2092:25  */
+  assign n568 = n564 | n567;
+  /* mc68881_pkg.vhd:2091:42  */
+  assign n569 = n568 & n561;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n581 = b_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n584 = b_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n586 = b_reg[63:0]; // extract
+  assign n587 = {n586, n584, n581};
+  assign n591 = n590[62:0]; // extract
+  /* mc68881_pkg.vhd:2091:20  */
+  assign n592 = n587[15:1]; // extract
+  /* mc68881_pkg.vhd:2091:24  */
+  assign n594 = n592 == 15'b111111111111111;
+  /* mc68881_pkg.vhd:2092:16  */
+  assign n595 = n587[79:16]; // extract
+  /* mc68881_pkg.vhd:2092:21  */
+  assign n597 = n595 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2092:36  */
+  assign n598 = n587[79:16]; // extract
+  assign n599 = {1'b1, n591};
+  /* mc68881_pkg.vhd:2092:41  */
+  assign n600 = n598 == n599;
+  /* mc68881_pkg.vhd:2092:25  */
+  assign n601 = n597 | n600;
+  /* mc68881_pkg.vhd:2091:42  */
+  assign n602 = n601 & n594;
+  /* mc68881_fp80_mul_unit.vhd:161:36  */
+  assign n603 = n569 | n602;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n615 = a_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n618 = a_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n620 = a_reg[63:0]; // extract
+  assign n621 = {n620, n618, n615};
+  /* mc68881_pkg.vhd:2083:20  */
+  assign n622 = n621[15:1]; // extract
+  /* mc68881_pkg.vhd:2083:24  */
+  assign n624 = n622 == 15'b000000000000000;
+  /* mc68881_pkg.vhd:2083:40  */
+  assign n625 = n621[79:16]; // extract
+  /* mc68881_pkg.vhd:2083:45  */
+  assign n627 = n625 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2083:28  */
+  assign n628 = n627 & n624;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n640 = b_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n643 = b_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n645 = b_reg[63:0]; // extract
+  assign n646 = {n645, n643, n640};
+  /* mc68881_pkg.vhd:2083:20  */
+  assign n647 = n646[15:1]; // extract
+  /* mc68881_pkg.vhd:2083:24  */
+  assign n649 = n647 == 15'b000000000000000;
+  /* mc68881_pkg.vhd:2083:40  */
+  assign n650 = n646[79:16]; // extract
+  /* mc68881_pkg.vhd:2083:45  */
+  assign n652 = n650 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2083:28  */
+  assign n653 = n652 & n649;
+  /* mc68881_fp80_mul_unit.vhd:163:36  */
+  assign n654 = n628 | n653;
+  /* mc68881_fp80_mul_unit.vhd:170:52  */
+  assign n658 = a_reg[79]; // extract
+  /* mc68881_fp80_mul_unit.vhd:170:74  */
+  assign n659 = b_reg[79]; // extract
+  /* mc68881_fp80_mul_unit.vhd:170:65  */
+  assign n660 = n658 ^ n659;
+  assign n663 = {n660, 15'b111111111111111, 64'b0000000000000000000000000000000000000000000000000000000000000000};
+  assign n664 = {1'b0, 15'b111111111111111, 64'b1111111111111111111111111111111111111111111111111111111111111111};
+  /* mc68881_fp80_mul_unit.vhd:163:13  */
+  assign n665 = n654 ? n664 : n663;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n677 = a_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n680 = a_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n682 = a_reg[63:0]; // extract
+  assign n683 = {n682, n680, n677};
+  /* mc68881_pkg.vhd:2083:20  */
+  assign n684 = n683[15:1]; // extract
+  /* mc68881_pkg.vhd:2083:24  */
+  assign n686 = n684 == 15'b000000000000000;
+  /* mc68881_pkg.vhd:2083:40  */
+  assign n687 = n683[79:16]; // extract
+  /* mc68881_pkg.vhd:2083:45  */
+  assign n689 = n687 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2083:28  */
+  assign n690 = n689 & n686;
+  /* mc68881_pkg.vhd:1535:25  */
+  assign n702 = b_reg[79]; // extract
+  /* mc68881_pkg.vhd:1536:34  */
+  assign n705 = b_reg[78:64]; // extract
+  /* mc68881_pkg.vhd:1537:34  */
+  assign n707 = b_reg[63:0]; // extract
+  assign n708 = {n707, n705, n702};
+  /* mc68881_pkg.vhd:2083:20  */
+  assign n709 = n708[15:1]; // extract
+  /* mc68881_pkg.vhd:2083:24  */
+  assign n711 = n709 == 15'b000000000000000;
+  /* mc68881_pkg.vhd:2083:40  */
+  assign n712 = n708[79:16]; // extract
+  /* mc68881_pkg.vhd:2083:45  */
+  assign n714 = n712 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_pkg.vhd:2083:28  */
+  assign n715 = n714 & n711;
+  /* mc68881_fp80_mul_unit.vhd:174:37  */
+  assign n716 = n690 | n715;
+  /* mc68881_fp80_mul_unit.vhd:174:11  */
+  assign n719 = n716 ? 1'b1 : 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:174:11  */
+  assign n721 = n716 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : early_result_reg;
+  /* mc68881_fp80_mul_unit.vhd:161:11  */
+  assign n723 = n603 ? 1'b1 : n719;
+  /* mc68881_fp80_mul_unit.vhd:161:11  */
+  assign n724 = n603 ? n665 : n721;
+  /* mc68881_fp80_mul_unit.vhd:156:11  */
+  assign n726 = n342 ? 1'b1 : n723;
+  /* mc68881_fp80_mul_unit.vhd:156:11  */
+  assign n728 = n342 ? n536 : n724;
+  /* mc68881_fp80_mul_unit.vhd:181:36  */
+  assign n729 = n137 + n225;
+  /* mc68881_fp80_mul_unit.vhd:181:48  */
+  assign n731 = n729 - 32'b00000000000000000011111111111111;
+  /* mc68881_fp80_mul_unit.vhd:181:26  */
+  assign n732 = n731[17:0];  // trunc
+  /* mc68881_fp80_mul_unit.vhd:125:9  */
+  assign n734 = state_reg == 2'b01;
+  /* mc68881_fp80_mul_unit.vhd:193:41  */
+  assign n735 = {64'b0, a_mant_reg};  //  uext
+  /* mc68881_fp80_mul_unit.vhd:193:41  */
+  assign n736 = {64'b0, b_mant_reg};  //  uext
+  /* mc68881_fp80_mul_unit.vhd:193:41  */
+  assign n737 = n735 * n736; // umul
+  /* mc68881_fp80_mul_unit.vhd:186:11  */
+  assign n740 = early_exit_reg ? 2'b00 : 2'b11;
+  /* mc68881_fp80_mul_unit.vhd:186:11  */
+  assign n741 = early_exit_reg ? mant_prod_reg : n737;
+  /* mc68881_fp80_mul_unit.vhd:186:11  */
+  assign n744 = early_exit_reg ? 1'b1 : 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:186:11  */
+  assign n745 = early_exit_reg ? early_result_reg : result_reg;
+  /* mc68881_fp80_mul_unit.vhd:185:9  */
+  assign n747 = state_reg == 2'b10;
+  /* mc68881_fp80_mul_unit.vhd:199:11  */
+  assign n748 = {{14{exp_res_reg[17]}}, exp_res_reg}; // sext
+  /* mc68881_fp80_mul_unit.vhd:200:27  */
+  assign n749 = mant_prod_reg[127]; // extract
+  /* mc68881_fp80_mul_unit.vhd:201:32  */
+  assign n751 = n748 + 32'b00000000000000000000000000000001;
   /* mc68881_fp80_mul_unit.vhd:200:11  */
-  assign n749 = {{14{exp_res_reg[17]}}, exp_res_reg}; // sext
-  /* mc68881_fp80_mul_unit.vhd:201:27  */
-  assign n750 = mant_prod_reg[127]; // extract
-  /* mc68881_fp80_mul_unit.vhd:202:32  */
-  assign n752 = n749 + 32'b00000000000000000000000000000001;
-  /* mc68881_fp80_mul_unit.vhd:201:11  */
-  assign n755 = n750 ? 32'b00000000000000000000000001111111 : 32'b00000000000000000000000001111110;
-  /* mc68881_fp80_mul_unit.vhd:201:11  */
-  assign n756 = n750 ? n752 : n749;
-  /* mc68881_fp80_mul_unit.vhd:209:36  */
-  assign n759 = n755[6:0];  // trunc
-  /* mc68881_fp80_mul_unit.vhd:209:36  */
-  assign n761 = n759 + 7'b0111110;
-  /* mc68881_fp80_mul_unit.vhd:209:36  */
-  assign n763 = mant_prod_reg[n761 + 0 +: 67]; //(dyn_extract)
-  /* mc68881_fp80_mul_unit.vhd:212:29  */
-  assign n765 = n755 - 32'b00000000000000000000000001000011;
-  /* mc68881_fp80_mul_unit.vhd:214:21  */
-  assign n767 = $signed(n765) >= $signed(32'b00000000000000000000000000000000);
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n769 = $signed(32'b00000000000000000000000000000000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n770 = mant_prod_reg[0]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n771 = n770 & n769;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n774 = n771 ? 1'b1 : 1'b0;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n776 = $signed(32'b00000000000000000000000000000001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n777 = mant_prod_reg[1]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n778 = n777 & n776;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n780 = n778 ? 1'b1 : n774;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n782 = $signed(32'b00000000000000000000000000000010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n783 = mant_prod_reg[2]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n784 = n783 & n782;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n786 = n784 ? 1'b1 : n780;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n788 = $signed(32'b00000000000000000000000000000011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n789 = mant_prod_reg[3]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n790 = n789 & n788;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n792 = n790 ? 1'b1 : n786;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n794 = $signed(32'b00000000000000000000000000000100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n795 = mant_prod_reg[4]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n796 = n795 & n794;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n798 = n796 ? 1'b1 : n792;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n800 = $signed(32'b00000000000000000000000000000101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n801 = mant_prod_reg[5]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n802 = n801 & n800;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n804 = n802 ? 1'b1 : n798;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n806 = $signed(32'b00000000000000000000000000000110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n807 = mant_prod_reg[6]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n808 = n807 & n806;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n810 = n808 ? 1'b1 : n804;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n812 = $signed(32'b00000000000000000000000000000111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n813 = mant_prod_reg[7]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n814 = n813 & n812;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n816 = n814 ? 1'b1 : n810;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n818 = $signed(32'b00000000000000000000000000001000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n819 = mant_prod_reg[8]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n820 = n819 & n818;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n822 = n820 ? 1'b1 : n816;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n824 = $signed(32'b00000000000000000000000000001001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n825 = mant_prod_reg[9]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n826 = n825 & n824;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n828 = n826 ? 1'b1 : n822;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n830 = $signed(32'b00000000000000000000000000001010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n831 = mant_prod_reg[10]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n832 = n831 & n830;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n834 = n832 ? 1'b1 : n828;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n836 = $signed(32'b00000000000000000000000000001011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n837 = mant_prod_reg[11]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n838 = n837 & n836;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n840 = n838 ? 1'b1 : n834;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n842 = $signed(32'b00000000000000000000000000001100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n843 = mant_prod_reg[12]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n844 = n843 & n842;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n846 = n844 ? 1'b1 : n840;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n848 = $signed(32'b00000000000000000000000000001101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n849 = mant_prod_reg[13]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n850 = n849 & n848;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n852 = n850 ? 1'b1 : n846;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n854 = $signed(32'b00000000000000000000000000001110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n855 = mant_prod_reg[14]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n856 = n855 & n854;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n858 = n856 ? 1'b1 : n852;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n860 = $signed(32'b00000000000000000000000000001111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n861 = mant_prod_reg[15]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n862 = n861 & n860;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n864 = n862 ? 1'b1 : n858;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n866 = $signed(32'b00000000000000000000000000010000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n867 = mant_prod_reg[16]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n868 = n867 & n866;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n870 = n868 ? 1'b1 : n864;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n872 = $signed(32'b00000000000000000000000000010001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n873 = mant_prod_reg[17]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n874 = n873 & n872;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n876 = n874 ? 1'b1 : n870;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n878 = $signed(32'b00000000000000000000000000010010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n879 = mant_prod_reg[18]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n880 = n879 & n878;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n882 = n880 ? 1'b1 : n876;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n884 = $signed(32'b00000000000000000000000000010011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n885 = mant_prod_reg[19]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n886 = n885 & n884;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n888 = n886 ? 1'b1 : n882;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n890 = $signed(32'b00000000000000000000000000010100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n891 = mant_prod_reg[20]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n892 = n891 & n890;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n894 = n892 ? 1'b1 : n888;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n896 = $signed(32'b00000000000000000000000000010101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n897 = mant_prod_reg[21]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n898 = n897 & n896;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n900 = n898 ? 1'b1 : n894;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n902 = $signed(32'b00000000000000000000000000010110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n903 = mant_prod_reg[22]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n904 = n903 & n902;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n906 = n904 ? 1'b1 : n900;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n908 = $signed(32'b00000000000000000000000000010111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n909 = mant_prod_reg[23]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n910 = n909 & n908;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n912 = n910 ? 1'b1 : n906;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n914 = $signed(32'b00000000000000000000000000011000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n915 = mant_prod_reg[24]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n916 = n915 & n914;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n918 = n916 ? 1'b1 : n912;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n920 = $signed(32'b00000000000000000000000000011001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n921 = mant_prod_reg[25]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n922 = n921 & n920;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n924 = n922 ? 1'b1 : n918;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n926 = $signed(32'b00000000000000000000000000011010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n927 = mant_prod_reg[26]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n928 = n927 & n926;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n930 = n928 ? 1'b1 : n924;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n932 = $signed(32'b00000000000000000000000000011011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n933 = mant_prod_reg[27]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n934 = n933 & n932;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n936 = n934 ? 1'b1 : n930;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n938 = $signed(32'b00000000000000000000000000011100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n939 = mant_prod_reg[28]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n940 = n939 & n938;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n942 = n940 ? 1'b1 : n936;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n944 = $signed(32'b00000000000000000000000000011101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n945 = mant_prod_reg[29]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n946 = n945 & n944;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n948 = n946 ? 1'b1 : n942;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n950 = $signed(32'b00000000000000000000000000011110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n951 = mant_prod_reg[30]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n952 = n951 & n950;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n954 = n952 ? 1'b1 : n948;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n956 = $signed(32'b00000000000000000000000000011111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n957 = mant_prod_reg[31]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n958 = n957 & n956;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n960 = n958 ? 1'b1 : n954;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n962 = $signed(32'b00000000000000000000000000100000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n963 = mant_prod_reg[32]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n964 = n963 & n962;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n966 = n964 ? 1'b1 : n960;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n968 = $signed(32'b00000000000000000000000000100001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n969 = mant_prod_reg[33]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n970 = n969 & n968;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n972 = n970 ? 1'b1 : n966;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n974 = $signed(32'b00000000000000000000000000100010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n975 = mant_prod_reg[34]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n976 = n975 & n974;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n978 = n976 ? 1'b1 : n972;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n980 = $signed(32'b00000000000000000000000000100011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n981 = mant_prod_reg[35]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n982 = n981 & n980;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n984 = n982 ? 1'b1 : n978;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n986 = $signed(32'b00000000000000000000000000100100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n987 = mant_prod_reg[36]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n988 = n987 & n986;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n990 = n988 ? 1'b1 : n984;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n992 = $signed(32'b00000000000000000000000000100101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n993 = mant_prod_reg[37]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n994 = n993 & n992;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n996 = n994 ? 1'b1 : n990;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n998 = $signed(32'b00000000000000000000000000100110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n999 = mant_prod_reg[38]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1000 = n999 & n998;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1002 = n1000 ? 1'b1 : n996;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1004 = $signed(32'b00000000000000000000000000100111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1005 = mant_prod_reg[39]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1006 = n1005 & n1004;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1008 = n1006 ? 1'b1 : n1002;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1010 = $signed(32'b00000000000000000000000000101000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1011 = mant_prod_reg[40]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1012 = n1011 & n1010;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1014 = n1012 ? 1'b1 : n1008;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1016 = $signed(32'b00000000000000000000000000101001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1017 = mant_prod_reg[41]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1018 = n1017 & n1016;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1020 = n1018 ? 1'b1 : n1014;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1022 = $signed(32'b00000000000000000000000000101010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1023 = mant_prod_reg[42]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1024 = n1023 & n1022;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1026 = n1024 ? 1'b1 : n1020;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1028 = $signed(32'b00000000000000000000000000101011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1029 = mant_prod_reg[43]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1030 = n1029 & n1028;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1032 = n1030 ? 1'b1 : n1026;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1034 = $signed(32'b00000000000000000000000000101100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1035 = mant_prod_reg[44]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1036 = n1035 & n1034;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1038 = n1036 ? 1'b1 : n1032;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1040 = $signed(32'b00000000000000000000000000101101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1041 = mant_prod_reg[45]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1042 = n1041 & n1040;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1044 = n1042 ? 1'b1 : n1038;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1046 = $signed(32'b00000000000000000000000000101110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1047 = mant_prod_reg[46]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1048 = n1047 & n1046;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1050 = n1048 ? 1'b1 : n1044;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1052 = $signed(32'b00000000000000000000000000101111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1053 = mant_prod_reg[47]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1054 = n1053 & n1052;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1056 = n1054 ? 1'b1 : n1050;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1058 = $signed(32'b00000000000000000000000000110000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1059 = mant_prod_reg[48]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1060 = n1059 & n1058;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1062 = n1060 ? 1'b1 : n1056;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1064 = $signed(32'b00000000000000000000000000110001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1065 = mant_prod_reg[49]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1066 = n1065 & n1064;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1068 = n1066 ? 1'b1 : n1062;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1070 = $signed(32'b00000000000000000000000000110010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1071 = mant_prod_reg[50]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1072 = n1071 & n1070;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1074 = n1072 ? 1'b1 : n1068;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1076 = $signed(32'b00000000000000000000000000110011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1077 = mant_prod_reg[51]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1078 = n1077 & n1076;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1080 = n1078 ? 1'b1 : n1074;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1082 = $signed(32'b00000000000000000000000000110100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1083 = mant_prod_reg[52]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1084 = n1083 & n1082;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1086 = n1084 ? 1'b1 : n1080;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1088 = $signed(32'b00000000000000000000000000110101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1089 = mant_prod_reg[53]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1090 = n1089 & n1088;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1092 = n1090 ? 1'b1 : n1086;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1094 = $signed(32'b00000000000000000000000000110110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1095 = mant_prod_reg[54]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1096 = n1095 & n1094;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1098 = n1096 ? 1'b1 : n1092;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1100 = $signed(32'b00000000000000000000000000110111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1101 = mant_prod_reg[55]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1102 = n1101 & n1100;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1104 = n1102 ? 1'b1 : n1098;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1106 = $signed(32'b00000000000000000000000000111000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1107 = mant_prod_reg[56]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1108 = n1107 & n1106;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1110 = n1108 ? 1'b1 : n1104;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1112 = $signed(32'b00000000000000000000000000111001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1113 = mant_prod_reg[57]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1114 = n1113 & n1112;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1116 = n1114 ? 1'b1 : n1110;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1118 = $signed(32'b00000000000000000000000000111010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1119 = mant_prod_reg[58]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1120 = n1119 & n1118;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1122 = n1120 ? 1'b1 : n1116;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1124 = $signed(32'b00000000000000000000000000111011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1125 = mant_prod_reg[59]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1126 = n1125 & n1124;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1128 = n1126 ? 1'b1 : n1122;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1130 = $signed(32'b00000000000000000000000000111100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1131 = mant_prod_reg[60]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1132 = n1131 & n1130;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1134 = n1132 ? 1'b1 : n1128;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1136 = $signed(32'b00000000000000000000000000111101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1137 = mant_prod_reg[61]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1138 = n1137 & n1136;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1140 = n1138 ? 1'b1 : n1134;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1142 = $signed(32'b00000000000000000000000000111110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1143 = mant_prod_reg[62]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1144 = n1143 & n1142;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1146 = n1144 ? 1'b1 : n1140;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1148 = $signed(32'b00000000000000000000000000111111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1149 = mant_prod_reg[63]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1150 = n1149 & n1148;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1152 = n1150 ? 1'b1 : n1146;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1154 = $signed(32'b00000000000000000000000001000000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1155 = mant_prod_reg[64]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1156 = n1155 & n1154;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1158 = n1156 ? 1'b1 : n1152;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1160 = $signed(32'b00000000000000000000000001000001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1161 = mant_prod_reg[65]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1162 = n1161 & n1160;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1164 = n1162 ? 1'b1 : n1158;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1166 = $signed(32'b00000000000000000000000001000010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1167 = mant_prod_reg[66]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1168 = n1167 & n1166;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1170 = n1168 ? 1'b1 : n1164;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1172 = $signed(32'b00000000000000000000000001000011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1173 = mant_prod_reg[67]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1174 = n1173 & n1172;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1176 = n1174 ? 1'b1 : n1170;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1178 = $signed(32'b00000000000000000000000001000100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1179 = mant_prod_reg[68]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1180 = n1179 & n1178;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1182 = n1180 ? 1'b1 : n1176;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1184 = $signed(32'b00000000000000000000000001000101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1185 = mant_prod_reg[69]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1186 = n1185 & n1184;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1188 = n1186 ? 1'b1 : n1182;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1190 = $signed(32'b00000000000000000000000001000110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1191 = mant_prod_reg[70]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1192 = n1191 & n1190;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1194 = n1192 ? 1'b1 : n1188;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1196 = $signed(32'b00000000000000000000000001000111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1197 = mant_prod_reg[71]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1198 = n1197 & n1196;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1200 = n1198 ? 1'b1 : n1194;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1202 = $signed(32'b00000000000000000000000001001000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1203 = mant_prod_reg[72]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1204 = n1203 & n1202;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1206 = n1204 ? 1'b1 : n1200;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1208 = $signed(32'b00000000000000000000000001001001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1209 = mant_prod_reg[73]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1210 = n1209 & n1208;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1212 = n1210 ? 1'b1 : n1206;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1214 = $signed(32'b00000000000000000000000001001010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1215 = mant_prod_reg[74]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1216 = n1215 & n1214;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1218 = n1216 ? 1'b1 : n1212;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1220 = $signed(32'b00000000000000000000000001001011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1221 = mant_prod_reg[75]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1222 = n1221 & n1220;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1224 = n1222 ? 1'b1 : n1218;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1226 = $signed(32'b00000000000000000000000001001100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1227 = mant_prod_reg[76]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1228 = n1227 & n1226;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1230 = n1228 ? 1'b1 : n1224;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1232 = $signed(32'b00000000000000000000000001001101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1233 = mant_prod_reg[77]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1234 = n1233 & n1232;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1236 = n1234 ? 1'b1 : n1230;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1238 = $signed(32'b00000000000000000000000001001110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1239 = mant_prod_reg[78]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1240 = n1239 & n1238;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1242 = n1240 ? 1'b1 : n1236;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1244 = $signed(32'b00000000000000000000000001001111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1245 = mant_prod_reg[79]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1246 = n1245 & n1244;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1248 = n1246 ? 1'b1 : n1242;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1250 = $signed(32'b00000000000000000000000001010000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1251 = mant_prod_reg[80]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1252 = n1251 & n1250;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1254 = n1252 ? 1'b1 : n1248;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1256 = $signed(32'b00000000000000000000000001010001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1257 = mant_prod_reg[81]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1258 = n1257 & n1256;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1260 = n1258 ? 1'b1 : n1254;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1262 = $signed(32'b00000000000000000000000001010010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1263 = mant_prod_reg[82]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1264 = n1263 & n1262;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1266 = n1264 ? 1'b1 : n1260;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1268 = $signed(32'b00000000000000000000000001010011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1269 = mant_prod_reg[83]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1270 = n1269 & n1268;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1272 = n1270 ? 1'b1 : n1266;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1274 = $signed(32'b00000000000000000000000001010100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1275 = mant_prod_reg[84]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1276 = n1275 & n1274;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1278 = n1276 ? 1'b1 : n1272;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1280 = $signed(32'b00000000000000000000000001010101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1281 = mant_prod_reg[85]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1282 = n1281 & n1280;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1284 = n1282 ? 1'b1 : n1278;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1286 = $signed(32'b00000000000000000000000001010110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1287 = mant_prod_reg[86]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1288 = n1287 & n1286;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1290 = n1288 ? 1'b1 : n1284;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1292 = $signed(32'b00000000000000000000000001010111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1293 = mant_prod_reg[87]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1294 = n1293 & n1292;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1296 = n1294 ? 1'b1 : n1290;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1298 = $signed(32'b00000000000000000000000001011000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1299 = mant_prod_reg[88]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1300 = n1299 & n1298;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1302 = n1300 ? 1'b1 : n1296;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1304 = $signed(32'b00000000000000000000000001011001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1305 = mant_prod_reg[89]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1306 = n1305 & n1304;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1308 = n1306 ? 1'b1 : n1302;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1310 = $signed(32'b00000000000000000000000001011010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1311 = mant_prod_reg[90]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1312 = n1311 & n1310;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1314 = n1312 ? 1'b1 : n1308;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1316 = $signed(32'b00000000000000000000000001011011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1317 = mant_prod_reg[91]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1318 = n1317 & n1316;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1320 = n1318 ? 1'b1 : n1314;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1322 = $signed(32'b00000000000000000000000001011100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1323 = mant_prod_reg[92]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1324 = n1323 & n1322;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1326 = n1324 ? 1'b1 : n1320;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1328 = $signed(32'b00000000000000000000000001011101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1329 = mant_prod_reg[93]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1330 = n1329 & n1328;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1332 = n1330 ? 1'b1 : n1326;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1334 = $signed(32'b00000000000000000000000001011110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1335 = mant_prod_reg[94]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1336 = n1335 & n1334;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1338 = n1336 ? 1'b1 : n1332;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1340 = $signed(32'b00000000000000000000000001011111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1341 = mant_prod_reg[95]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1342 = n1341 & n1340;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1344 = n1342 ? 1'b1 : n1338;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1346 = $signed(32'b00000000000000000000000001100000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1347 = mant_prod_reg[96]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1348 = n1347 & n1346;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1350 = n1348 ? 1'b1 : n1344;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1352 = $signed(32'b00000000000000000000000001100001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1353 = mant_prod_reg[97]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1354 = n1353 & n1352;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1356 = n1354 ? 1'b1 : n1350;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1358 = $signed(32'b00000000000000000000000001100010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1359 = mant_prod_reg[98]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1360 = n1359 & n1358;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1362 = n1360 ? 1'b1 : n1356;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1364 = $signed(32'b00000000000000000000000001100011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1365 = mant_prod_reg[99]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1366 = n1365 & n1364;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1368 = n1366 ? 1'b1 : n1362;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1370 = $signed(32'b00000000000000000000000001100100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1371 = mant_prod_reg[100]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1372 = n1371 & n1370;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1374 = n1372 ? 1'b1 : n1368;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1376 = $signed(32'b00000000000000000000000001100101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1377 = mant_prod_reg[101]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1378 = n1377 & n1376;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1380 = n1378 ? 1'b1 : n1374;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1382 = $signed(32'b00000000000000000000000001100110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1383 = mant_prod_reg[102]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1384 = n1383 & n1382;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1386 = n1384 ? 1'b1 : n1380;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1388 = $signed(32'b00000000000000000000000001100111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1389 = mant_prod_reg[103]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1390 = n1389 & n1388;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1392 = n1390 ? 1'b1 : n1386;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1394 = $signed(32'b00000000000000000000000001101000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1395 = mant_prod_reg[104]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1396 = n1395 & n1394;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1398 = n1396 ? 1'b1 : n1392;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1400 = $signed(32'b00000000000000000000000001101001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1401 = mant_prod_reg[105]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1402 = n1401 & n1400;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1404 = n1402 ? 1'b1 : n1398;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1406 = $signed(32'b00000000000000000000000001101010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1407 = mant_prod_reg[106]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1408 = n1407 & n1406;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1410 = n1408 ? 1'b1 : n1404;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1412 = $signed(32'b00000000000000000000000001101011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1413 = mant_prod_reg[107]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1414 = n1413 & n1412;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1416 = n1414 ? 1'b1 : n1410;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1418 = $signed(32'b00000000000000000000000001101100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1419 = mant_prod_reg[108]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1420 = n1419 & n1418;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1422 = n1420 ? 1'b1 : n1416;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1424 = $signed(32'b00000000000000000000000001101101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1425 = mant_prod_reg[109]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1426 = n1425 & n1424;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1428 = n1426 ? 1'b1 : n1422;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1430 = $signed(32'b00000000000000000000000001101110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1431 = mant_prod_reg[110]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1432 = n1431 & n1430;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1434 = n1432 ? 1'b1 : n1428;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1436 = $signed(32'b00000000000000000000000001101111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1437 = mant_prod_reg[111]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1438 = n1437 & n1436;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1440 = n1438 ? 1'b1 : n1434;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1442 = $signed(32'b00000000000000000000000001110000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1443 = mant_prod_reg[112]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1444 = n1443 & n1442;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1446 = n1444 ? 1'b1 : n1440;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1448 = $signed(32'b00000000000000000000000001110001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1449 = mant_prod_reg[113]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1450 = n1449 & n1448;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1452 = n1450 ? 1'b1 : n1446;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1454 = $signed(32'b00000000000000000000000001110010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1455 = mant_prod_reg[114]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1456 = n1455 & n1454;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1458 = n1456 ? 1'b1 : n1452;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1460 = $signed(32'b00000000000000000000000001110011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1461 = mant_prod_reg[115]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1462 = n1461 & n1460;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1464 = n1462 ? 1'b1 : n1458;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1466 = $signed(32'b00000000000000000000000001110100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1467 = mant_prod_reg[116]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1468 = n1467 & n1466;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1470 = n1468 ? 1'b1 : n1464;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1472 = $signed(32'b00000000000000000000000001110101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1473 = mant_prod_reg[117]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1474 = n1473 & n1472;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1476 = n1474 ? 1'b1 : n1470;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1478 = $signed(32'b00000000000000000000000001110110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1479 = mant_prod_reg[118]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1480 = n1479 & n1478;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1482 = n1480 ? 1'b1 : n1476;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1484 = $signed(32'b00000000000000000000000001110111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1485 = mant_prod_reg[119]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1486 = n1485 & n1484;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1488 = n1486 ? 1'b1 : n1482;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1490 = $signed(32'b00000000000000000000000001111000) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1491 = mant_prod_reg[120]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1492 = n1491 & n1490;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1494 = n1492 ? 1'b1 : n1488;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1496 = $signed(32'b00000000000000000000000001111001) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1497 = mant_prod_reg[121]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1498 = n1497 & n1496;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1500 = n1498 ? 1'b1 : n1494;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1502 = $signed(32'b00000000000000000000000001111010) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1503 = mant_prod_reg[122]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1504 = n1503 & n1502;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1506 = n1504 ? 1'b1 : n1500;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1508 = $signed(32'b00000000000000000000000001111011) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1509 = mant_prod_reg[123]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1510 = n1509 & n1508;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1512 = n1510 ? 1'b1 : n1506;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1514 = $signed(32'b00000000000000000000000001111100) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1515 = mant_prod_reg[124]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1516 = n1515 & n1514;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1518 = n1516 ? 1'b1 : n1512;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1520 = $signed(32'b00000000000000000000000001111101) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1521 = mant_prod_reg[125]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1522 = n1521 & n1520;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1524 = n1522 ? 1'b1 : n1518;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1526 = $signed(32'b00000000000000000000000001111110) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1527 = mant_prod_reg[126]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1528 = n1527 & n1526;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1530 = n1528 ? 1'b1 : n1524;
-  /* mc68881_fp80_mul_unit.vhd:216:22  */
-  assign n1532 = $signed(32'b00000000000000000000000001111111) <= $signed(n765);
-  /* mc68881_fp80_mul_unit.vhd:216:49  */
-  assign n1533 = mant_prod_reg[127]; // extract
-  /* mc68881_fp80_mul_unit.vhd:216:32  */
-  assign n1534 = n1533 & n1532;
-  /* mc68881_fp80_mul_unit.vhd:216:15  */
-  assign n1536 = n1534 ? 1'b1 : n1530;
-  /* mc68881_fp80_mul_unit.vhd:214:11  */
-  assign n1538 = n767 ? n1536 : 1'b0;
-  /* mc68881_fp80_mul_unit.vhd:221:34  */
-  assign n1540 = n763[0]; // extract
-  /* mc68881_fp80_mul_unit.vhd:221:38  */
-  assign n1541 = n1540 | n1538;
-  assign n1542 = n763[66:1]; // extract
-  assign n1543 = {n1542, n1541};
-  /* mc68881_fp80_mul_unit.vhd:224:32  */
-  assign n1544 = n1543[66:3]; // extract
-  assign n1545 = {n1542, n1541};
+  assign n754 = n749 ? 32'b00000000000000000000000001111111 : 32'b00000000000000000000000001111110;
+  /* mc68881_fp80_mul_unit.vhd:200:11  */
+  assign n755 = n749 ? n751 : n748;
+  /* mc68881_fp80_mul_unit.vhd:208:36  */
+  assign n758 = n754[6:0];  // trunc
+  /* mc68881_fp80_mul_unit.vhd:208:36  */
+  assign n760 = n758 + 7'b0111110;
+  /* mc68881_fp80_mul_unit.vhd:208:36  */
+  assign n762 = mant_prod_reg[n760 + 0 +: 67]; //(dyn_extract)
+  /* mc68881_fp80_mul_unit.vhd:211:29  */
+  assign n764 = n754 - 32'b00000000000000000000000001000011;
+  /* mc68881_fp80_mul_unit.vhd:213:21  */
+  assign n766 = $signed(n764) >= $signed(32'b00000000000000000000000000000000);
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n768 = $signed(32'b00000000000000000000000000000000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n769 = mant_prod_reg[0]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n770 = n769 & n768;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n773 = n770 ? 1'b1 : 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n775 = $signed(32'b00000000000000000000000000000001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n776 = mant_prod_reg[1]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n777 = n776 & n775;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n779 = n777 ? 1'b1 : n773;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n781 = $signed(32'b00000000000000000000000000000010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n782 = mant_prod_reg[2]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n783 = n782 & n781;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n785 = n783 ? 1'b1 : n779;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n787 = $signed(32'b00000000000000000000000000000011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n788 = mant_prod_reg[3]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n789 = n788 & n787;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n791 = n789 ? 1'b1 : n785;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n793 = $signed(32'b00000000000000000000000000000100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n794 = mant_prod_reg[4]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n795 = n794 & n793;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n797 = n795 ? 1'b1 : n791;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n799 = $signed(32'b00000000000000000000000000000101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n800 = mant_prod_reg[5]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n801 = n800 & n799;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n803 = n801 ? 1'b1 : n797;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n805 = $signed(32'b00000000000000000000000000000110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n806 = mant_prod_reg[6]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n807 = n806 & n805;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n809 = n807 ? 1'b1 : n803;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n811 = $signed(32'b00000000000000000000000000000111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n812 = mant_prod_reg[7]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n813 = n812 & n811;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n815 = n813 ? 1'b1 : n809;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n817 = $signed(32'b00000000000000000000000000001000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n818 = mant_prod_reg[8]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n819 = n818 & n817;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n821 = n819 ? 1'b1 : n815;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n823 = $signed(32'b00000000000000000000000000001001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n824 = mant_prod_reg[9]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n825 = n824 & n823;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n827 = n825 ? 1'b1 : n821;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n829 = $signed(32'b00000000000000000000000000001010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n830 = mant_prod_reg[10]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n831 = n830 & n829;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n833 = n831 ? 1'b1 : n827;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n835 = $signed(32'b00000000000000000000000000001011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n836 = mant_prod_reg[11]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n837 = n836 & n835;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n839 = n837 ? 1'b1 : n833;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n841 = $signed(32'b00000000000000000000000000001100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n842 = mant_prod_reg[12]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n843 = n842 & n841;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n845 = n843 ? 1'b1 : n839;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n847 = $signed(32'b00000000000000000000000000001101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n848 = mant_prod_reg[13]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n849 = n848 & n847;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n851 = n849 ? 1'b1 : n845;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n853 = $signed(32'b00000000000000000000000000001110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n854 = mant_prod_reg[14]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n855 = n854 & n853;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n857 = n855 ? 1'b1 : n851;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n859 = $signed(32'b00000000000000000000000000001111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n860 = mant_prod_reg[15]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n861 = n860 & n859;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n863 = n861 ? 1'b1 : n857;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n865 = $signed(32'b00000000000000000000000000010000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n866 = mant_prod_reg[16]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n867 = n866 & n865;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n869 = n867 ? 1'b1 : n863;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n871 = $signed(32'b00000000000000000000000000010001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n872 = mant_prod_reg[17]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n873 = n872 & n871;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n875 = n873 ? 1'b1 : n869;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n877 = $signed(32'b00000000000000000000000000010010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n878 = mant_prod_reg[18]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n879 = n878 & n877;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n881 = n879 ? 1'b1 : n875;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n883 = $signed(32'b00000000000000000000000000010011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n884 = mant_prod_reg[19]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n885 = n884 & n883;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n887 = n885 ? 1'b1 : n881;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n889 = $signed(32'b00000000000000000000000000010100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n890 = mant_prod_reg[20]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n891 = n890 & n889;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n893 = n891 ? 1'b1 : n887;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n895 = $signed(32'b00000000000000000000000000010101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n896 = mant_prod_reg[21]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n897 = n896 & n895;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n899 = n897 ? 1'b1 : n893;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n901 = $signed(32'b00000000000000000000000000010110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n902 = mant_prod_reg[22]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n903 = n902 & n901;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n905 = n903 ? 1'b1 : n899;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n907 = $signed(32'b00000000000000000000000000010111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n908 = mant_prod_reg[23]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n909 = n908 & n907;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n911 = n909 ? 1'b1 : n905;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n913 = $signed(32'b00000000000000000000000000011000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n914 = mant_prod_reg[24]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n915 = n914 & n913;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n917 = n915 ? 1'b1 : n911;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n919 = $signed(32'b00000000000000000000000000011001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n920 = mant_prod_reg[25]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n921 = n920 & n919;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n923 = n921 ? 1'b1 : n917;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n925 = $signed(32'b00000000000000000000000000011010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n926 = mant_prod_reg[26]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n927 = n926 & n925;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n929 = n927 ? 1'b1 : n923;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n931 = $signed(32'b00000000000000000000000000011011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n932 = mant_prod_reg[27]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n933 = n932 & n931;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n935 = n933 ? 1'b1 : n929;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n937 = $signed(32'b00000000000000000000000000011100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n938 = mant_prod_reg[28]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n939 = n938 & n937;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n941 = n939 ? 1'b1 : n935;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n943 = $signed(32'b00000000000000000000000000011101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n944 = mant_prod_reg[29]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n945 = n944 & n943;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n947 = n945 ? 1'b1 : n941;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n949 = $signed(32'b00000000000000000000000000011110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n950 = mant_prod_reg[30]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n951 = n950 & n949;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n953 = n951 ? 1'b1 : n947;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n955 = $signed(32'b00000000000000000000000000011111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n956 = mant_prod_reg[31]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n957 = n956 & n955;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n959 = n957 ? 1'b1 : n953;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n961 = $signed(32'b00000000000000000000000000100000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n962 = mant_prod_reg[32]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n963 = n962 & n961;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n965 = n963 ? 1'b1 : n959;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n967 = $signed(32'b00000000000000000000000000100001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n968 = mant_prod_reg[33]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n969 = n968 & n967;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n971 = n969 ? 1'b1 : n965;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n973 = $signed(32'b00000000000000000000000000100010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n974 = mant_prod_reg[34]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n975 = n974 & n973;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n977 = n975 ? 1'b1 : n971;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n979 = $signed(32'b00000000000000000000000000100011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n980 = mant_prod_reg[35]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n981 = n980 & n979;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n983 = n981 ? 1'b1 : n977;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n985 = $signed(32'b00000000000000000000000000100100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n986 = mant_prod_reg[36]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n987 = n986 & n985;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n989 = n987 ? 1'b1 : n983;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n991 = $signed(32'b00000000000000000000000000100101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n992 = mant_prod_reg[37]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n993 = n992 & n991;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n995 = n993 ? 1'b1 : n989;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n997 = $signed(32'b00000000000000000000000000100110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n998 = mant_prod_reg[38]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n999 = n998 & n997;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1001 = n999 ? 1'b1 : n995;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1003 = $signed(32'b00000000000000000000000000100111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1004 = mant_prod_reg[39]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1005 = n1004 & n1003;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1007 = n1005 ? 1'b1 : n1001;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1009 = $signed(32'b00000000000000000000000000101000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1010 = mant_prod_reg[40]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1011 = n1010 & n1009;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1013 = n1011 ? 1'b1 : n1007;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1015 = $signed(32'b00000000000000000000000000101001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1016 = mant_prod_reg[41]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1017 = n1016 & n1015;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1019 = n1017 ? 1'b1 : n1013;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1021 = $signed(32'b00000000000000000000000000101010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1022 = mant_prod_reg[42]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1023 = n1022 & n1021;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1025 = n1023 ? 1'b1 : n1019;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1027 = $signed(32'b00000000000000000000000000101011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1028 = mant_prod_reg[43]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1029 = n1028 & n1027;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1031 = n1029 ? 1'b1 : n1025;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1033 = $signed(32'b00000000000000000000000000101100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1034 = mant_prod_reg[44]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1035 = n1034 & n1033;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1037 = n1035 ? 1'b1 : n1031;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1039 = $signed(32'b00000000000000000000000000101101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1040 = mant_prod_reg[45]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1041 = n1040 & n1039;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1043 = n1041 ? 1'b1 : n1037;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1045 = $signed(32'b00000000000000000000000000101110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1046 = mant_prod_reg[46]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1047 = n1046 & n1045;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1049 = n1047 ? 1'b1 : n1043;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1051 = $signed(32'b00000000000000000000000000101111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1052 = mant_prod_reg[47]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1053 = n1052 & n1051;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1055 = n1053 ? 1'b1 : n1049;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1057 = $signed(32'b00000000000000000000000000110000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1058 = mant_prod_reg[48]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1059 = n1058 & n1057;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1061 = n1059 ? 1'b1 : n1055;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1063 = $signed(32'b00000000000000000000000000110001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1064 = mant_prod_reg[49]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1065 = n1064 & n1063;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1067 = n1065 ? 1'b1 : n1061;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1069 = $signed(32'b00000000000000000000000000110010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1070 = mant_prod_reg[50]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1071 = n1070 & n1069;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1073 = n1071 ? 1'b1 : n1067;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1075 = $signed(32'b00000000000000000000000000110011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1076 = mant_prod_reg[51]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1077 = n1076 & n1075;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1079 = n1077 ? 1'b1 : n1073;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1081 = $signed(32'b00000000000000000000000000110100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1082 = mant_prod_reg[52]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1083 = n1082 & n1081;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1085 = n1083 ? 1'b1 : n1079;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1087 = $signed(32'b00000000000000000000000000110101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1088 = mant_prod_reg[53]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1089 = n1088 & n1087;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1091 = n1089 ? 1'b1 : n1085;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1093 = $signed(32'b00000000000000000000000000110110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1094 = mant_prod_reg[54]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1095 = n1094 & n1093;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1097 = n1095 ? 1'b1 : n1091;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1099 = $signed(32'b00000000000000000000000000110111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1100 = mant_prod_reg[55]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1101 = n1100 & n1099;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1103 = n1101 ? 1'b1 : n1097;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1105 = $signed(32'b00000000000000000000000000111000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1106 = mant_prod_reg[56]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1107 = n1106 & n1105;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1109 = n1107 ? 1'b1 : n1103;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1111 = $signed(32'b00000000000000000000000000111001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1112 = mant_prod_reg[57]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1113 = n1112 & n1111;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1115 = n1113 ? 1'b1 : n1109;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1117 = $signed(32'b00000000000000000000000000111010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1118 = mant_prod_reg[58]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1119 = n1118 & n1117;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1121 = n1119 ? 1'b1 : n1115;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1123 = $signed(32'b00000000000000000000000000111011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1124 = mant_prod_reg[59]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1125 = n1124 & n1123;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1127 = n1125 ? 1'b1 : n1121;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1129 = $signed(32'b00000000000000000000000000111100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1130 = mant_prod_reg[60]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1131 = n1130 & n1129;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1133 = n1131 ? 1'b1 : n1127;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1135 = $signed(32'b00000000000000000000000000111101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1136 = mant_prod_reg[61]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1137 = n1136 & n1135;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1139 = n1137 ? 1'b1 : n1133;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1141 = $signed(32'b00000000000000000000000000111110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1142 = mant_prod_reg[62]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1143 = n1142 & n1141;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1145 = n1143 ? 1'b1 : n1139;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1147 = $signed(32'b00000000000000000000000000111111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1148 = mant_prod_reg[63]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1149 = n1148 & n1147;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1151 = n1149 ? 1'b1 : n1145;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1153 = $signed(32'b00000000000000000000000001000000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1154 = mant_prod_reg[64]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1155 = n1154 & n1153;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1157 = n1155 ? 1'b1 : n1151;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1159 = $signed(32'b00000000000000000000000001000001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1160 = mant_prod_reg[65]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1161 = n1160 & n1159;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1163 = n1161 ? 1'b1 : n1157;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1165 = $signed(32'b00000000000000000000000001000010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1166 = mant_prod_reg[66]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1167 = n1166 & n1165;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1169 = n1167 ? 1'b1 : n1163;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1171 = $signed(32'b00000000000000000000000001000011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1172 = mant_prod_reg[67]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1173 = n1172 & n1171;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1175 = n1173 ? 1'b1 : n1169;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1177 = $signed(32'b00000000000000000000000001000100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1178 = mant_prod_reg[68]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1179 = n1178 & n1177;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1181 = n1179 ? 1'b1 : n1175;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1183 = $signed(32'b00000000000000000000000001000101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1184 = mant_prod_reg[69]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1185 = n1184 & n1183;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1187 = n1185 ? 1'b1 : n1181;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1189 = $signed(32'b00000000000000000000000001000110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1190 = mant_prod_reg[70]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1191 = n1190 & n1189;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1193 = n1191 ? 1'b1 : n1187;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1195 = $signed(32'b00000000000000000000000001000111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1196 = mant_prod_reg[71]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1197 = n1196 & n1195;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1199 = n1197 ? 1'b1 : n1193;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1201 = $signed(32'b00000000000000000000000001001000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1202 = mant_prod_reg[72]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1203 = n1202 & n1201;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1205 = n1203 ? 1'b1 : n1199;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1207 = $signed(32'b00000000000000000000000001001001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1208 = mant_prod_reg[73]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1209 = n1208 & n1207;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1211 = n1209 ? 1'b1 : n1205;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1213 = $signed(32'b00000000000000000000000001001010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1214 = mant_prod_reg[74]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1215 = n1214 & n1213;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1217 = n1215 ? 1'b1 : n1211;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1219 = $signed(32'b00000000000000000000000001001011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1220 = mant_prod_reg[75]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1221 = n1220 & n1219;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1223 = n1221 ? 1'b1 : n1217;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1225 = $signed(32'b00000000000000000000000001001100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1226 = mant_prod_reg[76]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1227 = n1226 & n1225;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1229 = n1227 ? 1'b1 : n1223;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1231 = $signed(32'b00000000000000000000000001001101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1232 = mant_prod_reg[77]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1233 = n1232 & n1231;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1235 = n1233 ? 1'b1 : n1229;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1237 = $signed(32'b00000000000000000000000001001110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1238 = mant_prod_reg[78]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1239 = n1238 & n1237;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1241 = n1239 ? 1'b1 : n1235;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1243 = $signed(32'b00000000000000000000000001001111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1244 = mant_prod_reg[79]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1245 = n1244 & n1243;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1247 = n1245 ? 1'b1 : n1241;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1249 = $signed(32'b00000000000000000000000001010000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1250 = mant_prod_reg[80]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1251 = n1250 & n1249;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1253 = n1251 ? 1'b1 : n1247;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1255 = $signed(32'b00000000000000000000000001010001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1256 = mant_prod_reg[81]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1257 = n1256 & n1255;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1259 = n1257 ? 1'b1 : n1253;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1261 = $signed(32'b00000000000000000000000001010010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1262 = mant_prod_reg[82]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1263 = n1262 & n1261;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1265 = n1263 ? 1'b1 : n1259;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1267 = $signed(32'b00000000000000000000000001010011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1268 = mant_prod_reg[83]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1269 = n1268 & n1267;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1271 = n1269 ? 1'b1 : n1265;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1273 = $signed(32'b00000000000000000000000001010100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1274 = mant_prod_reg[84]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1275 = n1274 & n1273;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1277 = n1275 ? 1'b1 : n1271;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1279 = $signed(32'b00000000000000000000000001010101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1280 = mant_prod_reg[85]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1281 = n1280 & n1279;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1283 = n1281 ? 1'b1 : n1277;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1285 = $signed(32'b00000000000000000000000001010110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1286 = mant_prod_reg[86]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1287 = n1286 & n1285;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1289 = n1287 ? 1'b1 : n1283;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1291 = $signed(32'b00000000000000000000000001010111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1292 = mant_prod_reg[87]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1293 = n1292 & n1291;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1295 = n1293 ? 1'b1 : n1289;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1297 = $signed(32'b00000000000000000000000001011000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1298 = mant_prod_reg[88]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1299 = n1298 & n1297;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1301 = n1299 ? 1'b1 : n1295;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1303 = $signed(32'b00000000000000000000000001011001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1304 = mant_prod_reg[89]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1305 = n1304 & n1303;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1307 = n1305 ? 1'b1 : n1301;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1309 = $signed(32'b00000000000000000000000001011010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1310 = mant_prod_reg[90]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1311 = n1310 & n1309;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1313 = n1311 ? 1'b1 : n1307;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1315 = $signed(32'b00000000000000000000000001011011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1316 = mant_prod_reg[91]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1317 = n1316 & n1315;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1319 = n1317 ? 1'b1 : n1313;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1321 = $signed(32'b00000000000000000000000001011100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1322 = mant_prod_reg[92]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1323 = n1322 & n1321;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1325 = n1323 ? 1'b1 : n1319;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1327 = $signed(32'b00000000000000000000000001011101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1328 = mant_prod_reg[93]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1329 = n1328 & n1327;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1331 = n1329 ? 1'b1 : n1325;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1333 = $signed(32'b00000000000000000000000001011110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1334 = mant_prod_reg[94]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1335 = n1334 & n1333;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1337 = n1335 ? 1'b1 : n1331;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1339 = $signed(32'b00000000000000000000000001011111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1340 = mant_prod_reg[95]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1341 = n1340 & n1339;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1343 = n1341 ? 1'b1 : n1337;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1345 = $signed(32'b00000000000000000000000001100000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1346 = mant_prod_reg[96]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1347 = n1346 & n1345;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1349 = n1347 ? 1'b1 : n1343;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1351 = $signed(32'b00000000000000000000000001100001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1352 = mant_prod_reg[97]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1353 = n1352 & n1351;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1355 = n1353 ? 1'b1 : n1349;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1357 = $signed(32'b00000000000000000000000001100010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1358 = mant_prod_reg[98]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1359 = n1358 & n1357;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1361 = n1359 ? 1'b1 : n1355;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1363 = $signed(32'b00000000000000000000000001100011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1364 = mant_prod_reg[99]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1365 = n1364 & n1363;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1367 = n1365 ? 1'b1 : n1361;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1369 = $signed(32'b00000000000000000000000001100100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1370 = mant_prod_reg[100]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1371 = n1370 & n1369;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1373 = n1371 ? 1'b1 : n1367;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1375 = $signed(32'b00000000000000000000000001100101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1376 = mant_prod_reg[101]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1377 = n1376 & n1375;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1379 = n1377 ? 1'b1 : n1373;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1381 = $signed(32'b00000000000000000000000001100110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1382 = mant_prod_reg[102]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1383 = n1382 & n1381;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1385 = n1383 ? 1'b1 : n1379;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1387 = $signed(32'b00000000000000000000000001100111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1388 = mant_prod_reg[103]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1389 = n1388 & n1387;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1391 = n1389 ? 1'b1 : n1385;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1393 = $signed(32'b00000000000000000000000001101000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1394 = mant_prod_reg[104]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1395 = n1394 & n1393;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1397 = n1395 ? 1'b1 : n1391;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1399 = $signed(32'b00000000000000000000000001101001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1400 = mant_prod_reg[105]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1401 = n1400 & n1399;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1403 = n1401 ? 1'b1 : n1397;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1405 = $signed(32'b00000000000000000000000001101010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1406 = mant_prod_reg[106]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1407 = n1406 & n1405;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1409 = n1407 ? 1'b1 : n1403;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1411 = $signed(32'b00000000000000000000000001101011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1412 = mant_prod_reg[107]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1413 = n1412 & n1411;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1415 = n1413 ? 1'b1 : n1409;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1417 = $signed(32'b00000000000000000000000001101100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1418 = mant_prod_reg[108]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1419 = n1418 & n1417;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1421 = n1419 ? 1'b1 : n1415;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1423 = $signed(32'b00000000000000000000000001101101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1424 = mant_prod_reg[109]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1425 = n1424 & n1423;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1427 = n1425 ? 1'b1 : n1421;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1429 = $signed(32'b00000000000000000000000001101110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1430 = mant_prod_reg[110]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1431 = n1430 & n1429;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1433 = n1431 ? 1'b1 : n1427;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1435 = $signed(32'b00000000000000000000000001101111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1436 = mant_prod_reg[111]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1437 = n1436 & n1435;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1439 = n1437 ? 1'b1 : n1433;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1441 = $signed(32'b00000000000000000000000001110000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1442 = mant_prod_reg[112]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1443 = n1442 & n1441;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1445 = n1443 ? 1'b1 : n1439;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1447 = $signed(32'b00000000000000000000000001110001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1448 = mant_prod_reg[113]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1449 = n1448 & n1447;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1451 = n1449 ? 1'b1 : n1445;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1453 = $signed(32'b00000000000000000000000001110010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1454 = mant_prod_reg[114]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1455 = n1454 & n1453;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1457 = n1455 ? 1'b1 : n1451;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1459 = $signed(32'b00000000000000000000000001110011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1460 = mant_prod_reg[115]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1461 = n1460 & n1459;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1463 = n1461 ? 1'b1 : n1457;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1465 = $signed(32'b00000000000000000000000001110100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1466 = mant_prod_reg[116]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1467 = n1466 & n1465;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1469 = n1467 ? 1'b1 : n1463;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1471 = $signed(32'b00000000000000000000000001110101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1472 = mant_prod_reg[117]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1473 = n1472 & n1471;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1475 = n1473 ? 1'b1 : n1469;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1477 = $signed(32'b00000000000000000000000001110110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1478 = mant_prod_reg[118]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1479 = n1478 & n1477;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1481 = n1479 ? 1'b1 : n1475;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1483 = $signed(32'b00000000000000000000000001110111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1484 = mant_prod_reg[119]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1485 = n1484 & n1483;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1487 = n1485 ? 1'b1 : n1481;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1489 = $signed(32'b00000000000000000000000001111000) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1490 = mant_prod_reg[120]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1491 = n1490 & n1489;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1493 = n1491 ? 1'b1 : n1487;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1495 = $signed(32'b00000000000000000000000001111001) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1496 = mant_prod_reg[121]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1497 = n1496 & n1495;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1499 = n1497 ? 1'b1 : n1493;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1501 = $signed(32'b00000000000000000000000001111010) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1502 = mant_prod_reg[122]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1503 = n1502 & n1501;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1505 = n1503 ? 1'b1 : n1499;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1507 = $signed(32'b00000000000000000000000001111011) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1508 = mant_prod_reg[123]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1509 = n1508 & n1507;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1511 = n1509 ? 1'b1 : n1505;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1513 = $signed(32'b00000000000000000000000001111100) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1514 = mant_prod_reg[124]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1515 = n1514 & n1513;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1517 = n1515 ? 1'b1 : n1511;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1519 = $signed(32'b00000000000000000000000001111101) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1520 = mant_prod_reg[125]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1521 = n1520 & n1519;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1523 = n1521 ? 1'b1 : n1517;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1525 = $signed(32'b00000000000000000000000001111110) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1526 = mant_prod_reg[126]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1527 = n1526 & n1525;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1529 = n1527 ? 1'b1 : n1523;
+  /* mc68881_fp80_mul_unit.vhd:215:22  */
+  assign n1531 = $signed(32'b00000000000000000000000001111111) <= $signed(n764);
+  /* mc68881_fp80_mul_unit.vhd:215:49  */
+  assign n1532 = mant_prod_reg[127]; // extract
+  /* mc68881_fp80_mul_unit.vhd:215:32  */
+  assign n1533 = n1532 & n1531;
+  /* mc68881_fp80_mul_unit.vhd:215:15  */
+  assign n1535 = n1533 ? 1'b1 : n1529;
+  /* mc68881_fp80_mul_unit.vhd:213:11  */
+  assign n1537 = n766 ? n1535 : 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:220:34  */
+  assign n1539 = n762[0]; // extract
+  /* mc68881_fp80_mul_unit.vhd:220:38  */
+  assign n1540 = n1539 | n1537;
+  assign n1541 = n762[66:1]; // extract
+  assign n1542 = {n1541, n1540};
+  /* mc68881_fp80_mul_unit.vhd:223:32  */
+  assign n1543 = n1542[66:3]; // extract
+  assign n1544 = {n1541, n1540};
+  /* mc68881_fp80_mul_unit.vhd:229:36  */
+  assign n1545 = n1544[42]; // extract
+  assign n1546 = {n1541, n1540};
   /* mc68881_fp80_mul_unit.vhd:230:36  */
-  assign n1546 = n1545[42]; // extract
-  assign n1547 = {n1542, n1541};
-  /* mc68881_fp80_mul_unit.vhd:231:36  */
-  assign n1548 = n1547[41]; // extract
-  assign n1549 = {n1542, n1541};
-  /* mc68881_fp80_mul_unit.vhd:232:26  */
-  assign n1550 = n1549[40:0]; // extract
-  /* mc68881_fp80_mul_unit.vhd:232:40  */
-  assign n1552 = n1550 != 41'b00000000000000000000000000000000000000000;
-  /* mc68881_fp80_mul_unit.vhd:232:15  */
-  assign n1555 = n1552 ? 1'b1 : 1'b0;
-  /* mc68881_fp80_mul_unit.vhd:229:13  */
-  assign n1557 = rp_reg == 2'b01;
-  assign n1558 = {n1542, n1541};
-  /* mc68881_fp80_mul_unit.vhd:235:36  */
-  assign n1559 = n1558[13]; // extract
-  assign n1560 = {n1542, n1541};
-  /* mc68881_fp80_mul_unit.vhd:236:36  */
-  assign n1561 = n1560[12]; // extract
-  assign n1562 = {n1542, n1541};
-  /* mc68881_fp80_mul_unit.vhd:237:26  */
-  assign n1563 = n1562[11:0]; // extract
-  /* mc68881_fp80_mul_unit.vhd:237:40  */
-  assign n1565 = n1563 != 12'b000000000000;
-  /* mc68881_fp80_mul_unit.vhd:237:15  */
-  assign n1568 = n1565 ? 1'b1 : 1'b0;
-  /* mc68881_fp80_mul_unit.vhd:234:13  */
-  assign n1570 = rp_reg == 2'b10;
-  assign n1571 = {n1542, n1541};
-  /* mc68881_fp80_mul_unit.vhd:240:36  */
-  assign n1572 = n1571[2]; // extract
-  assign n1573 = {n1542, n1541};
-  /* mc68881_fp80_mul_unit.vhd:241:36  */
-  assign n1574 = n1573[1]; // extract
-  assign n1575 = {n1542, n1541};
-  /* mc68881_fp80_mul_unit.vhd:242:26  */
-  assign n1576 = n1575[0]; // extract
-  /* mc68881_fp80_mul_unit.vhd:242:15  */
-  assign n1579 = n1576 ? 1'b1 : 1'b0;
-  assign n1580 = {n1570, n1557};
-  /* mc68881_fp80_mul_unit.vhd:228:11  */
+  assign n1547 = n1546[41]; // extract
+  assign n1548 = {n1541, n1540};
+  /* mc68881_fp80_mul_unit.vhd:231:26  */
+  assign n1549 = n1548[40:0]; // extract
+  /* mc68881_fp80_mul_unit.vhd:231:40  */
+  assign n1551 = n1549 != 41'b00000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:231:15  */
+  assign n1554 = n1551 ? 1'b1 : 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:228:13  */
+  assign n1556 = rp_reg == 2'b01;
+  assign n1557 = {n1541, n1540};
+  /* mc68881_fp80_mul_unit.vhd:233:36  */
+  assign n1558 = n1557[13]; // extract
+  assign n1559 = {n1541, n1540};
+  /* mc68881_fp80_mul_unit.vhd:234:36  */
+  assign n1560 = n1559[12]; // extract
+  assign n1561 = {n1541, n1540};
+  /* mc68881_fp80_mul_unit.vhd:235:26  */
+  assign n1562 = n1561[11:0]; // extract
+  /* mc68881_fp80_mul_unit.vhd:235:40  */
+  assign n1564 = n1562 != 12'b000000000000;
+  /* mc68881_fp80_mul_unit.vhd:235:15  */
+  assign n1567 = n1564 ? 1'b1 : 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:232:13  */
+  assign n1569 = rp_reg == 2'b10;
+  assign n1570 = {n1541, n1540};
+  /* mc68881_fp80_mul_unit.vhd:237:36  */
+  assign n1571 = n1570[2]; // extract
+  assign n1572 = {n1541, n1540};
+  /* mc68881_fp80_mul_unit.vhd:238:36  */
+  assign n1573 = n1572[1]; // extract
+  assign n1574 = {n1541, n1540};
+  /* mc68881_fp80_mul_unit.vhd:239:26  */
+  assign n1575 = n1574[0]; // extract
+  /* mc68881_fp80_mul_unit.vhd:239:15  */
+  assign n1578 = n1575 ? 1'b1 : 1'b0;
+  assign n1579 = {n1569, n1556};
+  /* mc68881_fp80_mul_unit.vhd:227:11  */
   always @*
-    case (n1580)
-      2'b10: n1581 = n1559;
-      2'b01: n1581 = n1546;
-      default: n1581 = n1572;
+    case (n1579)
+      2'b10: n1580 = n1558;
+      2'b01: n1580 = n1545;
+      default: n1580 = n1571;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:228:11  */
+  /* mc68881_fp80_mul_unit.vhd:227:11  */
   always @*
-    case (n1580)
-      2'b10: n1582 = n1561;
-      2'b01: n1582 = n1548;
-      default: n1582 = n1574;
+    case (n1579)
+      2'b10: n1581 = n1560;
+      2'b01: n1581 = n1547;
+      default: n1581 = n1573;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:228:11  */
+  /* mc68881_fp80_mul_unit.vhd:227:11  */
   always @*
-    case (n1580)
-      2'b10: n1583 = n1568;
-      2'b01: n1583 = n1555;
-      default: n1583 = n1579;
+    case (n1579)
+      2'b10: n1582 = n1567;
+      2'b01: n1582 = n1554;
+      default: n1582 = n1578;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:246:30  */
-  assign n1589 = n1581 | n1582;
-  /* mc68881_fp80_mul_unit.vhd:246:43  */
-  assign n1590 = n1589 | n1583;
+  /* mc68881_fp80_mul_unit.vhd:242:30  */
+  assign n1584 = n1580 | n1581;
+  /* mc68881_fp80_mul_unit.vhd:242:43  */
+  assign n1585 = n1584 | n1582;
+  /* mc68881_fp80_mul_unit.vhd:248:55  */
+  assign n1586 = n1581 | n1582;
+  /* mc68881_fp80_mul_unit.vhd:248:83  */
+  assign n1587 = n1542[43]; // extract
+  /* mc68881_fp80_mul_unit.vhd:248:71  */
+  assign n1588 = n1586 | n1587;
+  /* mc68881_fp80_mul_unit.vhd:248:34  */
+  assign n1589 = n1588 & n1580;
+  /* mc68881_fp80_mul_unit.vhd:248:19  */
+  assign n1592 = n1589 ? 1'b1 : 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:247:17  */
+  assign n1594 = rp_reg == 2'b01;
   /* mc68881_fp80_mul_unit.vhd:252:55  */
-  assign n1591 = n1582 | n1583;
+  assign n1595 = n1581 | n1582;
   /* mc68881_fp80_mul_unit.vhd:252:83  */
-  assign n1592 = n1543[43]; // extract
+  assign n1596 = n1542[14]; // extract
   /* mc68881_fp80_mul_unit.vhd:252:71  */
-  assign n1593 = n1591 | n1592;
+  assign n1597 = n1595 | n1596;
   /* mc68881_fp80_mul_unit.vhd:252:34  */
-  assign n1594 = n1593 & n1581;
+  assign n1598 = n1597 & n1580;
   /* mc68881_fp80_mul_unit.vhd:252:19  */
-  assign n1597 = n1594 ? 1'b1 : 1'b0;
+  assign n1601 = n1598 ? 1'b1 : 1'b0;
   /* mc68881_fp80_mul_unit.vhd:251:17  */
-  assign n1599 = rp_reg == 2'b01;
+  assign n1603 = rp_reg == 2'b10;
   /* mc68881_fp80_mul_unit.vhd:256:55  */
-  assign n1600 = n1582 | n1583;
+  assign n1604 = n1581 | n1582;
   /* mc68881_fp80_mul_unit.vhd:256:83  */
-  assign n1601 = n1543[14]; // extract
+  assign n1605 = n1542[3]; // extract
   /* mc68881_fp80_mul_unit.vhd:256:71  */
-  assign n1602 = n1600 | n1601;
+  assign n1606 = n1604 | n1605;
   /* mc68881_fp80_mul_unit.vhd:256:34  */
-  assign n1603 = n1602 & n1581;
+  assign n1607 = n1606 & n1580;
   /* mc68881_fp80_mul_unit.vhd:256:19  */
-  assign n1606 = n1603 ? 1'b1 : 1'b0;
-  /* mc68881_fp80_mul_unit.vhd:255:17  */
-  assign n1608 = rp_reg == 2'b10;
-  /* mc68881_fp80_mul_unit.vhd:260:55  */
-  assign n1609 = n1582 | n1583;
-  /* mc68881_fp80_mul_unit.vhd:260:83  */
-  assign n1610 = n1543[3]; // extract
-  /* mc68881_fp80_mul_unit.vhd:260:71  */
-  assign n1611 = n1609 | n1610;
-  /* mc68881_fp80_mul_unit.vhd:260:34  */
-  assign n1612 = n1611 & n1581;
-  /* mc68881_fp80_mul_unit.vhd:260:19  */
-  assign n1615 = n1612 ? 1'b1 : 1'b0;
-  assign n1616 = {n1608, n1599};
-  /* mc68881_fp80_mul_unit.vhd:250:15  */
+  assign n1610 = n1607 ? 1'b1 : 1'b0;
+  assign n1611 = {n1603, n1594};
+  /* mc68881_fp80_mul_unit.vhd:246:15  */
   always @*
-    case (n1616)
-      2'b10: n1617 = n1606;
-      2'b01: n1617 = n1597;
-      default: n1617 = n1615;
+    case (n1611)
+      2'b10: n1612 = n1601;
+      2'b01: n1612 = n1592;
+      default: n1612 = n1610;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:249:13  */
-  assign n1619 = rm_reg == 2'b00;
-  /* mc68881_fp80_mul_unit.vhd:264:13  */
-  assign n1621 = rm_reg == 2'b01;
+  /* mc68881_fp80_mul_unit.vhd:245:13  */
+  assign n1614 = rm_reg == 2'b00;
+  /* mc68881_fp80_mul_unit.vhd:260:13  */
+  assign n1616 = rm_reg == 2'b01;
+  /* mc68881_fp80_mul_unit.vhd:263:37  */
+  assign n1617 = n1585 & res_sign_reg;
+  /* mc68881_fp80_mul_unit.vhd:263:15  */
+  assign n1620 = n1617 ? 1'b1 : 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:262:13  */
+  assign n1622 = rm_reg == 2'b10;
+  /* mc68881_fp80_mul_unit.vhd:267:31  */
+  assign n1623 = ~res_sign_reg;
   /* mc68881_fp80_mul_unit.vhd:267:37  */
-  assign n1622 = n1590 & res_sign_reg;
+  assign n1624 = n1585 & n1623;
   /* mc68881_fp80_mul_unit.vhd:267:15  */
-  assign n1625 = n1622 ? 1'b1 : 1'b0;
+  assign n1627 = n1624 ? 1'b1 : 1'b0;
   /* mc68881_fp80_mul_unit.vhd:266:13  */
-  assign n1627 = rm_reg == 2'b10;
-  /* mc68881_fp80_mul_unit.vhd:271:31  */
-  assign n1628 = ~res_sign_reg;
-  /* mc68881_fp80_mul_unit.vhd:271:37  */
-  assign n1629 = n1590 & n1628;
-  /* mc68881_fp80_mul_unit.vhd:271:15  */
-  assign n1632 = n1629 ? 1'b1 : 1'b0;
-  /* mc68881_fp80_mul_unit.vhd:270:13  */
-  assign n1634 = rm_reg == 2'b11;
-  assign n1635 = {n1634, n1627, n1621, n1619};
-  /* mc68881_fp80_mul_unit.vhd:248:11  */
+  assign n1629 = rm_reg == 2'b11;
+  assign n1630 = {n1629, n1622, n1616, n1614};
+  /* mc68881_fp80_mul_unit.vhd:244:11  */
   always @*
-    case (n1635)
-      4'b1000: n1638 = n1632;
-      4'b0100: n1638 = n1625;
-      4'b0010: n1638 = 1'b0;
-      4'b0001: n1638 = n1617;
-      default: n1638 = 1'bX;
+    case (n1630)
+      4'b1000: n1633 = n1627;
+      4'b0100: n1633 = n1620;
+      4'b0010: n1633 = 1'b0;
+      4'b0001: n1633 = n1612;
+      default: n1633 = 1'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:278:57  */
-  assign n1641 = {1'b0, n1544};
-  /* mc68881_fp80_mul_unit.vhd:278:70  */
-  assign n1643 = n1641 + 65'b00000000000000000000000010000000000000000000000000000000000000000;
-  /* mc68881_fp80_mul_unit.vhd:278:15  */
-  assign n1645 = rp_reg == 2'b01;
-  /* mc68881_fp80_mul_unit.vhd:279:57  */
-  assign n1647 = {1'b0, n1544};
-  /* mc68881_fp80_mul_unit.vhd:279:70  */
-  assign n1649 = n1647 + 65'b00000000000000000000000000000000000000000000000000000100000000000;
-  /* mc68881_fp80_mul_unit.vhd:279:15  */
-  assign n1651 = rp_reg == 2'b10;
-  /* mc68881_fp80_mul_unit.vhd:280:57  */
-  assign n1653 = {1'b0, n1544};
-  /* mc68881_fp80_mul_unit.vhd:280:70  */
-  assign n1655 = n1653 + 65'b00000000000000000000000000000000000000000000000000000000000000001;
-  assign n1656 = {n1651, n1645};
-  /* mc68881_fp80_mul_unit.vhd:277:13  */
+  /* mc68881_fp80_mul_unit.vhd:274:57  */
+  assign n1636 = {1'b0, n1543};
+  /* mc68881_fp80_mul_unit.vhd:274:70  */
+  assign n1638 = n1636 + 65'b00000000000000000000000010000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:274:15  */
+  assign n1640 = rp_reg == 2'b01;
+  /* mc68881_fp80_mul_unit.vhd:275:57  */
+  assign n1642 = {1'b0, n1543};
+  /* mc68881_fp80_mul_unit.vhd:275:70  */
+  assign n1644 = n1642 + 65'b00000000000000000000000000000000000000000000000000000100000000000;
+  /* mc68881_fp80_mul_unit.vhd:275:15  */
+  assign n1646 = rp_reg == 2'b10;
+  /* mc68881_fp80_mul_unit.vhd:276:57  */
+  assign n1648 = {1'b0, n1543};
+  /* mc68881_fp80_mul_unit.vhd:276:70  */
+  assign n1650 = n1648 + 65'b00000000000000000000000000000000000000000000000000000000000000001;
+  assign n1651 = {n1646, n1640};
+  /* mc68881_fp80_mul_unit.vhd:273:13  */
   always @*
-    case (n1656)
-      2'b10: n1657 = n1649;
-      2'b01: n1657 = n1643;
-      default: n1657 = n1655;
+    case (n1651)
+      2'b10: n1652 = n1644;
+      2'b01: n1652 = n1638;
+      default: n1652 = n1650;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:282:26  */
-  assign n1658 = n1657[64]; // extract
-  /* mc68881_fp80_mul_unit.vhd:284:50  */
-  assign n1659 = n1657[63:0]; // extract
-  /* mc68881_fp80_mul_unit.vhd:284:28  */
-  assign n1661 = n1659 >> 31'b0000000000000000000000000000001;
-  /* mc68881_fp80_mul_unit.vhd:285:28  */
-  assign n1662 = n1657[0]; // extract
-  assign n1664 = n1661[0]; // extract
-  /* mc68881_fp80_mul_unit.vhd:285:15  */
-  assign n1665 = n1662 ? 1'b1 : n1664;
-  assign n1668 = n1661[62:1]; // extract
-  /* mc68881_fp80_mul_unit.vhd:289:34  */
-  assign n1670 = n756 + 32'b00000000000000000000000000000001;
-  /* mc68881_fp80_mul_unit.vhd:291:38  */
-  assign n1671 = n1657[63:0]; // extract
-  assign n1672 = {1'b1, n1668, n1665};
-  /* mc68881_fp80_mul_unit.vhd:282:13  */
-  assign n1673 = n1658 ? n1672 : n1671;
-  /* mc68881_fp80_mul_unit.vhd:276:11  */
-  assign n1674 = n1677 ? n1670 : n756;
-  /* mc68881_fp80_mul_unit.vhd:276:11  */
-  assign n1675 = n1638 ? n1673 : n1544;
-  /* mc68881_fp80_mul_unit.vhd:276:11  */
-  assign n1677 = n1658 & n1638;
-  /* mc68881_fp80_mul_unit.vhd:297:13  */
-  assign n1680 = rp_reg == 2'b01;
-  /* mc68881_fp80_mul_unit.vhd:298:13  */
-  assign n1683 = rp_reg == 2'b10;
-  assign n1684 = {n1683, n1680};
-  assign n1685 = n1678[10:0]; // extract
-  assign n1686 = n1675[10:0]; // extract
-  /* mc68881_fp80_mul_unit.vhd:296:11  */
+  /* mc68881_fp80_mul_unit.vhd:278:26  */
+  assign n1653 = n1652[64]; // extract
+  /* mc68881_fp80_mul_unit.vhd:280:50  */
+  assign n1654 = n1652[63:0]; // extract
+  /* mc68881_fp80_mul_unit.vhd:280:28  */
+  assign n1656 = n1654 >> 31'b0000000000000000000000000000001;
+  /* mc68881_fp80_mul_unit.vhd:281:28  */
+  assign n1657 = n1652[0]; // extract
+  assign n1659 = n1656[0]; // extract
+  /* mc68881_fp80_mul_unit.vhd:281:15  */
+  assign n1660 = n1657 ? 1'b1 : n1659;
+  assign n1663 = n1656[62:1]; // extract
+  /* mc68881_fp80_mul_unit.vhd:285:34  */
+  assign n1665 = n755 + 32'b00000000000000000000000000000001;
+  /* mc68881_fp80_mul_unit.vhd:287:38  */
+  assign n1666 = n1652[63:0]; // extract
+  assign n1667 = {1'b1, n1663, n1660};
+  /* mc68881_fp80_mul_unit.vhd:278:13  */
+  assign n1668 = n1653 ? n1667 : n1666;
+  /* mc68881_fp80_mul_unit.vhd:272:11  */
+  assign n1669 = n1672 ? n1665 : n755;
+  /* mc68881_fp80_mul_unit.vhd:272:11  */
+  assign n1670 = n1633 ? n1668 : n1543;
+  /* mc68881_fp80_mul_unit.vhd:272:11  */
+  assign n1672 = n1653 & n1633;
+  /* mc68881_fp80_mul_unit.vhd:293:13  */
+  assign n1675 = rp_reg == 2'b01;
+  /* mc68881_fp80_mul_unit.vhd:294:13  */
+  assign n1678 = rp_reg == 2'b10;
+  assign n1679 = {n1678, n1675};
+  assign n1680 = n1673[10:0]; // extract
+  assign n1681 = n1670[10:0]; // extract
+  /* mc68881_fp80_mul_unit.vhd:292:11  */
   always @*
-    case (n1684)
-      2'b10: n1687 = 11'b00000000000;
-      2'b01: n1687 = n1685;
-      default: n1687 = n1686;
+    case (n1679)
+      2'b10: n1682 = 11'b00000000000;
+      2'b01: n1682 = n1680;
+      default: n1682 = n1681;
     endcase
-  assign n1688 = n1678[39:11]; // extract
-  assign n1689 = n1675[39:11]; // extract
-  /* mc68881_fp80_mul_unit.vhd:296:11  */
+  assign n1683 = n1673[39:11]; // extract
+  assign n1684 = n1670[39:11]; // extract
+  /* mc68881_fp80_mul_unit.vhd:292:11  */
   always @*
-    case (n1684)
-      2'b10: n1690 = n1689;
-      2'b01: n1690 = n1688;
-      default: n1690 = n1689;
+    case (n1679)
+      2'b10: n1685 = n1684;
+      2'b01: n1685 = n1683;
+      default: n1685 = n1684;
     endcase
-  assign n1692 = n1675[63:40]; // extract
-  /* mc68881_fp80_mul_unit.vhd:303:22  */
-  assign n1694 = $signed(n1674) <= $signed(32'b00000000000000000000000000000000);
-  /* mc68881_fp80_mul_unit.vhd:304:31  */
-  assign n1696 = 32'b00000000000000000000000000000001 - n1674;
-  /* mc68881_fp80_mul_unit.vhd:304:13  */
-  assign n1697 = n1696[30:0];  // trunc
-  /* mc68881_fp80_mul_unit.vhd:305:29  */
-  assign n1698 = {1'b0, n1697};  //  uext
-  /* mc68881_fp80_mul_unit.vhd:305:29  */
-  assign n1700 = $signed(n1698) >= $signed(32'b00000000000000000000000001000000);
-  assign n1701 = {n1692, n1690, n1687};
-  /* mc68881_fp80_mul_unit.vhd:305:59  */
-  assign n1703 = n1701 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_fp80_mul_unit.vhd:305:46  */
-  assign n1704 = n1700 | n1703;
-  assign n1706 = {n1692, n1690, n1687};
-  /* mc68881_fp80_mul_unit.vhd:310:72  */
-  assign n1707 = n1706 >> n1697;
-  assign n1708 = {res_sign_reg, 15'b000000000000000, n1707};
-  /* mc68881_fp80_mul_unit.vhd:305:13  */
-  assign n1710 = n1704 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1708;
-  /* mc68881_fp80_mul_unit.vhd:313:25  */
-  assign n1712 = $signed(n1674) >= $signed(32'b00000000000000000111111111111111);
-  /* mc68881_fp80_mul_unit.vhd:319:36  */
-  assign n1715 = n1674[30:0];  // trunc
-  /* mc68881_fp80_mul_unit.vhd:319:24  */
-  assign n1716 = n1715[14:0];  // trunc
-  assign n1717 = {n1692, n1690, n1687};
-  assign n1718 = {res_sign_reg, n1716, n1717};
-  assign n1719 = {res_sign_reg, 15'b111111111111111, 64'b0000000000000000000000000000000000000000000000000000000000000000};
-  /* mc68881_fp80_mul_unit.vhd:313:11  */
-  assign n1720 = n1712 ? n1719 : n1718;
-  /* mc68881_fp80_mul_unit.vhd:303:11  */
-  assign n1722 = n1694 ? n1710 : n1720;
-  /* mc68881_fp80_mul_unit.vhd:198:9  */
-  assign n1726 = state_reg == 2'b11;
-  assign n1727 = {n1726, n748, n735, n49};
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  assign n1687 = n1670[63:40]; // extract
+  /* mc68881_fp80_mul_unit.vhd:299:22  */
+  assign n1689 = $signed(n1669) <= $signed(32'b00000000000000000000000000000000);
+  /* mc68881_fp80_mul_unit.vhd:300:31  */
+  assign n1691 = 32'b00000000000000000000000000000001 - n1669;
+  /* mc68881_fp80_mul_unit.vhd:300:13  */
+  assign n1692 = n1691[30:0];  // trunc
+  /* mc68881_fp80_mul_unit.vhd:301:29  */
+  assign n1693 = {1'b0, n1692};  //  uext
+  /* mc68881_fp80_mul_unit.vhd:301:29  */
+  assign n1695 = $signed(n1693) >= $signed(32'b00000000000000000000000001000000);
+  assign n1696 = {n1687, n1685, n1682};
+  /* mc68881_fp80_mul_unit.vhd:301:59  */
+  assign n1698 = n1696 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:301:46  */
+  assign n1699 = n1695 | n1698;
+  assign n1701 = {n1687, n1685, n1682};
+  /* mc68881_fp80_mul_unit.vhd:306:72  */
+  assign n1702 = n1701 >> n1692;
+  assign n1703 = {res_sign_reg, 15'b000000000000000, n1702};
+  /* mc68881_fp80_mul_unit.vhd:301:13  */
+  assign n1705 = n1699 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1703;
+  /* mc68881_fp80_mul_unit.vhd:309:25  */
+  assign n1707 = $signed(n1669) >= $signed(32'b00000000000000000111111111111111);
+  /* mc68881_fp80_mul_unit.vhd:315:36  */
+  assign n1710 = n1669[30:0];  // trunc
+  /* mc68881_fp80_mul_unit.vhd:315:24  */
+  assign n1711 = n1710[14:0];  // trunc
+  assign n1712 = {n1687, n1685, n1682};
+  assign n1713 = {res_sign_reg, n1711, n1712};
+  assign n1714 = {res_sign_reg, 15'b111111111111111, 64'b0000000000000000000000000000000000000000000000000000000000000000};
+  /* mc68881_fp80_mul_unit.vhd:309:11  */
+  assign n1715 = n1707 ? n1714 : n1713;
+  /* mc68881_fp80_mul_unit.vhd:299:11  */
+  assign n1717 = n1689 ? n1705 : n1715;
+  /* mc68881_fp80_mul_unit.vhd:197:9  */
+  assign n1721 = state_reg == 2'b11;
+  assign n1722 = {n1721, n747, n734, n48};
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1731 = 2'b00;
-      4'b0100: n1731 = n741;
-      4'b0010: n1731 = 2'b10;
-      4'b0001: n1731 = n43;
-      default: n1731 = 2'bX;
+    case (n1722)
+      4'b1000: n1726 = 2'b00;
+      4'b0100: n1726 = n740;
+      4'b0010: n1726 = 2'b10;
+      4'b0001: n1726 = n42;
+      default: n1726 = 2'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1733 = a_reg;
-      4'b0100: n1733 = a_reg;
-      4'b0010: n1733 = a_reg;
-      4'b0001: n1733 = n44;
-      default: n1733 = 80'bX;
+    case (n1722)
+      4'b1000: n1728 = a_reg;
+      4'b0100: n1728 = a_reg;
+      4'b0010: n1728 = a_reg;
+      4'b0001: n1728 = n43;
+      default: n1728 = 80'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1735 = b_reg;
-      4'b0100: n1735 = b_reg;
-      4'b0010: n1735 = b_reg;
-      4'b0001: n1735 = n45;
-      default: n1735 = 80'bX;
+    case (n1722)
+      4'b1000: n1730 = b_reg;
+      4'b0100: n1730 = b_reg;
+      4'b0010: n1730 = b_reg;
+      4'b0001: n1730 = n44;
+      default: n1730 = 80'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1737 = rm_reg;
-      4'b0100: n1737 = rm_reg;
-      4'b0010: n1737 = rm_reg;
-      4'b0001: n1737 = n46;
-      default: n1737 = 2'bX;
+    case (n1722)
+      4'b1000: n1732 = rm_reg;
+      4'b0100: n1732 = rm_reg;
+      4'b0010: n1732 = rm_reg;
+      4'b0001: n1732 = n45;
+      default: n1732 = 2'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1739 = rp_reg;
-      4'b0100: n1739 = rp_reg;
-      4'b0010: n1739 = rp_reg;
-      4'b0001: n1739 = n47;
-      default: n1739 = 2'bX;
+    case (n1722)
+      4'b1000: n1734 = rp_reg;
+      4'b0100: n1734 = rp_reg;
+      4'b0010: n1734 = rp_reg;
+      4'b0001: n1734 = n46;
+      default: n1734 = 2'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1741 = a_mant_reg;
-      4'b0100: n1741 = a_mant_reg;
-      4'b0010: n1741 = n139;
-      4'b0001: n1741 = a_mant_reg;
-      default: n1741 = 64'bX;
+    case (n1722)
+      4'b1000: n1736 = a_mant_reg;
+      4'b0100: n1736 = a_mant_reg;
+      4'b0010: n1736 = n138;
+      4'b0001: n1736 = a_mant_reg;
+      default: n1736 = 64'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1743 = b_mant_reg;
-      4'b0100: n1743 = b_mant_reg;
-      4'b0010: n1743 = n227;
-      4'b0001: n1743 = b_mant_reg;
-      default: n1743 = 64'bX;
+    case (n1722)
+      4'b1000: n1738 = b_mant_reg;
+      4'b0100: n1738 = b_mant_reg;
+      4'b0010: n1738 = n226;
+      4'b0001: n1738 = b_mant_reg;
+      default: n1738 = 64'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1745 = res_sign_reg;
-      4'b0100: n1745 = res_sign_reg;
-      4'b0010: n1745 = n230;
-      4'b0001: n1745 = res_sign_reg;
-      default: n1745 = 1'bX;
+    case (n1722)
+      4'b1000: n1740 = res_sign_reg;
+      4'b0100: n1740 = res_sign_reg;
+      4'b0010: n1740 = n229;
+      4'b0001: n1740 = res_sign_reg;
+      default: n1740 = 1'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1747 = exp_res_reg;
-      4'b0100: n1747 = exp_res_reg;
-      4'b0010: n1747 = n733;
-      4'b0001: n1747 = exp_res_reg;
-      default: n1747 = 18'bX;
+    case (n1722)
+      4'b1000: n1742 = exp_res_reg;
+      4'b0100: n1742 = exp_res_reg;
+      4'b0010: n1742 = n732;
+      4'b0001: n1742 = exp_res_reg;
+      default: n1742 = 18'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1749 = early_exit_reg;
-      4'b0100: n1749 = early_exit_reg;
-      4'b0010: n1749 = n727;
-      4'b0001: n1749 = early_exit_reg;
-      default: n1749 = 1'bX;
+    case (n1722)
+      4'b1000: n1744 = early_exit_reg;
+      4'b0100: n1744 = early_exit_reg;
+      4'b0010: n1744 = n726;
+      4'b0001: n1744 = early_exit_reg;
+      default: n1744 = 1'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1751 = early_result_reg;
-      4'b0100: n1751 = early_result_reg;
-      4'b0010: n1751 = n729;
-      4'b0001: n1751 = early_result_reg;
-      default: n1751 = 80'bX;
+    case (n1722)
+      4'b1000: n1746 = early_result_reg;
+      4'b0100: n1746 = early_result_reg;
+      4'b0010: n1746 = n728;
+      4'b0001: n1746 = early_result_reg;
+      default: n1746 = 80'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1753 = mant_prod_reg;
-      4'b0100: n1753 = n742;
-      4'b0010: n1753 = mant_prod_reg;
-      4'b0001: n1753 = mant_prod_reg;
-      default: n1753 = 128'bX;
+    case (n1722)
+      4'b1000: n1748 = mant_prod_reg;
+      4'b0100: n1748 = n741;
+      4'b0010: n1748 = mant_prod_reg;
+      4'b0001: n1748 = mant_prod_reg;
+      default: n1748 = 128'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1757 = 1'b1;
-      4'b0100: n1757 = n745;
-      4'b0010: n1757 = 1'b0;
-      4'b0001: n1757 = 1'b0;
-      default: n1757 = 1'bX;
+    case (n1722)
+      4'b1000: n1752 = 1'b1;
+      4'b0100: n1752 = n744;
+      4'b0010: n1752 = 1'b0;
+      4'b0001: n1752 = 1'b0;
+      default: n1752 = 1'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:116:7  */
+  /* mc68881_fp80_mul_unit.vhd:115:7  */
   always @*
-    case (n1727)
-      4'b1000: n1760 = n1722;
-      4'b0100: n1760 = n746;
-      4'b0010: n1760 = result_reg;
-      4'b0001: n1760 = result_reg;
-      default: n1760 = 80'bX;
+    case (n1722)
+      4'b1000: n1755 = n1717;
+      4'b0100: n1755 = n745;
+      4'b0010: n1755 = result_reg;
+      4'b0001: n1755 = result_reg;
+      default: n1755 = 80'bX;
     endcase
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1813 = n41 ? 2'b00 : n1731;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1815 = n41 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1733;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1817 = n41 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1735;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1819 = n41 ? 2'b00 : n1737;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1821 = n41 ? 2'b00 : n1739;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1823 = n41 ? 64'b0000000000000000000000000000000000000000000000000000000000000000 : n1741;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1825 = n41 ? 64'b0000000000000000000000000000000000000000000000000000000000000000 : n1743;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1827 = n41 ? 1'b0 : n1745;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1829 = n41 ? 18'b000000000000000000 : n1747;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1831 = n41 ? 1'b0 : n1749;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1833 = n41 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1751;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1835 = n41 ? 128'b00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1753;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1837 = n41 ? 1'b0 : n1757;
-  /* mc68881_fp80_mul_unit.vhd:98:5  */
-  assign n1839 = n41 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1760;
-  /* mc68881_fp80_mul_unit.vhd:332:32  */
-  assign n1919 = state_reg != 2'b00;
-  /* mc68881_fp80_mul_unit.vhd:332:17  */
-  assign n1920 = n1919 ? 1'b1 : 1'b0;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1922 <= n1813;
-  initial
-    n1922 = 2'b00;
+  assign n1806 = n40 ? 2'b00 : n1726;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1923 <= n1815;
-  initial
-    n1923 = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
+  assign n1808 = n40 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1728;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1924 <= n1817;
-  initial
-    n1924 = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
+  assign n1810 = n40 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1730;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1925 <= n1819;
-  initial
-    n1925 = 2'b00;
+  assign n1812 = n40 ? 2'b00 : n1732;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1926 <= n1821;
-  initial
-    n1926 = 2'b00;
+  assign n1814 = n40 ? 2'b00 : n1734;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1927 <= n1823;
-  initial
-    n1927 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  assign n1816 = n40 ? 64'b0000000000000000000000000000000000000000000000000000000000000000 : n1736;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1928 <= n1825;
-  initial
-    n1928 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  assign n1818 = n40 ? 64'b0000000000000000000000000000000000000000000000000000000000000000 : n1738;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1929 <= n1827;
-  initial
-    n1929 = 1'b0;
+  assign n1820 = n40 ? 1'b0 : n1740;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1930 <= n1829;
-  initial
-    n1930 = 18'b000000000000000000;
+  assign n1822 = n40 ? 18'b000000000000000000 : n1742;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1931 <= n1831;
-  initial
-    n1931 = 1'b0;
+  assign n1824 = n40 ? 1'b0 : n1744;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1932 <= n1833;
-  initial
-    n1932 = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
+  assign n1826 = n40 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1746;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1933 <= n1835;
-  initial
-    n1933 = 128'b00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000;
+  assign n1828 = n40 ? 128'b00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1748;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
-  always @(posedge clk)
-    n1934 <= n1837;
-  initial
-    n1934 = 1'b0;
+  assign n1830 = n40 ? 1'b0 : n1752;
   /* mc68881_fp80_mul_unit.vhd:97:5  */
+  assign n1832 = n40 ? 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000 : n1755;
+  /* mc68881_fp80_mul_unit.vhd:328:32  */
+  assign n1909 = state_reg != 2'b00;
+  /* mc68881_fp80_mul_unit.vhd:328:17  */
+  assign n1910 = n1909 ? 1'b1 : 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
   always @(posedge clk)
-    n1935 <= n1839;
+    n1912 <= n1806;
   initial
-    n1935 = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
+    n1912 = 2'b00;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1913 <= n1808;
+  initial
+    n1913 = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1914 <= n1810;
+  initial
+    n1914 = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1915 <= n1812;
+  initial
+    n1915 = 2'b00;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1916 <= n1814;
+  initial
+    n1916 = 2'b00;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1917 <= n1816;
+  initial
+    n1917 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1918 <= n1818;
+  initial
+    n1918 = 64'b0000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1919 <= n1820;
+  initial
+    n1919 = 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1920 <= n1822;
+  initial
+    n1920 = 18'b000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1921 <= n1824;
+  initial
+    n1921 = 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1922 <= n1826;
+  initial
+    n1922 = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1923 <= n1828;
+  initial
+    n1923 = 128'b00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1924 <= n1830;
+  initial
+    n1924 = 1'b0;
+  /* mc68881_fp80_mul_unit.vhd:96:5  */
+  always @(posedge clk)
+    n1925 <= n1832;
+  initial
+    n1925 = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
 endmodule
 

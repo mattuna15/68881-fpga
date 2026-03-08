@@ -382,6 +382,12 @@ package mc68881_pkg is
   -- Helper: decode command word bits [6:0] to fpu_op_t.
   function cir_decode_cpgen_opcode(cmd_word : std_logic_vector(15 downto 0)) return fpu_op_t;
 
+  -- Shift right with sticky bit (OR of all shifted-out bits into bit 0).
+  function shift_right_with_sticky(
+    value : unsigned;
+    shift : natural
+  ) return unsigned;
+
 end package mc68881_pkg;
 
 package body mc68881_pkg is
@@ -1405,11 +1411,6 @@ package body mc68881_pkg is
     end case;
   end function;
 
-  function shift_right_with_sticky(
-    value : unsigned;
-    shift : natural
-  ) return unsigned;
-
   procedure apply_rounding(
     sign       : in  std_logic;
     mant_ext   : in  unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
@@ -1429,7 +1430,6 @@ package body mc68881_pkg is
     variable increment  : std_logic := '0';
     variable any_disc   : std_logic := '0';
     variable exp_var    : integer := 0;
-    variable drop_bits  : natural := 0;
   begin
     mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
 
@@ -1439,15 +1439,12 @@ package body mc68881_pkg is
       when FP_PREC_SINGLE =>
         guard := mant_ext(42); round_bit := mant_ext(41);
         if mant_ext(40 downto 0) /= 0 then sticky := '1'; end if;
-        drop_bits := 40;
       when FP_PREC_DOUBLE =>
         guard := mant_ext(13); round_bit := mant_ext(12);
         if mant_ext(11 downto 0) /= 0 then sticky := '1'; end if;
-        drop_bits := 11;
       when others =>
         guard := mant_ext(2); round_bit := mant_ext(1);
         if mant_ext(0) = '1' then sticky := '1'; end if;
-        drop_bits := 0;
     end case;
 
     any_disc := guard or round_bit or sticky;

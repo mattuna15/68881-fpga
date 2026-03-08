@@ -77,6 +77,7 @@ architecture rtl of mc68881_divrem_unit is
     ST_CLASSIFY,
     ST_DIV_ITER,
     ST_POST_DIV,
+    ST_POST_DIV_ROUND,
     ST_SQRT_ITER,
     ST_SQRT_POST,
     ST_MOD_WAIT,
@@ -101,6 +102,12 @@ architecture rtl of mc68881_divrem_unit is
   signal sqrt_root_reg : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
   signal sqrt_iter_idx_reg : integer range 0 to FP_MANT_EXT_WIDTH-1 := 0;
   signal sqrt_exp_out_reg : integer := 0;
+
+  signal post_mant_ext_reg : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
+  signal post_exp_reg : integer := 0;
+  signal post_inexact_reg : std_logic := '0';
+  signal post_rm_reg : fp_round_mode_t := FP_RND_NEAREST;
+  signal post_rp_reg : fp_round_prec_t := FP_PREC_EXTENDED;
 
   signal div_result_reg : fp80_t := (others => '0');
   signal result_reg : fp80_t := (others => '0');
@@ -159,6 +166,7 @@ architecture rtl of mc68881_divrem_unit is
   function shift_right_with_sticky(value : unsigned; shift : natural) return unsigned is
     variable shifted : unsigned(value'length-1 downto 0) := (others => '0');
     variable sticky : std_logic := '0';
+    variable or_prefix : unsigned(value'length-1 downto 0);
   begin
     if shift = 0 then
       return value;
@@ -172,9 +180,13 @@ architecture rtl of mc68881_divrem_unit is
       return shifted;
     end if;
 
-    if value(shift-1 downto 0) /= 0 then
-      sticky := '1';
-    end if;
+    -- OR-prefix scan: or_prefix(i) = value(0) | value(1) | ... | value(i)
+    -- Then sticky = or_prefix(shift-1) via single dynamic mux (not N comparators)
+    or_prefix(0) := value(0);
+    for i in 1 to value'length-1 loop
+      or_prefix(i) := or_prefix(i-1) or value(i);
+    end loop;
+    sticky := or_prefix(shift - 1);
 
     shifted := shift_right(value, shift);
     if sticky = '1' then
@@ -200,45 +212,54 @@ architecture rtl of mc68881_divrem_unit is
     variable sticky     : std_logic := '0';
     variable increment  : std_logic := '0';
     variable any_disc   : std_logic := '0';
-    variable prec_w     : natural := FP_MANT_WIDTH;
     variable drop_bits  : natural := 0;
-    variable lsb_keep   : integer := FP_GRS_BITS;
     variable exp_var    : integer := 0;
   begin
     mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
-    prec_w := prec_bits(rnd_prec);
-    drop_bits := FP_MANT_WIDTH - prec_w;
-    lsb_keep := FP_GRS_BITS + integer(drop_bits);
 
-    guard := mant_ext(lsb_keep-1);
-    round_bit := mant_ext(lsb_keep-2);
-    if lsb_keep > 2 then
-      if mant_ext(lsb_keep-3 downto 0) /= 0 then
-        sticky := '1';
-      end if;
-    end if;
+    -- Extract guard/round/sticky per precision using constant indices.
+    sticky := '0';
+    case rnd_prec is
+      when FP_PREC_SINGLE =>
+        guard := mant_ext(42); round_bit := mant_ext(41);
+        if mant_ext(40 downto 0) /= 0 then sticky := '1'; end if;
+        drop_bits := 40;
+      when FP_PREC_DOUBLE =>
+        guard := mant_ext(13); round_bit := mant_ext(12);
+        if mant_ext(11 downto 0) /= 0 then sticky := '1'; end if;
+        drop_bits := 11;
+      when others =>
+        guard := mant_ext(2); round_bit := mant_ext(1);
+        if mant_ext(0) = '1' then sticky := '1'; end if;
+        drop_bits := 0;
+    end case;
 
     any_disc := guard or round_bit or sticky;
     case rnd_mode is
       when FP_RND_NEAREST =>
-        if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(drop_bits) = '1') then
-          increment := '1';
-        end if;
+        case rnd_prec is
+          when FP_PREC_SINGLE =>
+            if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(40) = '1') then increment := '1'; end if;
+          when FP_PREC_DOUBLE =>
+            if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(11) = '1') then increment := '1'; end if;
+          when others =>
+            if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(0) = '1') then increment := '1'; end if;
+        end case;
       when FP_RND_ZERO =>
         increment := '0';
       when FP_RND_MINUS_INF =>
-        if sign = '1' and any_disc = '1' then
-          increment := '1';
-        end if;
+        if sign = '1' and any_disc = '1' then increment := '1'; end if;
       when FP_RND_PLUS_INF =>
-        if sign = '0' and any_disc = '1' then
-          increment := '1';
-        end if;
+        if sign = '0' and any_disc = '1' then increment := '1'; end if;
     end case;
 
     exp_var := exp_in;
     if increment = '1' then
-      mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll drop_bits);
+      case rnd_prec is
+        when FP_PREC_SINGLE => mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll 40);
+        when FP_PREC_DOUBLE => mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll 11);
+        when others => mant_round := ('0' & mant_main) + 1;
+      end case;
       if mant_round(mant_round'left) = '1' then
         mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
         mant_main(mant_main'left) := '1';
@@ -248,9 +269,11 @@ architecture rtl of mc68881_divrem_unit is
       end if;
     end if;
 
-    if drop_bits > 0 then
-      mant_main(drop_bits-1 downto 0) := (others => '0');
-    end if;
+    case rnd_prec is
+      when FP_PREC_SINGLE => mant_main(39 downto 0) := (others => '0');
+      when FP_PREC_DOUBLE => mant_main(10 downto 0) := (others => '0');
+      when others => null;
+    end case;
 
     mant_out := mant_main;
     exp_out := exp_var;
@@ -474,6 +497,8 @@ begin
     variable b_exp_adj : integer := 0;
     variable a_mant_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable b_mant_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
+    variable quot_low_or : std_logic := '0';
+    variable quot_or_prefix : unsigned(DIVIDEND_BITS-1 downto 0);
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -713,20 +738,25 @@ begin
             iter_idx_reg <= iter_idx_reg - 1;
           else
             rem_next := shift_left(rem_reg, 2);
-            rem_next(1 downto 0) := dividend_reg(iter_idx_reg downto iter_idx_reg-1);
+            rem_next(1) := dividend_reg(iter_idx_reg);
+            rem_next(0) := dividend_reg(iter_idx_reg-1);
             div_mul2 := shift_left(divisor_ext, 1);
             div_mul3 := divisor_ext + div_mul2;
             if rem_next >= div_mul3 then
               rem_next := rem_next - div_mul3;
-              quot_next(iter_idx_reg downto iter_idx_reg-1) := "11";
+              quot_next(iter_idx_reg) := '1';
+              quot_next(iter_idx_reg-1) := '1';
             elsif rem_next >= div_mul2 then
               rem_next := rem_next - div_mul2;
-              quot_next(iter_idx_reg downto iter_idx_reg-1) := "10";
+              quot_next(iter_idx_reg) := '1';
+              quot_next(iter_idx_reg-1) := '0';
             elsif rem_next >= divisor_ext then
               rem_next := rem_next - divisor_ext;
-              quot_next(iter_idx_reg downto iter_idx_reg-1) := "01";
+              quot_next(iter_idx_reg) := '0';
+              quot_next(iter_idx_reg-1) := '1';
             else
-              quot_next(iter_idx_reg downto iter_idx_reg-1) := "00";
+              quot_next(iter_idx_reg) := '0';
+              quot_next(iter_idx_reg-1) := '0';
             end if;
             rem_reg <= rem_next;
             quot_reg <= quot_next;
@@ -741,7 +771,8 @@ begin
         when ST_SQRT_ITER =>
           pair_hi := SQRT_RADICAND_BITS-1 - (sqrt_iter_idx_reg * 2);
           rem_next := shift_left(rem_reg, 2);
-          rem_next(1 downto 0) := sqrt_radicand_reg(pair_hi downto pair_hi-1);
+          rem_next(1) := sqrt_radicand_reg(pair_hi);
+          rem_next(0) := sqrt_radicand_reg(pair_hi-1);
           trial := shift_left(resize(sqrt_root_reg, REM_WIDTH), 2) + to_unsigned(1, REM_WIDTH);
           root_next := shift_left(sqrt_root_reg, 1);
           if rem_next >= trial then
@@ -804,6 +835,7 @@ begin
           state_reg <= ST_DONE;
 
         when ST_POST_DIV =>
+          -- Cycle 1: leading-one detection, mantissa extraction, exponent calc
           top_idx := integer(DIV_Q_BITS);
           inexact_local := '0';
           if rem_reg /= 0 then
@@ -820,9 +852,18 @@ begin
 
           exp_res_i := div_exp_base_reg + (lead_idx - top_idx);
           if lead_idx >= FP_MANT_EXT_WIDTH-1 then
-            mant_ext := quot_reg(lead_idx downto lead_idx-(FP_MANT_EXT_WIDTH-1));
-            if lead_idx > FP_MANT_EXT_WIDTH and quot_reg(lead_idx-FP_MANT_EXT_WIDTH-1 downto 0) /= 0 then
-              mant_ext(0) := '1';
+            for i in 0 to FP_MANT_EXT_WIDTH-1 loop
+              mant_ext(i) := quot_reg(lead_idx - (FP_MANT_EXT_WIDTH-1) + i);
+            end loop;
+            if lead_idx > FP_MANT_EXT_WIDTH then
+              -- OR-prefix scan: single dynamic mux instead of N comparators
+              quot_or_prefix(0) := quot_reg(0);
+              for i in 1 to quot_reg'length-1 loop
+                quot_or_prefix(i) := quot_or_prefix(i-1) or quot_reg(i);
+              end loop;
+              if quot_or_prefix(lead_idx - FP_MANT_EXT_WIDTH - 1) = '1' then
+                mant_ext(0) := '1';
+              end if;
             end if;
           else
             mant_ext := resize(shift_left(quot_reg, (FP_MANT_EXT_WIDTH-1)-lead_idx), FP_MANT_EXT_WIDTH);
@@ -847,7 +888,21 @@ begin
             exp_res_i := 0;
           end if;
 
-          apply_rounding(div_sign_reg, mant_ext, exp_res_i, div_round_mode, div_round_prec, mant_main, exp_res_i, inexact_local);
+          -- Register intermediate results for rounding in next cycle
+          post_mant_ext_reg <= mant_ext;
+          post_exp_reg <= exp_res_i;
+          post_inexact_reg <= inexact_local;
+          post_rm_reg <= div_round_mode;
+          post_rp_reg <= div_round_prec;
+          state_reg <= ST_POST_DIV_ROUND;
+
+        when ST_POST_DIV_ROUND =>
+          -- Cycle 2: rounding and packing from registered intermediates
+          mant_ext := post_mant_ext_reg;
+          exp_res_i := post_exp_reg;
+          inexact_local := post_inexact_reg;
+
+          apply_rounding(div_sign_reg, mant_ext, exp_res_i, post_rm_reg, post_rp_reg, mant_main, exp_res_i, inexact_local);
 
           -- Promote to minimum normal if rounding set the integer bit
           if exp_res_i = 0 and mant_main(mant_main'left) = '1' then

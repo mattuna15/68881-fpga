@@ -1,5 +1,5 @@
 -- CIR Dialog Protocol Testbench
--- Tests the Section 7 coprocessor interface register dialog.
+-- Tests the CIR coprocessor interface register dialog.
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;

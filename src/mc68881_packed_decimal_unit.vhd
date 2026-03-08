@@ -49,6 +49,9 @@ architecture rtl of mc68881_packed_decimal_unit is
   type packed_digits_t is array (0 to 16) of natural range 0 to 9;
   type packed_state_t is (
     ST_IDLE,
+    ST_ENC_CLASSIFY,
+    ST_ENC_EXP10,
+    ST_ENC_SCALE_PREP,
     ST_SCALE_CHUNK,
     ST_SCALE_BITS,
     ST_ENC_TUNE,
@@ -120,6 +123,7 @@ architecture rtl of mc68881_packed_decimal_unit is
 
   signal sign_reg : std_logic := '0';
   signal exp10_reg : integer range -10000 to 10000 := 0;
+  signal bin_exp_reg : integer range -20000 to 20000 := 0;
   signal work_fp_reg : fp80_t := (others => '0');
   signal digits_reg : packed_digits_t := (others => 0);
   signal enc_digit_reg : natural range 0 to 9 := 0;
@@ -295,6 +299,7 @@ begin
       req_k_reg <= 0;
       sign_reg <= '0';
       exp10_reg <= 0;
+      bin_exp_reg <= 0;
       work_fp_reg <= (others => '0');
       digits_reg <= (others => 0);
       enc_digit_reg <= 0;
@@ -460,77 +465,8 @@ begin
             idx_reg <= 0;
 
             if req_encode = '1' then
-              packed_word_v := (others => '0');
-              packed_word_v(95) := req_fp(FP_WIDTH-1);
               sign_reg <= req_fp(FP_WIDTH-1);
-
-              if fp80_is_zero(req_fp) then
-                rsp_word_reg <= packed_word_v;
-                rsp_fp_reg <= req_fp;
-                rsp_inexact_reg <= '0';
-                rsp_invalid_reg <= '0';
-                rsp_valid_reg <= '1';
-              elsif fp80_is_inf(req_fp) then
-                packed_word_v(93 downto 92) := "11";
-                packed_word_v(91 downto 88) := x"F";
-                packed_word_v(87 downto 84) := x"F";
-                packed_word_v(83 downto 80) := x"F";
-                packed_word_v(79 downto 76) := x"F";
-                rsp_word_reg <= packed_word_v;
-                rsp_fp_reg <= req_fp;
-                rsp_inexact_reg <= '0';
-                rsp_invalid_reg <= '0';
-                rsp_valid_reg <= '1';
-              elsif fp80_is_nan(req_fp) then
-                packed_word_v(93 downto 92) := "11";
-                packed_word_v(91 downto 88) := x"F";
-                packed_word_v(87 downto 84) := x"F";
-                packed_word_v(83 downto 80) := x"F";
-                packed_word_v(79 downto 76) := x"F";
-                packed_word_v(67 downto 64) := x"1";
-                packed_word_v(63 downto 0) := (others => '1');
-                rsp_word_reg <= packed_word_v;
-                rsp_fp_reg <= req_fp;
-                rsp_inexact_reg <= '0';
-                rsp_invalid_reg <= '0';
-                rsp_valid_reg <= '1';
-              else
-                abs_val := req_fp;
-                abs_val(FP_WIDTH-1) := '0';
-
-                bin_exp := to_integer(unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH))) - FP_EXP_BIAS;
-                if unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH)) = 0 then
-                  bin_exp := 1 - FP_EXP_BIAS;
-                  for bit_idx in FP_MANT_WIDTH-1 downto 0 loop
-                    exit when abs_val(bit_idx) = '1';
-                    bin_exp := bin_exp - 1;
-                  end loop;
-                end if;
-
-                if bin_exp >= 0 then
-                  exp10_local := (bin_exp * 77) / 256;
-                else
-                  exp10_local := -(((-bin_exp) * 77 + 255) / 256);
-                end if;
-
-                exp10_reg <= exp10_local;
-                work_fp_reg <= abs_val;
-                scale_exp_local := -exp10_local;
-                if scale_exp_local = 0 then
-                  state_reg <= ST_ENC_TUNE;
-                else
-                  if scale_exp_local < 0 then
-                    scale_use_neg_reg <= '1';
-                    scale_abs_exp_reg <= natural(-scale_exp_local);
-                  else
-                    scale_use_neg_reg <= '0';
-                    scale_abs_exp_reg <= natural(scale_exp_local);
-                  end if;
-                  scale_bit_idx_reg <= 0;
-                  scale_return_state_reg <= ST_ENC_TUNE;
-                  state_reg <= ST_SCALE_CHUNK;
-                end if;
-              end if;
+              state_reg <= ST_ENC_CLASSIFY;
             else
               sign_reg <= req_word(95);
               packed_word_v := req_word;
@@ -606,6 +542,93 @@ begin
                 end if;
               end if;
             end if;
+          end if;
+
+        when ST_ENC_CLASSIFY =>
+          -- Pipeline stage: classify req_fp_reg (registered copy from ST_IDLE).
+          -- Splits heavy combinational logic (exponent extraction, exp10 via DSP
+          -- multiply, scale calculation) from the req_fp port input path.
+          packed_word_v := (others => '0');
+          packed_word_v(95) := sign_reg;
+
+          if fp80_is_zero(req_fp_reg) then
+            rsp_word_reg <= packed_word_v;
+            rsp_fp_reg <= req_fp_reg;
+            rsp_inexact_reg <= '0';
+            rsp_invalid_reg <= '0';
+            rsp_valid_reg <= '1';
+            state_reg <= ST_IDLE;
+          elsif fp80_is_inf(req_fp_reg) then
+            packed_word_v(93 downto 92) := "11";
+            packed_word_v(91 downto 88) := x"F";
+            packed_word_v(87 downto 84) := x"F";
+            packed_word_v(83 downto 80) := x"F";
+            packed_word_v(79 downto 76) := x"F";
+            rsp_word_reg <= packed_word_v;
+            rsp_fp_reg <= req_fp_reg;
+            rsp_inexact_reg <= '0';
+            rsp_invalid_reg <= '0';
+            rsp_valid_reg <= '1';
+            state_reg <= ST_IDLE;
+          elsif fp80_is_nan(req_fp_reg) then
+            packed_word_v(93 downto 92) := "11";
+            packed_word_v(91 downto 88) := x"F";
+            packed_word_v(87 downto 84) := x"F";
+            packed_word_v(83 downto 80) := x"F";
+            packed_word_v(79 downto 76) := x"F";
+            packed_word_v(67 downto 64) := x"1";
+            packed_word_v(63 downto 0) := (others => '1');
+            rsp_word_reg <= packed_word_v;
+            rsp_fp_reg <= req_fp_reg;
+            rsp_inexact_reg <= '0';
+            rsp_invalid_reg <= '0';
+            rsp_valid_reg <= '1';
+            state_reg <= ST_IDLE;
+          else
+            abs_val := req_fp_reg;
+            abs_val(FP_WIDTH-1) := '0';
+
+            bin_exp := to_integer(unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH))) - FP_EXP_BIAS;
+            if unsigned(abs_val(FP_WIDTH-2 downto FP_MANT_WIDTH)) = 0 then
+              bin_exp := 1 - FP_EXP_BIAS;
+              for bit_idx in FP_MANT_WIDTH-1 downto 0 loop
+                exit when abs_val(bit_idx) = '1';
+                bin_exp := bin_exp - 1;
+              end loop;
+            end if;
+
+            bin_exp_reg <= bin_exp;
+            work_fp_reg <= abs_val;
+            state_reg <= ST_ENC_EXP10;
+          end if;
+
+        when ST_ENC_EXP10 =>
+          -- Pipeline stage: DSP multiply bin_exp_reg * 77.
+          -- Registering bin_exp_reg allows DSP48E1 AREG input pipelining,
+          -- breaking the req_fp_reg -> exponent extraction -> DSP path.
+          if bin_exp_reg >= 0 then
+            exp10_reg <= (bin_exp_reg * 77) / 256;
+          else
+            exp10_reg <= -(((-bin_exp_reg) * 77 + 255) / 256);
+          end if;
+          state_reg <= ST_ENC_SCALE_PREP;
+
+        when ST_ENC_SCALE_PREP =>
+          -- Third pipeline stage: compute scale parameters from exp10_reg.
+          scale_exp_local := -exp10_reg;
+          if scale_exp_local = 0 then
+            state_reg <= ST_ENC_TUNE;
+          else
+            if scale_exp_local < 0 then
+              scale_use_neg_reg <= '1';
+              scale_abs_exp_reg <= natural(-scale_exp_local);
+            else
+              scale_use_neg_reg <= '0';
+              scale_abs_exp_reg <= natural(scale_exp_local);
+            end if;
+            scale_bit_idx_reg <= 0;
+            scale_return_state_reg <= ST_ENC_TUNE;
+            state_reg <= ST_SCALE_CHUNK;
           end if;
 
         when ST_SCALE_CHUNK =>

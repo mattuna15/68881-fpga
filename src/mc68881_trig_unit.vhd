@@ -56,6 +56,8 @@ architecture rtl of mc68881_trig_unit is
     ST_TRIG_RESIDUAL_POST,
     ST_TRIG_CW_LO_MUL,
     ST_TRIG_CW_LO_SUB,
+    ST_TRIG_CW_C3_MUL,
+    ST_TRIG_CW_C3_SUB,
     ST_TRIG_SEED_INDEX_ADD_PREP,
     ST_TRIG_SEED_INDEX_ADD_POST,
     ST_TRIG_SEED_INDEX_SCALE_POST,
@@ -91,6 +93,8 @@ architecture rtl of mc68881_trig_unit is
     ST_EXP_REDUCE_R_POST,
     ST_EXP_CW_LO_MUL,
     ST_EXP_CW_LO_SUB,
+    ST_EXP_CW_C3_MUL,
+    ST_EXP_CW_C3_SUB,
     ST_LOG_EXP_TERM_POST,
     ST_LOG_GETEXP,
     ST_LOG_GETEXP_HOLD,
@@ -156,7 +160,8 @@ architecture rtl of mc68881_trig_unit is
   constant FP80_PI        : fp80_t := x"4000C90FDAA22168C235";
   constant FP80_HALF_PI   : fp80_t := x"3FFFC90FDAA22168C235";
   constant FP80_HALF_PI_HI : fp80_t := x"3FFFC90FDAA200000000";
-  constant FP80_HALF_PI_LO : fp80_t := x"3FDD85A308D400000000";
+  constant FP80_HALF_PI_LO : fp80_t := x"3FDD85A308D400000000";  -- pi/2 - HALF_PI_HI (C1+C2 = FP80_HALF_PI exactly)
+  constant FP80_HALF_PI_C3 : fp80_t := x"BFBDECE675D1FC8F8CBB";  -- true pi/2 - FP80_HALF_PI (~131 bits)
   constant FP80_QUARTER_PI : fp80_t := x"3FFEC90FDAA22168C000";
   constant FP80_NEG_HALF_PI : fp80_t := x"BFFFC90FDAA22168C235";
   constant FP80_TWO_PI    : fp80_t := x"4001C90FDAA22168C235";
@@ -180,7 +185,8 @@ architecture rtl of mc68881_trig_unit is
   constant FP80_NEG_ONE_SIXTH : fp80_t := x"BFFCAAAAAAAAAAAAAAAB";
   constant FP80_LN2 : fp80_t := x"3FFEB17217F7D1CF79AC";
   constant FP80_LN2_HI : fp80_t := x"3FFEB17217F700000000";  -- ln(2) with low 32 mantissa bits zeroed
-  constant FP80_LN2_LO : fp80_t := x"3FDED1CF79AC00000000";  -- ln(2) - LN2_HI
+  constant FP80_LN2_LO : fp80_t := x"3FDED1CF79AC00000000";  -- ln(2) - LN2_HI (C1+C2 = FP80_LN2 exactly)
+  constant FP80_LN2_C3 : fp80_t := x"BFBCD871319FF0342542";  -- true ln(2) - FP80_LN2 (~129 bits)
   constant FP80_LN10 : fp80_t := x"4000935D8DDDAAA8AC17";
   constant FP80_INV_LN2 : fp80_t := x"3FFFB8AA3B295C17F0BC";
   constant FP80_INV_LN10 : fp80_t := x"3FFDDE5BD8A937287195";
@@ -1870,7 +1876,34 @@ begin
           state_reg <= ST_FP_ADD;
 
         when ST_TRIG_CW_LO_SUB =>
-          -- tmp_reg = r = r_hi - q * HALF_PI_LO (the corrected residual)
+          -- tmp_reg = r_mid = r_hi - q * HALF_PI_LO
+          -- Apply 3rd Cody-Waite term for ~131 bits of pi/2
+          -- Skip C3 when r_mid=0 (exact cancellation)
+          if fp80_is_zero(tmp_reg) then
+            r_reg <= FP80_ZERO;
+            state_reg <= ST_TRIG_SEED_INDEX_ADD_PREP;
+          else
+            r_reg <= tmp_reg;
+            mul_a_reg <= q_fp_reg;
+            mul_b_reg <= FP80_HALF_PI_C3;
+            mul_rm_reg <= FP_RND_NEAREST;
+            mul_rp_reg <= FP_PREC_EXTENDED;
+            cont_state_reg <= ST_TRIG_CW_C3_MUL;
+            state_reg <= ST_FP_MUL;
+          end if;
+
+        when ST_TRIG_CW_C3_MUL =>
+          -- tmp_reg = q * HALF_PI_C3.  Compute r = r_mid - q * HALF_PI_C3.
+          add_a_reg <= r_reg;
+          add_b_reg <= tmp_reg;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TRIG_CW_C3_SUB;
+          state_reg <= ST_FP_ADD;
+
+        when ST_TRIG_CW_C3_SUB =>
+          -- tmp_reg = r = r_mid - q * HALF_PI_C3 (fully corrected residual)
           r_clamped := tmp_reg;
           -- |r_clamped| <= 2^-20: check exponent field <= EPS exponent (3FEB)
           v_exp := unsigned(r_clamped(78 downto 64));
@@ -2223,7 +2256,34 @@ begin
           state_reg <= ST_FP_MUL;
 
         when ST_EXP_CW_LO_SUB =>
-          -- tmp_reg = k * LN2_LO.  Compute r = r_hi - k * LN2_LO.
+          -- tmp_reg = k * LN2_LO.  Compute r_mid = r_hi - k * LN2_LO.
+          add_a_reg <= r_reg;
+          add_b_reg <= tmp_reg;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP_CW_C3_MUL;
+          state_reg <= ST_FP_ADD;
+
+        when ST_EXP_CW_C3_MUL =>
+          -- tmp_reg = r_mid = r_hi - k * LN2_LO.  Apply 3rd term.
+          -- Skip C3 when r_mid=0 (exact cancellation, e.g. FTWOTOX integer)
+          if fp80_is_zero(tmp_reg) then
+            x_reg <= tmp_reg;
+            exp_reduce_done_reg <= '1';
+            state_reg <= ST_TRANS_PREP;
+          else
+            r_reg <= tmp_reg;
+            mul_a_reg <= exp_k_reg;
+            mul_b_reg <= FP80_LN2_C3;
+            mul_rm_reg <= FP_RND_NEAREST;
+            mul_rp_reg <= FP_PREC_EXTENDED;
+            cont_state_reg <= ST_EXP_CW_C3_SUB;
+            state_reg <= ST_FP_MUL;
+          end if;
+
+        when ST_EXP_CW_C3_SUB =>
+          -- tmp_reg = k * LN2_C3.  Compute r = r_mid - k * LN2_C3.
           add_a_reg <= r_reg;
           add_b_reg <= tmp_reg;
           add_sub_reg <= true;

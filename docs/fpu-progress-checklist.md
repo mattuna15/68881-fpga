@@ -52,6 +52,18 @@ A) Design Quality Improvements (from review)
     - Move exception classification from result heuristics to opcode-aware rules.
     - Prepare for full C4/C5 behavior (condition codes, accrued flags, restart/FPIAR interactions).
 
+[ ] A9. Remove dead `drop_bits` variable from case-on-precision rounding.
+    - After refactoring apply_rounding to use constant indices, `drop_bits` is assigned
+      but never read in mc68881_fp80_mul_unit.vhd, mc68881_divrem_unit.vhd, mc68881_pkg.vhd.
+    - The addsub unit already removed it correctly.
+
+[ ] A10. Consolidate duplicated shift_right_with_sticky and apply_rounding.
+    - 3 copies of shift_right_with_sticky (pkg, divrem, addsub) and 4 copies of
+      case-on-precision apply_rounding (pkg, divrem, addsub, mul) are near-identical.
+    - Test whether GHDL synth can call the package-level versions from clocked processes
+      (other pkg functions like fp80_is_zero are already called this way).
+    - If GHDL synth handles it, remove local copies and call mc68881_pkg versions.
+
 B) Functional Completeness (Core Missing Ops)
 ---------------------------------------------
 [x] B1. Implement FSQRT (square root).
@@ -287,8 +299,8 @@ F) Datasheet Conformance (MC68881UM Review Findings)
 Notes:
 - Priorities from the review: FSQRT, FMOVE/FMOVEM, FCMP/FTST first; refactor top state machine next.
 - Checklist expanded using docs/68881-programming.txt (instruction groups + format/control details).
-- Section 7 (coprocessor interface) closure plan is tracked in
-  this checklist under "Section 7 Coprocessor Interface Closure".
+- CIR coprocessor interface closure plan is tracked in
+  this checklist under "CIR Coprocessor Interface Closure".
 - Maintain VHDL-2008 compatibility and avoid vendor-specific primitives.
 - Use scripts/run_tests.ps1 for local verification (set GHDL_EXE if needed).
 - For LUT/area regression checks, use non-incremental synthesis only.
@@ -481,6 +493,28 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 - **Subnormal reference flush**: `fp80_hex_safe` flushes subnormal results to zero.
   DIV TINY/TWO and MUL TINY*HALF comments should note the reference is flushed to zero.
 
+## Implementation Snapshot (2026-03-07, Timing Hardening)
+- Milestone:
+  - **33 MHz timing hardened** — WNS improved from +0.026ns to +0.265ns (+10× margin).
+  - Packed decimal encode pipeline split into 3 stages: exponent extraction →
+    DSP multiply (bin_exp × 77, pipelined input) → scale computation.
+    Resolves DPIP-1 methodology warning and eliminates packed decimal from top 10 paths.
+  - MCP=2 added for fp_reg_file_reg → MOVE REG_TO_MEM exception destinations
+    (force_inexact, force_overflow, force_underflow, exc_event_result, exc_event_opa).
+  - Phase 4 torture tests: 51 new tests (349 total) covering domain boundaries,
+    domain errors, EXP boundary, cross-function consistency, inverse round-trips,
+    monotonicity, ETOXM1/LOGNP1 small args, back-to-back ops, SINH/COSH identity.
+  - LUT reduction from 64.6K to 61.6K (-3K) due to DSP pipelining optimizations
+    and timing-driven placement improvements.
+- Run data (non-incremental synthesis + implementation):
+  - Utilization (post-place): `Slice LUTs = 61606 / 133800 (46.04%)`
+  - DSPs: 33 / 740 (4.46%)
+  - Registers: 13639 / 267600 (5.10%)
+  - BRAM: 8 tiles / 365 (2.19%)
+  - Timing: `WNS=+0.265ns`, `TNS=0.000ns`, `WHS=+0.025ns`, `THS=0.000ns`
+  - 349/349 GHDL regression tests passing.
+  - Power: 0.329W total (0.190W dynamic, 0.139W static).
+
 ## Implementation Snapshot (2026-03-07, 33 MHz Timing Closure)
 - Milestone:
   - **33 MHz timing closure achieved** (WNS = +0.026ns, WHS = +0.044ns).
@@ -507,7 +541,7 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Implementation Snapshot (2026-03-05, Phase 5)
 - Milestone:
-  - Section 7 CIR Phase 5 complete (timing/cycle tests and regression matrix closure).
+  - CIR Phase 5 complete (timing/cycle tests and regression matrix closure).
   - 19 new tests (T47-T65) added to `tb/tb_mc68881_cir_dialog.vhd`: protocol ordering
     verification, primitive progression, violation scenarios, cycle-overhead bounds,
     and CIR access timing assertions.
@@ -520,7 +554,7 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Implementation Snapshot (2026-03-05, Phase 4)
 - Milestone:
-  - Section 7 CIR Phase 4 complete (exception dialog paths, FPIAR capture).
+  - CIR Phase 4 complete (exception dialog paths, FPIAR capture).
   - Tree-based CLZ optimization: replaced all sequential 64-iteration CLZ loops
     (fgetexp_fp80, fgetman_fp80, fgetexp_unbiased_int, packed-decimal encoder/decoder,
     addsub count_leading_zeros) with a shared `clz()` function in mc68881_pkg using
@@ -543,7 +577,7 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Implementation Snapshot (2026-03-04, Phase 3)
 - Milestone:
-  - Section 7 CIR Phase 3 complete (FSAVE/FRESTORE with Null/Idle/Busy frames).
+  - CIR Phase 3 complete (FSAVE/FRESTORE with Null/Idle/Busy frames).
   - Full save/restore hierarchy: ALU (5 words) → trig (11 words) → divrem (6 words) →
     modrem_post (4 words) = 26 sub-unit words, plus 12 header/operand words, 3 packed,
     4 padding = 45 total Busy frame words.
@@ -560,7 +594,7 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Implementation Snapshot (2026-03-04, Phase 2)
 - Milestone:
-  - Section 7 CIR Phase 2 complete (conditional dialog paths: FBcc/FDBcc/FScc/FTRAPcc/FNOP).
+  - CIR Phase 2 complete (conditional dialog paths: FBcc/FDBcc/FScc/FTRAPcc/FNOP).
   - Unified dispatch refactor (eff_op_class/eff_op_sel) reduced LUT count vs Phase 1.
   - Net LUT reduction of ~1,700 LUTs from Phase 1 snapshot (66,572 → 64,865).
 - Run data (non-incremental synthesis + implementation):
@@ -573,7 +607,7 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Implementation Snapshot (2026-03-04, Phase 1)
 - Milestone:
-  - Section 7 CIR Phase 1 complete (dialog FSM, reg-to-reg, memory transfers).
+  - CIR Phase 1 complete (dialog FSM, reg-to-reg, memory transfers).
   - 8-phase LUT reduction applied: divider elimination, fintrz/fgetman de-duplication,
     compare_fp80 consolidation, carry-propagation serialization, selective ALU dispatch,
     format converter sharing.
@@ -631,11 +665,11 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
     conversion/scaling to follow-up states (`ST_LOG_GETEXP_POST`,
     `ST_LOGNP1_GETEXP_POST`) to shorten the `log_exp_term_reg` cone.
 
-## Section 7 Coprocessor Interface Closure
+## CIR Coprocessor Interface Closure
 
-# Section 7 Coprocessor Interface Closure Checklist
+# CIR Coprocessor Interface Closure Checklist
 
-Reference: `docs/MC68881UM.pdf` Section 7 (Coprocessor Interface), especially 7.5 instruction dialogs.
+Reference: `docs/MC68881UM.pdf` coprocessor interface chapter, especially instruction dialogs.
 
 Purpose: track closure from current memory-mapped host protocol to MC68881-style coprocessor dialog behavior.
 
@@ -656,7 +690,7 @@ Legend:
   - Map: `A6` (central opcode metadata), `A7` (typed decode records).
   - Done: `cir_state_t` FSM enum, `cir_cmd_type_t` command type, CIR address constants,
     and helper functions added to `mc68881_pkg.vhd`.
-- `[~]` S7-A2. Add opcode-class metadata hooks for Section 7 dialog kind.
+- `[~]` S7-A2. Add opcode-class metadata hooks for CIR dialog kind.
   - Map: `A5` (explicit operation classes), `A6`.
   - Deferred: OpWord[8:6] dispatch is functional; metadata field not required for correctness.
 
@@ -712,7 +746,7 @@ Legend:
   - Done: Tests 32-39 in `tb/tb_mc68881_cir_dialog.vhd` cover Null/Idle/Busy
     FSAVE, FRESTORE Null reset, FRESTORE Idle/Busy round-trip, invalid format
     word exception, and full save→restore→save data integrity verification.
-- `[x]` S7-D4. Extend top-level exception-path checks for Section 7 dialogs.
+- `[x]` S7-D4. Extend top-level exception-path checks for CIR dialogs.
   - Map: `D1`, `C3`, `C5`.
   - Done: Tests 40-46 in `tb/tb_mc68881_cir_dialog.vhd` verify EXC/AEXC/FPIAR side
     effects for BSUN, DZ, OVERFLOW, INVALID exception dialog paths, including
@@ -784,5 +818,5 @@ Legend:
 - `[x]` All S7-B*, S7-C*, S7-D* items marked done.
   - S7-A2 deferred (OpWord[8:6] dispatch sufficient). All other items closed.
 - `[x]` `B7` in this checklist can move to `[x]`.
-- `[x]` No open Section 7 protocol-related defects in this checklist.
+- `[x]` No open CIR protocol-related defects in this checklist.
 - `[x]` `scripts/run_tests.ps1` passes with new dialog testbenches enabled in CI/pre-push analyze lists.

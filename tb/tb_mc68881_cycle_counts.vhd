@@ -116,12 +116,12 @@ begin
     assert_base_cycles(FPU_OP_MUL, FPU_SRC_MEM_EXTENDED, 96, "FMUL mem extended");
     assert_base_cycles(FPU_OP_MUL, FPU_SRC_MEM_PACKED, 908, "FMUL mem packed");
 
-    assert_base_cycles(FPU_OP_DIV, FPU_SRC_FPM, 103, "FDIV FPM");
-    assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_INTEGER, 132, "FDIV mem integer");
-    assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_SINGLE, 124, "FDIV mem single");
-    assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_DOUBLE, 130, "FDIV mem double");
-    assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_EXTENDED, 128, "FDIV mem extended");
-    assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_PACKED, 940, "FDIV mem packed");
+    assert_base_cycles(FPU_OP_DIV, FPU_SRC_FPM, 104, "FDIV FPM");
+    assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_INTEGER, 133, "FDIV mem integer");
+    assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_SINGLE, 125, "FDIV mem single");
+    assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_DOUBLE, 131, "FDIV mem double");
+    assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_EXTENDED, 129, "FDIV mem extended");
+    assert_base_cycles(FPU_OP_DIV, FPU_SRC_MEM_PACKED, 941, "FDIV mem packed");
 
     assert_base_cycles(FPU_OP_SQRT, FPU_SRC_FPM, 120, "FSQRT FPM");
     assert_base_cycles(FPU_OP_SQRT, FPU_SRC_MEM_INTEGER, 149, "FSQRT mem integer");
@@ -148,13 +148,13 @@ begin
     assert_base_cycles(FPU_OP_ABS, FPU_SRC_MEM_EXTENDED, 74, "FABS mem extended");
     assert_base_cycles(FPU_OP_ABS, FPU_SRC_MEM_PACKED, 886, "FABS mem packed");
 
-    assert_base_cycles(FPU_OP_MOD, FPU_SRC_FPM, 109, "FMOD FPM");
-    assert_base_cycles(FPU_OP_MOD, FPU_SRC_MEM_INTEGER, 138, "FMOD mem integer (B/W/L)");
-    assert_base_cycles(FPU_OP_MOD, FPU_SRC_MEM_PACKED, 946, "FMOD mem packed (.P)");
+    assert_base_cycles(FPU_OP_MOD, FPU_SRC_FPM, 110, "FMOD FPM");
+    assert_base_cycles(FPU_OP_MOD, FPU_SRC_MEM_INTEGER, 139, "FMOD mem integer (B/W/L)");
+    assert_base_cycles(FPU_OP_MOD, FPU_SRC_MEM_PACKED, 947, "FMOD mem packed (.P)");
 
-    assert_base_cycles(FPU_OP_REM, FPU_SRC_FPM, 109, "FREM FPM");
-    assert_base_cycles(FPU_OP_REM, FPU_SRC_MEM_INTEGER, 138, "FREM mem integer (B/W/L)");
-    assert_base_cycles(FPU_OP_REM, FPU_SRC_MEM_PACKED, 946, "FREM mem packed (.P)");
+    assert_base_cycles(FPU_OP_REM, FPU_SRC_FPM, 110, "FREM FPM");
+    assert_base_cycles(FPU_OP_REM, FPU_SRC_MEM_INTEGER, 139, "FREM mem integer (B/W/L)");
+    assert_base_cycles(FPU_OP_REM, FPU_SRC_MEM_PACKED, 947, "FREM mem packed (.P)");
 
     assert_base_cycles(FPU_OP_SCALE, FPU_SRC_FPM, 55, "FSCALE FPM");
     assert_base_cycles(FPU_OP_SCALE, FPU_SRC_MEM_INTEGER, 84, "FSCALE mem integer (B/W/L)");
@@ -220,7 +220,7 @@ begin
       false,
       false,
       true,
-      965,
+      966,
       "FMOD packed + dynamic K + EA worst (xxx).L"
     );
     assert_total_cycles(

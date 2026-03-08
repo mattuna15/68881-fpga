@@ -179,7 +179,7 @@ architecture rtl of mc68881_top is
   signal cir_trap_pending_reg : std_logic := '0';
   signal cir_protocol_violation_reg : std_logic := '0';
 
-  -- CIR dialog state machine signals (Section 7 coprocessor interface).
+  -- CIR dialog state machine signals (coprocessor interface).
   signal cir_state_reg         : cir_dialog_state_t := CIR_IDLE;
   signal cir_opword_reg        : std_logic_vector(15 downto 0) := (others => '0');
   signal cir_command_reg       : std_logic_vector(15 downto 0) := (others => '0');
@@ -222,7 +222,7 @@ architecture rtl of mc68881_top is
   signal cir_save_req          : std_logic := '0';
   signal cir_save_word_idx     : natural range 0 to 63 := 0;
   signal cir_restore_word_idx  : natural range 0 to 63 := 0;
-  signal cir_restore_fw_reg    : std_logic_vector(31 downto 0) := (others => '0');
+  signal cir_restore_fw_reg    : std_logic_vector(15 downto 0) := (others => '0');
   signal cir_restore_trigger   : std_logic := '0';
   signal cir_restore_null_req  : std_logic := '0';  -- Dialog FSM → bus_frame_proc: reset FPU (null restore)
   signal cir_restore_commit_req: std_logic := '0';  -- Dialog FSM → bus_frame_proc: commit idle frame
@@ -1900,7 +1900,7 @@ begin
             fpiar_reg <= d_in;
           when ADDR_CIR_RESTORE =>
             -- Capture format word for FRESTORE dialog.
-            cir_restore_fw_reg <= d_in;
+            cir_restore_fw_reg <= d_in(15 downto 0);
             cir_restore_trigger <= '1';
           when ADDR_MOVE_CFG =>
             move_cfg_reg <= d_in;
@@ -3049,7 +3049,7 @@ begin
       status_frame_valid_reg <= '0';
       status_frame_busy_reg <= '0';
     elsif rising_edge(clk) then
-      if op_issue_pulse = '1' then
+      if op_issue_pulse = '1' or cir_state_reg = CIR_DECODE then
         status_valid_reg <= '0';
       elsif micro_active_reg = '1' and micro_remaining_reg = 0 and result_ready_reg = '1' then
         status_valid_reg <= '1';
@@ -3332,7 +3332,7 @@ begin
   end process;
 
   -- =====================================================================
-  -- Section 7 CIR Dialog Processes
+  -- CIR Coprocessor Interface Dialog Processes
   -- =====================================================================
 
   -- CIR register write handler — latches OpWord, Command, Condition, etc.
@@ -3602,9 +3602,9 @@ begin
           if cir_operand_word_arrived = '1' then
             if cir_xfer_word_idx + 1 >= cir_xfer_word_count then
               -- All words received.  Transition to CIR_XFER_SRC_WAIT
-              -- for one extra hold cycle so the format conversion path
-              -- (cir_operand_staging -> operand_reg) has 3 clock periods
-              -- to settle at 33 MHz (MCP=3, 90.9ns budget).
+              -- for two hold cycles so the format conversion path
+              -- (cir_operand_staging -> operand_reg) has 4 clock periods
+              -- to settle at 33 MHz (MCP=4, 121.2ns budget).
               cir_xfer_word_idx <= cir_xfer_word_idx + 1;
               cir_state_reg <= CIR_XFER_SRC_WAIT;
             else
@@ -3613,7 +3613,12 @@ begin
           end if;
 
         when CIR_XFER_SRC_WAIT =>
-          -- Hold state: launch ALU after format conversion path settles.
+          -- First hold state: format conversion path settles (MCP=4, 4-cycle
+          -- separation from last cir_operand_staging write).
+          cir_state_reg <= CIR_XFER_SRC_WAIT2;
+
+        when CIR_XFER_SRC_WAIT2 =>
+          -- Second hold state: launch ALU.
           cir_launch_alu <= '1';
           if op_class(cir_decoded_op) = OP_CLASS_MOVE then
             cir_state_reg <= CIR_IDLE;
@@ -3773,16 +3778,16 @@ begin
           -- Wait for host to write format word to Restore CIR (ADDR_CIR_RESTORE).
           -- cir_restore_trigger pulses on write.
           if cir_restore_trigger = '1' then
-            if cir_restore_fw_reg(15 downto 0) = CIR_FRAME_NULL_FW then
+            if cir_restore_fw_reg = CIR_FRAME_NULL_FW then
               -- Null frame: reset FPU to power-on state, no data follows.
               cir_restore_null_req <= '1';
               cir_state_reg <= CIR_IDLE;
-            elsif cir_restore_fw_reg(15 downto 0) = CIR_FRAME_IDLE_FW then
+            elsif cir_restore_fw_reg = CIR_FRAME_IDLE_FW then
               -- Idle frame: expect 6 data words.
               cir_restore_word_idx <= 0;
               cir_xfer_word_count <= CIR_FRAME_IDLE_WORDS;
               cir_state_reg <= CIR_RESTORE_FRAME;
-            elsif cir_restore_fw_reg(15 downto 0) = CIR_FRAME_BUSY_FW then
+            elsif cir_restore_fw_reg = CIR_FRAME_BUSY_FW then
               -- Busy frame: expect 45 data words (Task 15).
               cir_restore_word_idx <= 0;
               cir_xfer_word_count <= CIR_FRAME_BUSY_WORDS;
@@ -3835,6 +3840,8 @@ begin
         cir_response_prim <= "0111" & "0000" &
           std_logic_vector(to_unsigned(cir_xfer_word_count * 4, 8));
       when CIR_XFER_SRC_WAIT =>
+        cir_response_prim <= CIR_PRIM_BUSY;
+      when CIR_XFER_SRC_WAIT2 =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_DST =>
         -- Transfer Operand from-CP: [15:13]=011, [12]=0, [7:0]=byte count

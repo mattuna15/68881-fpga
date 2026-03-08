@@ -285,7 +285,7 @@ package mc68881_pkg is
   function sgldiv_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
   function sglmul_fp80(a : fp80_t; b : fp80_t; round_mode : fp_round_mode_t) return fp80_t;
 
-  -- ===== Section 7 Coprocessor Interface Types =====
+  -- ===== CIR Coprocessor Interface Types =====
 
   -- CIR register addresses (5-bit, maps to A[4:1] of CPU-space address).
   constant CIR_ADDR_RESPONSE     : unsigned(4 downto 0) := "00000";  -- $00
@@ -306,6 +306,7 @@ package mc68881_pkg is
     CIR_DECODE,
     CIR_XFER_SRC,
     CIR_XFER_SRC_WAIT,
+    CIR_XFER_SRC_WAIT2,
     CIR_EXECUTE,
     CIR_EXECUTE_DONE,
     CIR_XFER_DST,
@@ -599,11 +600,11 @@ package body mc68881_pkg is
     FPU_OP_DIV => (
       legacy_decode_id_valid => true, legacy_decode_id => 4,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"04",
-      op_class => OP_CLASS_ARITH, alu_latency => 73, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 74, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_DIV,
       arith_cycles => (
-        FPU_SRC_FPM => 103, FPU_SRC_MEM_INTEGER => 132, FPU_SRC_MEM_SINGLE => 124,
-        FPU_SRC_MEM_DOUBLE => 130, FPU_SRC_MEM_EXTENDED => 128, FPU_SRC_MEM_PACKED => 940
+        FPU_SRC_FPM => 104, FPU_SRC_MEM_INTEGER => 133, FPU_SRC_MEM_SINGLE => 125,
+        FPU_SRC_MEM_DOUBLE => 131, FPU_SRC_MEM_EXTENDED => 129, FPU_SRC_MEM_PACKED => 941
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
@@ -632,22 +633,22 @@ package body mc68881_pkg is
     FPU_OP_MOD => (
       legacy_decode_id_valid => true, legacy_decode_id => 8,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"08",
-      op_class => OP_CLASS_ARITH, alu_latency => 92, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 93, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
-        FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,
-        FPU_SRC_MEM_DOUBLE => 136, FPU_SRC_MEM_EXTENDED => 134, FPU_SRC_MEM_PACKED => 946
+        FPU_SRC_FPM => 110, FPU_SRC_MEM_INTEGER => 139, FPU_SRC_MEM_SINGLE => 131,
+        FPU_SRC_MEM_DOUBLE => 137, FPU_SRC_MEM_EXTENDED => 135, FPU_SRC_MEM_PACKED => 947
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_REM => (
       legacy_decode_id_valid => true, legacy_decode_id => 9,
       core_v1_decode_id_valid => true, core_v1_decode_id => x"09",
-      op_class => OP_CLASS_ARITH, alu_latency => 110, cycle_model => OP_CYCLE_ARITH,
+      op_class => OP_CLASS_ARITH, alu_latency => 111, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
-        FPU_SRC_FPM => 109, FPU_SRC_MEM_INTEGER => 138, FPU_SRC_MEM_SINGLE => 130,
-        FPU_SRC_MEM_DOUBLE => 136, FPU_SRC_MEM_EXTENDED => 134, FPU_SRC_MEM_PACKED => 946
+        FPU_SRC_FPM => 110, FPU_SRC_MEM_INTEGER => 139, FPU_SRC_MEM_SINGLE => 131,
+        FPU_SRC_MEM_DOUBLE => 137, FPU_SRC_MEM_EXTENDED => 135, FPU_SRC_MEM_PACKED => 947
       ),
       move_cycles => SRC_CYCLES_ZERO
     ),
@@ -1284,38 +1285,41 @@ package body mc68881_pkg is
   end function;
 
   function ea_cycles(mode : ea_mode_t; cycle_case : ea_cycle_case_t) return natural is
-    function pick(best_case : natural; cache_case : natural; worst_case : natural) return natural is
-    begin
-      case cycle_case is
-        when EA_CYCLE_BEST => return best_case;
-        when EA_CYCLE_CACHE => return cache_case;
-        when others => return worst_case;
-      end case;
-    end function;
+    -- Cycle counts: (best_case, cache_case, worst_case) per addressing mode.
+    -- Nested function inlined to avoid GHDL synth closure limitation.
+    type ea_triple_t is array (0 to 2) of natural;
+    type ea_table_t is array (ea_mode_t) of ea_triple_t;
+    constant EA_TABLE : ea_table_t := (
+      EA_MODE_DN_AN                   => (0, 0, 0),
+      EA_MODE_AN_INDIRECT             => (0, 2, 2),
+      EA_MODE_AN_POSTINC              => (3, 6, 6),
+      EA_MODE_AN_PREDEC               => (3, 6, 6),
+      EA_MODE_D16_AN_PC               => (0, 2, 3),
+      EA_MODE_ABS_W                   => (0, 2, 3),
+      EA_MODE_ABS_L                   => (1, 4, 5),
+      EA_MODE_IMMEDIATE               => (0, 0, 0),
+      EA_MODE_D8_AN_PC_XN             => (1, 4, 5),
+      EA_MODE_D16_AN_PC_XN            => (3, 6, 7),
+      EA_MODE_B                       => (3, 6, 7),
+      EA_MODE_D16_B                   => (5, 8, 9),
+      EA_MODE_D32_B                   => (11, 14, 16),
+      EA_MODE_B_INDIRECT_I            => (8, 11, 12),
+      EA_MODE_B_INDIRECT_I_D16        => (8, 11, 12),
+      EA_MODE_B_INDIRECT_I_D32        => (10, 13, 15),
+      EA_MODE_D16_B_INDIRECT_I        => (10, 13, 14),
+      EA_MODE_D16_B_INDIRECT_I_D16    => (10, 13, 15),
+      EA_MODE_D16_B_INDIRECT_I_D32    => (12, 15, 17),
+      EA_MODE_D32_B_INDIRECT_I        => (16, 19, 21),
+      EA_MODE_D32_B_INDIRECT_I_D16    => (16, 19, 21),
+      EA_MODE_D32_B_INDIRECT_I_D32    => (18, 21, 24)
+    );
+    variable entry : ea_triple_t;
   begin
-    case mode is
-      when EA_MODE_DN_AN => return pick(0, 0, 0);
-      when EA_MODE_AN_INDIRECT => return pick(0, 2, 2);
-      when EA_MODE_AN_POSTINC => return pick(3, 6, 6);
-      when EA_MODE_AN_PREDEC => return pick(3, 6, 6);
-      when EA_MODE_D16_AN_PC => return pick(0, 2, 3);
-      when EA_MODE_ABS_W => return pick(0, 2, 3);
-      when EA_MODE_ABS_L => return pick(1, 4, 5);
-      when EA_MODE_IMMEDIATE => return pick(0, 0, 0);
-      when EA_MODE_D8_AN_PC_XN => return pick(1, 4, 5);
-      when EA_MODE_D16_AN_PC_XN => return pick(3, 6, 7);
-      when EA_MODE_B => return pick(3, 6, 7);
-      when EA_MODE_D16_B => return pick(5, 8, 9);
-      when EA_MODE_D32_B => return pick(11, 14, 16);
-      when EA_MODE_B_INDIRECT_I => return pick(8, 11, 12);
-      when EA_MODE_B_INDIRECT_I_D16 => return pick(8, 11, 12);
-      when EA_MODE_B_INDIRECT_I_D32 => return pick(10, 13, 15);
-      when EA_MODE_D16_B_INDIRECT_I => return pick(10, 13, 14);
-      when EA_MODE_D16_B_INDIRECT_I_D16 => return pick(10, 13, 15);
-      when EA_MODE_D16_B_INDIRECT_I_D32 => return pick(12, 15, 17);
-      when EA_MODE_D32_B_INDIRECT_I => return pick(16, 19, 21);
-      when EA_MODE_D32_B_INDIRECT_I_D16 => return pick(16, 19, 21);
-      when EA_MODE_D32_B_INDIRECT_I_D32 => return pick(18, 21, 24);
+    entry := EA_TABLE(mode);
+    case cycle_case is
+      when EA_CYCLE_BEST  => return entry(0);
+      when EA_CYCLE_CACHE => return entry(1);
+      when others         => return entry(2);
     end case;
   end function;
 
@@ -1424,46 +1428,54 @@ package body mc68881_pkg is
     variable sticky     : std_logic := '0';
     variable increment  : std_logic := '0';
     variable any_disc   : std_logic := '0';
-    variable prec_w     : natural := FP_MANT_WIDTH;
-    variable drop_bits  : natural := 0;
-    variable lsb_keep   : integer := FP_GRS_BITS;
     variable exp_var    : integer := 0;
+    variable drop_bits  : natural := 0;
   begin
     mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
-    prec_w := prec_bits(round_prec);
-    drop_bits := FP_MANT_WIDTH - prec_w;
-    lsb_keep := FP_GRS_BITS + drop_bits;
 
-
-    guard := mant_ext(lsb_keep-1);
-    round_bit := mant_ext(lsb_keep-2);
-    if lsb_keep > 2 then
-      if mant_ext(lsb_keep-3 downto 0) /= 0 then
-        sticky := '1';
-      end if;
-    end if;
+    -- Extract guard/round/sticky per precision using constant indices.
+    sticky := '0';
+    case round_prec is
+      when FP_PREC_SINGLE =>
+        guard := mant_ext(42); round_bit := mant_ext(41);
+        if mant_ext(40 downto 0) /= 0 then sticky := '1'; end if;
+        drop_bits := 40;
+      when FP_PREC_DOUBLE =>
+        guard := mant_ext(13); round_bit := mant_ext(12);
+        if mant_ext(11 downto 0) /= 0 then sticky := '1'; end if;
+        drop_bits := 11;
+      when others =>
+        guard := mant_ext(2); round_bit := mant_ext(1);
+        if mant_ext(0) = '1' then sticky := '1'; end if;
+        drop_bits := 0;
+    end case;
 
     any_disc := guard or round_bit or sticky;
     case round_mode is
       when FP_RND_NEAREST =>
-        if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(drop_bits) = '1') then
-          increment := '1';
-        end if;
+        case round_prec is
+          when FP_PREC_SINGLE =>
+            if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(40) = '1') then increment := '1'; end if;
+          when FP_PREC_DOUBLE =>
+            if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(11) = '1') then increment := '1'; end if;
+          when others =>
+            if guard = '1' and (round_bit = '1' or sticky = '1' or mant_main(0) = '1') then increment := '1'; end if;
+        end case;
       when FP_RND_ZERO =>
         increment := '0';
       when FP_RND_MINUS_INF =>
-        if sign = '1' and any_disc = '1' then
-          increment := '1';
-        end if;
+        if sign = '1' and any_disc = '1' then increment := '1'; end if;
       when FP_RND_PLUS_INF =>
-        if sign = '0' and any_disc = '1' then
-          increment := '1';
-        end if;
+        if sign = '0' and any_disc = '1' then increment := '1'; end if;
     end case;
 
     exp_var := exp_in;
     if increment = '1' then
-      mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll drop_bits);
+      case round_prec is
+        when FP_PREC_SINGLE => mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll 40);
+        when FP_PREC_DOUBLE => mant_round := ('0' & mant_main) + (to_unsigned(1, FP_MANT_WIDTH+1) sll 11);
+        when others => mant_round := ('0' & mant_main) + 1;
+      end case;
       if mant_round(mant_round'left) = '1' then
         mant_main := shift_right_with_sticky(mant_round(mant_round'left-1 downto 0), 1);
         mant_main(mant_main'left) := '1';
@@ -1473,9 +1485,11 @@ package body mc68881_pkg is
       end if;
     end if;
 
-    if drop_bits > 0 then
-      mant_main(drop_bits-1 downto 0) := (others => '0');
-    end if;
+    case round_prec is
+      when FP_PREC_SINGLE => mant_main(39 downto 0) := (others => '0');
+      when FP_PREC_DOUBLE => mant_main(10 downto 0) := (others => '0');
+      when others => null;
+    end case;
 
     mant_out := mant_main;
     exp_out := exp_var;
@@ -1542,6 +1556,7 @@ package body mc68881_pkg is
   ) return unsigned is
     variable result : unsigned(value'length-1 downto 0) := (others => '0');
     variable sticky : std_logic := '0';
+    variable or_prefix : unsigned(value'length-1 downto 0);
   begin
     if shift = 0 then
       return value;
@@ -1555,9 +1570,13 @@ package body mc68881_pkg is
       return result;
     end if;
 
-    if value(shift-1 downto 0) /= 0 then
-      sticky := '1';
-    end if;
+    -- OR-prefix scan: or_prefix(i) = value(0) | ... | value(i)
+    -- Then sticky = or_prefix(shift-1) via single dynamic mux
+    or_prefix(0) := value(0);
+    for i in 1 to value'length-1 loop
+      or_prefix(i) := or_prefix(i-1) or value(i);
+    end loop;
+    sticky := or_prefix(shift - 1);
 
     result := shift_right(value, shift);
     if sticky = '1' then

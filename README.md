@@ -35,21 +35,24 @@ The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
 
 | Resource | Used | Available | Util% |
 |----------|------|-----------|-------|
-| Slice LUTs | 64,583 | 133,800 | 48.27% |
-| Registers | 13,418 | 267,600 | 5.01% |
+| Slice LUTs | 62,784 | 133,800 | 46.92% |
+| Registers | 13,629 | 267,600 | 5.09% |
 | Block RAM | 8 tiles | 365 | 2.19% |
-| DSP48E1 | 33 | 740 | 4.46% |
+| DSP48E1 | 34 | 740 | 4.59% |
 
-*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-07.
+*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-08.
 33 MHz target clock. Includes transcendental accuracy improvements (BRAM coefficient ROM,
-table-assisted ATAN/LOG, Cody-Waite trig/EXP), Section 7 CIR coprocessor interface, and
-full exception dialog paths.*
+table-assisted ATAN/LOG, Cody-Waite trig/EXP), GHDL synth-compatible RTL,
+CIR coprocessor interface, and full exception dialog paths.*
 
 ### Timing
 - Target clock: **33 MHz** (30.303 ns period) — 3.3× faster than original MC68881.
 - Multi-cycle path constraints on sequential FP units, trig engine hold states,
-  format conversion paths (operand staging, MOVE dispatch, LOG exponent conversion).
-- Post-route WNS: **+0.026 ns** (timing met). WHS: **+0.033 ns** (no hold violations).
+  format conversion paths (operand staging, MOVE dispatch, LOG exponent conversion,
+  FP register file to exception destinations).
+- Packed decimal encode pipeline: 3-stage split (exponent extraction → DSP multiply
+  → scale computation) with pipelined DSP48E1 input.
+- Post-route WNS: **+0.405 ns** (timing met). WHS: **+0.022 ns** (no hold violations).
 
 ### Target device compatibility
 The design fits on several FPGA families. With CIR disabled (`ENABLE_CIR_g => false`),
@@ -100,6 +103,7 @@ instances per consumer.
   - `mc68881_packed_decimal_unit.vhd` — Packed-decimal BCD conversion
 - `tb/` — VHDL-2008 self-checking testbenches (13 files, ~8K lines)
 - `docs/` — Implementation plan, timing notes, reference documentation
+- `verilog/` — Auto-generated Verilog conversion (see [verilog/README.md](verilog/README.md))
 - `scripts/` — Test runner, golden vector generator, implementation TCL
 - `.github/workflows/ghdl.yml` — CI: GHDL analysis + 4 testbench runs
 - `.githooks/pre-push` — Pre-push GHDL regression gate
@@ -155,7 +159,7 @@ report_utilization -hierarchical -hierarchical_depth 10 -file mc68881_top_util_h
 
 ### Transcendental accuracy
 The transcendental engine achieves 30–55 bits of accuracy across operations,
-verified by the torture testbench (298 self-checking tests):
+verified by the torture testbench (349 self-checking tests):
 
 | Operation | Typical accuracy | Method |
 |-----------|-----------------|--------|
@@ -176,10 +180,23 @@ verified by the torture testbench (298 self-checking tests):
 - Validate architecture changes with non-incremental synth utilization reports.
 
 ## CIR feature gating
-The Section 7 coprocessor interface (CIR dialog FSM) adds ~7K LUTs. For smaller
+The CIR coprocessor interface (dialog FSM) adds ~7K LUTs. For smaller
 FPGAs, set `ENABLE_CIR_g => false` on `mc68881_top` to disable the CIR logic and
 use only the register-mapped peripheral interface. The CIR generic defaults to
 `true`.
+
+## Verilog conversion
+The VHDL sources can be converted to Verilog via `ghdl --synth` for use with
+Verilator or other Verilog-only toolchains. The pre-push hook regenerates these
+automatically. To convert manually:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/convert_to_verilog.ps1
+```
+
+Output goes to [`verilog/`](verilog/). **These files are supplied as-is for
+information only — no guarantee of correctness is made and no tests are run on
+the converted code.** The VHDL sources remain the authoritative implementation.
 
 ## Remaining work
 - **Test coverage**: Per-opcode self-checking testbenches (D1), cycle-count
@@ -187,7 +204,7 @@ use only the register-mapped peripheral interface. The CIR generic defaults to
 
 ## Key documentation
 - Master checklist: `docs/fpu-progress-checklist.md`
-- GHDL test results (298 tests): `docs/tests.txt`
+- GHDL test results (349 tests): `docs/tests.txt`
 - Programming reference: `docs/68881-programming.txt`
 - FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`
 - Technical summary: `docs/68881-tech-summary.pdf`

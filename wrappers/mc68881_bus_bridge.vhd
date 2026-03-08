@@ -39,7 +39,7 @@ entity mc68881_bus_bridge is
     fpu_ds_n     : out std_logic;
     fpu_dsack0_n : in  std_logic;
     fpu_dsack1_n : in  std_logic;
-    -- Interrupt (bus_clk domain)
+    -- Interrupt (fpu_clk domain input, synchronized to bus_clk internally)
     fpu_status_valid : in  std_logic;  -- from mc68881_top.status_valid
     irq_out          : out std_logic   -- active-high, level-sensitive
   );
@@ -57,6 +57,11 @@ architecture rtl of mc68881_bus_bridge is
   signal req_addr_reg   : std_logic_vector(4 downto 0)  := (others => '0');
   signal req_wdata_reg  : std_logic_vector(31 downto 0) := (others => '0');
   signal req_rw_reg     : std_logic := '1';
+
+  -- Bus-side timeout: last-resort guard if fpu_clk stops or FPU-side FSM sticks.
+  -- Default 8192 bus_clk cycles (~82 us at 100 MHz). Cannot be disabled.
+  constant BUS_TIMEOUT_C : natural := 8192;
+  signal bus_timeout_cnt : natural range 0 to BUS_TIMEOUT_C := 0;
 
   -- Synchronizer for ack_toggle into bus_clk domain
   signal ack_ff1 : std_logic := '0';
@@ -141,9 +146,11 @@ begin
         req_toggle_reg  <= '0';
         bridge_done     <= '0';
         bridge_error    <= '0';
+        bus_timeout_cnt <= 0;
       else
         case bus_state_reg is
           when BUS_IDLE =>
+            bus_timeout_cnt <= 0;
             if bridge_req = '1' then
               req_addr_reg   <= bridge_addr;
               req_wdata_reg  <= bridge_wdata;
@@ -158,6 +165,13 @@ begin
               bridge_done   <= '1';
               bridge_error  <= err_ff2;
               bus_state_reg <= BUS_IDLE;
+            elsif bus_timeout_cnt = BUS_TIMEOUT_C - 1 then
+              -- Last-resort timeout: fpu_clk stopped or FPU-side stuck
+              bridge_done   <= '1';
+              bridge_error  <= '1';
+              bus_state_reg <= BUS_IDLE;
+            else
+              bus_timeout_cnt <= bus_timeout_cnt + 1;
             end if;
         end case;
       end if;
@@ -183,7 +197,7 @@ begin
   -- ========================================================================
   -- FPU-clock domain process: M68K bus cycle generation
   -- ========================================================================
-  fpu_size_n <= "01";  -- longword transfers
+  fpu_size_n <= "11";  -- longword transfers (active-low: not "11" = "00" = 32-bit)
 
   p_fpu_clk : process(fpu_clk)
   begin
@@ -210,9 +224,15 @@ begin
             fpu_as_n      <= '1';
             fpu_ds_n      <= '1';
             fpu_rw        <= '1';
-            fpu_error_reg <= '0';
+            -- Note: fpu_error_reg is NOT cleared here; it must remain stable
+            -- until the bus side has sampled it via err_ff1/err_ff2 synchronizer.
+            -- Clear only when a new request arrives (toggle handshake guarantees
+            -- the bus side has already completed its BUS_WAIT_ACK sampling).
             if req_ff2 /= ack_toggle_reg then
-              -- New request detected: latch fields
+              -- New request detected: latch fields from bus_clk domain.
+              -- Safe because toggle handshake guarantees req_*_reg are stable
+              -- (bus side is in BUS_WAIT_ACK and cannot modify them until ack returns).
+              fpu_error_reg <= '0';
               fpu_addr_reg  <= req_addr_reg;
               fpu_wdata_reg <= req_wdata_reg;
               fpu_rw_reg    <= req_rw_reg;

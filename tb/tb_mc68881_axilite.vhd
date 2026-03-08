@@ -570,7 +570,7 @@ begin
     -- Summary
     -- ======================================================================
     wait for 10 * BUS_CLK_PERIOD;
-    report "=== AXI-LITE WRAPPER TB: " & integer'image(test_pass_count + 1) &
+    report "=== AXI-LITE WRAPPER TB: " & integer'image(test_pass_count) &
            " tests passed. No failures detected. ===" severity note;
     std.env.finish;
   end process p_stim;

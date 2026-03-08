@@ -148,8 +148,7 @@ begin
       else
         case wb_state_reg is
           when WB_IDLE =>
-            wb_stall_o <= '0';
-            if wb_stb_i = '1' and wb_cyc_i = '1' then
+            if wb_stb_i = '1' and wb_cyc_i = '1' and bridge_busy = '0' then
               bridge_addr  <= wb_adr_i(6 downto 2);
               bridge_wdata <= wb_dat_i;
               bridge_rw    <= not wb_we_i;  -- WB: we=1 is write; bridge: rw=0 is write
@@ -157,15 +156,18 @@ begin
               bridge_req   <= '1';
               wb_stall_o   <= '1';
               wb_state_reg <= WB_WAIT;
+            else
+              -- Stall while bridge is busy (e.g. draining an aborted transaction)
+              wb_stall_o <= '1' when bridge_busy = '1' else '0';
             end if;
 
           when WB_WAIT =>
             wb_stall_o <= '1';
             -- Monitor wb_cyc_i: master can abort by deasserting cyc
             if wb_cyc_i = '0' then
-              wb_stall_o   <= '0';
               wb_state_reg <= WB_IDLE;
-              -- Bridge transaction still in flight; result will be discarded
+              -- Bridge transaction still in flight; bridge will complete
+              -- autonomously. WB_IDLE gates new requests on bridge_busy='0'.
             elsif bridge_done = '1' then
               if we_reg = '0' then
                 rdata_reg <= bridge_rdata;

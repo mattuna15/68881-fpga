@@ -26,7 +26,7 @@ entity mc68881_axilite_wrapper is
     s_axi_awready : out std_logic;
     -- Write data channel
     s_axi_wdata   : in  std_logic_vector(31 downto 0);
-    s_axi_wstrb   : in  std_logic_vector(3 downto 0);
+    s_axi_wstrb   : in  std_logic_vector(3 downto 0);  -- must be "1111"; partial writes not supported
     s_axi_wvalid  : in  std_logic;
     s_axi_wready  : out std_logic;
     -- Write response channel
@@ -234,7 +234,8 @@ begin
               w_latched     <= '1';
             end if;
 
-            -- Prioritize bridge_done over issuing new request
+            -- Prioritize bridge_done over issuing new request.
+            -- Channel timeout is elsif so channel acceptance on the same cycle wins.
             if bridge_done = '1' then
               resp_reg      <= "00" when bridge_error = '0' else "10";  -- OKAY or SLVERR
               axi_state_reg <= AXI_WRITE_RESP;
@@ -244,10 +245,7 @@ begin
               bridge_rw    <= '0';  -- write
               bridge_req   <= '1';
               req_sent     <= '1';
-            end if;
-
-            -- Channel pairing timeout: abort if one channel never arrives
-            if channel_timeout_g > 0 and (aw_latched = '0' or w_latched = '0') then
+            elsif channel_timeout_g > 0 and (aw_latched = '0' or w_latched = '0') then
               if chan_timeout_cnt = channel_timeout_g - 1 then
                 aw_latched <= '1';
                 w_latched  <= '1';

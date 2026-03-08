@@ -22,7 +22,7 @@ set_false_path -from [get_cells -quiet -hier -filter {NAME =~ */u_bridge/fpu_err
                -to   [get_cells -quiet -hier -filter {NAME =~ */u_bridge/err_ff1_reg*}]
 
 # False path on status_valid CDC (fpu_clk -> bus_clk)
-set_false_path -from [get_cells -quiet -hier -filter {NAME =~ */u_fpu/status_valid*}] \
+set_false_path -from [get_cells -quiet -hier -filter {NAME =~ */u_fpu/status_valid_reg*}] \
                -to   [get_cells -quiet -hier -filter {NAME =~ */u_bridge/valid_ff1_reg*}]
 
 # False path on reset synchronizer (async input -> first sync FF)
@@ -37,6 +37,8 @@ set_false_path -from [get_cells -quiet -hier -filter {NAME =~ */u_bridge/req_wda
 set_false_path -from [get_cells -quiet -hier -filter {NAME =~ */u_bridge/req_rw_reg*}] \
                -to   [get_cells -quiet -hier -filter {NAME =~ */u_bridge/fpu_rw_reg*}]
 
-# Read data path: stable before ack toggle crosses back
+# Read data path: rdata_fpu_reg is stable before ack toggle crosses back.
+# Target the actual destination registers in the wrapper FSM (bridge_rdata is
+# an output port, not a register; Vivado may merge it into the consumer).
 set_false_path -from [get_cells -quiet -hier -filter {NAME =~ */u_bridge/rdata_fpu_reg*}] \
-               -to   [get_cells -quiet -hier -filter {NAME =~ */u_bridge/bridge_rdata*}]
+               -to   [get_cells -quiet -hier -filter {NAME =~ */rdata_reg*}]

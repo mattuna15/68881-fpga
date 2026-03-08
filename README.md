@@ -56,13 +56,13 @@ CIR coprocessor interface, and full exception dialog paths.*
 
 ### Target device compatibility
 The design fits on several FPGA families. With CIR disabled (`ENABLE_CIR_g => false`),
-the core is ~55K LUTs:
+the core is ~56K LUTs:
 
 | Device | LUTs | DSPs | Fit? |
 |--------|------|------|------|
-| Xilinx Artix-7 200T | 133,800 | 740 | Yes (48%) |
-| Xilinx Artix-7 100T | 63,400 | 240 | No (102%); Yes with CIR disabled (~87%) |
-| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~85%) |
+| Xilinx Artix-7 200T | 133,800 | 740 | Yes (47%) |
+| Xilinx Artix-7 100T | 63,400 | 240 | No (99%); Yes with CIR disabled (~88%) |
+| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~88%) |
 | Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes |
 
 All RTL is vendor-portable (inferred DSP/BRAM, no Xilinx IP cores). Porting to

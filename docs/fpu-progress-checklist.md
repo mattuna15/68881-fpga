@@ -228,13 +228,12 @@ D) Verification / Testbench Coverage
     - Deconstruct sign/exponent/mantissa or recomposition from bus words.
     - Do not compare raw integer literals to FP80 results.
 
-[~] D4. Cycle-count verification for all newly implemented ops.
+[x] D4. Cycle-count verification for all newly implemented ops.
     - 18 arithmetic/monadic ops verified (258 assertions across base + memory source variants).
     - Move ops (FMOVE FPR↔FPR, mem extended, FMOVEM list) verified.
-    - Remaining: 19 transcendental ops have no latency assertions (SIN, COS, TAN, SINCOS,
-      ASIN, ACOS, ATAN, ATANH, SINH, COSH, TANH, ETOX, ETOXM1, FTWOTOX, FTENTOX,
-      LOGN, LOGNP1, LOG2, LOG10). op_alu_latency() returns expected values but these
-      are not validated by testbench assertions.
+    - All 19 transcendental ops verified: SIN/COS FPM=120, TAN FPM=156, SINCOS FPM=124,
+      15 general transcendentals FPM=132, plus memory source variant spot checks
+      (ETOX, LOGN, ATAN across integer/single/double/extended/packed).
 
 [x] D5. Add opcode matrix coverage from programming guide sections 3.3.1-3.3.5.
     - All categories covered: 48/48 ops tested.
@@ -244,13 +243,17 @@ D) Verification / Testbench Coverage
     - 3.3.4 Program Control: FNOP, FScc, FBcc, FDBcc, FTRAPcc.
     - 3.3.5 System Control: FSAVE, FRESTORE.
 
-[~] D6. Add format-specific FMOVE/FMOVEM tests.
+[x] D6. Add format-specific FMOVE/FMOVEM tests.
     - Done: S/D/X source conversions with all 4 rounding modes, subnormal/overflow edge cases.
     - Done: Integer sources B/W/L tested via CIR and fmove testbenches.
     - Done: FMOVECR 14 constants verified. FMOVEM save/restore sequences.
-    - Remaining: packed decimal as FMOVE destination (encode path) not tested.
-    - Remaining: store conversions FPn → B/W/L integer destinations not tested.
-    - Remaining: FMOVEM dynamic register list addressing (predecrement/postincrement) not tested.
+    - Done: Packed decimal destination (encode path) tested via 14 `reg_to_mem_packed` cases
+      in tb_mc68881_fmove_fmovem.
+    - Done: FMOVEM dynamic register list (Dn bitmask, predecrement order) tested in
+      tb_mc68881_fmove_fmovem.
+    - Done: Integer store conversions FPn → B/W/L via CIR dialog (tests 66-71):
+      long ±, word ±, byte negative, fractional truncation.
+    - All D6 format-specific tests complete.
 
 E) Bus Interface & Timing (Confirmations)
 -----------------------------------------

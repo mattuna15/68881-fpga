@@ -199,8 +199,7 @@ information only — no guarantee of correctness is made and no tests are run on
 the converted code.** The VHDL sources remain the authoritative implementation.
 
 ## Remaining work
-- **Test coverage**: Per-opcode self-checking testbenches (D1), cycle-count
-  verification (D4), opcode matrix coverage (D5), format-specific FMOVE tests (D6).
+- See `docs/fpu-progress-checklist.md` for open items (A9/A10 code cleanup).
 
 ## Key documentation
 - Master checklist: `docs/fpu-progress-checklist.md`

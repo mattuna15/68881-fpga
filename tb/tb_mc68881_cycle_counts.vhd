@@ -251,7 +251,57 @@ begin
       "FMOVE mem double + EA cache (xxx).W"
     );
 
-    report "Arithmetic cycle table checks complete." severity note;
+    -- Transcendental ops: trig family (alu_latency=34)
+    assert_base_cycles(FPU_OP_SIN, FPU_SRC_FPM, 120, "FSIN FPM");
+    assert_base_cycles(FPU_OP_SIN, FPU_SRC_MEM_INTEGER, 149, "FSIN mem integer");
+    assert_base_cycles(FPU_OP_SIN, FPU_SRC_MEM_SINGLE, 141, "FSIN mem single");
+    assert_base_cycles(FPU_OP_SIN, FPU_SRC_MEM_DOUBLE, 147, "FSIN mem double");
+    assert_base_cycles(FPU_OP_SIN, FPU_SRC_MEM_EXTENDED, 145, "FSIN mem extended");
+    assert_base_cycles(FPU_OP_SIN, FPU_SRC_MEM_PACKED, 960, "FSIN mem packed");
+
+    assert_base_cycles(FPU_OP_COS, FPU_SRC_FPM, 120, "FCOS FPM");
+    assert_base_cycles(FPU_OP_COS, FPU_SRC_MEM_INTEGER, 149, "FCOS mem integer");
+    assert_base_cycles(FPU_OP_COS, FPU_SRC_MEM_PACKED, 960, "FCOS mem packed");
+
+    assert_base_cycles(FPU_OP_TAN, FPU_SRC_FPM, 156, "FTAN FPM");
+    assert_base_cycles(FPU_OP_TAN, FPU_SRC_MEM_INTEGER, 185, "FTAN mem integer");
+    assert_base_cycles(FPU_OP_TAN, FPU_SRC_MEM_PACKED, 996, "FTAN mem packed");
+
+    assert_base_cycles(FPU_OP_SINCOS, FPU_SRC_FPM, 124, "FSINCOS FPM");
+    assert_base_cycles(FPU_OP_SINCOS, FPU_SRC_MEM_INTEGER, 153, "FSINCOS mem integer");
+    assert_base_cycles(FPU_OP_SINCOS, FPU_SRC_MEM_PACKED, 964, "FSINCOS mem packed");
+
+    -- Transcendental ops: general family (alu_latency=14, all share FPM=132)
+    assert_base_cycles(FPU_OP_ASIN, FPU_SRC_FPM, 132, "FASIN FPM");
+    assert_base_cycles(FPU_OP_ACOS, FPU_SRC_FPM, 132, "FACOS FPM");
+    assert_base_cycles(FPU_OP_ATAN, FPU_SRC_FPM, 132, "FATAN FPM");
+    assert_base_cycles(FPU_OP_ATANH, FPU_SRC_FPM, 132, "FATANH FPM");
+    assert_base_cycles(FPU_OP_SINH, FPU_SRC_FPM, 132, "FSINH FPM");
+    assert_base_cycles(FPU_OP_COSH, FPU_SRC_FPM, 132, "FCOSH FPM");
+    assert_base_cycles(FPU_OP_TANH, FPU_SRC_FPM, 132, "FTANH FPM");
+    assert_base_cycles(FPU_OP_ETOX, FPU_SRC_FPM, 132, "FETOX FPM");
+    assert_base_cycles(FPU_OP_ETOXM1, FPU_SRC_FPM, 132, "FETOXM1 FPM");
+    assert_base_cycles(FPU_OP_TWOTOX, FPU_SRC_FPM, 132, "FTWOTOX FPM");
+    assert_base_cycles(FPU_OP_TENTOX, FPU_SRC_FPM, 132, "FTENTOX FPM");
+    assert_base_cycles(FPU_OP_LOGN, FPU_SRC_FPM, 132, "FLOGN FPM");
+    assert_base_cycles(FPU_OP_LOGNP1, FPU_SRC_FPM, 132, "FLOGNP1 FPM");
+    assert_base_cycles(FPU_OP_LOG2, FPU_SRC_FPM, 132, "FLOG2 FPM");
+    assert_base_cycles(FPU_OP_LOG10, FPU_SRC_FPM, 132, "FLOG10 FPM");
+
+    -- Spot-check memory source variants for general transcendentals
+    assert_base_cycles(FPU_OP_ETOX, FPU_SRC_MEM_INTEGER, 161, "FETOX mem integer");
+    assert_base_cycles(FPU_OP_ETOX, FPU_SRC_MEM_SINGLE, 153, "FETOX mem single");
+    assert_base_cycles(FPU_OP_ETOX, FPU_SRC_MEM_DOUBLE, 159, "FETOX mem double");
+    assert_base_cycles(FPU_OP_ETOX, FPU_SRC_MEM_EXTENDED, 157, "FETOX mem extended");
+    assert_base_cycles(FPU_OP_ETOX, FPU_SRC_MEM_PACKED, 972, "FETOX mem packed");
+
+    assert_base_cycles(FPU_OP_LOGN, FPU_SRC_MEM_INTEGER, 161, "FLOGN mem integer");
+    assert_base_cycles(FPU_OP_LOGN, FPU_SRC_MEM_PACKED, 972, "FLOGN mem packed");
+
+    assert_base_cycles(FPU_OP_ATAN, FPU_SRC_MEM_INTEGER, 161, "FATAN mem integer");
+    assert_base_cycles(FPU_OP_ATAN, FPU_SRC_MEM_PACKED, 972, "FATAN mem packed");
+
+    report "Arithmetic and transcendental cycle table checks complete." severity note;
     wait;
   end process;
 end architecture tb;

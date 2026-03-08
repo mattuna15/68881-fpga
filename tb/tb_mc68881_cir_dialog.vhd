@@ -537,6 +537,38 @@ architecture sim of tb_mc68881_cir_dialog is
              dsack0_n_s, dsack1_n_s, d_out_s, single_out, CIR_OPERAND);
   end procedure;
 
+  -- ----- CIR dialog: FMOVE FPn to memory (any 1-word format) -----
+  -- Works for Long, Word, Byte, and Single destination formats (all 1 word).
+  procedure cpgen_reg_to_mem(
+    signal a_in_s : out std_logic_vector(4 downto 0);
+    signal d_in_s : out std_logic_vector(31 downto 0);
+    signal rw_s   : out std_logic;
+    signal cs_n_s : out std_logic;
+    signal as_n_s : out std_logic;
+    signal ds_n_s : out std_logic;
+    signal dsack0_n_s : in std_logic;
+    signal dsack1_n_s : in std_logic;
+    signal d_out_s : in std_logic_vector(31 downto 0);
+    constant dst_fmt : std_logic_vector(2 downto 0);
+    constant src_reg : natural range 0 to 7;
+    variable word_out : out std_logic_vector(31 downto 0)
+  ) is
+    variable cmd_word : std_logic_vector(31 downto 0) := (others => '0');
+  begin
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_OPWORD, CPGEN_OPWORD);
+    cmd_word := (others => '0');
+    cmd_word(13) := '1';  -- direction = reg→mem
+    cmd_word(12 downto 10) := dst_fmt;
+    cmd_word(9 downto 7) := std_logic_vector(to_unsigned(src_reg, 3));
+    cmd_word(6 downto 0) := "0000101";  -- FMOVE opcode
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_COMMAND, x"0000" & cmd_word(15 downto 0));
+    wait for CLK_PERIOD * 3;
+    bus_read(a_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+             dsack0_n_s, dsack1_n_s, d_out_s, word_out, CIR_OPERAND);
+  end procedure;
+
   -- ----- CIR dialog: execute cpGEN with long-integer memory source -----
   procedure cpgen_mem_long(
     signal a_in_s : out std_logic_vector(4 downto 0);
@@ -732,6 +764,7 @@ begin
     variable t65_start   : time := 0 ns;
     variable t65_elapsed : integer := 0;
     variable single_readback : std_logic_vector(31 downto 0) := (others => '0');
+    variable int_result : std_logic_vector(31 downto 0) := (others => '0');
   begin
     -- Reset.
     reset_n <= '0';
@@ -3413,6 +3446,128 @@ begin
     -- Consume response.
     wait for CLK_PERIOD * 4;
     report "TEST 65 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 66: FMOVE FP0 → Long integer (reg→mem, long format)
+    --   Load FP0 = -27.0, store as long integer → 0xFFFFFFE5 (-27)
+    -- ================================================================
+    report "TEST 66: FMOVE FP0 -> Long integer" severity note;
+
+    -- Ensure FP0 = -27.0 (left over from test 19: FSUB.L (-20)-7=-27)
+    -- Re-load to be safe: FMOVE.L #-27, FP0
+    cpgen_mem_long(a_in, d_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out,
+                   OPCODE_FMOVE, 0, x"FFFFFFE5");  -- Load FP0 = -27
+
+    cpgen_reg_to_mem(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     CIR_SRC_LONG, 0, int_result);
+    report "TEST 66 result=" & to_hstring(int_result) severity note;
+    assert int_result = x"FFFFFFE5"
+      report "FAIL TEST 66: FMOVE.L FP0(-27) expected=FFFFFFE5 got=" &
+             to_hstring(int_result)
+      severity failure;
+    report "TEST 66 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 67: FMOVE FP1 → Word integer (reg→mem, word format)
+    --   Load FP1 = 1234.0, store as word integer → 0x000004D2 (1234)
+    -- ================================================================
+    report "TEST 67: FMOVE FP1 -> Word integer" severity note;
+
+    cpgen_mem_long(a_in, d_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out,
+                   OPCODE_FMOVE, 1, x"000004D2");  -- Load FP1 = 1234
+
+    cpgen_reg_to_mem(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     CIR_SRC_WORD, 1, int_result);
+    report "TEST 67 result=" & to_hstring(int_result) severity note;
+    assert int_result = x"000004D2"
+      report "FAIL TEST 67: FMOVE.W FP1(1234) expected=000004D2 got=" &
+             to_hstring(int_result)
+      severity failure;
+    report "TEST 67 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 68: FMOVE FP2 → Byte integer (reg→mem, byte format)
+    --   Load FP2 = -42.0, store as byte integer → 0x000000D6 (-42 as signed byte)
+    -- ================================================================
+    report "TEST 68: FMOVE FP2 -> Byte integer" severity note;
+
+    cpgen_mem_long(a_in, d_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out,
+                   OPCODE_FMOVE, 2, x"FFFFFFD6");  -- Load FP2 = -42
+
+    cpgen_reg_to_mem(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     CIR_SRC_BYTE, 2, int_result);
+    report "TEST 68 result=" & to_hstring(int_result) severity note;
+    assert int_result = x"000000D6"
+      report "FAIL TEST 68: FMOVE.B FP2(-42) expected=000000D6 got=" &
+             to_hstring(int_result)
+      severity failure;
+    report "TEST 68 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 69: FMOVE FP0 → Long integer, positive value
+    --   Load FP0 = 42.0, store as long integer → 0x0000002A (42)
+    -- ================================================================
+    report "TEST 69: FMOVE FP0 -> Long integer (positive)" severity note;
+
+    cpgen_mem_long(a_in, d_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out,
+                   OPCODE_FMOVE, 0, x"0000002A");  -- Load FP0 = 42
+
+    cpgen_reg_to_mem(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     CIR_SRC_LONG, 0, int_result);
+    report "TEST 69 result=" & to_hstring(int_result) severity note;
+    assert int_result = x"0000002A"
+      report "FAIL TEST 69: FMOVE.L FP0(42) expected=0000002A got=" &
+             to_hstring(int_result)
+      severity failure;
+    report "TEST 69 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 70: FMOVE FP0 → Word integer, negative value
+    --   Load FP0 = -100.0, store as word integer → 0x0000FF9C (-100)
+    -- ================================================================
+    report "TEST 70: FMOVE FP0 -> Word integer (negative)" severity note;
+
+    cpgen_mem_long(a_in, d_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out,
+                   OPCODE_FMOVE, 0, x"FFFFFF9C");  -- Load FP0 = -100
+
+    cpgen_reg_to_mem(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     CIR_SRC_WORD, 0, int_result);
+    report "TEST 70 result=" & to_hstring(int_result) severity note;
+    assert int_result = x"0000FF9C"
+      report "FAIL TEST 70: FMOVE.W FP0(-100) expected=0000FF9C got=" &
+             to_hstring(int_result)
+      severity failure;
+    report "TEST 70 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 71: FMOVE FP0 → Long integer, truncation of fractional part
+    --   Load FP0 = 7.9 (single 0x40FCCCD), store as long → 7 (truncated)
+    -- ================================================================
+    report "TEST 71: FMOVE FP0 -> Long integer (truncation)" severity note;
+
+    cpgen_mem_single(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     OPCODE_FMOVE, 0, x"40FCCCCD");  -- Load FP0 = 7.9
+
+    cpgen_reg_to_mem(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     CIR_SRC_LONG, 0, int_result);
+    report "TEST 71 result=" & to_hstring(int_result) severity note;
+    assert int_result = x"00000007"
+      report "FAIL TEST 71: FMOVE.L FP0(7.9) expected=00000007 got=" &
+             to_hstring(int_result)
+      severity failure;
+    report "TEST 71 PASSED" severity note;
 
     -- ================================================================
     report "All CIR dialog tests PASSED" severity note;

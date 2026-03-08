@@ -567,6 +567,36 @@ begin
     test_pass_count <= test_pass_count + 1;
 
     -- ======================================================================
+    report "=== TEST 9: Channel pairing timeout (AW without W) ===" severity note;
+    -- ======================================================================
+    -- Present AW only, no W. FSM enters AXI_WRITE_BRIDGE waiting for W.
+    -- channel_timeout_g=256, so timeout fires after ~256 bus_clk cycles.
+    s_axi_awaddr  <= AXI_ADDR_OPA_L;
+    s_axi_awvalid <= '1';
+    wait until rising_edge(s_axi_aclk) and s_axi_awready = '1';
+    s_axi_awvalid <= '0';
+    -- Wait for SLVERR response (timeout + WRITE_RESP)
+    s_axi_bready <= '1';
+    wait until rising_edge(s_axi_aclk) and s_axi_bvalid = '1';
+    assert s_axi_bresp = "10"
+      report "Channel timeout should produce SLVERR, got: " & to_hstring(s_axi_bresp)
+      severity failure;
+    wait until rising_edge(s_axi_aclk);
+    s_axi_bready <= '0';
+    report "Channel timeout correctly returned SLVERR" severity note;
+    test_pass_count <= test_pass_count + 1;
+
+    -- ======================================================================
+    report "=== TEST 10: Recovery after channel timeout ===" severity note;
+    -- ======================================================================
+    -- Verify FSM returned to AXI_IDLE: do a normal STATUS read
+    axi_read_ok(s_axi_aclk, s_axi_araddr, s_axi_arvalid, s_axi_arready,
+                s_axi_rdata, s_axi_rvalid, s_axi_rready, s_axi_rresp,
+                AXI_ADDR_STATUS, rd_data);
+    report "Post-timeout STATUS read OK: " & to_hstring(rd_data) severity note;
+    test_pass_count <= test_pass_count + 1;
+
+    -- ======================================================================
     -- Summary
     -- ======================================================================
     wait for 10 * BUS_CLK_PERIOD;

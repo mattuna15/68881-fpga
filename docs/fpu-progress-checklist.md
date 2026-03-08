@@ -52,6 +52,18 @@ A) Design Quality Improvements (from review)
     - Move exception classification from result heuristics to opcode-aware rules.
     - Prepare for full C4/C5 behavior (condition codes, accrued flags, restart/FPIAR interactions).
 
+[ ] A9. Remove dead `drop_bits` variable from case-on-precision rounding.
+    - After refactoring apply_rounding to use constant indices, `drop_bits` is assigned
+      but never read in mc68881_fp80_mul_unit.vhd, mc68881_divrem_unit.vhd, mc68881_pkg.vhd.
+    - The addsub unit already removed it correctly.
+
+[ ] A10. Consolidate duplicated shift_right_with_sticky and apply_rounding.
+    - 3 copies of shift_right_with_sticky (pkg, divrem, addsub) and 4 copies of
+      case-on-precision apply_rounding (pkg, divrem, addsub, mul) are near-identical.
+    - Test whether GHDL synth can call the package-level versions from clocked processes
+      (other pkg functions like fp80_is_zero are already called this way).
+    - If GHDL synth handles it, remove local copies and call mc68881_pkg versions.
+
 B) Functional Completeness (Core Missing Ops)
 ---------------------------------------------
 [x] B1. Implement FSQRT (square root).

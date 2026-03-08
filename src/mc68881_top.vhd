@@ -3602,9 +3602,9 @@ begin
           if cir_operand_word_arrived = '1' then
             if cir_xfer_word_idx + 1 >= cir_xfer_word_count then
               -- All words received.  Transition to CIR_XFER_SRC_WAIT
-              -- for one extra hold cycle so the format conversion path
-              -- (cir_operand_staging -> operand_reg) has 3 clock periods
-              -- to settle at 33 MHz (MCP=3, 90.9ns budget).
+              -- for two hold cycles so the format conversion path
+              -- (cir_operand_staging -> operand_reg) has 4 clock periods
+              -- to settle at 33 MHz (MCP=4, 121.2ns budget).
               cir_xfer_word_idx <= cir_xfer_word_idx + 1;
               cir_state_reg <= CIR_XFER_SRC_WAIT;
             else

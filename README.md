@@ -35,15 +35,15 @@ The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
 
 | Resource | Used | Available | Util% |
 |----------|------|-----------|-------|
-| Slice LUTs | 61,606 | 133,800 | 46.04% |
-| Registers | 13,639 | 267,600 | 5.10% |
+| Slice LUTs | 62,784 | 133,800 | 46.92% |
+| Registers | 13,629 | 267,600 | 5.09% |
 | Block RAM | 8 tiles | 365 | 2.19% |
-| DSP48E1 | 33 | 740 | 4.46% |
+| DSP48E1 | 34 | 740 | 4.59% |
 
-*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-07.
+*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-08.
 33 MHz target clock. Includes transcendental accuracy improvements (BRAM coefficient ROM,
-table-assisted ATAN/LOG, Cody-Waite trig/EXP), CIR coprocessor interface, and
-full exception dialog paths.*
+table-assisted ATAN/LOG, Cody-Waite trig/EXP), GHDL synth-compatible RTL,
+CIR coprocessor interface, and full exception dialog paths.*
 
 ### Timing
 - Target clock: **33 MHz** (30.303 ns period) — 3.3× faster than original MC68881.
@@ -52,7 +52,7 @@ full exception dialog paths.*
   FP register file to exception destinations).
 - Packed decimal encode pipeline: 3-stage split (exponent extraction → DSP multiply
   → scale computation) with pipelined DSP48E1 input.
-- Post-route WNS: **+0.265 ns** (timing met). WHS: **+0.025 ns** (no hold violations).
+- Post-route WNS: **+0.405 ns** (timing met). WHS: **+0.022 ns** (no hold violations).
 
 ### Target device compatibility
 The design fits on several FPGA families. With CIR disabled (`ENABLE_CIR_g => false`),
@@ -103,6 +103,7 @@ instances per consumer.
   - `mc68881_packed_decimal_unit.vhd` — Packed-decimal BCD conversion
 - `tb/` — VHDL-2008 self-checking testbenches (13 files, ~8K lines)
 - `docs/` — Implementation plan, timing notes, reference documentation
+- `verilog/` — Auto-generated Verilog conversion (see [verilog/README.md](verilog/README.md))
 - `scripts/` — Test runner, golden vector generator, implementation TCL
 - `.github/workflows/ghdl.yml` — CI: GHDL analysis + 4 testbench runs
 - `.githooks/pre-push` — Pre-push GHDL regression gate
@@ -183,6 +184,19 @@ The CIR coprocessor interface (dialog FSM) adds ~7K LUTs. For smaller
 FPGAs, set `ENABLE_CIR_g => false` on `mc68881_top` to disable the CIR logic and
 use only the register-mapped peripheral interface. The CIR generic defaults to
 `true`.
+
+## Verilog conversion
+The VHDL sources can be converted to Verilog via `ghdl --synth` for use with
+Verilator or other Verilog-only toolchains. The pre-push hook regenerates these
+automatically. To convert manually:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File scripts/convert_to_verilog.ps1
+```
+
+Output goes to [`verilog/`](verilog/). **These files are supplied as-is for
+information only — no guarantee of correctness is made and no tests are run on
+the converted code.** The VHDL sources remain the authoritative implementation.
 
 ## Remaining work
 - **Test coverage**: Per-opcode self-checking testbenches (D1), cycle-count

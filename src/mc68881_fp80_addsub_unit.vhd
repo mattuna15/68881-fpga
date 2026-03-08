@@ -87,6 +87,7 @@ architecture rtl of mc68881_fp80_addsub_unit is
   function shift_right_sticky(value : unsigned; shift : natural) return unsigned is
     variable res    : unsigned(value'length-1 downto 0) := (others => '0');
     variable sticky : std_logic := '0';
+    variable or_prefix : unsigned(value'length-1 downto 0);
   begin
     if shift = 0 then
       return value;
@@ -98,11 +99,13 @@ architecture rtl of mc68881_fp80_addsub_unit is
       res(0) := sticky;
       return res;
     end if;
-    for i in 0 to value'length-1 loop
-      if i < shift and value(i) = '1' then
-        sticky := '1';
-      end if;
+    -- OR-prefix scan: or_prefix(i) = value(0) | ... | value(i)
+    -- Then sticky = or_prefix(shift-1) via single dynamic mux
+    or_prefix(0) := value(0);
+    for i in 1 to value'length-1 loop
+      or_prefix(i) := or_prefix(i-1) or value(i);
     end loop;
+    sticky := or_prefix(shift - 1);
     res := shift_right(value, shift);
     if sticky = '1' then
       res(0) := '1';

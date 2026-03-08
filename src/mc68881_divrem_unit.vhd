@@ -166,6 +166,7 @@ architecture rtl of mc68881_divrem_unit is
   function shift_right_with_sticky(value : unsigned; shift : natural) return unsigned is
     variable shifted : unsigned(value'length-1 downto 0) := (others => '0');
     variable sticky : std_logic := '0';
+    variable or_prefix : unsigned(value'length-1 downto 0);
   begin
     if shift = 0 then
       return value;
@@ -179,11 +180,13 @@ architecture rtl of mc68881_divrem_unit is
       return shifted;
     end if;
 
-    for i in 0 to value'length-1 loop
-      if i < shift and value(i) = '1' then
-        sticky := '1';
-      end if;
+    -- OR-prefix scan: or_prefix(i) = value(0) | value(1) | ... | value(i)
+    -- Then sticky = or_prefix(shift-1) via single dynamic mux (not N comparators)
+    or_prefix(0) := value(0);
+    for i in 1 to value'length-1 loop
+      or_prefix(i) := or_prefix(i-1) or value(i);
     end loop;
+    sticky := or_prefix(shift - 1);
 
     shifted := shift_right(value, shift);
     if sticky = '1' then
@@ -495,6 +498,7 @@ begin
     variable a_mant_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable b_mant_norm : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable quot_low_or : std_logic := '0';
+    variable quot_or_prefix : unsigned(DIVIDEND_BITS-1 downto 0);
   begin
     if reset_n = '0' then
       state_reg <= ST_IDLE;
@@ -852,13 +856,12 @@ begin
               mant_ext(i) := quot_reg(lead_idx - (FP_MANT_EXT_WIDTH-1) + i);
             end loop;
             if lead_idx > FP_MANT_EXT_WIDTH then
-              quot_low_or := '0';
-              for i in 0 to quot_reg'length-1 loop
-                if i <= lead_idx-FP_MANT_EXT_WIDTH-1 and quot_reg(i) = '1' then
-                  quot_low_or := '1';
-                end if;
+              -- OR-prefix scan: single dynamic mux instead of N comparators
+              quot_or_prefix(0) := quot_reg(0);
+              for i in 1 to quot_reg'length-1 loop
+                quot_or_prefix(i) := quot_or_prefix(i-1) or quot_reg(i);
               end loop;
-              if quot_low_or = '1' then
+              if quot_or_prefix(lead_idx - FP_MANT_EXT_WIDTH - 1) = '1' then
                 mant_ext(0) := '1';
               end if;
             end if;

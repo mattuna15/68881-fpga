@@ -222,7 +222,7 @@ architecture rtl of mc68881_top is
   signal cir_save_req          : std_logic := '0';
   signal cir_save_word_idx     : natural range 0 to 63 := 0;
   signal cir_restore_word_idx  : natural range 0 to 63 := 0;
-  signal cir_restore_fw_reg    : std_logic_vector(31 downto 0) := (others => '0');
+  signal cir_restore_fw_reg    : std_logic_vector(15 downto 0) := (others => '0');
   signal cir_restore_trigger   : std_logic := '0';
   signal cir_restore_null_req  : std_logic := '0';  -- Dialog FSM → bus_frame_proc: reset FPU (null restore)
   signal cir_restore_commit_req: std_logic := '0';  -- Dialog FSM → bus_frame_proc: commit idle frame
@@ -1900,7 +1900,7 @@ begin
             fpiar_reg <= d_in;
           when ADDR_CIR_RESTORE =>
             -- Capture format word for FRESTORE dialog.
-            cir_restore_fw_reg <= d_in;
+            cir_restore_fw_reg <= d_in(15 downto 0);
             cir_restore_trigger <= '1';
           when ADDR_MOVE_CFG =>
             move_cfg_reg <= d_in;
@@ -3778,16 +3778,16 @@ begin
           -- Wait for host to write format word to Restore CIR (ADDR_CIR_RESTORE).
           -- cir_restore_trigger pulses on write.
           if cir_restore_trigger = '1' then
-            if cir_restore_fw_reg(15 downto 0) = CIR_FRAME_NULL_FW then
+            if cir_restore_fw_reg = CIR_FRAME_NULL_FW then
               -- Null frame: reset FPU to power-on state, no data follows.
               cir_restore_null_req <= '1';
               cir_state_reg <= CIR_IDLE;
-            elsif cir_restore_fw_reg(15 downto 0) = CIR_FRAME_IDLE_FW then
+            elsif cir_restore_fw_reg = CIR_FRAME_IDLE_FW then
               -- Idle frame: expect 6 data words.
               cir_restore_word_idx <= 0;
               cir_xfer_word_count <= CIR_FRAME_IDLE_WORDS;
               cir_state_reg <= CIR_RESTORE_FRAME;
-            elsif cir_restore_fw_reg(15 downto 0) = CIR_FRAME_BUSY_FW then
+            elsif cir_restore_fw_reg = CIR_FRAME_BUSY_FW then
               -- Busy frame: expect 45 data words (Task 15).
               cir_restore_word_idx <= 0;
               cir_xfer_word_count <= CIR_FRAME_BUSY_WORDS;

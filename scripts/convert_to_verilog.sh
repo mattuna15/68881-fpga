@@ -12,6 +12,7 @@ set -e
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SRC_DIR="$SCRIPT_DIR/../src"
+OUT_DIR="$SCRIPT_DIR/../verilog"
 cd "$SRC_DIR"
 
 echo "=== MC68881 FPU VHDL to Verilog Converter ==="
@@ -25,7 +26,10 @@ if ! command -v ghdl > /dev/null 2>&1; then
 fi
 
 echo "Using: $(ghdl --version | head -1)"
+echo "Output: $OUT_DIR"
 echo ""
+
+mkdir -p "$OUT_DIR"
 
 # Package file (analyzed first, not synthesized standalone)
 PACKAGE_FILE="mc68881_pkg.vhd"
@@ -78,7 +82,7 @@ convert_count=0
 
 for f in "${UNIT_FILES[@]}"; do
     entity="${f%.vhd}"
-    out="${entity}.v"
+    out="$OUT_DIR/${entity}.v"
     echo "  Converting: $f -> $out"
     ghdl synth --std=08 -fsynopsys -fexplicit --latches \
         --out=verilog "$entity" > "$out"
@@ -87,7 +91,7 @@ done
 
 # Top-level with generic parameters
 entity="${TOP_FILE%.vhd}"
-out="${entity}.v"
+out="$OUT_DIR/${entity}.v"
 echo "  Converting: $TOP_FILE -> $out (with generics)"
 ghdl synth --std=08 -fsynopsys -fexplicit --latches \
     --out=verilog "$entity" > "$out"
@@ -109,9 +113,9 @@ echo "=== Step 3: Generating mc68881_verilog.qip ==="
         echo "set_global_assignment -name VERILOG_FILE [file join \$::quartus(qip_path) ${f%.vhd}.v ]"
     done
     echo "set_global_assignment -name VERILOG_FILE [file join \$::quartus(qip_path) ${TOP_FILE%.vhd}.v ]"
-} > mc68881_verilog.qip
+} > "$OUT_DIR/mc68881_verilog.qip"
 
-echo "  Generated: mc68881_verilog.qip"
+echo "  Generated: $OUT_DIR/mc68881_verilog.qip"
 echo ""
 
 # ============================================================

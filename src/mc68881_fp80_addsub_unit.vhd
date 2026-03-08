@@ -83,35 +83,7 @@ architecture rtl of mc68881_fp80_addsub_unit is
   signal done_reg    : std_logic := '0';
   signal result_reg  : fp80_t := (others => '0');
 
-  -- Local helper: shift right with sticky bit preservation.
-  function shift_right_sticky(value : unsigned; shift : natural) return unsigned is
-    variable res    : unsigned(value'length-1 downto 0) := (others => '0');
-    variable sticky : std_logic := '0';
-    variable or_prefix : unsigned(value'length-1 downto 0);
-  begin
-    if shift = 0 then
-      return value;
-    end if;
-    if shift >= value'length then
-      if value /= 0 then
-        sticky := '1';
-      end if;
-      res(0) := sticky;
-      return res;
-    end if;
-    -- OR-prefix scan: or_prefix(i) = value(0) | ... | value(i)
-    -- Then sticky = or_prefix(shift-1) via single dynamic mux
-    or_prefix(0) := value(0);
-    for i in 1 to value'length-1 loop
-      or_prefix(i) := or_prefix(i-1) or value(i);
-    end loop;
-    sticky := or_prefix(shift - 1);
-    res := shift_right(value, shift);
-    if sticky = '1' then
-      res(0) := '1';
-    end if;
-    return res;
-  end function;
+  -- shift_right_with_sticky: uses package-level version from mc68881_pkg.
 
 begin
 
@@ -286,11 +258,11 @@ begin
             b_ext_v := mant_b_ext_reg;
             if a_exp_reg > b_exp_reg then
               diff_v  := a_exp_reg - b_exp_reg;
-              b_ext_v := shift_right_sticky(b_ext_v, diff_v);
+              b_ext_v := shift_right_with_sticky(b_ext_v, diff_v);
               exp_v   := a_exp_reg;
             elsif b_exp_reg > a_exp_reg then
               diff_v  := b_exp_reg - a_exp_reg;
-              a_ext_v := shift_right_sticky(a_ext_v, diff_v);
+              a_ext_v := shift_right_with_sticky(a_ext_v, diff_v);
               exp_v   := b_exp_reg;
             else
               exp_v := a_exp_reg;
@@ -317,7 +289,7 @@ begin
 
             -- Carry overflow: shift right, adjust exponent.
             if sum_v(sum_v'left) = '1' then
-              carry_mant := shift_right_sticky(sum_v(sum_v'left-1 downto 0), 1);
+              carry_mant := shift_right_with_sticky(sum_v(sum_v'left-1 downto 0), 1);
               carry_mant(carry_mant'left) := '1';
               sum_v(sum_v'left) := '0';
               sum_v(sum_v'left-1 downto 0) := carry_mant;

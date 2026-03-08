@@ -163,37 +163,7 @@ architecture rtl of mc68881_divrem_unit is
     return packed;
   end function;
 
-  function shift_right_with_sticky(value : unsigned; shift : natural) return unsigned is
-    variable shifted : unsigned(value'length-1 downto 0) := (others => '0');
-    variable sticky : std_logic := '0';
-    variable or_prefix : unsigned(value'length-1 downto 0);
-  begin
-    if shift = 0 then
-      return value;
-    end if;
-
-    if shift >= value'length then
-      if value /= 0 then
-        sticky := '1';
-      end if;
-      shifted(0) := sticky;
-      return shifted;
-    end if;
-
-    -- OR-prefix scan: or_prefix(i) = value(0) | value(1) | ... | value(i)
-    -- Then sticky = or_prefix(shift-1) via single dynamic mux (not N comparators)
-    or_prefix(0) := value(0);
-    for i in 1 to value'length-1 loop
-      or_prefix(i) := or_prefix(i-1) or value(i);
-    end loop;
-    sticky := or_prefix(shift - 1);
-
-    shifted := shift_right(value, shift);
-    if sticky = '1' then
-      shifted(0) := '1';
-    end if;
-    return shifted;
-  end function;
+  -- shift_right_with_sticky: uses package-level version from mc68881_pkg.
 
   procedure apply_rounding(
     sign       : in  std_logic;
@@ -212,7 +182,6 @@ architecture rtl of mc68881_divrem_unit is
     variable sticky     : std_logic := '0';
     variable increment  : std_logic := '0';
     variable any_disc   : std_logic := '0';
-    variable drop_bits  : natural := 0;
     variable exp_var    : integer := 0;
   begin
     mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
@@ -223,15 +192,12 @@ architecture rtl of mc68881_divrem_unit is
       when FP_PREC_SINGLE =>
         guard := mant_ext(42); round_bit := mant_ext(41);
         if mant_ext(40 downto 0) /= 0 then sticky := '1'; end if;
-        drop_bits := 40;
       when FP_PREC_DOUBLE =>
         guard := mant_ext(13); round_bit := mant_ext(12);
         if mant_ext(11 downto 0) /= 0 then sticky := '1'; end if;
-        drop_bits := 11;
       when others =>
         guard := mant_ext(2); round_bit := mant_ext(1);
         if mant_ext(0) = '1' then sticky := '1'; end if;
-        drop_bits := 0;
     end case;
 
     any_disc := guard or round_bit or sticky;

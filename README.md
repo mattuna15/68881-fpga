@@ -30,6 +30,9 @@ The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
   enable, accrued exception accumulation.
 - **Peripheral interface**: Register-mapped bus interface with DSACK handshake,
   suitable for M68000/M68010 peripheral-mode operation.
+- **SoC wrappers**: AXI4-Lite and Wishbone B4 slave wrappers with clock domain
+  crossing (toggle handshake CDC), DSACK timeout protection, and interrupt output.
+  Enable direct integration into Xilinx AXI or RISC-V Wishbone SoC interconnects.
 
 ## Utilization (Xilinx Artix-7 200T, post-place)
 
@@ -101,7 +104,12 @@ instances per consumer.
   - `mc68881_fp80_addsub_unit.vhd` — Sequential 67-bit FP80 adder/subtractor
   - `mc68881_sgl_ops_unit.vhd` — FSCALE, FSGLDIV, FSGLMUL
   - `mc68881_packed_decimal_unit.vhd` — Packed-decimal BCD conversion
-- `tb/` — VHDL-2008 self-checking testbenches (13 files, ~8K lines)
+- `wrappers/` — SoC bus wrappers
+  - `mc68881_bus_bridge.vhd` — CDC toggle-handshake bridge + M68K bus cycle FSM
+  - `mc68881_axilite_wrapper.vhd` — AXI4-Lite slave (instantiates bridge + FPU)
+  - `mc68881_wishbone_wrapper.vhd` — Wishbone B4 slave (instantiates bridge + FPU)
+  - `mc68881_wrapper.xdc` — ASYNC_REG + false path timing constraints
+- `tb/` — VHDL-2008 self-checking testbenches (14 files, ~8.5K lines)
 - `docs/` — Implementation plan, timing notes, reference documentation
 - `verilog/` — Auto-generated Verilog conversion (see [verilog/README.md](verilog/README.md))
 - `scripts/` — Test runner, golden vector generator, implementation TCL
@@ -199,7 +207,7 @@ information only — no guarantee of correctness is made and no tests are run on
 the converted code.** The VHDL sources remain the authoritative implementation.
 
 ## Remaining work
-- See `docs/fpu-progress-checklist.md` for open items (A9/A10 code cleanup).
+- All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
 
 ## Key documentation
 - Master checklist: `docs/fpu-progress-checklist.md`

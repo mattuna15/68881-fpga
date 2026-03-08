@@ -2,11 +2,18 @@
 -- CDC bridge between a generic bus clock domain and the MC68881 FPU (fpu_clk).
 -- Uses toggle-handshake for clock domain crossing and generates M68K-style
 -- bus cycles (CS/AS/DS/DSACK) to the FPU core.
+-- Includes DSACK timeout to prevent bus deadlock if FPU is unresponsive.
 
 library ieee;
 use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
 entity mc68881_bus_bridge is
+  generic (
+    -- DSACK timeout in fpu_clk cycles. 0 disables timeout.
+    -- Default 1024 cycles = ~31 us at 33 MHz.
+    dsack_timeout_g : natural := 1024
+  );
   port (
     -- Bus-side (bus_clk domain)
     bus_clk      : in  std_logic;
@@ -17,6 +24,7 @@ entity mc68881_bus_bridge is
     bridge_wdata : in  std_logic_vector(31 downto 0);
     bridge_rdata : out std_logic_vector(31 downto 0); -- valid when bridge_done='1'
     bridge_done  : out std_logic;                     -- 1-cycle pulse
+    bridge_error : out std_logic;                     -- 1-cycle pulse, coincides with bridge_done on timeout
     bridge_busy  : out std_logic;                     -- high during transaction
     -- FPU-side (directly wired to mc68881_top ports)
     fpu_clk      : in  std_logic;
@@ -57,6 +65,12 @@ architecture rtl of mc68881_bus_bridge is
   attribute ASYNC_REG of ack_ff1 : signal is "TRUE";
   attribute ASYNC_REG of ack_ff2 : signal is "TRUE";
 
+  -- Synchronizer for error flag into bus_clk domain
+  signal err_ff1 : std_logic := '0';
+  signal err_ff2 : std_logic := '0';
+  attribute ASYNC_REG of err_ff1 : signal is "TRUE";
+  attribute ASYNC_REG of err_ff2 : signal is "TRUE";
+
   -- Synchronizer for status_valid into bus_clk domain
   signal valid_ff1 : std_logic := '0';
   signal valid_ff2 : std_logic := '0';
@@ -72,6 +86,7 @@ architecture rtl of mc68881_bus_bridge is
   signal fpu_state_reg : fpu_state_t := FPU_IDLE;
 
   signal ack_toggle_reg : std_logic := '0';
+  signal fpu_error_reg  : std_logic := '0';  -- set on DSACK timeout
 
   -- Synchronizer for req_toggle into fpu_clk domain
   signal req_ff1 : std_logic := '0';
@@ -84,8 +99,13 @@ architecture rtl of mc68881_bus_bridge is
   signal fpu_wdata_reg : std_logic_vector(31 downto 0) := (others => '0');
   signal fpu_rw_reg    : std_logic := '1';
 
-  -- Read data captured in fpu_clk domain (stable before ack toggles)
+  -- Read data captured in fpu_clk domain
+  -- (stable before ack_toggle crosses back to bus_clk; bus-side read is safe
+  -- because the 2-FF ack synchronizer guarantees data is settled)
   signal rdata_fpu_reg : std_logic_vector(31 downto 0) := (others => '0');
+
+  -- DSACK timeout counter
+  signal timeout_cnt_reg : natural range 0 to dsack_timeout_g := 0;
 
   -- Reset synchronizer (bus_reset_n → fpu_clk domain)
   signal rst_ff1 : std_logic := '0';
@@ -105,16 +125,22 @@ begin
       ack_ff1 <= ack_toggle_reg;
       ack_ff2 <= ack_ff1;
 
+      -- Synchronize error flag
+      err_ff1 <= fpu_error_reg;
+      err_ff2 <= err_ff1;
+
       -- Synchronize status_valid for IRQ
       valid_ff1 <= fpu_status_valid;
       valid_ff2 <= valid_ff1;
 
-      bridge_done <= '0';  -- default: no pulse
+      bridge_done  <= '0';  -- default: no pulse
+      bridge_error <= '0';
 
       if bus_reset_n = '0' then
         bus_state_reg   <= BUS_IDLE;
         req_toggle_reg  <= '0';
         bridge_done     <= '0';
+        bridge_error    <= '0';
       else
         case bus_state_reg is
           when BUS_IDLE =>
@@ -128,8 +154,9 @@ begin
 
           when BUS_WAIT_ACK =>
             if ack_ff2 = req_toggle_reg then
-              bridge_rdata <= rdata_fpu_reg;
-              bridge_done  <= '1';
+              bridge_rdata  <= rdata_fpu_reg;
+              bridge_done   <= '1';
+              bridge_error  <= err_ff2;
               bus_state_reg <= BUS_IDLE;
             end if;
         end case;
@@ -168,19 +195,22 @@ begin
       if rst_ff2 = '0' then
         fpu_state_reg   <= FPU_IDLE;
         ack_toggle_reg  <= '0';
+        fpu_error_reg   <= '0';
         fpu_cs_n        <= '1';
         fpu_as_n        <= '1';
         fpu_ds_n        <= '1';
         fpu_rw          <= '1';
         fpu_a_in        <= (others => '0');
         fpu_d_in        <= (others => '0');
+        timeout_cnt_reg <= 0;
       else
         case fpu_state_reg is
           when FPU_IDLE =>
-            fpu_cs_n <= '1';
-            fpu_as_n <= '1';
-            fpu_ds_n <= '1';
-            fpu_rw   <= '1';
+            fpu_cs_n      <= '1';
+            fpu_as_n      <= '1';
+            fpu_ds_n      <= '1';
+            fpu_rw        <= '1';
+            fpu_error_reg <= '0';
             if req_ff2 /= ack_toggle_reg then
               -- New request detected: latch fields
               fpu_addr_reg  <= req_addr_reg;
@@ -195,17 +225,25 @@ begin
             if fpu_rw_reg = '0' then
               fpu_d_in <= fpu_wdata_reg;
             end if;
-            fpu_cs_n <= '0';
-            fpu_as_n <= '0';
-            fpu_state_reg <= FPU_STROBE;
+            fpu_cs_n        <= '0';
+            fpu_as_n        <= '0';
+            timeout_cnt_reg <= 0;
+            fpu_state_reg   <= FPU_STROBE;
 
           when FPU_STROBE =>
-            fpu_ds_n <= '0';
+            fpu_ds_n      <= '0';
             fpu_state_reg <= FPU_WAIT_DSACK;
 
           when FPU_WAIT_DSACK =>
             if fpu_dsack0_n = '0' or fpu_dsack1_n = '0' then
               fpu_state_reg <= FPU_CAPTURE;
+            elsif dsack_timeout_g > 0 and timeout_cnt_reg = dsack_timeout_g - 1 then
+              -- Timeout: abort bus cycle with error
+              fpu_error_reg <= '1';
+              fpu_ds_n      <= '1';
+              fpu_state_reg <= FPU_DEASSERT;
+            else
+              timeout_cnt_reg <= timeout_cnt_reg + 1;
             end if;
 
           when FPU_CAPTURE =>

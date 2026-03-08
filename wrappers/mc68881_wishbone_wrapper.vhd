@@ -1,5 +1,5 @@
 -- mc68881_wishbone_wrapper.vhd
--- Wishbone B4 pipelined slave wrapper for the MC68881 FPU.
+-- Wishbone B4 slave wrapper for the MC68881 FPU (one transaction at a time).
 -- Instantiates the bus bridge and FPU core as a self-contained peripheral.
 -- Address mapping: Wishbone byte address bits [6:2] map to MC68881 register address [4:0].
 
@@ -8,7 +8,9 @@ use ieee.std_logic_1164.all;
 
 entity mc68881_wishbone_wrapper is
   generic (
-    packed_decimal_full_g : boolean := true
+    packed_decimal_full_g : boolean := true;
+    -- DSACK timeout passed to bridge (fpu_clk cycles; 0 disables)
+    dsack_timeout_g      : natural := 1024
   );
   port (
     -- Wishbone B4 Slave Interface
@@ -40,6 +42,7 @@ architecture rtl of mc68881_wishbone_wrapper is
   signal bridge_wdata : std_logic_vector(31 downto 0) := (others => '0');
   signal bridge_rdata : std_logic_vector(31 downto 0);
   signal bridge_done  : std_logic;
+  signal bridge_error : std_logic;
   signal bridge_busy  : std_logic;
 
   -- FPU wiring
@@ -63,18 +66,21 @@ architecture rtl of mc68881_wishbone_wrapper is
   type wb_state_t is (WB_IDLE, WB_WAIT, WB_ACK);
   signal wb_state_reg : wb_state_t := WB_IDLE;
 
-  signal rdata_reg : std_logic_vector(31 downto 0) := (others => '0');
-  signal we_reg    : std_logic := '0';
+  signal rdata_reg  : std_logic_vector(31 downto 0) := (others => '0');
+  signal we_reg     : std_logic := '0';
+  signal err_reg    : std_logic := '0';
 
 begin
 
   bus_reset_n <= not wb_rst_i;
-  wb_err_o    <= '0';
 
   -- ========================================================================
   -- Bus Bridge
   -- ========================================================================
   u_bridge : entity work.mc68881_bus_bridge
+    generic map (
+      dsack_timeout_g => dsack_timeout_g
+    )
     port map (
       bus_clk          => wb_clk_i,
       bus_reset_n      => bus_reset_n,
@@ -84,6 +90,7 @@ begin
       bridge_wdata     => bridge_wdata,
       bridge_rdata     => bridge_rdata,
       bridge_done      => bridge_done,
+      bridge_error     => bridge_error,
       bridge_busy      => bridge_busy,
       fpu_clk          => fpu_clk,
       fpu_reset_n      => fpu_reset_n,
@@ -133,6 +140,7 @@ begin
     if rising_edge(wb_clk_i) then
       bridge_req <= '0';  -- default: no pulse
       wb_ack_o   <= '0';
+      wb_err_o   <= '0';
 
       if wb_rst_i = '1' then
         wb_state_reg <= WB_IDLE;
@@ -153,15 +161,25 @@ begin
 
           when WB_WAIT =>
             wb_stall_o <= '1';
-            if bridge_done = '1' then
+            -- Monitor wb_cyc_i: master can abort by deasserting cyc
+            if wb_cyc_i = '0' then
+              wb_stall_o   <= '0';
+              wb_state_reg <= WB_IDLE;
+              -- Bridge transaction still in flight; result will be discarded
+            elsif bridge_done = '1' then
               if we_reg = '0' then
                 rdata_reg <= bridge_rdata;
               end if;
+              err_reg      <= bridge_error;
               wb_state_reg <= WB_ACK;
             end if;
 
           when WB_ACK =>
-            wb_ack_o     <= '1';
+            if err_reg = '1' then
+              wb_err_o <= '1';
+            else
+              wb_ack_o <= '1';
+            end if;
             wb_stall_o   <= '0';
             wb_state_reg <= WB_IDLE;
         end case;

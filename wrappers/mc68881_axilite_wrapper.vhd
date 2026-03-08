@@ -8,7 +8,12 @@ use ieee.std_logic_1164.all;
 
 entity mc68881_axilite_wrapper is
   generic (
-    packed_decimal_full_g : boolean := true
+    packed_decimal_full_g : boolean := true;
+    -- DSACK timeout passed to bridge (fpu_clk cycles; 0 disables)
+    dsack_timeout_g      : natural := 1024;
+    -- AXI channel pairing timeout in bus_clk cycles (0 disables).
+    -- If AW arrives without W (or vice versa), abort after this many cycles.
+    channel_timeout_g    : natural := 4096
   );
   port (
     -- AXI4-Lite Slave Interface
@@ -54,6 +59,7 @@ architecture rtl of mc68881_axilite_wrapper is
   signal bridge_wdata : std_logic_vector(31 downto 0) := (others => '0');
   signal bridge_rdata : std_logic_vector(31 downto 0);
   signal bridge_done  : std_logic;
+  signal bridge_error : std_logic;
   signal bridge_busy  : std_logic;
 
   -- FPU wiring
@@ -78,12 +84,22 @@ architecture rtl of mc68881_axilite_wrapper is
   signal axi_state_reg : axi_state_t := AXI_IDLE;
 
   -- Latched AXI channels
-  signal aw_latched : std_logic := '0';
-  signal w_latched  : std_logic := '0';
+  signal aw_latched  : std_logic := '0';
+  signal w_latched   : std_logic := '0';
+  signal req_sent    : std_logic := '0';  -- bridge_req already issued this transaction
   signal aw_addr_reg : std_logic_vector(4 downto 0) := (others => '0');
   signal w_data_reg  : std_logic_vector(31 downto 0) := (others => '0');
   signal ar_addr_reg : std_logic_vector(4 downto 0) := (others => '0');
   signal rdata_reg   : std_logic_vector(31 downto 0) := (others => '0');
+  signal resp_reg    : std_logic_vector(1 downto 0) := "00";
+
+  -- Internal mirrors of valid outputs (needed to read registered value for
+  -- handshake completion check without violating VRFC "never read out" rule)
+  signal bvalid_reg  : std_logic := '0';
+  signal rvalid_reg  : std_logic := '0';
+
+  -- Channel pairing timeout counter
+  signal chan_timeout_cnt : natural range 0 to channel_timeout_g := 0;
 
 begin
 
@@ -91,6 +107,9 @@ begin
   -- Bus Bridge
   -- ========================================================================
   u_bridge : entity work.mc68881_bus_bridge
+    generic map (
+      dsack_timeout_g => dsack_timeout_g
+    )
     port map (
       bus_clk          => s_axi_aclk,
       bus_reset_n      => s_axi_aresetn,
@@ -100,6 +119,7 @@ begin
       bridge_wdata     => bridge_wdata,
       bridge_rdata     => bridge_rdata,
       bridge_done      => bridge_done,
+      bridge_error     => bridge_error,
       bridge_busy      => bridge_busy,
       fpu_clk          => fpu_clk,
       fpu_reset_n      => fpu_reset_n,
@@ -144,8 +164,8 @@ begin
   -- ========================================================================
   -- AXI4-Lite FSM
   -- ========================================================================
-  s_axi_bresp <= "00";  -- OKAY
-  s_axi_rresp <= "00";  -- OKAY
+  s_axi_bvalid <= bvalid_reg;
+  s_axi_rvalid <= rvalid_reg;
 
   p_axi : process(s_axi_aclk)
   begin
@@ -157,17 +177,23 @@ begin
 
       if s_axi_aresetn = '0' then
         axi_state_reg <= AXI_IDLE;
-        s_axi_bvalid  <= '0';
-        s_axi_rvalid  <= '0';
+        bvalid_reg    <= '0';
+        rvalid_reg    <= '0';
+        s_axi_bresp   <= "00";
+        s_axi_rresp   <= "00";
         aw_latched    <= '0';
         w_latched     <= '0';
+        req_sent      <= '0';
+        chan_timeout_cnt <= 0;
       else
         case axi_state_reg is
           when AXI_IDLE =>
-            s_axi_bvalid <= '0';
-            s_axi_rvalid <= '0';
-            aw_latched   <= '0';
-            w_latched    <= '0';
+            bvalid_reg <= '0';
+            rvalid_reg <= '0';
+            aw_latched <= '0';
+            w_latched  <= '0';
+            req_sent   <= '0';
+            chan_timeout_cnt <= 0;
 
             -- Read has priority if both arrive simultaneously
             if s_axi_arvalid = '1' then
@@ -187,13 +213,11 @@ begin
               aw_addr_reg   <= s_axi_awaddr(6 downto 2);
               s_axi_awready <= '1';
               aw_latched    <= '1';
-              -- Wait for W in WRITE_BRIDGE state
               axi_state_reg <= AXI_WRITE_BRIDGE;
             elsif s_axi_wvalid = '1' then
               w_data_reg    <= s_axi_wdata;
               s_axi_wready  <= '1';
               w_latched     <= '1';
-              -- Wait for AW in WRITE_BRIDGE state
               axi_state_reg <= AXI_WRITE_BRIDGE;
             end if;
 
@@ -210,42 +234,59 @@ begin
               w_latched     <= '1';
             end if;
 
-            -- Issue bridge request once both channels are latched
-            if aw_latched = '1' and w_latched = '1' and bridge_busy = '0' then
+            -- Prioritize bridge_done over issuing new request
+            if bridge_done = '1' then
+              resp_reg      <= "00" when bridge_error = '0' else "10";  -- OKAY or SLVERR
+              axi_state_reg <= AXI_WRITE_RESP;
+            elsif aw_latched = '1' and w_latched = '1' and req_sent = '0' then
               bridge_addr  <= aw_addr_reg;
               bridge_wdata <= w_data_reg;
               bridge_rw    <= '0';  -- write
               bridge_req   <= '1';
+              req_sent     <= '1';
             end if;
 
-            if bridge_done = '1' then
-              axi_state_reg <= AXI_WRITE_RESP;
+            -- Channel pairing timeout: abort if one channel never arrives
+            if channel_timeout_g > 0 and (aw_latched = '0' or w_latched = '0') then
+              if chan_timeout_cnt = channel_timeout_g - 1 then
+                aw_latched <= '1';
+                w_latched  <= '1';
+                resp_reg   <= "10";  -- SLVERR
+                axi_state_reg <= AXI_WRITE_RESP;
+              else
+                chan_timeout_cnt <= chan_timeout_cnt + 1;
+              end if;
             end if;
 
           when AXI_WRITE_RESP =>
-            s_axi_bvalid <= '1';
-            if s_axi_bready = '1' then
-              s_axi_bvalid  <= '0';
+            bvalid_reg  <= '1';
+            s_axi_bresp <= resp_reg;
+            -- Complete handshake only when bvalid was already registered high
+            if bvalid_reg = '1' and s_axi_bready = '1' then
+              bvalid_reg    <= '0';
               axi_state_reg <= AXI_IDLE;
             end if;
 
           when AXI_READ_BRIDGE =>
-            if bridge_busy = '0' then
+            -- Prioritize bridge_done over issuing new request
+            if bridge_done = '1' then
+              rdata_reg     <= bridge_rdata;
+              resp_reg      <= "00" when bridge_error = '0' else "10";
+              axi_state_reg <= AXI_READ_RESP;
+            elsif req_sent = '0' then
               bridge_addr <= ar_addr_reg;
               bridge_rw   <= '1';  -- read
               bridge_req  <= '1';
-            end if;
-
-            if bridge_done = '1' then
-              rdata_reg     <= bridge_rdata;
-              axi_state_reg <= AXI_READ_RESP;
+              req_sent    <= '1';
             end if;
 
           when AXI_READ_RESP =>
-            s_axi_rvalid <= '1';
-            s_axi_rdata  <= rdata_reg;
-            if s_axi_rready = '1' then
-              s_axi_rvalid  <= '0';
+            rvalid_reg  <= '1';
+            s_axi_rdata <= rdata_reg;
+            s_axi_rresp <= resp_reg;
+            -- Complete handshake only when rvalid was already registered high
+            if rvalid_reg = '1' and s_axi_rready = '1' then
+              rvalid_reg    <= '0';
               axi_state_reg <= AXI_IDLE;
             end if;
         end case;

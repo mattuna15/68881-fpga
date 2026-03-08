@@ -29,7 +29,8 @@ entity mc68881_top is
     dsack1_n: out std_logic;
     reset_n : in  std_logic;
     clk     : in  std_logic;
-    sense_n : inout std_logic
+    sense_n      : inout std_logic;
+    status_valid : out std_logic   -- '1' when result is ready (for interrupt generation)
   );
 end entity mc68881_top;
 
@@ -3876,4 +3877,5 @@ begin
   dsack1_n <= dsack1_i;
   sense_drive <= '0' when status_busy_reg = '1' else '1';
   sense_n  <= sense_drive;
+  status_valid <= status_valid_reg;
 end architecture rtl;

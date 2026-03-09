@@ -66,9 +66,12 @@ static fp80_t read_res(void)
     return r;
 }
 
+/* ~200ms at 200MHz with AXI read latency ~500ns per poll */
+#define TIMEOUT_POLLS  200000
+
 static int wait_done(void)
 {
-    for (int i = 0; i < 200000; i++)
+    for (int i = 0; i < TIMEOUT_POLLS; i++)
         if (rd(OFF_STATUS) & STATUS_VALID) return 0;
     return -1;
 }
@@ -165,6 +168,14 @@ int main()
     init_platform();
     xil_printf("\r\nmc68881 e2e test (vectors from GHDL tb)\r\n");
     xil_printf("========================================\r\n");
+
+    u32 status = rd(OFF_STATUS);
+    if (status == 0xFFFFFFFFu) {
+        xil_printf("FATAL: No response at 0x%08lx -- check bitstream and address map\r\n",
+                   (u32)MC68881_BASE);
+        cleanup_platform();
+        return 1;
+    }
 
     /* --- Arithmetic --- */
 

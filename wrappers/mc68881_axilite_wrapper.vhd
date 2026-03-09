@@ -238,10 +238,10 @@ begin
             -- Channel timeout is elsif so channel acceptance on the same cycle wins.
             if bridge_done = '1' then
               if bridge_error = '0' then
-                resp_reg      <= "00"; 
-               else 
-                resp_reg      <="10";  -- OKAY or SLVERR
-               end if;
+                resp_reg <= "00";  -- OKAY
+              else
+                resp_reg <= "10";  -- SLVERR
+              end if;
               axi_state_reg <= AXI_WRITE_RESP;
             elsif aw_latched = '1' and w_latched = '1' and req_sent = '0' then
               bridge_addr  <= aw_addr_reg;
@@ -274,9 +274,9 @@ begin
             if bridge_done = '1' then
               rdata_reg     <= bridge_rdata;
               if bridge_error = '0' then
-                resp_reg <= "00";
-               else 
-               resp_reg <= "10";
+                resp_reg <= "00";  -- OKAY
+              else
+                resp_reg <= "10";  -- SLVERR
               end if;
               axi_state_reg <= AXI_READ_RESP;
             elsif req_sent = '0' then

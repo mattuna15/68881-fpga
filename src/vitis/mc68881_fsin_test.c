@@ -33,9 +33,7 @@ static inline u32  rd(u32 off)        { return Xil_In32(MC68881_BASE + off); }
 /* CORE_V1 namespace = 0x01, SIN opcode = 0x0D */
 #define OPSEL_SIN   0x0100000Du
 
-/* STATUS register bits */
 #define STATUS_VALID  0x01
-#define STATUS_BUSY   0x02
 
 static void load_fp80(u32 lo, u32 hi, u32 ex)
 {
@@ -44,9 +42,12 @@ static void load_fp80(u32 lo, u32 hi, u32 ex)
     wr(OFF_OPA_E, ex);
 }
 
+/* ~200ms at 200MHz with AXI read latency ~500ns per poll */
+#define TIMEOUT_POLLS  200000
+
 static int wait_done(void)
 {
-    for (int i = 0; i < 100000; i++) {
+    for (int i = 0; i < TIMEOUT_POLLS; i++) {
         u32 st = rd(OFF_STATUS);
         if (st & STATUS_VALID)
             return 0;
@@ -56,9 +57,19 @@ static int wait_done(void)
 
 int main()
 {
+    int errors = 0;
+
     init_platform();
 
     xil_printf("\r\nmc68881 FSIN test\r\n");
+
+    u32 status = rd(OFF_STATUS);
+    if (status == 0xFFFFFFFFu) {
+        xil_printf("FATAL: No response at 0x%08lx -- check bitstream and address map\r\n",
+                   (u32)MC68881_BASE);
+        cleanup_platform();
+        return 1;
+    }
 
     /* --- sin(1.0) --- */
     /* FP80 1.0 = 0x3FFF 80000000 00000000 */
@@ -67,8 +78,8 @@ int main()
     wr(OFF_OPSEL, OPSEL_SIN);
 
     if (wait_done() < 0) {
-        xil_printf("TIMEOUT waiting for result!\r\n");
-        xil_printf("STATUS = 0x%08lx\r\n", rd(OFF_STATUS));
+        xil_printf("FAIL sin(1.0): TIMEOUT, STATUS = 0x%08lx\r\n", rd(OFF_STATUS));
+        errors++;
     } else {
         u32 res_l = rd(OFF_RES_L);
         u32 res_h = rd(OFF_RES_H);
@@ -89,7 +100,8 @@ int main()
     wr(OFF_OPSEL, OPSEL_SIN);
 
     if (wait_done() < 0) {
-        xil_printf("TIMEOUT!\r\n");
+        xil_printf("FAIL sin(0.0): TIMEOUT, STATUS = 0x%08lx\r\n", rd(OFF_STATUS));
+        errors++;
     } else {
         u32 res_l = rd(OFF_RES_L);
         u32 res_h = rd(OFF_RES_H);
@@ -101,7 +113,7 @@ int main()
         xil_printf("  expect: 0000 00000000 00000000\r\n");
     }
 
-    xil_printf("done.\r\n");
+    xil_printf("%d errors\r\n", errors);
     cleanup_platform();
-    return 0;
+    return errors ? 1 : 0;
 }

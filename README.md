@@ -248,6 +248,39 @@ reporting, and non-zero exit on failure for use in automated test flows.
 
 Set `MC68881_BASE` to match your address map (default `0x80000000`).
 
+### Hardware validation output
+
+E2e test run on AXU3EG (Zynq UltraScale+ ZU3EG), Vitis 2025.2:
+
+```
+Zynq MP First Stage Boot Loader
+Release 2025.2   Mar  9 2026  -  17:13:45
+PMU-FW is not running, certain applications may not be supported.
+PMU Firmware 2025.2     Mar  9 2026   17:13:51
+PMU_ROM Version: xpbr-v8.1.0-0
+
+mc68881 e2e test (vectors from GHDL tb)
+========================================
+PASS ADD 3.7+2.4
+PASS SUB -2.3-0.6
+PASS MUL 3.7*2.4
+PASS DIV 12.5/-0.7
+PASS SQRT(9)
+PASS SIN(1.0)
+PASS SIN(1.1)
+PASS SIN(-0.7)
+PASS COS(-2.3)
+PASS COS(0.3)
+PASS TAN(0.9)
+PASS ETOX(0.75)
+PASS LOGN(1.25)
+PASS SIN(0)
+PASS SQRT(1)
+========================================
+15 passed, 0 failed, 15 total
+ALL TESTS PASSED
+```
+
 ## Status
 All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
 

@@ -241,7 +241,7 @@ validating the FPU over AXI-Lite. These target the Xilinx Vitis bare-metal BSP.
 |------|----------------|
 | `mc68881_smoke_test.c` | Bus connectivity: write/readback of FPCR and FPIAR |
 | `mc68881_fsin_test.c` | FPU operation: sin(1.0) and sin(0.0) with result printout |
-| `mc68881_e2e_test.c` | 15 test vectors: ADD, SUB, MUL, DIV, SQRT, SIN, COS, TAN, ETOX, LOGN |
+| `mc68881_e2e_test.c` | 17 test vectors: ADD, SUB, MUL, DIV, SQRT, SIN, COS, TAN, ETOX, LOGN, FMOVECR, pi/3 |
 
 All tests include `0xFFFFFFFF` bus fault detection, timeout handling with status
 reporting, and non-zero exit on failure for use in automated test flows.
@@ -276,8 +276,10 @@ PASS ETOX(0.75)
 PASS LOGN(1.25)
 PASS SIN(0)
 PASS SQRT(1)
+PASS FMOVECR(pi)
+PASS DIV(pi/3)
 ========================================
-15 passed, 0 failed, 15 total
+17 passed, 0 failed, 17 total
 ALL TESTS PASSED
 ```
 

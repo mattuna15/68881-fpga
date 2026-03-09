@@ -30,6 +30,7 @@ static inline u32  rd(u32 off)        { return Xil_In32(MC68881_BASE + off); }
 #define OFF_RES_H   (8  * 4)
 #define OFF_RES_E   (9  * 4)
 #define OFF_STATUS  (10 * 4)
+#define OFF_MOVE_CFG (23 * 4)
 
 #define STATUS_VALID  0x01
 
@@ -40,12 +41,25 @@ static inline u32  rd(u32 off)        { return Xil_In32(MC68881_BASE + off); }
 #define OP_SUB    OPSEL(0x02)
 #define OP_MUL    OPSEL(0x03)
 #define OP_DIV    OPSEL(0x04)
+#define OP_MOVE   OPSEL(0x05)
 #define OP_SQRT   OPSEL(0x11)
 #define OP_SIN    OPSEL(0x0D)
 #define OP_COS    OPSEL(0x0E)
 #define OP_TAN    OPSEL(0x0F)
 #define OP_ETOX   OPSEL(0x45)
 #define OP_LOGN   OPSEL(0x47)
+
+/*
+ * move_cfg register (index 23) bitfield:
+ *   [2:0]   src_idx        - source FP register
+ *   [5:4]   mem_fmt        - 00=ext, 01=single, 10=double
+ *   [7:6]   mode           - 00=reg_to_reg, 01=mem_to_reg, 10=reg_to_mem, 11=control
+ *   [11:9]  dst_idx        - destination FP register
+ *   [26]    fmovecr_enable - 1=load constant from ROM
+ * FMOVECR: constant code goes in OPA_L[6:0].
+ * Result appears in RES_L/H/E and fp_reg_file[dst_idx].
+ */
+#define MOVE_CFG_FMOVECR(dst) (0x04000000u | (((u32)(dst) & 7) << 9))
 
 /* ------------------------------------------------------------------ */
 /* FP80 helper: {exp[15:0], sig_hi[31:0], sig_lo[31:0]}              */
@@ -287,6 +301,62 @@ int main()
         FP80(0x3FFF, 0x80000000, 0x00000000),
         FP80(0x3FFF, 0x80000000, 0x00000000),
         0, 0);
+
+    /* --- FMOVECR constant ROM + DIV --- */
+
+    /* FMOVECR #$00 (pi) -> FP0, then DIV pi / 3.0, expect pi/3 */
+    {
+        /* Known values from FMOVECR ROM (mc68881_top.vhd):
+         *   #$00 = pi   = 4000 C90FDAA2 2168C235
+         *   #$0C = e    = 4000 ADF85458 A2BB4A9A
+         *   #$30 = ln2  = 3FFE B17217F7 D1CF79AC
+         */
+        fp80_t pi_expect = FP80(0x4000, 0xC90FDAA2, 0x2168C235);
+
+        /* Step 1: FMOVECR pi -> FP0 */
+        wr(OFF_MOVE_CFG, MOVE_CFG_FMOVECR(0));  /* dst_idx=0, fmovecr_enable=1 */
+        wr(OFF_OPA_L, 0x00);                     /* constant code #$00 = pi */
+        wr(OFF_OPSEL, OP_MOVE);                  /* trigger MOVE */
+
+        if (wait_done() < 0) {
+            xil_printf("FAIL FMOVECR(pi): TIMEOUT\r\n");
+            fail_cnt++;
+        } else {
+            fp80_t got_pi = read_res();
+            if (fp80_close(got_pi, pi_expect, 0, 0)) {
+                xil_printf("PASS FMOVECR(pi)\r\n");
+                pass_cnt++;
+            } else {
+                xil_printf("FAIL FMOVECR(pi)\r\n");
+                print_fp80("got:   ", got_pi);
+                print_fp80("expect:", pi_expect);
+                fail_cnt++;
+            }
+
+            /* Step 2: DIV pi / 3.0 = pi/3 */
+            /* pi/3 (mpmath): 4000 860A91C1 6B9B2C23 */
+            load_opa(got_pi);
+            load_opb(FP80(0x4000, 0xC0000000, 0x00000000));  /* 3.0 */
+            wr(OFF_OPSEL, OP_DIV);
+
+            if (wait_done() < 0) {
+                xil_printf("FAIL DIV(pi/3): TIMEOUT\r\n");
+                fail_cnt++;
+            } else {
+                fp80_t got_div = read_res();
+                fp80_t div_expect = FP80(0x3FFF, 0x860A91C1, 0x6B9B2C23);
+                if (fp80_close(got_div, div_expect, TOL_HI, TOL_LO)) {
+                    xil_printf("PASS DIV(pi/3)\r\n");
+                    pass_cnt++;
+                } else {
+                    xil_printf("FAIL DIV(pi/3)\r\n");
+                    print_fp80("got:   ", got_div);
+                    print_fp80("expect:", div_expect);
+                    fail_cnt++;
+                }
+            }
+        }
+    }
 
     /* --- Summary --- */
     xil_printf("========================================\r\n");

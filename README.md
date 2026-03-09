@@ -2,13 +2,15 @@
 
 ## Overview
 A VHDL-2008 implementation of a Motorola MC68881-compatible floating-point
-coprocessor targeting Xilinx 7-series FPGAs. The design implements the full
-MC68881 instruction set including all arithmetic, transcendental, program-control,
-system-control, and packed-decimal operations. It uses DSP-pipelined sequential
-FP units for the core arithmetic datapath with multi-cycle path constraints for
-timing closure at 33 MHz.
+coprocessor targeting Xilinx 7-series and UltraScale+ FPGAs. The design implements
+the full MC68881 instruction set including all arithmetic, transcendental,
+program-control, system-control, and packed-decimal operations. It uses
+DSP-pipelined sequential FP units for the core arithmetic datapath with
+multi-cycle path constraints for timing closure at 33 MHz.
 
-The current plan and progress tracking live in `docs/fpu-progress-checklist.md`.
+Hardware-verified on an Alinx AXU3EG board (Zynq UltraScale+ ZU3EG) via the
+AXI4-Lite wrapper at 100 MHz bus / 33 MHz FPU, with end-to-end tests covering
+arithmetic, transcendental, exponential, and logarithmic operations.
 
 ## Features
 - **Full instruction set**: FADD, FSUB, FMUL, FDIV, FSQRT, FMOD, FREM, FSCALE,

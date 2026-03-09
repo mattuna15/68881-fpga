@@ -237,7 +237,11 @@ begin
             -- Prioritize bridge_done over issuing new request.
             -- Channel timeout is elsif so channel acceptance on the same cycle wins.
             if bridge_done = '1' then
-              resp_reg      <= "00" when bridge_error = '0' else "10";  -- OKAY or SLVERR
+              if bridge_error = '0' then
+                resp_reg      <= "00"; 
+               else 
+                resp_reg      <="10";  -- OKAY or SLVERR
+               end if;
               axi_state_reg <= AXI_WRITE_RESP;
             elsif aw_latched = '1' and w_latched = '1' and req_sent = '0' then
               bridge_addr  <= aw_addr_reg;
@@ -269,7 +273,11 @@ begin
             -- Prioritize bridge_done over issuing new request
             if bridge_done = '1' then
               rdata_reg     <= bridge_rdata;
-              resp_reg      <= "00" when bridge_error = '0' else "10";
+              if bridge_error = '0' then
+                resp_reg <= "00";
+               else 
+               resp_reg <= "10";
+              end if;
               axi_state_reg <= AXI_READ_RESP;
             elsif req_sent = '0' then
               bridge_addr <= ar_addr_reg;

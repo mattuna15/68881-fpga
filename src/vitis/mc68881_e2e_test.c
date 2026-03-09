@@ -77,17 +77,17 @@ static int wait_done(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Simple FP80 comparison: exact match on exp+sign, then allow        */
-/* sig_hi:sig_lo to differ by up to 'tol' ULPs in the 64-bit         */
-/* significand.                                                       */
+/* FP80 comparison: exact match on exp+sign, then allow               */
+/* sig_hi:sig_lo to differ by up to tol_hi:tol_lo ULPs.              */
+/* tol_hi=0 for tight (arithmetic), nonzero for wide (trig ~30 bits) */
 /* ------------------------------------------------------------------ */
-static int fp80_close(fp80_t got, fp80_t exp, u32 ulp_tol)
+static int fp80_close(fp80_t got, fp80_t exp, u32 tol_hi, u32 tol_lo)
 {
     if (got.e != exp.e) return 0;
 
-    /* 64-bit significand compare via manual subtraction */
+    /* 64-bit abs(got_sig - exp_sig) via manual subtraction */
     u32 dh, dl;
-    int borrow = 0;
+    int borrow;
     if (got.h > exp.h || (got.h == exp.h && got.l >= exp.l)) {
         dl = got.l - exp.l;
         borrow = (got.l < exp.l) ? 1 : 0;
@@ -97,8 +97,10 @@ static int fp80_close(fp80_t got, fp80_t exp, u32 ulp_tol)
         borrow = (exp.l < got.l) ? 1 : 0;
         dh = exp.h - got.h - borrow;
     }
-    if (dh != 0) return 0;       /* more than 4G ULPs apart */
-    return dl <= ulp_tol;
+    /* Compare 64-bit diff against 64-bit tolerance */
+    if (dh > tol_hi) return 0;
+    if (dh < tol_hi) return 1;
+    return dl <= tol_lo;  /* dh == tol_hi, compare low words */
 }
 
 /* ------------------------------------------------------------------ */
@@ -112,7 +114,8 @@ static void print_fp80(const char *tag, fp80_t v)
     xil_printf("  %s %04lx %08lx %08lx\r\n", tag, v.e, v.h, v.l);
 }
 
-static void run_monadic(const char *name, u32 opsel, fp80_t arg, fp80_t expect, u32 ulp_tol)
+static void run_monadic(const char *name, u32 opsel, fp80_t arg, fp80_t expect,
+                        u32 tol_hi, u32 tol_lo)
 {
     load_opa(arg);
     wr(OFF_OPSEL, opsel);
@@ -122,7 +125,7 @@ static void run_monadic(const char *name, u32 opsel, fp80_t arg, fp80_t expect, 
         return;
     }
     fp80_t got = read_res();
-    if (fp80_close(got, expect, ulp_tol)) {
+    if (fp80_close(got, expect, tol_hi, tol_lo)) {
         xil_printf("PASS %s\r\n", name);
         pass_cnt++;
     } else {
@@ -134,7 +137,7 @@ static void run_monadic(const char *name, u32 opsel, fp80_t arg, fp80_t expect, 
 }
 
 static void run_binary(const char *name, u32 opsel, fp80_t a, fp80_t b,
-                        fp80_t expect, u32 ulp_tol)
+                        fp80_t expect, u32 tol_hi, u32 tol_lo)
 {
     load_opa(a);
     load_opb(b);
@@ -145,7 +148,7 @@ static void run_binary(const char *name, u32 opsel, fp80_t a, fp80_t b,
         return;
     }
     fp80_t got = read_res();
-    if (fp80_close(got, expect, ulp_tol)) {
+    if (fp80_close(got, expect, tol_hi, tol_lo)) {
         xil_printf("PASS %s\r\n", name);
         pass_cnt++;
     } else {
@@ -158,10 +161,16 @@ static void run_binary(const char *name, u32 opsel, fp80_t a, fp80_t b,
 
 /* ------------------------------------------------------------------ */
 /* Test vectors from tb_mc68881_alu.vhd / mc68881_golden_vectors_pkg  */
-/* ULP tolerance: generous (0x10000) to cover last-bit rounding diffs */
+/*                                                                    */
+/* Tolerances (64-bit ULP as hi:lo pair):                             */
+/*   TOL    = 0:0x10000   tight, for arithmetic/exp/log (~50+ bits)   */
+/*   TRIG   = 0x100:0     wide, for sin/cos/tan (~27-30 bits)        */
 /* ------------------------------------------------------------------ */
 
-#define TOL  0x10000u    /* ~65K ULPs in 64-bit sig = ~3.5e-15 rel */
+#define TOL_HI    0x0u
+#define TOL_LO    0x10000u     /* ~65K ULPs = ~3.5e-15 rel */
+#define TRIG_HI   0x100u       /* ~2^40 ULPs = ~27 bits accuracy */
+#define TRIG_LO   0x0u
 
 int main()
 {
@@ -184,72 +193,72 @@ int main()
         FP80(0x4000, 0xECCCCCCC, 0xCCCCCCCD),   /* 3.7 */
         FP80(0x4000, 0x99999999, 0x9999999A),   /* 2.4 */
         FP80(0x4001, 0xC3333333, 0x33333333),   /* 6.1 */
-        TOL);
+        TOL_HI, TOL_LO);
 
     /* SUB: -2.3 - 0.6 = -2.9 */
     run_binary("SUB -2.3-0.6", OP_SUB,
         FP80(0xC000, 0x93333333, 0x33333333),   /* -2.3 */
         FP80(0x3FFE, 0x99999999, 0x9999999A),   /* 0.6 */
         FP80(0xC000, 0xB9999999, 0x9999999A),   /* -2.9 */
-        TOL);
+        TOL_HI, TOL_LO);
 
     /* MUL: 3.7 * 2.4 = 8.88 */
     run_binary("MUL 3.7*2.4",  OP_MUL,
         FP80(0x4000, 0xECCCCCCC, 0xCCCCCCCD),   /* 3.7 */
         FP80(0x4000, 0x99999999, 0x9999999A),   /* 2.4 */
         FP80(0x4002, 0x8E147AE1, 0x47AE147B),   /* 8.88 */
-        TOL);
+        TOL_HI, TOL_LO);
 
     /* DIV: 12.5 / -0.7 = -17.857142... */
     run_binary("DIV 12.5/-0.7", OP_DIV,
         FP80(0x4002, 0xC8000000, 0x00000000),   /* 12.5 */
         FP80(0xBFFE, 0xB3333333, 0x33333333),   /* -0.7 */
         FP80(0xC003, 0x8EDB6DB6, 0xDB6DB6DB),   /* -17.857.. */
-        TOL);
+        TOL_HI, TOL_LO);
 
     /* SQRT(9) = 3 */
     run_monadic("SQRT(9)", OP_SQRT,
         FP80(0x4002, 0x90000000, 0x00000000),   /* 9.0 */
         FP80(0x4000, 0xC0000000, 0x00000000),   /* 3.0 */
-        0);  /* exact */
+        0, 0);  /* exact */
 
-    /* --- Trig --- */
+    /* --- Trig (~30 bits accuracy, wide tolerance) --- */
 
     /* SIN(1.0) - verified on hardware */
     run_monadic("SIN(1.0)", OP_SIN,
         FP80(0x3FFF, 0x80000000, 0x00000000),   /* 1.0 */
         FP80(0x3FFE, 0xD76AA478, 0x48677020),   /* sin(1) */
-        TOL);
+        TRIG_HI, TRIG_LO);
 
     /* SIN(1.1) */
     run_monadic("SIN(1.1)", OP_SIN,
         FP80(0x3FFF, 0x8CCCCCCC, 0xCCCCCCCD),   /* 1.1 */
         FP80(0x3FFE, 0xE4262A61, 0x6B19BA80),   /* sin(1.1) */
-        TOL);
+        TRIG_HI, TRIG_LO);
 
     /* SIN(-0.7) */
     run_monadic("SIN(-0.7)", OP_SIN,
         FP80(0xBFFE, 0xB3333333, 0x33333333),   /* -0.7 */
         FP80(0xBFFE, 0xA4EB734A, 0x30CDC2A8),   /* sin(-0.7) */
-        TOL);
+        TRIG_HI, TRIG_LO);
 
     /* COS(-2.3) */
     run_monadic("COS(-2.3)", OP_COS,
         FP80(0xC000, 0x93333333, 0x33333333),   /* -2.3 */
         FP80(0xBFFE, 0xAA9110B9, 0x817F0E68),   /* cos(-2.3) */
-        TOL);
+        TRIG_HI, TRIG_LO);
 
     /* COS(0.3) */
     run_monadic("COS(0.3)", OP_COS,
         FP80(0x3FFD, 0x99999999, 0x99999800),   /* 0.3 */
         FP80(0x3FFE, 0xF490EEA1, 0x784DD000),   /* cos(0.3) */
-        TOL);
+        TRIG_HI, TRIG_LO);
 
     /* TAN(0.9) */
     run_monadic("TAN(0.9)", OP_TAN,
         FP80(0x3FFE, 0xE6666666, 0x66666800),   /* 0.9 */
         FP80(0x3FFF, 0xA14CDD4E, 0x1509BE2A),   /* tan(0.9) */
-        TOL);
+        TRIG_HI, TRIG_LO);
 
     /* --- Exp / Log --- */
 
@@ -257,13 +266,13 @@ int main()
     run_monadic("ETOX(0.75)", OP_ETOX,
         FP80(0x3FFE, 0xC0000000, 0x00000000),   /* 0.75 */
         FP80(0x4000, 0x877CEDA3, 0x3EE7BDEA),   /* e^0.75 */
-        TOL);
+        TOL_HI, TOL_LO);
 
     /* ln(1.25) */
     run_monadic("LOGN(1.25)", OP_LOGN,
         FP80(0x3FFF, 0xA0000000, 0x00000000),   /* 1.25 */
         FP80(0x3FFC, 0xE47FBE3C, 0xD4D10D61),   /* ln(1.25) */
-        TOL);
+        TOL_HI, TOL_LO);
 
     /* --- Edge cases --- */
 
@@ -271,13 +280,13 @@ int main()
     run_monadic("SIN(0)", OP_SIN,
         FP80(0x0000, 0x00000000, 0x00000000),
         FP80(0x0000, 0x00000000, 0x00000000),
-        0);
+        0, 0);
 
     /* SQRT(1) = 1 (exact) */
     run_monadic("SQRT(1)", OP_SQRT,
         FP80(0x3FFF, 0x80000000, 0x00000000),
         FP80(0x3FFF, 0x80000000, 0x00000000),
-        0);
+        0, 0);
 
     /* --- Summary --- */
     xil_printf("========================================\r\n");

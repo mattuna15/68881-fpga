@@ -24,3 +24,4 @@ __synthesis_is_complete__
 project/fpga68881/utilization_report.txt
 /validation
 /build
+.worktrees

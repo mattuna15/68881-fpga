@@ -108,7 +108,12 @@ instances per consumer.
   - `mc68881_bus_bridge.vhd` — CDC toggle-handshake bridge + M68K bus cycle FSM
   - `mc68881_axilite_wrapper.vhd` — AXI4-Lite slave (instantiates bridge + FPU)
   - `mc68881_wishbone_wrapper.vhd` — Wishbone B4 slave (instantiates bridge + FPU)
-  - `mc68881_wrapper.xdc` — ASYNC_REG + false path timing constraints
+  - `mc68881_wrapper.xdc` — ASYNC_REG + false path timing constraints for CDC bridge
+  - `mc68881_ooc_timing.xdc` — Multicycle path constraints for OOC block design synthesis
+- `src/vitis/` — Bare-metal C test apps for Xilinx Vitis (AXI-Lite hardware validation)
+  - `mc68881_smoke_test.c` — Register read/write connectivity test (FPCR, FPIAR)
+  - `mc68881_fsin_test.c` — FSIN computation test (sin(1.0), sin(0.0))
+  - `mc68881_e2e_test.c` — End-to-end test with 15 vectors from GHDL testbench
 - `tb/` — VHDL-2008 self-checking testbenches (14 files, ~8.5K lines)
 - `docs/` — Implementation plan, timing notes, reference documentation
 - `verilog/` — Auto-generated Verilog conversion (see [verilog/README.md](verilog/README.md))
@@ -206,8 +211,43 @@ Output goes to [`verilog/`](verilog/). **These files are supplied as-is for
 information only — no guarantee of correctness is made and no tests are run on
 the converted code.** The VHDL sources remain the authoritative implementation.
 
-## Remaining work
-- All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
+## Block design integration (Xilinx Vivado)
+
+The AXI-Lite wrapper can be added to a Vivado block design as a custom RTL module.
+Both XDC constraint files must be included with the IP:
+
+- `mc68881_wrapper.xdc` — CDC false paths for the toggle-handshake bridge
+- `mc68881_ooc_timing.xdc` — Multicycle path constraints scoped to `*/u_fpu/`
+
+The OOC timing constraints are adapted from `mc68881_top.xdc` for the wrapper
+hierarchy. Key differences from standalone synthesis:
+- All `get_pins` patterns use `*/u_fpu/` prefix
+- `move_cfg_decoded_reg` (record type) is optimized away in OOC synthesis;
+  constraints target `move_cfg_reg_reg` instead
+- `packed_unit_inst` is inside generate block `packed_engine_full_g`
+- CDC `get_cells` filters include `&& IS_SEQUENTIAL` to avoid matching LUT cells
+
+Verified on Xilinx Zynq UltraScale+ ZU3EG (AXU3EG board) with Vivado 2024.2:
+post-route WNS **+5.911 ns** at 100 MHz AXI / 33 MHz FPU.
+
+### Vitis hardware test apps
+
+The `src/vitis/` directory contains standalone C test applications for
+validating the FPU over AXI-Lite. These target the Xilinx Vitis bare-metal BSP.
+
+| Test | What it checks |
+|------|----------------|
+| `mc68881_smoke_test.c` | Bus connectivity: write/readback of FPCR and FPIAR |
+| `mc68881_fsin_test.c` | FPU operation: sin(1.0) and sin(0.0) with result printout |
+| `mc68881_e2e_test.c` | 15 test vectors: ADD, SUB, MUL, DIV, SQRT, SIN, COS, TAN, ETOX, LOGN |
+
+All tests include `0xFFFFFFFF` bus fault detection, timeout handling with status
+reporting, and non-zero exit on failure for use in automated test flows.
+
+Set `MC68881_BASE` to match your address map (default `0x80000000`).
+
+## Status
+All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
 
 ## Key documentation
 - Master checklist: `docs/fpu-progress-checklist.md`

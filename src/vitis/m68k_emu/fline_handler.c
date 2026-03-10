@@ -446,7 +446,7 @@ static int handle_general(unsigned int opword, unsigned int pc)
     unsigned int cmd = m68k_read_memory_16(pc);
     pc += 2;
 
-    int rm      = (cmd >> 15) & 1;
+    int rm      = (cmd >> 14) & 1;
     int src_spec = (cmd >> 10) & 7;
     int dst_reg  = (cmd >>  7) & 7;
     int m68k_op  = cmd & 0x7F;
@@ -553,6 +553,13 @@ static int handle_general(unsigned int opword, unsigned int pc)
         } else {
             fp_reg_set(dst_reg, result);
         }
+
+    } else if (m68k_op == M68K_FP_FMOVE) {
+        /* FMOVE: store directly to software register file.
+         * Format conversion (single/double/long/etc → FP80) is already done.
+         * The hardware MOVE operates on the hardware register file (for CIR),
+         * not our software register file, so we handle this in software. */
+        fp_reg_set(dst_reg, src_val);
 
     } else {
         /* Monadic: result = op(src) */

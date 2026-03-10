@@ -2000,6 +2000,10 @@ static inline void m68ki_exception_1111(void)
 					 m68ki_disassemble_quick(ADDRESS_68K(REG_PPC))));
 #endif
 
+	/* Allow illg callback to intercept F-line instructions (e.g. FPU trap) */
+	if (m68ki_illg_callback(REG_IR))
+		return;
+
 	sr = m68ki_init_exception();
 	m68ki_stack_frame_0000(REG_PPC, sr, EXCEPTION_1111);
 	m68ki_jump_vector(EXCEPTION_1111);

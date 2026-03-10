@@ -76,10 +76,10 @@ static void check(const char *name, int reg, fp80_t expect, u32 th, u32 tl)
 /* ------------------------------------------------------------------ */
 
 /*
- * Test 1: FMOVECR pi → FP0, then FADD.X FP0,FP1 (FP1 = FP1 + FP0)
+ * Test 1: FMOVECR pi -> FP0, then FADD.X FP0,FP1 (FP1 = FP1 + FP0)
  *
  * We first load pi into FP0 via FMOVECR, then load 1.0 into FP1 via
- * FMOVE.L #1, FP1, then FADD.X FP0,FP1 → FP1 = pi + 1.0
+ * FMOVE.L #1, FP1, then FADD.X FP0,FP1 -> FP1 = pi + 1.0
  *
  * Assembly:
  *   FMOVECR  #$00, FP0          ; FP0 = pi
@@ -99,7 +99,7 @@ static void test_fmovecr_and_add(void)
 
     /* FMOVE.L #1, FP1:
      *   opword = F23C (type=000, EA=111100 = immediate)
-     *   command = 1_0_000_001_0000000 = 0x4080 (R/M=1, fmt=0=Long, dst=1, op=FMOVE=0x00)
+     *   command = 1_00_000_001_0000000 = 0x4080 (R/M=1, fmt=0=Long, dst=1, op=FMOVE=0x00)
      *   followed by 32-bit immediate: 0x00000001 */
     poke16(pc, 0xF23C); pc += 2;
     poke16(pc, 0x4080); pc += 2;
@@ -117,7 +117,7 @@ static void test_fmovecr_and_add(void)
     /* Set up vectors and run */
     emu_mem_set_vectors(0x00100000, 0x1000);
     /* Set trap #15 vector (vector 47 = 0xBC) to point to itself (infinite loop) */
-    poke32(0xBC, pc);       /* trap vector → next instruction (just stops) */
+    poke32(0xBC, pc);       /* trap vector -> next instruction (just stops) */
     poke16(pc, 0x4E72);    /* STOP #$2700 */
     poke16(pc + 2, 0x2700);
 
@@ -129,15 +129,18 @@ static void test_fmovecr_and_add(void)
 
     /* Expected: FP0 = pi, FP1 = pi + 1.0 */
     fp80_t pi = FP80(0x4000, 0xC90FDAA2, 0x2168C235);
-    check("FMOVECR(pi)→FP0", 0, pi, 0, 0);
+    check("FMOVECR(pi)->FP0", 0, pi, 0, 0);
 
     /* pi + 1.0 (mpmath): 4000 8490FDAA 2168C235 ... actually:
      * pi = 3.14159265..., pi+1 = 4.14159265...
-     * 4.14159... = 1.0353981... * 2^2 → exp = 16383+2 = 0x4001
+     * 4.14159... = 1.0353981... * 2^2 -> exp = 16383+2 = 0x4001
      * sig = 0x8490FDAA2168C235 (pi significand shifted right 1, plus 1.0 contribution)
      * Let's use tolerance instead of exact match */
-    fp80_t pi_plus_1 = FP80(0x4001, 0x8490FDAA, 0x2168C235);
-    check("FADD pi+1→FP1", 1, pi_plus_1, TOL_HI, TOL_LO);
+    /* pi + 1.0: align 1.0 (exp 3FFF) to pi's exponent (4000) -> shift right 1,
+     * then add: C90FDAA22168C235 + 4000000000000000 = 1_090FDAA22168C235,
+     * normalize: >> 1, exp++ -> 4001 8487ED51 10B4611A (exact) */
+    fp80_t pi_plus_1 = FP80(0x4001, 0x8487ED51, 0x10B4611A);
+    check("FADD pi+1->FP1", 1, pi_plus_1, TOL_HI, TOL_LO);
 }
 
 /*
@@ -150,14 +153,14 @@ static void test_mul_from_single(void)
 
     /* FMOVE.S #3.7, FP2:
      *   opword = F23C (imm), command = R/M=1, fmt=1(single), dst=2, op=FMOVE(0x00)
-     *   command = 1_0_001_010_0000000 = 0x4500
+     *   command = 1_00_001_010_0000000 = 0x4500
      *   3.7f = 0x406CCCCD */
     poke16(pc, 0xF23C); pc += 2;
     poke16(pc, 0x4500); pc += 2;
     poke32(pc, 0x406CCCCD); pc += 4;
 
     /* FMOVE.S #2.4, FP3:
-     *   command = 1_0_001_011_0000000 = 0x4580
+     *   command = 1_00_001_011_0000000 = 0x4580
      *   2.4f = 0x4019999A */
     poke16(pc, 0xF23C); pc += 2;
     poke16(pc, 0x4580); pc += 2;
@@ -180,9 +183,11 @@ static void test_mul_from_single(void)
     m68k_pulse_reset();
     m68k_execute(200);
 
-    /* 3.7 * 2.4 = 8.88 → FP80(0x4002, 0x8E147AE1, 0x47AE147B) */
-    fp80_t expect = FP80(0x4002, 0x8E147AE1, 0x47AE147B);
-    check("FMUL 3.7*2.4→FP3", 3, expect, TOL_HI, TOL_LO);
+    /* 3.7f * 2.4f — inputs are single-precision approximations, so the
+     * exact extended-precision product differs from ideal 3.7*2.4.
+     * 3.7f=0x406CCCCD (3.70000005), 2.4f=0x4019999A (2.40000010) */
+    fp80_t expect = FP80(0x4002, 0x8E147B5E, 0xB8520000);
+    check("FMUL 3.7*2.4->FP3", 3, expect, TOL_HI, TOL_LO);
 }
 
 /*
@@ -198,7 +203,7 @@ static void test_fsin(void)
      *   opword=F23C, command=0x4000 (R/M=1,fmt=0=Long,dst=0,op=FMOVE)
      *   imm = 0x00000001 */
     poke16(pc, 0xF23C); pc += 2;
-    poke16(pc, 0x4000); pc += 2;
+    poke16(pc, 0x4000); pc += 2;  /* R/M=1,fmt=0=Long,dst=0,op=FMOVE */
     poke32(pc, 0x00000001); pc += 4;
 
     /* FSIN.X FP0, FP1:
@@ -220,7 +225,7 @@ static void test_fsin(void)
 
     /* sin(1.0) = 0x3FFE D76AA478 48677020 */
     fp80_t expect = FP80(0x3FFE, 0xD76AA478, 0x48677020);
-    check("FSIN(1.0)→FP1", 1, expect, TRIG_HI, TRIG_LO);
+    check("FSIN(1.0)->FP1", 1, expect, TRIG_HI, TRIG_LO);
 }
 
 /*
@@ -255,7 +260,7 @@ static void test_fsqrt(void)
     m68k_execute(200);
 
     /* sqrt(9) = 3.0 (exact) */
-    check("FSQRT(9)→FP5", 5, FP80(0x4000, 0xC0000000, 0x00000000), 0, 0);
+    check("FSQRT(9)->FP5", 5, FP80(0x4000, 0xC0000000, 0x00000000), 0, 0);
 }
 
 /* ------------------------------------------------------------------ */

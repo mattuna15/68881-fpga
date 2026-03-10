@@ -269,9 +269,9 @@ static fp80_t long_to_fp80(u32 val)
 
     u32 sign = 0;
     u32 v = val;
-    if ((int)val < 0) {
+    if (val & 0x80000000u) {
         sign = 1;
-        v = (u32)(-(int)val);
+        v = ~val + 1u;  /* unsigned negate — safe for 0x80000000 */
     }
 
     /* Find position of MSB */

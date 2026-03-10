@@ -51,18 +51,16 @@ unsigned int m68k_read_memory_8(unsigned int address)
 
 unsigned int m68k_read_memory_16(unsigned int address)
 {
-    unsigned int a = address & EMU_RAM_MASK;
-    return ((unsigned int)emu_ram[a] << 8) |
-            (unsigned int)emu_ram[a + 1];
+    return ((unsigned int)emu_ram[ address      & EMU_RAM_MASK] << 8) |
+            (unsigned int)emu_ram[(address + 1) & EMU_RAM_MASK];
 }
 
 unsigned int m68k_read_memory_32(unsigned int address)
 {
-    unsigned int a = address & EMU_RAM_MASK;
-    return ((unsigned int)emu_ram[a]     << 24) |
-           ((unsigned int)emu_ram[a + 1] << 16) |
-           ((unsigned int)emu_ram[a + 2] <<  8) |
-            (unsigned int)emu_ram[a + 3];
+    return ((unsigned int)emu_ram[ address      & EMU_RAM_MASK] << 24) |
+           ((unsigned int)emu_ram[(address + 1) & EMU_RAM_MASK] << 16) |
+           ((unsigned int)emu_ram[(address + 2) & EMU_RAM_MASK] <<  8) |
+            (unsigned int)emu_ram[(address + 3) & EMU_RAM_MASK];
 }
 
 void m68k_write_memory_8(unsigned int address, unsigned int value)
@@ -72,16 +70,14 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
-    unsigned int a = address & EMU_RAM_MASK;
-    emu_ram[a]     = (value >> 8) & 0xFF;
-    emu_ram[a + 1] =  value       & 0xFF;
+    emu_ram[ address      & EMU_RAM_MASK] = (value >> 8) & 0xFF;
+    emu_ram[(address + 1) & EMU_RAM_MASK] =  value       & 0xFF;
 }
 
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
-    unsigned int a = address & EMU_RAM_MASK;
-    emu_ram[a]     = (value >> 24) & 0xFF;
-    emu_ram[a + 1] = (value >> 16) & 0xFF;
-    emu_ram[a + 2] = (value >>  8) & 0xFF;
-    emu_ram[a + 3] =  value        & 0xFF;
+    emu_ram[ address      & EMU_RAM_MASK] = (value >> 24) & 0xFF;
+    emu_ram[(address + 1) & EMU_RAM_MASK] = (value >> 16) & 0xFF;
+    emu_ram[(address + 2) & EMU_RAM_MASK] = (value >>  8) & 0xFF;
+    emu_ram[(address + 3) & EMU_RAM_MASK] =  value        & 0xFF;
 }

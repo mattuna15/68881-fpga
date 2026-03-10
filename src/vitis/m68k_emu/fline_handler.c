@@ -196,9 +196,9 @@ static fp80_t single_to_fp80(u32 s)
         /* Inf or NaN */
         u32 e = (sign << 15) | 0x7FFF;
         if (frac == 0)
-            return FP80(e, 0x00000000, 0x00000000);  /* Inf */
+            return FP80(e, 0x80000000, 0x00000000);  /* Inf: J-bit set */
         else
-            return FP80(e, 0x40000000 | (frac << 8), 0);  /* NaN */
+            return FP80(e, 0xC0000000 | (frac << 8), 0);  /* NaN: J-bit + QNaN */
     }
 
     if (exp == 0) {
@@ -233,10 +233,10 @@ static fp80_t double_to_fp80(u32 hi, u32 lo)
     if (exp == 0x7FF) {
         u32 e = (sign << 15) | 0x7FFF;
         if (frac_h == 0 && frac_l == 0)
-            return FP80(e, 0x00000000, 0x00000000);
+            return FP80(e, 0x80000000, 0x00000000);  /* Inf: J-bit set */
         else
-            return FP80(e, 0x40000000 | (frac_h << 11) | (frac_l >> 21),
-                        frac_l << 11);
+            return FP80(e, 0xC0000000 | (frac_h << 11) | (frac_l >> 21),
+                        frac_l << 11);  /* NaN: J-bit + QNaN */
     }
 
     if (exp == 0) {
@@ -333,10 +333,11 @@ static fp80_t read_mem_operand(unsigned int addr, int fmt)
         return FP80((w0 >> 16) & 0xFFFF, w1, w2);
 
     case FMT_PACKED:
-        /* Packed BCD — not supported yet, return zero */
+        xil_printf("FLINE: packed BCD format not implemented, substituting zero\r\n");
         return FP80_ZERO;
 
     default:
+        xil_printf("FLINE: unknown operand format %d\r\n", fmt);
         return FP80_ZERO;
     }
 }
@@ -473,6 +474,13 @@ static int handle_general(unsigned int opword, unsigned int pc)
         if (ea_mode == 7 && ea_reg == 4) {
             /* Immediate: data follows command word at pc */
             ea_addr = pc;
+        } else if (ea_mode == 4) {
+            /* Pre-decrement -(An): decrement first, then use new address */
+            int opsz = fmt_size(fmt);
+            unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+            an -= opsz;
+            m68k_set_reg(M68K_REG_A0 + ea_reg, an);
+            ea_addr = an;
         } else {
             ea_addr = eval_ea(ea_mode, ea_reg, &pc);
         }
@@ -487,13 +495,10 @@ static int handle_general(unsigned int opword, unsigned int pc)
             pc += (operand_size + 1) & ~1;
         }
 
-        /* Update address register for post-increment / pre-decrement */
+        /* Post-increment: advance An after use */
         if (ea_mode == 3) {
             unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
             m68k_set_reg(M68K_REG_A0 + ea_reg, an + operand_size);
-        } else if (ea_mode == 4) {
-            unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
-            m68k_set_reg(M68K_REG_A0 + ea_reg, an - operand_size);
         }
     }
 
@@ -506,17 +511,18 @@ static int handle_general(unsigned int opword, unsigned int pc)
         /* TST: just send to hardware for FPSR update, no result writeback */
         rc = fpu_exec_unary(FPOP_TST, src_val, &result);
         if (rc != FPU_OK)
-            xil_printf("FLINE: TST timeout\r\n");
-        /* Update FPSR shadow from hardware */
-        fp_reg_set_fpsr(fpu_read_fpsr());
+            xil_printf("FLINE: TST timeout — FPSR not updated\r\n");
+        else
+            fp_reg_set_fpsr(fpu_read_fpsr());
 
     } else if (m68k_op == M68K_FP_FCMP) {
         /* CMP: dst - src, update FPSR, no writeback */
         fp80_t dst_val = fp_reg_get(dst_reg);
         rc = fpu_exec(FPOP_CMP, dst_val, src_val, &result);
         if (rc != FPU_OK)
-            xil_printf("FLINE: CMP timeout\r\n");
-        fp_reg_set_fpsr(fpu_read_fpsr());
+            xil_printf("FLINE: CMP timeout — FPSR not updated\r\n");
+        else
+            fp_reg_set_fpsr(fpu_read_fpsr());
 
     } else if (m68k_op >= 0x30 && m68k_op <= 0x37) {
         /* FSINCOS: cos_reg = opcode[2:0], sin result to dst_reg */
@@ -531,25 +537,32 @@ static int handle_general(unsigned int opword, unsigned int pc)
             if (rc == FPU_OK)
                 fp_reg_set(cos_reg, cos_res);
         }
-        if (rc != FPU_OK)
+        if (rc != FPU_OK) {
             xil_printf("FLINE: SINCOS timeout\r\n");
+            fp_reg_set(dst_reg, FP80_SNAN);
+            fp_reg_set(cos_reg, FP80_SNAN);
+        }
 
     } else if (is_dyadic(m68k_op)) {
         /* Dyadic: result = op(dst, src) — note: dst is first operand */
         fp80_t dst_val = fp_reg_get(dst_reg);
         rc = fpu_exec(core_op, dst_val, src_val, &result);
-        if (rc != FPU_OK)
+        if (rc != FPU_OK) {
             xil_printf("FLINE: op 0x%02x timeout\r\n", m68k_op);
-        else
+            fp_reg_set(dst_reg, FP80_SNAN);
+        } else {
             fp_reg_set(dst_reg, result);
+        }
 
     } else {
         /* Monadic: result = op(src) */
         rc = fpu_exec_unary(core_op, src_val, &result);
-        if (rc != FPU_OK)
+        if (rc != FPU_OK) {
             xil_printf("FLINE: op 0x%02x timeout\r\n", m68k_op);
-        else
+            fp_reg_set(dst_reg, FP80_SNAN);
+        } else {
             fp_reg_set(dst_reg, result);
+        }
     }
 
     m68k_set_reg(M68K_REG_PC, pc);
@@ -573,10 +586,12 @@ static int handle_fmovecr(unsigned int cmd, unsigned int pc)
 
     fp80_t result;
     int rc = fpu_movecr((u8)rom_offset, &result);
-    if (rc != FPU_OK)
+    if (rc != FPU_OK) {
         xil_printf("FLINE: FMOVECR timeout\r\n");
-    else
+        fp_reg_set(dst_reg, FP80_SNAN);
+    } else {
         fp_reg_set(dst_reg, result);
+    }
 
     m68k_set_reg(M68K_REG_PC, pc);
     return 1;
@@ -724,7 +739,19 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
     int ea_mode = EA_MODE(opword);
     int ea_reg  = EA_REG(opword);
 
-    unsigned int ea_addr = eval_ea(ea_mode, ea_reg, &pc);
+    int operand_size = fmt_size(fmt);
+    unsigned int ea_addr;
+
+    if (ea_mode == 4) {
+        /* Pre-decrement -(An): decrement first, then use new address */
+        unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+        an -= operand_size;
+        m68k_set_reg(M68K_REG_A0 + ea_reg, an);
+        ea_addr = an;
+    } else {
+        ea_addr = eval_ea(ea_mode, ea_reg, &pc);
+    }
+
     fp80_t val = fp_reg_get(src_reg);
 
     /* Convert FP80 to destination format and write to memory */
@@ -789,10 +816,11 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
         if (exp < 0)
             ival = 0;
         else if (exp >= 31)
-            ival = sign ? (int)0x80000000 : 0x7FFFFFFF;
-        else
+            ival = sign ? (int)0x80000000 : 0x7FFFFFFF;  /* already signed */
+        else {
             ival = (int)(sig >> shift);
-        if (sign) ival = -ival;
+            if (sign) ival = -ival;
+        }
         m68k_write_memory_32(ea_addr, (u32)ival);
         break;
     }
@@ -805,10 +833,11 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
         if (exp < 0)
             ival = 0;
         else if (exp >= 15)
-            ival = sign ? -32768 : 32767;
-        else
+            ival = sign ? -32768 : 32767;  /* already signed */
+        else {
             ival = (int)(sig >> shift);
-        if (sign) ival = -ival;
+            if (sign) ival = -ival;
+        }
         m68k_write_memory_16(ea_addr, (unsigned int)(short)ival);
         break;
     }
@@ -821,25 +850,23 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
         if (exp < 0)
             ival = 0;
         else if (exp >= 7)
-            ival = sign ? -128 : 127;
-        else
+            ival = sign ? -128 : 127;  /* already signed */
+        else {
             ival = (int)(sig >> shift);
-        if (sign) ival = -ival;
+            if (sign) ival = -ival;
+        }
         m68k_write_memory_8(ea_addr, (unsigned int)(unsigned char)ival);
         break;
     }
     default:
+        xil_printf("FLINE: FMOVE to mem unsupported fmt=%d\r\n", fmt);
         break;
     }
 
-    /* Update An for post-increment/pre-decrement */
-    int operand_size = fmt_size(fmt);
+    /* Post-increment: advance An after use */
     if (ea_mode == 3) {
         unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
         m68k_set_reg(M68K_REG_A0 + ea_reg, an + operand_size);
-    } else if (ea_mode == 4) {
-        unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
-        m68k_set_reg(M68K_REG_A0 + ea_reg, an - operand_size);
     }
 
     m68k_set_reg(M68K_REG_PC, pc);
@@ -886,12 +913,11 @@ int fline_illg_callback(int opcode)
     }
 
     case 1:
-        /* Type 001: FDBcc / FScc / FTRAPcc — not yet implemented */
+        /* Type 001: FDBcc / FScc / FTRAPcc — not yet implemented.
+         * Return 0 (unhandled) so Musashi takes the exception rather
+         * than us advancing PC by the wrong amount. */
         xil_printf("FLINE: FDBcc/FScc/FTRAPcc not implemented\r\n");
-        /* Skip command word */
-        pc += 2;
-        m68k_set_reg(M68K_REG_PC, pc);
-        return 1;
+        return 0;
 
     case 2: /* FBcc.W */
     case 3: /* FBcc.L */
@@ -907,9 +933,14 @@ int fline_illg_callback(int opcode)
 /* ------------------------------------------------------------------ */
 /* Init                                                                */
 /* ------------------------------------------------------------------ */
-void fline_init(void)
+int fline_init(void)
 {
     fp_reg_init();
-    if (fpu_probe() == FPU_OK)
-        fpu_write_fpcr(0);
+    if (fpu_probe() != FPU_OK) {
+        xil_printf("FATAL: fline_init: FPU not responding at 0x%08lx\r\n",
+                   (u32)MC68881_BASE);
+        return FPU_BUS_ERR;
+    }
+    fpu_write_fpcr(0);
+    return FPU_OK;
 }

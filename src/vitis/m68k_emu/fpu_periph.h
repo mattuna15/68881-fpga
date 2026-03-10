@@ -98,6 +98,7 @@ typedef struct {
 
 #define FP80(e, h, l) ((fp80_t){(e), (h), (l)})
 #define FP80_ZERO      FP80(0x0000, 0x00000000, 0x00000000)
+#define FP80_SNAN      FP80(0x7FFF, 0xBFFFFFFF, 0xFFFFFFFF)  /* signaling NaN */
 
 /* FMOVECR move_cfg helper: dst_idx in [11:9], fmovecr_enable in [26] */
 #define MOVE_CFG_FMOVECR(dst) (0x04000000u | (((u32)(dst) & 7) << 9))

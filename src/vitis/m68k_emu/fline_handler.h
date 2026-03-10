@@ -18,7 +18,8 @@ int fline_illg_callback(int opcode);
 /*
  * Initialize the F-line handler subsystem.
  * Resets the software FP register file and syncs FPCR to hardware.
+ * Returns 0 on success, negative on FPU probe failure.
  */
-void fline_init(void);
+int fline_init(void);
 
 #endif /* FLINE_HANDLER_H */

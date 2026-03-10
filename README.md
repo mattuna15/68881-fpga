@@ -116,6 +116,7 @@ instances per consumer.
   - `mc68881_smoke_test.c` — Register read/write connectivity test (FPCR, FPIAR)
   - `mc68881_fsin_test.c` — FSIN computation test (sin(1.0), sin(0.0))
   - `mc68881_e2e_test.c` — End-to-end test with 15 vectors from GHDL testbench
+- `validation/hello_world/` — M68K emulator + hardware FPU validation (Musashi, register-mapped mode)
 - `tb/` — VHDL-2008 self-checking testbenches (14 files, ~8.5K lines)
 - `docs/` — Implementation plan, timing notes, reference documentation
 - `verilog/` — Auto-generated Verilog conversion (see [verilog/README.md](verilog/README.md))
@@ -247,6 +248,24 @@ All tests include `0xFFFFFFFF` bus fault detection, timeout handling with status
 reporting, and non-zero exit on failure for use in automated test flows.
 
 Set `MC68881_BASE` to match your address map (default `0x80000000`).
+
+### M68K emulator validation (register-mapped mode, no CIR)
+
+The [`validation/hello_world/`](validation/hello_world/) project runs a full
+M68K emulator (Musashi) on the ARM core, trapping F-line FPU instructions and
+executing them on the hardware FPU via the **register-mapped interface only** --
+no CIR coprocessor dialog involved.
+
+This demonstrates that the FPU core works as a **standalone compute engine**
+driven by any host CPU over AXI-Lite. The emulator's F-line handler decodes
+68881 instruction words, performs format conversion (single/double/integer to
+FP80) in software, loads operands into OPA/OPB, triggers execution via OPSEL,
+and reads results from RES -- completely bypassing the CIR state machine.
+
+12/12 tests pass: 7 direct peripheral driver tests + 5 Musashi integration
+tests (FMOVECR, FADD, FMUL, FSIN, FSQRT). See the
+[project README](validation/hello_world/src/README.md) for architecture details
+and the register-mapped protocol.
 
 ### Hardware validation output
 

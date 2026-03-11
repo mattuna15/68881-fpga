@@ -200,12 +200,6 @@ verified by the torture testbench (349 self-checking tests):
   breaks BRAM inference and increases LUT usage sharply.
 - Validate architecture changes with non-incremental synth utilization reports.
 
-## CIR feature gating
-The CIR coprocessor interface (dialog FSM) adds ~7K LUTs. For smaller
-FPGAs, set `ENABLE_CIR_g => false` on `mc68881_top` to disable the CIR logic and
-use only the register-mapped peripheral interface. The CIR generic defaults to
-`true`.
-
 ## Verilog conversion
 The VHDL sources can be converted to Verilog via `ghdl --synth` for use with
 Verilator or other Verilog-only toolchains. The pre-push hook regenerates these

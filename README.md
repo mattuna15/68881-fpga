@@ -250,7 +250,7 @@ Set `MC68881_BASE` to match your address map (default `0x80000000`).
 
 ### M68K emulator validation (CIR + peripheral modes)
 
-The [`validation/hello_world/src/README.md] project runs a full
+The [`validation/hello_world/src/README.md`](Validation) project runs a full
 M68K emulator (Musashi) on the ARM core, trapping F-line FPU instructions and
 executing them on the hardware FPU over AXI-Lite. The test suite validates
 **both** operating modes:

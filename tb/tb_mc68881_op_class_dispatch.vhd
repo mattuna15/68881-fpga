@@ -136,6 +136,9 @@ begin
     reset_n <= '1';
     wait for 2 * CLK_PERIOD;
 
+    -- Disable CIR mode so overlapping addresses route to peripheral decode
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_CIR_RESPONSE, x"00000000");
+
     -- Arithmetic class dispatch (FSQRT).
     report "Issuing FSQRT opcode through OPSEL." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000011");

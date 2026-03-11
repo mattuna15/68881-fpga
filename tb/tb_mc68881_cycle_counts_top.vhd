@@ -33,6 +33,7 @@ architecture sim of tb_mc68881_cycle_counts_top is
   constant ADDR_OPB_H  : unsigned(4 downto 0) := to_unsigned(5, 5);
   constant ADDR_OPB_E  : unsigned(4 downto 0) := to_unsigned(6, 5);
   constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
+  constant ADDR_CIR_RESPONSE : unsigned(4 downto 0) := to_unsigned(13, 5);
   constant ADDR_CYCLE_CFG0 : unsigned(4 downto 0) := to_unsigned(15, 5);
   constant ADDR_CYCLE_CFG1 : unsigned(4 downto 0) := to_unsigned(16, 5);
   constant ADDR_CYCLE_TOTAL: unsigned(4 downto 0) := to_unsigned(22, 5);
@@ -312,6 +313,9 @@ begin
     wait for 2 * CLK_PERIOD;
     reset_n <= '1';
     wait for 2 * CLK_PERIOD;
+
+    -- Disable CIR mode so overlapping addresses route to peripheral decode
+    bus_write_simple(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_CIR_RESPONSE, x"00000000");
 
     run_case(
       a_in,

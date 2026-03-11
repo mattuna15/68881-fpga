@@ -11,6 +11,10 @@
 /* ------------------------------------------------------------------ */
 int fpu_probe(void)
 {
+    /* Switch from default CIR mode to peripheral mode so that OPB/OPA
+     * writes hit the operand registers instead of the CIR decode. */
+    fpu_wr(OFF_CIR_MODE, 0);
+
     u32 status = fpu_rd(OFF_STATUS);
     if (status == 0xFFFFFFFFu)
         return FPU_BUS_ERR;
@@ -59,6 +63,7 @@ int fpu_wait_done(void)
 /* ------------------------------------------------------------------ */
 int fpu_exec(u8 opcode, fp80_t a, fp80_t b, fp80_t *result)
 {
+    fpu_wr(OFF_CIR_MODE, 0);   /* Ensure peripheral mode (OPA/OPB overlap CIR) */
     fpu_load_opa(a);
     fpu_load_opb(b);
     fpu_wr(OFF_OPSEL, OPSEL(opcode));
@@ -77,6 +82,7 @@ int fpu_exec(u8 opcode, fp80_t a, fp80_t b, fp80_t *result)
 /* ------------------------------------------------------------------ */
 int fpu_exec_unary(u8 opcode, fp80_t a, fp80_t *result)
 {
+    fpu_wr(OFF_CIR_MODE, 0);   /* Ensure peripheral mode (OPA overlaps CIR) */
     fpu_load_opa(a);
     fpu_wr(OFF_OPSEL, OPSEL(opcode));
 

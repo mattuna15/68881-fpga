@@ -58,7 +58,8 @@ architecture sim of tb_mc68881_axilite is
   constant AXI_ADDR_RES_L  : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(7  * 4, 7));
   constant AXI_ADDR_RES_H  : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(8  * 4, 7));
   constant AXI_ADDR_RES_E  : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(9  * 4, 7));
-  constant AXI_ADDR_STATUS : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(10 * 4, 7));
+  constant AXI_ADDR_STATUS       : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(10 * 4, 7));
+  constant AXI_ADDR_CIR_RESPONSE : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(13 * 4, 7));
 
   -- Opcode constants
   constant OP_ADD : std_logic_vector(31 downto 0) := x"00000001";
@@ -406,6 +407,12 @@ begin
     wait for 10 * BUS_CLK_PERIOD;
     s_axi_aresetn <= '1';
     wait for 10 * BUS_CLK_PERIOD;
+
+    -- Disable CIR mode so overlapping addresses route to peripheral decode
+    axi_write_ok(s_axi_aclk, s_axi_awaddr, s_axi_awvalid, s_axi_awready,
+                 s_axi_wdata, s_axi_wvalid, s_axi_wready,
+                 s_axi_bvalid, s_axi_bready, s_axi_bresp,
+                 AXI_ADDR_CIR_RESPONSE, x"00000000");
 
     report "=== TEST 1: Basic register write/read (STATUS) ===" severity note;
     -- STATUS register should read back with valid=0 after reset

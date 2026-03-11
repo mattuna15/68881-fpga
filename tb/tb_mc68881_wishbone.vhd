@@ -46,7 +46,8 @@ architecture sim of tb_mc68881_wishbone is
   constant WB_ADDR_RES_L  : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(7  * 4, 7));
   constant WB_ADDR_RES_H  : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(8  * 4, 7));
   constant WB_ADDR_RES_E  : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(9  * 4, 7));
-  constant WB_ADDR_STATUS : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(10 * 4, 7));
+  constant WB_ADDR_STATUS       : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(10 * 4, 7));
+  constant WB_ADDR_CIR_RESPONSE : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(13 * 4, 7));
 
   constant OP_ADD : std_logic_vector(31 downto 0) := x"00000001";
 
@@ -267,6 +268,11 @@ begin
     wait for 10 * BUS_CLK_PERIOD;
     wb_rst <= '0';
     wait for 10 * BUS_CLK_PERIOD;
+
+    -- Disable CIR mode so overlapping addresses route to peripheral decode
+    wb_write_ok(wb_clk, wb_adr, wb_dat_i, wb_we, wb_stb, wb_cyc,
+                wb_ack, wb_err, wb_stall,
+                WB_ADDR_CIR_RESPONSE, x"00000000");
 
     -- ==================================================================
     report "=== WB TEST 1: STATUS read after reset ===" severity note;

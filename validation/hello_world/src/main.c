@@ -13,6 +13,7 @@
 #include "fpu_periph.h"
 #include "tests/periph_smoke.h"
 #include "tests/basic_fpu.h"
+#include "tests/cir_dialog.h"
 
 int main(void)
 {
@@ -28,6 +29,9 @@ int main(void)
 
     /* Phase 1: Peripheral driver smoke test (no Musashi) */
     total_failures += periph_smoke_run();
+
+    /* Phase 2: CIR dialog protocol (AN-947 coprocessor interface) */
+    total_failures += cir_dialog_run();
 
     /* Phase 3: Musashi + F-line handler integration */
     total_failures += basic_fpu_run();

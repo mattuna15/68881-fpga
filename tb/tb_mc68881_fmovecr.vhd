@@ -30,6 +30,7 @@ architecture sim of tb_mc68881_fmovecr is
   constant ADDR_RES_H : unsigned(4 downto 0) := to_unsigned(8, 5);
   constant ADDR_RES_E : unsigned(4 downto 0) := to_unsigned(9, 5);
   constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
+  constant ADDR_CIR_RESPONSE : unsigned(4 downto 0) := to_unsigned(13, 5);
   constant ADDR_MOVE_CFG : unsigned(4 downto 0) := to_unsigned(23, 5);
 
   constant OP_FMOVE : std_logic_vector(31 downto 0) := x"00000005";
@@ -219,6 +220,9 @@ begin
     wait for 2 * CLK_PERIOD;
     reset_n <= '1';
     wait for 2 * CLK_PERIOD;
+
+    -- Disable CIR mode so overlapping addresses route to peripheral decode
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_CIR_RESPONSE, x"00000000");
 
     report "FMOVECR extended constant ROM checks" severity note;
 

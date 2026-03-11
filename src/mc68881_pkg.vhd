@@ -200,6 +200,7 @@ package mc68881_pkg is
   function decode_op_sel_word(opsel_word : std_logic_vector(31 downto 0)) return fpu_op_t;
   function decode_op_sel(bits : std_logic_vector) return fpu_op_t;
   function op_class(op_sel : fpu_op_t) return fpu_op_class_t;
+  function op_is_monadic(op_sel : fpu_op_t) return boolean;
   function op_alu_latency(op_sel : fpu_op_t) return natural;
   function op_cycle_model(op_sel : fpu_op_t) return op_cycle_model_t;
   function op_exception_policy(op_sel : fpu_op_t) return op_exception_policy_t;
@@ -1273,6 +1274,26 @@ package body mc68881_pkg is
   function op_class(op_sel : fpu_op_t) return fpu_op_class_t is
   begin
     return OP_DESCRIPTORS(op_sel).op_class;
+  end function;
+
+  -- Monadic (single-source) operations: ALU uses only a_in.
+  -- Dyadic operations (ADD, SUB, MUL, DIV, MOD, REM, CMP, SCALE, SGLDIV, SGLMUL)
+  -- use both a_in and b_in.
+  function op_is_monadic(op_sel : fpu_op_t) return boolean is
+  begin
+    case op_sel is
+      when FPU_OP_SQRT | FPU_OP_ABS | FPU_OP_NEG |
+           FPU_OP_INT  | FPU_OP_INTRZ |
+           FPU_OP_GETEXP | FPU_OP_GETMAN | FPU_OP_TST |
+           FPU_OP_SIN  | FPU_OP_COS  | FPU_OP_TAN | FPU_OP_SINCOS |
+           FPU_OP_ACOS | FPU_OP_ASIN | FPU_OP_ATAN | FPU_OP_ATANH |
+           FPU_OP_COSH | FPU_OP_SINH | FPU_OP_TANH |
+           FPU_OP_ETOX | FPU_OP_ETOXM1 | FPU_OP_TENTOX | FPU_OP_TWOTOX |
+           FPU_OP_LOGN | FPU_OP_LOGNP1 | FPU_OP_LOG10 | FPU_OP_LOG2 =>
+        return true;
+      when others =>
+        return false;
+    end case;
   end function;
 
   function op_alu_latency(op_sel : fpu_op_t) return natural is

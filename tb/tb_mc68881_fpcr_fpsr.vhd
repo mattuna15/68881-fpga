@@ -106,6 +106,9 @@ begin
     wait for 2 * CLK_PERIOD;
     reset_n <= '1';
     wait for 2 * CLK_PERIOD;
+    -- Disable CIR mode so FPSR (addr 14) routes to peripheral decode.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              to_unsigned(13, 5), x"00000000");
 
     fpcr_write := x"ABCD1234";
     report "FPCR write: " & to_hstring(fpcr_write) severity note;

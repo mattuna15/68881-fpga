@@ -35,6 +35,7 @@
 #define OFF_FPSR     (14 * 4)
 #define OFF_MOVE_CFG (23 * 4)
 #define OFF_FPIAR    (24 * 4)
+#define OFF_CIR_MODE (13 * 4)   /* Write 0 for peripheral mode, 1 for CIR mode */
 
 /* Status register bits */
 #define STATUS_VALID  0x01u

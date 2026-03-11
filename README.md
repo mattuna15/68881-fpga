@@ -30,8 +30,13 @@ arithmetic, transcendental, exponential, and logarithmic operations.
   rounding modes (nearest, zero, +inf, -inf), single/double/extended precision.
 - **Exception handling**: Per-operation FPSR exception policies, FPCR trap
   enable, accrued exception accumulation.
-- **Peripheral interface**: Register-mapped bus interface with DSACK handshake,
-  suitable for M68000/M68010 peripheral-mode operation.
+- **Dual host interface**: Two operating modes over the same 5-bit address space:
+  - **CIR dialog** -- authentic AN-947 coprocessor protocol with internal FP register
+    file, hardware format conversion, and command/response/operand dialog (for M68020/030)
+  - **Peripheral (register-mapped)** -- direct OPA/OPB/OPSEL/RES register access for
+    any host CPU (ARM, RISC-V, soft-core) as a standalone FPU compute engine
+  - Mode selected by writing bit 0 of address 13 (1=CIR, 0=peripheral); CIR is
+    default on reset, matching real MC68881 behaviour
 - **SoC wrappers**: AXI4-Lite and Wishbone B4 slave wrappers with clock domain
   crossing (toggle handshake CDC), DSACK timeout protection, and interrupt output.
   Enable direct integration into Xilinx AXI or RISC-V Wishbone SoC interconnects.
@@ -249,23 +254,47 @@ reporting, and non-zero exit on failure for use in automated test flows.
 
 Set `MC68881_BASE` to match your address map (default `0x80000000`).
 
-### M68K emulator validation (register-mapped mode, no CIR)
+### M68K emulator validation (CIR + peripheral modes)
 
 The [`validation/hello_world/`](validation/hello_world/) project runs a full
 M68K emulator (Musashi) on the ARM core, trapping F-line FPU instructions and
-executing them on the hardware FPU via the **register-mapped interface only** --
-no CIR coprocessor dialog involved.
+executing them on the hardware FPU over AXI-Lite. The test suite validates
+**both** operating modes:
 
-This demonstrates that the FPU core works as a **standalone compute engine**
-driven by any host CPU over AXI-Lite. The emulator's F-line handler decodes
-68881 instruction words, performs format conversion (single/double/integer to
-FP80) in software, loads operands into OPA/OPB, triggers execution via OPSEL,
-and reads results from RES -- completely bypassing the CIR state machine.
+**Peripheral mode** (7 + 5 tests) -- the FPU as a standalone compute engine.
+The emulator's F-line handler converts operands to FP80 in software, writes them
+to the OPA/OPB registers, triggers execution via OPSEL, and reads results from
+RES. No CIR involvement:
 
-12/12 tests pass: 7 direct peripheral driver tests + 5 Musashi integration
-tests (FMOVECR, FADD, FMUL, FSIN, FSQRT). See the
-[project README](validation/hello_world/src/README.md) for architecture details
-and the register-mapped protocol.
+```c
+fpu_wr(OFF_CIR_MODE, 0);              // ensure peripheral mode
+fpu_load_opa(a);                       // write FP80 operand A
+fpu_load_opb(b);                       // write FP80 operand B
+fpu_wr(OFF_OPSEL, OPSEL(FPOP_ADD));   // trigger FADD
+while (!(fpu_rd(OFF_STATUS) & 1)) {}  // poll for completion
+result = fpu_read_res();               // read FP80 result
+```
+
+**CIR dialog mode** (7 tests) -- the authentic AN-947 coprocessor protocol.
+The host writes a Command + OpWord to start a dialog, the FPU responds with
+transfer primitives, the host feeds operand words through the CIR Operand
+register, and the FPU stores results in its internal FP register file (FP0-FP7):
+
+```c
+cir_wr(OFF_CIR_RESPONSE, 1);           // ensure CIR mode
+cir_wr(OFF_CIR_COMMAND, cmd);          // operation + format + register
+cir_wr(OFF_CIR_OPWORD,  CIR_OPWORD_CPGEN);  // triggers FSM
+resp = cir_poll_response();            // → 0x7004 (transfer to CP, 4 bytes)
+cir_wr(OFF_CIR_OPERAND, 42);          // write source operand
+cir_wait_null();                       // dialog complete; result in FP register
+```
+
+The two modes share a 5-bit address space with overlapping registers (addresses
+1, 4, 5, 7, 8, 14). A mode flag at address 13 gates the decode: CIR mode is
+default on reset. See the [validation README](validation/hello_world/src/README.md)
+for the full address map, protocol details, and code examples.
+
+19/19 tests pass: 7 peripheral smoke + 7 CIR dialog + 5 Musashi integration.
 
 ### Hardware validation output
 

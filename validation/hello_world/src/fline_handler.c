@@ -471,9 +471,24 @@ static int handle_general(unsigned int opword, unsigned int pc)
 
         unsigned int ea_addr;
 
-        if (ea_mode == 7 && ea_reg == 4) {
+        if (ea_mode == 0) {
+            /* Data register direct: read Dn value, convert by format */
+            u32 dreg_val = m68k_get_reg(NULL, M68K_REG_D0 + ea_reg);
+            switch (fmt) {
+            case FMT_BYTE:   src_val = byte_to_fp80(dreg_val & 0xFF); break;
+            case FMT_WORD:   src_val = word_to_fp80(dreg_val & 0xFFFF); break;
+            case FMT_LONG:   src_val = long_to_fp80(dreg_val); break;
+            case FMT_SINGLE: src_val = single_to_fp80(dreg_val); break;
+            default:
+                xil_printf("FLINE: Dn source with fmt %d unsupported\r\n", fmt);
+                src_val = FP80_ZERO;
+                break;
+            }
+            ea_addr = 0; /* not used */
+        } else if (ea_mode == 7 && ea_reg == 4) {
             /* Immediate: data follows command word at pc */
             ea_addr = pc;
+            src_val = read_mem_operand(ea_addr, fmt);
         } else if (ea_mode == 4) {
             /* Pre-decrement -(An): decrement first, then use new address */
             int opsz = fmt_size(fmt);
@@ -481,11 +496,11 @@ static int handle_general(unsigned int opword, unsigned int pc)
             an -= opsz;
             m68k_set_reg(M68K_REG_A0 + ea_reg, an);
             ea_addr = an;
+            src_val = read_mem_operand(ea_addr, fmt);
         } else {
             ea_addr = eval_ea(ea_mode, ea_reg, &pc);
+            src_val = read_mem_operand(ea_addr, fmt);
         }
-
-        src_val = read_mem_operand(ea_addr, fmt);
 
         /* Advance PC past the inline operand data */
         int operand_size = fmt_size(fmt);
@@ -749,6 +764,78 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
     int operand_size = fmt_size(fmt);
     unsigned int ea_addr;
 
+    fp80_t val = fp_reg_get(src_reg);
+
+    if (ea_mode == 0) {
+        /* Data register direct: convert FP80 and store to Dn */
+        u32 result_val = 0;
+        switch (fmt) {
+        case FMT_LONG: case FMT_SINGLE: {
+            /* Reuse the conversion logic: write to a temp and read back */
+            u32 sign = (val.e >> 15) & 1;
+            if (fmt == FMT_SINGLE) {
+                int exp = (val.e & 0x7FFF) - 16383 + 127;
+                u32 frac = (val.h >> 8) & 0x7FFFFF;
+                if ((val.e & 0x7FFF) == 0x7FFF)
+                    result_val = (sign << 31) | 0x7F800000 | frac;
+                else if ((val.e & 0x7FFF) == 0 && val.h == 0 && val.l == 0)
+                    result_val = sign << 31;
+                else if (exp <= 0)
+                    result_val = sign << 31;
+                else if (exp >= 255)
+                    result_val = (sign << 31) | 0x7F800000;
+                else
+                    result_val = (sign << 31) | ((u32)exp << 23) | frac;
+            } else {
+                /* FMT_LONG: FP80 → signed 32-bit integer */
+                int exp = (val.e & 0x7FFF) - 16383;
+                int shift = 63 - exp;
+                unsigned long long sig = ((unsigned long long)val.h << 32) | val.l;
+                int ival;
+                if (exp < 0) ival = 0;
+                else if (exp >= 31) ival = sign ? (int)0x80000000 : 0x7FFFFFFF;
+                else { ival = (int)(sig >> shift); if (sign) ival = -ival; }
+                result_val = (u32)ival;
+            }
+            break;
+        }
+        case FMT_WORD: {
+            u32 sign = (val.e >> 15) & 1;
+            int exp = (val.e & 0x7FFF) - 16383;
+            int shift = 63 - exp;
+            unsigned long long sig = ((unsigned long long)val.h << 32) | val.l;
+            int ival;
+            if (exp < 0) ival = 0;
+            else if (exp >= 15) ival = sign ? -32768 : 32767;
+            else { ival = (int)(sig >> shift); if (sign) ival = -ival; }
+            /* Write lower 16 bits of Dn, preserve upper 16 */
+            result_val = (m68k_get_reg(NULL, M68K_REG_D0 + ea_reg) & 0xFFFF0000)
+                       | ((u32)(unsigned short)ival);
+            break;
+        }
+        case FMT_BYTE: {
+            u32 sign = (val.e >> 15) & 1;
+            int exp = (val.e & 0x7FFF) - 16383;
+            int shift = 63 - exp;
+            unsigned long long sig = ((unsigned long long)val.h << 32) | val.l;
+            int ival;
+            if (exp < 0) ival = 0;
+            else if (exp >= 7) ival = sign ? -128 : 127;
+            else { ival = (int)(sig >> shift); if (sign) ival = -ival; }
+            result_val = (m68k_get_reg(NULL, M68K_REG_D0 + ea_reg) & 0xFFFFFF00)
+                       | ((u32)(unsigned char)ival);
+            break;
+        }
+        default:
+            xil_printf("FLINE: FMOVE to Dn unsupported fmt=%d\r\n", fmt);
+            result_val = 0;
+            break;
+        }
+        m68k_set_reg(M68K_REG_D0 + ea_reg, result_val);
+        m68k_set_reg(M68K_REG_PC, pc);
+        return 1;
+    }
+
     if (ea_mode == 4) {
         /* Pre-decrement -(An): decrement first, then use new address */
         unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
@@ -758,8 +845,6 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
     } else {
         ea_addr = eval_ea(ea_mode, ea_reg, &pc);
     }
-
-    fp80_t val = fp_reg_get(src_reg);
 
     /* Convert FP80 to destination format and write to memory */
     switch (fmt) {
@@ -948,6 +1033,9 @@ int fline_init(void)
                    (u32)MC68881_BASE);
         return FPU_BUS_ERR;
     }
+    /* Disable CIR mode — use peripheral register interface (OPSEL/OPA/OPB).
+     * CIR is enabled by default on the AXI peripheral. */
+    fpu_wr(OFF_CIR_MODE, 0);
     fpu_write_fpcr(0);
     return FPU_OK;
 }

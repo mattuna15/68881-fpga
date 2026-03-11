@@ -101,7 +101,8 @@ fp80_t root = fpu_read_res();
 - **No command/response polling loop** -- just write operands, trigger, poll status, read result
 - **No coprocessor protocol overhead** -- one OPSEL write starts execution
 - **Any host CPU** can drive the FPU -- not just 68K
-- **The CIR can be removed** (`ENABLE_CIR_g => false`) and the FPU remains fully usable
+- **CIR is optional** -- the CIR logic can be removed and the FPU core remains fully
+  usable as a peripheral-mode compute engine (controlled by `cir_mode_reg`, address 13)
 - Operand A (`a_in`) goes to OPA registers; Operand B (`b_in`) goes to OPB registers
 - For unary/monadic ops (SQRT, SIN, ABS, NEG, etc.), only OPA is used
 - For FMOVECR, the constant ROM offset goes in OPA_L and MOVE_CFG selects the mode

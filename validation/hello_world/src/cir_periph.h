@@ -18,7 +18,7 @@
 #define OFF_CIR_OPERAND     (8  * 4)   /* 0x20 — overlaps RES_H */
 #define OFF_CIR_INSTADDR    (12 * 4)   /* 0x30 — overlaps CIR_SAVE */
 #define OFF_CIR_OPADDR      (14 * 4)   /* 0x38 — overlaps FPSR */
-#define OFF_CIR_RESPONSE    (13 * 4)   /* 0x34 — dedicated read alias */
+#define OFF_CIR_RESPONSE    (13 * 4)   /* 0x34 — CIR response (read) / mode control (write) */
 
 /* ------------------------------------------------------------------ */
 /* CIR response primitives                                             */
@@ -91,7 +91,6 @@ static inline u32  cir_rd(u32 off)        { return Xil_In32(MC68881_BASE + off);
 /* API                                                                 */
 /* ------------------------------------------------------------------ */
 
-/* Clear stale CIR flags left by peripheral-mode OPB writes.
 /* Poll CIR_RESPONSE until non-BUSY.  Returns response word or 0 on timeout. */
 u16 cir_poll_response(void);
 

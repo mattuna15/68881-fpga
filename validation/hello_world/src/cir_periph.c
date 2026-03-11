@@ -36,6 +36,7 @@ int cir_wait_null(void)
         if (r == CIR_NULL)
             return CIR_OK;
     }
+    xil_printf("  [wait_null TIMEOUT]\r\n");
     return CIR_TIMEOUT;
 }
 
@@ -50,9 +51,10 @@ int cir_cpgen_reg_to_reg(u8 src_reg, u8 dst_reg, u8 opcode)
     /* Ensure CIR mode is active (may have been disabled by peripheral ops). */
     cir_wr(OFF_CIR_RESPONSE, 1);
 
-    /* Write Command before OpWord: the OpWord write sets instr_type to
-     * cpGEN which triggers the FSM.  Writing Command first ensures
-     * command_reg holds our value when the FSM fires. */
+    /* Write Command before OpWord: the FSM leaves CIR_IDLE only when
+     * both cir_command_written and cir_opword_written are set.  Writing
+     * Command first ensures command_reg is latched before the OpWord
+     * write completes the pair and lets the FSM advance. */
     cir_wr(OFF_CIR_COMMAND, (u32)cmd);
     cir_wr(OFF_CIR_OPWORD, CIR_OPWORD_CPGEN);
 
@@ -67,6 +69,9 @@ int cir_cpgen_reg_to_reg(u8 src_reg, u8 dst_reg, u8 opcode)
 int cir_cpgen_mem_to_reg(u8 fmt, u8 dst_reg, u8 opcode,
                          const u32 *operand_words, int word_count)
 {
+    if (word_count < 1 || word_count > 3)
+        return CIR_TIMEOUT;  /* invalid transfer size */
+
     u16 cmd = CIR_CMD_MEM2REG(fmt, dst_reg, opcode);
 
     /* Ensure CIR mode is active (may have been disabled by peripheral ops). */
@@ -85,10 +90,18 @@ int cir_cpgen_mem_to_reg(u8 fmt, u8 dst_reg, u8 opcode,
                (unsigned)(cir_rd(OFF_CIR_RESPONSE) & 0xFFFFu),
                (unsigned)(cir_rd(OFF_STATUS) & 0x7Fu));
 
-    /* Poll for XFER_TO_CP_* */
+    /* Poll for XFER_TO_CP_* and validate response primitive */
     u16 resp = cir_poll_response();
     if (resp == 0)
         return CIR_TIMEOUT;
+
+    u16 expected_resp = (word_count == 1) ? CIR_XFER_TO_CP_4 :
+                        (word_count == 2) ? CIR_XFER_TO_CP_8 : CIR_XFER_TO_CP_12;
+    if (resp != expected_resp) {
+        xil_printf("  [m2r] unexpected resp: got 0x%04x, expected 0x%04x\r\n",
+                   (unsigned)resp, (unsigned)expected_resp);
+        return CIR_TIMEOUT;
+    }
 
     /* Write operand words to CIR_OPERAND */
     for (int i = 0; i < word_count; i++)
@@ -105,6 +118,9 @@ int cir_cpgen_mem_to_reg(u8 fmt, u8 dst_reg, u8 opcode,
 int cir_cpgen_reg_to_mem(u8 fmt, u8 src_reg,
                          u32 *result_words, int word_count)
 {
+    if (word_count < 1 || word_count > 3)
+        return CIR_TIMEOUT;  /* invalid transfer size */
+
     u16 cmd = CIR_CMD_REG2MEM(fmt, src_reg, FPOP_MOVE);
 
     /* Ensure CIR mode is active (may have been disabled by peripheral ops). */
@@ -113,10 +129,18 @@ int cir_cpgen_reg_to_mem(u8 fmt, u8 src_reg,
     cir_wr(OFF_CIR_COMMAND, (u32)cmd);
     cir_wr(OFF_CIR_OPWORD, CIR_OPWORD_CPGEN);
 
-    /* Poll for XFER_FROM_CP_* */
+    /* Poll for XFER_FROM_CP_* and validate response primitive */
     u16 resp = cir_poll_response();
     if (resp == 0)
         return CIR_TIMEOUT;
+
+    u16 expected_resp = (word_count == 1) ? CIR_XFER_FROM_CP_4 :
+                        (word_count == 2) ? CIR_XFER_FROM_CP_8 : CIR_XFER_FROM_CP_12;
+    if (resp != expected_resp) {
+        xil_printf("  [r2m] unexpected resp: got 0x%04x, expected 0x%04x\r\n",
+                   (unsigned)resp, (unsigned)expected_resp);
+        return CIR_TIMEOUT;
+    }
 
     /* Read operand words from CIR_OPERAND */
     for (int i = 0; i < word_count; i++)

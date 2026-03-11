@@ -1889,7 +1889,8 @@ begin
         case addr is
           when ADDR_OPSEL =>
             op_sel_reg <= op_sel_write_decoded;
-          -- Addresses 1,4,5,14 overlap with CIR registers; skip when CIR active.
+          -- Addresses 1,4,5,14 have write-side overlap with CIR registers; skip
+          -- when CIR active.  (7,8 also overlap but are read-only in peripheral mode.)
           when ADDR_OPA_L =>
             if cir_active = '0' then
               operand_reg(0)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in;

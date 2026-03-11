@@ -170,7 +170,8 @@ static void test3_fadd_reg_to_reg(void)
         return;
     }
 
-    /* FP0 was ~45.7, +1 = ~46.7, FMOVE.L truncates to 46 */
+    /* FP0 was ~45.7, +1 = ~46.7.  FMOVE.L converts to integer using
+     * the current rounding mode (default: round-to-nearest → 47). */
     if (got == 46 || got == 47) {
         xil_printf("PASS CIR.3 FADD reg-to-reg (FP1+FP0=%lu)\r\n",
                    (unsigned long)got);

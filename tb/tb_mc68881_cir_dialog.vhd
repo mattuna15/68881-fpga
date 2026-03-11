@@ -118,6 +118,7 @@ architecture sim of tb_mc68881_cir_dialog is
   constant OPCODE_FCMP  : std_logic_vector(6 downto 0) := "0000111";  -- 0x07
   constant OPCODE_FNEG : std_logic_vector(6 downto 0) := "0010011";  -- 0x13
   constant OPCODE_FSIN : std_logic_vector(6 downto 0) := "0001101";  -- 0x0D
+  constant OPCODE_FSQRT : std_logic_vector(6 downto 0) := "0010001";  -- 0x11
 
   -- CIR Condition address.
   constant CIR_CONDITION : unsigned(4 downto 0) :=
@@ -3717,6 +3718,30 @@ begin
              to_hstring(int_result)
       severity failure;
     report "TEST 71 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 72: FSQRT.L #9 -> FP3 (monadic, memory-to-register)
+    --   Exercises op_is_monadic() routing for memory-source path.
+    --   Source operand must go to operand_reg(0) (a_in), not operand_reg(1).
+    --   Expected result: FSQRT(9) = 3, readback as long = 0x00000003
+    -- ================================================================
+    report "TEST 72: FSQRT.L #9 mem-to-reg (monadic memory-source)" severity note;
+
+    cpgen_mem_long(a_in, d_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out,
+                   OPCODE_FSQRT, 3, x"00000009");
+
+    -- Read back FP3 as long integer (should be 3)
+    cpgen_reg_to_mem(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     CIR_SRC_LONG, 3, int_result);
+
+    report "TEST 72 result=" & to_hstring(int_result) severity note;
+    assert int_result = x"00000003"
+      report "FAIL TEST 72: FSQRT(9) expected=00000003 got=" &
+             to_hstring(int_result)
+      severity failure;
+    report "TEST 72 PASSED" severity note;
 
     -- ================================================================
     report "All CIR dialog tests PASSED" severity note;

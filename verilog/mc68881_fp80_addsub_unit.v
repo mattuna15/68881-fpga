@@ -2241,101 +2241,101 @@ module mc68881_fp80_addsub_unit
   assign n67 = n62 != 64'b0000000000000000000000000000000000000000000000000000000000000000;
   /* mc68881_fp80_addsub_unit.vhd:166:77  */
   assign n68 = n67 & n65;
-  /* mc68881_pkg.vhd:2499:9  */
+  /* mc68881_pkg.vhd:2520:9  */
   assign n75 = a_reg[63:32]; // extract
-  /* mc68881_pkg.vhd:2499:37  */
+  /* mc68881_pkg.vhd:2520:37  */
   assign n77 = n75 == 32'b00000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2501:13  */
+  /* mc68881_pkg.vhd:2522:13  */
   assign n78 = a_reg[31:0]; // extract
-  /* mc68881_pkg.vhd:2501:36  */
+  /* mc68881_pkg.vhd:2522:36  */
   assign n80 = {n78, 32'b00000000000000000000000000000000};
-  /* mc68881_pkg.vhd:2499:5  */
+  /* mc68881_pkg.vhd:2520:5  */
   assign n83 = n77 ? 31'b0000000000000000000000000100000 : 31'b0000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2499:5  */
+  /* mc68881_pkg.vhd:2520:5  */
   assign n85 = n77 ? n80 : n62;
-  /* mc68881_pkg.vhd:2503:9  */
+  /* mc68881_pkg.vhd:2524:9  */
   assign n86 = n85[63:48]; // extract
-  /* mc68881_pkg.vhd:2503:37  */
+  /* mc68881_pkg.vhd:2524:37  */
   assign n88 = n86 == 16'b0000000000000000;
-  /* mc68881_pkg.vhd:2504:18  */
+  /* mc68881_pkg.vhd:2525:18  */
   assign n89 = {1'b0, n83};  //  uext
-  /* mc68881_pkg.vhd:2504:18  */
+  /* mc68881_pkg.vhd:2525:18  */
   assign n91 = n89 + 32'b00000000000000000000000000010000;
-  /* mc68881_pkg.vhd:2504:7  */
+  /* mc68881_pkg.vhd:2525:7  */
   assign n92 = n91[30:0];  // trunc
-  /* mc68881_pkg.vhd:2505:13  */
+  /* mc68881_pkg.vhd:2526:13  */
   assign n93 = n85[47:0]; // extract
-  /* mc68881_pkg.vhd:2505:36  */
+  /* mc68881_pkg.vhd:2526:36  */
   assign n95 = {n93, 16'b0000000000000000};
-  /* mc68881_pkg.vhd:2503:5  */
+  /* mc68881_pkg.vhd:2524:5  */
   assign n96 = n88 ? n92 : n83;
-  /* mc68881_pkg.vhd:2503:5  */
+  /* mc68881_pkg.vhd:2524:5  */
   assign n97 = n88 ? n95 : n85;
-  /* mc68881_pkg.vhd:2507:9  */
+  /* mc68881_pkg.vhd:2528:9  */
   assign n98 = n97[63:56]; // extract
-  /* mc68881_pkg.vhd:2507:36  */
+  /* mc68881_pkg.vhd:2528:36  */
   assign n100 = n98 == 8'b00000000;
-  /* mc68881_pkg.vhd:2508:18  */
+  /* mc68881_pkg.vhd:2529:18  */
   assign n101 = {1'b0, n96};  //  uext
-  /* mc68881_pkg.vhd:2508:18  */
+  /* mc68881_pkg.vhd:2529:18  */
   assign n103 = n101 + 32'b00000000000000000000000000001000;
-  /* mc68881_pkg.vhd:2508:7  */
+  /* mc68881_pkg.vhd:2529:7  */
   assign n104 = n103[30:0];  // trunc
-  /* mc68881_pkg.vhd:2509:13  */
+  /* mc68881_pkg.vhd:2530:13  */
   assign n105 = n97[55:0]; // extract
-  /* mc68881_pkg.vhd:2509:35  */
+  /* mc68881_pkg.vhd:2530:35  */
   assign n107 = {n105, 8'b00000000};
-  /* mc68881_pkg.vhd:2507:5  */
+  /* mc68881_pkg.vhd:2528:5  */
   assign n108 = n100 ? n104 : n96;
-  /* mc68881_pkg.vhd:2507:5  */
+  /* mc68881_pkg.vhd:2528:5  */
   assign n109 = n100 ? n107 : n97;
-  /* mc68881_pkg.vhd:2511:9  */
+  /* mc68881_pkg.vhd:2532:9  */
   assign n110 = n109[63:60]; // extract
-  /* mc68881_pkg.vhd:2511:36  */
+  /* mc68881_pkg.vhd:2532:36  */
   assign n112 = n110 == 4'b0000;
-  /* mc68881_pkg.vhd:2512:18  */
+  /* mc68881_pkg.vhd:2533:18  */
   assign n113 = {1'b0, n108};  //  uext
-  /* mc68881_pkg.vhd:2512:18  */
+  /* mc68881_pkg.vhd:2533:18  */
   assign n115 = n113 + 32'b00000000000000000000000000000100;
-  /* mc68881_pkg.vhd:2512:7  */
+  /* mc68881_pkg.vhd:2533:7  */
   assign n116 = n115[30:0];  // trunc
-  /* mc68881_pkg.vhd:2513:13  */
+  /* mc68881_pkg.vhd:2534:13  */
   assign n117 = n109[59:0]; // extract
-  /* mc68881_pkg.vhd:2513:35  */
+  /* mc68881_pkg.vhd:2534:35  */
   assign n119 = {n117, 4'b0000};
-  /* mc68881_pkg.vhd:2511:5  */
+  /* mc68881_pkg.vhd:2532:5  */
   assign n120 = n112 ? n116 : n108;
-  /* mc68881_pkg.vhd:2511:5  */
+  /* mc68881_pkg.vhd:2532:5  */
   assign n121 = n112 ? n119 : n109;
-  /* mc68881_pkg.vhd:2515:9  */
+  /* mc68881_pkg.vhd:2536:9  */
   assign n122 = n121[63:62]; // extract
-  /* mc68881_pkg.vhd:2515:36  */
+  /* mc68881_pkg.vhd:2536:36  */
   assign n124 = n122 == 2'b00;
-  /* mc68881_pkg.vhd:2516:18  */
+  /* mc68881_pkg.vhd:2537:18  */
   assign n125 = {1'b0, n120};  //  uext
-  /* mc68881_pkg.vhd:2516:18  */
+  /* mc68881_pkg.vhd:2537:18  */
   assign n127 = n125 + 32'b00000000000000000000000000000010;
-  /* mc68881_pkg.vhd:2516:7  */
+  /* mc68881_pkg.vhd:2537:7  */
   assign n128 = n127[30:0];  // trunc
-  /* mc68881_pkg.vhd:2517:13  */
+  /* mc68881_pkg.vhd:2538:13  */
   assign n129 = n121[61:0]; // extract
-  /* mc68881_pkg.vhd:2517:35  */
+  /* mc68881_pkg.vhd:2538:35  */
   assign n131 = {n129, 2'b00};
-  /* mc68881_pkg.vhd:2515:5  */
+  /* mc68881_pkg.vhd:2536:5  */
   assign n132 = n124 ? n128 : n120;
-  /* mc68881_pkg.vhd:2515:5  */
+  /* mc68881_pkg.vhd:2536:5  */
   assign n133 = n124 ? n131 : n121;
-  /* mc68881_pkg.vhd:2519:9  */
+  /* mc68881_pkg.vhd:2540:9  */
   assign n134 = n133[63]; // extract
-  /* mc68881_pkg.vhd:2519:18  */
+  /* mc68881_pkg.vhd:2540:18  */
   assign n135 = ~n134;
-  /* mc68881_pkg.vhd:2520:18  */
+  /* mc68881_pkg.vhd:2541:18  */
   assign n136 = {1'b0, n132};  //  uext
-  /* mc68881_pkg.vhd:2520:18  */
+  /* mc68881_pkg.vhd:2541:18  */
   assign n138 = n136 + 32'b00000000000000000000000000000001;
-  /* mc68881_pkg.vhd:2520:7  */
+  /* mc68881_pkg.vhd:2541:7  */
   assign n139 = n138[30:0];  // trunc
-  /* mc68881_pkg.vhd:2519:5  */
+  /* mc68881_pkg.vhd:2540:5  */
   assign n140 = n135 ? n139 : n132;
   /* mc68881_fp80_addsub_unit.vhd:168:25  */
   assign n141 = n62 << n140;
@@ -2363,101 +2363,101 @@ module mc68881_fp80_addsub_unit
   assign n157 = n152 != 64'b0000000000000000000000000000000000000000000000000000000000000000;
   /* mc68881_fp80_addsub_unit.vhd:175:77  */
   assign n158 = n157 & n155;
-  /* mc68881_pkg.vhd:2499:9  */
+  /* mc68881_pkg.vhd:2520:9  */
   assign n165 = b_reg[63:32]; // extract
-  /* mc68881_pkg.vhd:2499:37  */
+  /* mc68881_pkg.vhd:2520:37  */
   assign n167 = n165 == 32'b00000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2501:13  */
+  /* mc68881_pkg.vhd:2522:13  */
   assign n168 = b_reg[31:0]; // extract
-  /* mc68881_pkg.vhd:2501:36  */
+  /* mc68881_pkg.vhd:2522:36  */
   assign n170 = {n168, 32'b00000000000000000000000000000000};
-  /* mc68881_pkg.vhd:2499:5  */
+  /* mc68881_pkg.vhd:2520:5  */
   assign n173 = n167 ? 31'b0000000000000000000000000100000 : 31'b0000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2499:5  */
+  /* mc68881_pkg.vhd:2520:5  */
   assign n175 = n167 ? n170 : n152;
-  /* mc68881_pkg.vhd:2503:9  */
+  /* mc68881_pkg.vhd:2524:9  */
   assign n176 = n175[63:48]; // extract
-  /* mc68881_pkg.vhd:2503:37  */
+  /* mc68881_pkg.vhd:2524:37  */
   assign n178 = n176 == 16'b0000000000000000;
-  /* mc68881_pkg.vhd:2504:18  */
+  /* mc68881_pkg.vhd:2525:18  */
   assign n179 = {1'b0, n173};  //  uext
-  /* mc68881_pkg.vhd:2504:18  */
+  /* mc68881_pkg.vhd:2525:18  */
   assign n181 = n179 + 32'b00000000000000000000000000010000;
-  /* mc68881_pkg.vhd:2504:7  */
+  /* mc68881_pkg.vhd:2525:7  */
   assign n182 = n181[30:0];  // trunc
-  /* mc68881_pkg.vhd:2505:13  */
+  /* mc68881_pkg.vhd:2526:13  */
   assign n183 = n175[47:0]; // extract
-  /* mc68881_pkg.vhd:2505:36  */
+  /* mc68881_pkg.vhd:2526:36  */
   assign n185 = {n183, 16'b0000000000000000};
-  /* mc68881_pkg.vhd:2503:5  */
+  /* mc68881_pkg.vhd:2524:5  */
   assign n186 = n178 ? n182 : n173;
-  /* mc68881_pkg.vhd:2503:5  */
+  /* mc68881_pkg.vhd:2524:5  */
   assign n187 = n178 ? n185 : n175;
-  /* mc68881_pkg.vhd:2507:9  */
+  /* mc68881_pkg.vhd:2528:9  */
   assign n188 = n187[63:56]; // extract
-  /* mc68881_pkg.vhd:2507:36  */
+  /* mc68881_pkg.vhd:2528:36  */
   assign n190 = n188 == 8'b00000000;
-  /* mc68881_pkg.vhd:2508:18  */
+  /* mc68881_pkg.vhd:2529:18  */
   assign n191 = {1'b0, n186};  //  uext
-  /* mc68881_pkg.vhd:2508:18  */
+  /* mc68881_pkg.vhd:2529:18  */
   assign n193 = n191 + 32'b00000000000000000000000000001000;
-  /* mc68881_pkg.vhd:2508:7  */
+  /* mc68881_pkg.vhd:2529:7  */
   assign n194 = n193[30:0];  // trunc
-  /* mc68881_pkg.vhd:2509:13  */
+  /* mc68881_pkg.vhd:2530:13  */
   assign n195 = n187[55:0]; // extract
-  /* mc68881_pkg.vhd:2509:35  */
+  /* mc68881_pkg.vhd:2530:35  */
   assign n197 = {n195, 8'b00000000};
-  /* mc68881_pkg.vhd:2507:5  */
+  /* mc68881_pkg.vhd:2528:5  */
   assign n198 = n190 ? n194 : n186;
-  /* mc68881_pkg.vhd:2507:5  */
+  /* mc68881_pkg.vhd:2528:5  */
   assign n199 = n190 ? n197 : n187;
-  /* mc68881_pkg.vhd:2511:9  */
+  /* mc68881_pkg.vhd:2532:9  */
   assign n200 = n199[63:60]; // extract
-  /* mc68881_pkg.vhd:2511:36  */
+  /* mc68881_pkg.vhd:2532:36  */
   assign n202 = n200 == 4'b0000;
-  /* mc68881_pkg.vhd:2512:18  */
+  /* mc68881_pkg.vhd:2533:18  */
   assign n203 = {1'b0, n198};  //  uext
-  /* mc68881_pkg.vhd:2512:18  */
+  /* mc68881_pkg.vhd:2533:18  */
   assign n205 = n203 + 32'b00000000000000000000000000000100;
-  /* mc68881_pkg.vhd:2512:7  */
+  /* mc68881_pkg.vhd:2533:7  */
   assign n206 = n205[30:0];  // trunc
-  /* mc68881_pkg.vhd:2513:13  */
+  /* mc68881_pkg.vhd:2534:13  */
   assign n207 = n199[59:0]; // extract
-  /* mc68881_pkg.vhd:2513:35  */
+  /* mc68881_pkg.vhd:2534:35  */
   assign n209 = {n207, 4'b0000};
-  /* mc68881_pkg.vhd:2511:5  */
+  /* mc68881_pkg.vhd:2532:5  */
   assign n210 = n202 ? n206 : n198;
-  /* mc68881_pkg.vhd:2511:5  */
+  /* mc68881_pkg.vhd:2532:5  */
   assign n211 = n202 ? n209 : n199;
-  /* mc68881_pkg.vhd:2515:9  */
+  /* mc68881_pkg.vhd:2536:9  */
   assign n212 = n211[63:62]; // extract
-  /* mc68881_pkg.vhd:2515:36  */
+  /* mc68881_pkg.vhd:2536:36  */
   assign n214 = n212 == 2'b00;
-  /* mc68881_pkg.vhd:2516:18  */
+  /* mc68881_pkg.vhd:2537:18  */
   assign n215 = {1'b0, n210};  //  uext
-  /* mc68881_pkg.vhd:2516:18  */
+  /* mc68881_pkg.vhd:2537:18  */
   assign n217 = n215 + 32'b00000000000000000000000000000010;
-  /* mc68881_pkg.vhd:2516:7  */
+  /* mc68881_pkg.vhd:2537:7  */
   assign n218 = n217[30:0];  // trunc
-  /* mc68881_pkg.vhd:2517:13  */
+  /* mc68881_pkg.vhd:2538:13  */
   assign n219 = n211[61:0]; // extract
-  /* mc68881_pkg.vhd:2517:35  */
+  /* mc68881_pkg.vhd:2538:35  */
   assign n221 = {n219, 2'b00};
-  /* mc68881_pkg.vhd:2515:5  */
+  /* mc68881_pkg.vhd:2536:5  */
   assign n222 = n214 ? n218 : n210;
-  /* mc68881_pkg.vhd:2515:5  */
+  /* mc68881_pkg.vhd:2536:5  */
   assign n223 = n214 ? n221 : n211;
-  /* mc68881_pkg.vhd:2519:9  */
+  /* mc68881_pkg.vhd:2540:9  */
   assign n224 = n223[63]; // extract
-  /* mc68881_pkg.vhd:2519:18  */
+  /* mc68881_pkg.vhd:2540:18  */
   assign n225 = ~n224;
-  /* mc68881_pkg.vhd:2520:18  */
+  /* mc68881_pkg.vhd:2541:18  */
   assign n226 = {1'b0, n222};  //  uext
-  /* mc68881_pkg.vhd:2520:18  */
+  /* mc68881_pkg.vhd:2541:18  */
   assign n228 = n226 + 32'b00000000000000000000000000000001;
-  /* mc68881_pkg.vhd:2520:7  */
+  /* mc68881_pkg.vhd:2541:7  */
   assign n229 = n228[30:0];  // trunc
-  /* mc68881_pkg.vhd:2519:5  */
+  /* mc68881_pkg.vhd:2540:5  */
   assign n230 = n225 ? n229 : n222;
   /* mc68881_fp80_addsub_unit.vhd:177:25  */
   assign n231 = n152 << n230;
@@ -2487,336 +2487,336 @@ module mc68881_fp80_addsub_unit
   assign n247 = {n151, 3'b000};
   /* mc68881_fp80_addsub_unit.vhd:192:38  */
   assign n249 = {n241, 3'b000};
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n261 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n264 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n266 = a_reg[63:0]; // extract
   assign n267 = {n266, n264, n261};
-  /* mc68881_pkg.vhd:2098:20  */
+  /* mc68881_pkg.vhd:2119:20  */
   assign n268 = n267[15:1]; // extract
-  /* mc68881_pkg.vhd:2098:24  */
+  /* mc68881_pkg.vhd:2119:24  */
   assign n270 = n268 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n282 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n285 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n287 = a_reg[63:0]; // extract
   assign n288 = {n287, n285, n282};
   assign n292 = n291[62:0]; // extract
-  /* mc68881_pkg.vhd:2091:20  */
+  /* mc68881_pkg.vhd:2112:20  */
   assign n293 = n288[15:1]; // extract
-  /* mc68881_pkg.vhd:2091:24  */
+  /* mc68881_pkg.vhd:2112:24  */
   assign n295 = n293 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2092:16  */
+  /* mc68881_pkg.vhd:2113:16  */
   assign n296 = n288[79:16]; // extract
-  /* mc68881_pkg.vhd:2092:21  */
+  /* mc68881_pkg.vhd:2113:21  */
   assign n298 = n296 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2092:36  */
+  /* mc68881_pkg.vhd:2113:36  */
   assign n299 = n288[79:16]; // extract
   assign n300 = {1'b1, n292};
-  /* mc68881_pkg.vhd:2092:41  */
+  /* mc68881_pkg.vhd:2113:41  */
   assign n301 = n299 == n300;
-  /* mc68881_pkg.vhd:2092:25  */
+  /* mc68881_pkg.vhd:2113:25  */
   assign n302 = n298 | n301;
-  /* mc68881_pkg.vhd:2091:42  */
+  /* mc68881_pkg.vhd:2112:42  */
   assign n303 = n302 & n295;
-  /* mc68881_pkg.vhd:2098:46  */
+  /* mc68881_pkg.vhd:2119:46  */
   assign n304 = ~n303;
-  /* mc68881_pkg.vhd:2098:42  */
+  /* mc68881_pkg.vhd:2119:42  */
   assign n305 = n304 & n270;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n317 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n320 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n322 = b_reg[63:0]; // extract
   assign n323 = {n322, n320, n317};
-  /* mc68881_pkg.vhd:2098:20  */
+  /* mc68881_pkg.vhd:2119:20  */
   assign n324 = n323[15:1]; // extract
-  /* mc68881_pkg.vhd:2098:24  */
+  /* mc68881_pkg.vhd:2119:24  */
   assign n326 = n324 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n338 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n341 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n343 = b_reg[63:0]; // extract
   assign n344 = {n343, n341, n338};
   assign n348 = n347[62:0]; // extract
-  /* mc68881_pkg.vhd:2091:20  */
+  /* mc68881_pkg.vhd:2112:20  */
   assign n349 = n344[15:1]; // extract
-  /* mc68881_pkg.vhd:2091:24  */
+  /* mc68881_pkg.vhd:2112:24  */
   assign n351 = n349 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2092:16  */
+  /* mc68881_pkg.vhd:2113:16  */
   assign n352 = n344[79:16]; // extract
-  /* mc68881_pkg.vhd:2092:21  */
+  /* mc68881_pkg.vhd:2113:21  */
   assign n354 = n352 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2092:36  */
+  /* mc68881_pkg.vhd:2113:36  */
   assign n355 = n344[79:16]; // extract
   assign n356 = {1'b1, n348};
-  /* mc68881_pkg.vhd:2092:41  */
+  /* mc68881_pkg.vhd:2113:41  */
   assign n357 = n355 == n356;
-  /* mc68881_pkg.vhd:2092:25  */
+  /* mc68881_pkg.vhd:2113:25  */
   assign n358 = n354 | n357;
-  /* mc68881_pkg.vhd:2091:42  */
+  /* mc68881_pkg.vhd:2112:42  */
   assign n359 = n358 & n351;
-  /* mc68881_pkg.vhd:2098:46  */
+  /* mc68881_pkg.vhd:2119:46  */
   assign n360 = ~n359;
-  /* mc68881_pkg.vhd:2098:42  */
+  /* mc68881_pkg.vhd:2119:42  */
   assign n361 = n360 & n326;
   /* mc68881_fp80_addsub_unit.vhd:197:33  */
   assign n362 = n305 | n361;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n375 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n378 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n380 = a_reg[63:0]; // extract
   assign n381 = {n380, n378, n375};
-  /* mc68881_pkg.vhd:2098:20  */
+  /* mc68881_pkg.vhd:2119:20  */
   assign n382 = n381[15:1]; // extract
-  /* mc68881_pkg.vhd:2098:24  */
+  /* mc68881_pkg.vhd:2119:24  */
   assign n384 = n382 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n396 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n399 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n401 = a_reg[63:0]; // extract
   assign n402 = {n401, n399, n396};
   assign n406 = n405[62:0]; // extract
-  /* mc68881_pkg.vhd:2091:20  */
+  /* mc68881_pkg.vhd:2112:20  */
   assign n407 = n402[15:1]; // extract
-  /* mc68881_pkg.vhd:2091:24  */
+  /* mc68881_pkg.vhd:2112:24  */
   assign n409 = n407 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2092:16  */
+  /* mc68881_pkg.vhd:2113:16  */
   assign n410 = n402[79:16]; // extract
-  /* mc68881_pkg.vhd:2092:21  */
+  /* mc68881_pkg.vhd:2113:21  */
   assign n412 = n410 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2092:36  */
+  /* mc68881_pkg.vhd:2113:36  */
   assign n413 = n402[79:16]; // extract
   assign n414 = {1'b1, n406};
-  /* mc68881_pkg.vhd:2092:41  */
+  /* mc68881_pkg.vhd:2113:41  */
   assign n415 = n413 == n414;
-  /* mc68881_pkg.vhd:2092:25  */
+  /* mc68881_pkg.vhd:2113:25  */
   assign n416 = n412 | n415;
-  /* mc68881_pkg.vhd:2091:42  */
+  /* mc68881_pkg.vhd:2112:42  */
   assign n417 = n416 & n409;
-  /* mc68881_pkg.vhd:2098:46  */
+  /* mc68881_pkg.vhd:2119:46  */
   assign n418 = ~n417;
-  /* mc68881_pkg.vhd:2098:42  */
+  /* mc68881_pkg.vhd:2119:42  */
   assign n419 = n418 & n384;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n431 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n434 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n436 = b_reg[63:0]; // extract
   assign n437 = {n436, n434, n431};
-  /* mc68881_pkg.vhd:2098:20  */
+  /* mc68881_pkg.vhd:2119:20  */
   assign n438 = n437[15:1]; // extract
-  /* mc68881_pkg.vhd:2098:24  */
+  /* mc68881_pkg.vhd:2119:24  */
   assign n440 = n438 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n452 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n455 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n457 = b_reg[63:0]; // extract
   assign n458 = {n457, n455, n452};
   assign n462 = n461[62:0]; // extract
-  /* mc68881_pkg.vhd:2091:20  */
+  /* mc68881_pkg.vhd:2112:20  */
   assign n463 = n458[15:1]; // extract
-  /* mc68881_pkg.vhd:2091:24  */
+  /* mc68881_pkg.vhd:2112:24  */
   assign n465 = n463 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2092:16  */
+  /* mc68881_pkg.vhd:2113:16  */
   assign n466 = n458[79:16]; // extract
-  /* mc68881_pkg.vhd:2092:21  */
+  /* mc68881_pkg.vhd:2113:21  */
   assign n468 = n466 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2092:36  */
+  /* mc68881_pkg.vhd:2113:36  */
   assign n469 = n458[79:16]; // extract
   assign n470 = {1'b1, n462};
-  /* mc68881_pkg.vhd:2092:41  */
+  /* mc68881_pkg.vhd:2113:41  */
   assign n471 = n469 == n470;
-  /* mc68881_pkg.vhd:2092:25  */
+  /* mc68881_pkg.vhd:2113:25  */
   assign n472 = n468 | n471;
-  /* mc68881_pkg.vhd:2091:42  */
+  /* mc68881_pkg.vhd:2112:42  */
   assign n473 = n472 & n465;
-  /* mc68881_pkg.vhd:2098:46  */
+  /* mc68881_pkg.vhd:2119:46  */
   assign n474 = ~n473;
-  /* mc68881_pkg.vhd:2098:42  */
+  /* mc68881_pkg.vhd:2119:42  */
   assign n475 = n474 & n440;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n493 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n496 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n498 = a_reg[63:0]; // extract
   assign n499 = {n498, n496, n493};
-  /* mc68881_pkg.vhd:2105:20  */
+  /* mc68881_pkg.vhd:2126:20  */
   assign n500 = n499[15:1]; // extract
-  /* mc68881_pkg.vhd:2105:24  */
+  /* mc68881_pkg.vhd:2126:24  */
   assign n502 = n500 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2106:24  */
+  /* mc68881_pkg.vhd:2127:24  */
   assign n503 = n499[79]; // extract
-  /* mc68881_pkg.vhd:2106:42  */
+  /* mc68881_pkg.vhd:2127:42  */
   assign n504 = ~n503;
-  /* mc68881_pkg.vhd:2105:42  */
+  /* mc68881_pkg.vhd:2126:42  */
   assign n505 = n504 & n502;
-  /* mc68881_pkg.vhd:2107:24  */
+  /* mc68881_pkg.vhd:2128:24  */
   assign n506 = n499[78:16]; // extract
-  /* mc68881_pkg.vhd:2107:51  */
+  /* mc68881_pkg.vhd:2128:51  */
   assign n508 = n506 != 63'b000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2106:48  */
+  /* mc68881_pkg.vhd:2127:48  */
   assign n509 = n508 & n505;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n521 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n524 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n526 = b_reg[63:0]; // extract
   assign n527 = {n526, n524, n521};
-  /* mc68881_pkg.vhd:2105:20  */
+  /* mc68881_pkg.vhd:2126:20  */
   assign n528 = n527[15:1]; // extract
-  /* mc68881_pkg.vhd:2105:24  */
+  /* mc68881_pkg.vhd:2126:24  */
   assign n530 = n528 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2106:24  */
+  /* mc68881_pkg.vhd:2127:24  */
   assign n531 = n527[79]; // extract
-  /* mc68881_pkg.vhd:2106:42  */
+  /* mc68881_pkg.vhd:2127:42  */
   assign n532 = ~n531;
-  /* mc68881_pkg.vhd:2105:42  */
+  /* mc68881_pkg.vhd:2126:42  */
   assign n533 = n532 & n530;
-  /* mc68881_pkg.vhd:2107:24  */
+  /* mc68881_pkg.vhd:2128:24  */
   assign n534 = n527[78:16]; // extract
-  /* mc68881_pkg.vhd:2107:51  */
+  /* mc68881_pkg.vhd:2128:51  */
   assign n536 = n534 != 63'b000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2106:48  */
+  /* mc68881_pkg.vhd:2127:48  */
   assign n537 = n536 & n533;
-  /* mc68881_pkg.vhd:2144:18  */
+  /* mc68881_pkg.vhd:2165:18  */
   assign n539 = n509 | n537;
-  /* mc68881_pkg.vhd:2144:5  */
+  /* mc68881_pkg.vhd:2165:5  */
   assign n542 = n539 ? 1'b1 : 1'b0;
-  /* mc68881_pkg.vhd:2148:14  */
+  /* mc68881_pkg.vhd:2169:14  */
   assign n544 = n475 & n419;
-  /* mc68881_pkg.vhd:2152:7  */
+  /* mc68881_pkg.vhd:2173:7  */
   assign n545 = n537 ? b_reg : a_reg;
-  /* mc68881_pkg.vhd:2150:7  */
+  /* mc68881_pkg.vhd:2171:7  */
   assign n546 = n509 ? a_reg : n545;
-  /* mc68881_pkg.vhd:2157:5  */
+  /* mc68881_pkg.vhd:2178:5  */
   assign n547 = n419 ? a_reg : b_reg;
-  /* mc68881_pkg.vhd:2148:5  */
+  /* mc68881_pkg.vhd:2169:5  */
   assign n548 = n544 ? n546 : n547;
   assign n551 = n548[79:64]; // extract
   assign n552 = n548[62:0]; // extract
   assign n553 = {n551, 1'b1, n552};
-  /* mc68881_pkg.vhd:2166:23  */
+  /* mc68881_pkg.vhd:2187:23  */
   assign n554 = {n542, n553};
   /* mc68881_fp80_addsub_unit.vhd:201:68  */
   assign n556 = n554[79:0]; // extract
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n568 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n571 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n573 = a_reg[63:0]; // extract
   assign n574 = {n573, n571, n568};
   assign n578 = n577[62:0]; // extract
-  /* mc68881_pkg.vhd:2091:20  */
+  /* mc68881_pkg.vhd:2112:20  */
   assign n579 = n574[15:1]; // extract
-  /* mc68881_pkg.vhd:2091:24  */
+  /* mc68881_pkg.vhd:2112:24  */
   assign n581 = n579 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2092:16  */
+  /* mc68881_pkg.vhd:2113:16  */
   assign n582 = n574[79:16]; // extract
-  /* mc68881_pkg.vhd:2092:21  */
+  /* mc68881_pkg.vhd:2113:21  */
   assign n584 = n582 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2092:36  */
+  /* mc68881_pkg.vhd:2113:36  */
   assign n585 = n574[79:16]; // extract
   assign n586 = {1'b1, n578};
-  /* mc68881_pkg.vhd:2092:41  */
+  /* mc68881_pkg.vhd:2113:41  */
   assign n587 = n585 == n586;
-  /* mc68881_pkg.vhd:2092:25  */
+  /* mc68881_pkg.vhd:2113:25  */
   assign n588 = n584 | n587;
-  /* mc68881_pkg.vhd:2091:42  */
+  /* mc68881_pkg.vhd:2112:42  */
   assign n589 = n588 & n581;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n601 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n604 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n606 = b_reg[63:0]; // extract
   assign n607 = {n606, n604, n601};
   assign n611 = n610[62:0]; // extract
-  /* mc68881_pkg.vhd:2091:20  */
+  /* mc68881_pkg.vhd:2112:20  */
   assign n612 = n607[15:1]; // extract
-  /* mc68881_pkg.vhd:2091:24  */
+  /* mc68881_pkg.vhd:2112:24  */
   assign n614 = n612 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2092:16  */
+  /* mc68881_pkg.vhd:2113:16  */
   assign n615 = n607[79:16]; // extract
-  /* mc68881_pkg.vhd:2092:21  */
+  /* mc68881_pkg.vhd:2113:21  */
   assign n617 = n615 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2092:36  */
+  /* mc68881_pkg.vhd:2113:36  */
   assign n618 = n607[79:16]; // extract
   assign n619 = {1'b1, n611};
-  /* mc68881_pkg.vhd:2092:41  */
+  /* mc68881_pkg.vhd:2113:41  */
   assign n620 = n618 == n619;
-  /* mc68881_pkg.vhd:2092:25  */
+  /* mc68881_pkg.vhd:2113:25  */
   assign n621 = n617 | n620;
-  /* mc68881_pkg.vhd:2091:42  */
+  /* mc68881_pkg.vhd:2112:42  */
   assign n622 = n621 & n614;
   /* mc68881_fp80_addsub_unit.vhd:202:36  */
   assign n623 = n589 | n622;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n635 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n638 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n640 = a_reg[63:0]; // extract
   assign n641 = {n640, n638, n635};
   assign n645 = n644[62:0]; // extract
-  /* mc68881_pkg.vhd:2091:20  */
+  /* mc68881_pkg.vhd:2112:20  */
   assign n646 = n641[15:1]; // extract
-  /* mc68881_pkg.vhd:2091:24  */
+  /* mc68881_pkg.vhd:2112:24  */
   assign n648 = n646 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2092:16  */
+  /* mc68881_pkg.vhd:2113:16  */
   assign n649 = n641[79:16]; // extract
-  /* mc68881_pkg.vhd:2092:21  */
+  /* mc68881_pkg.vhd:2113:21  */
   assign n651 = n649 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2092:36  */
+  /* mc68881_pkg.vhd:2113:36  */
   assign n652 = n641[79:16]; // extract
   assign n653 = {1'b1, n645};
-  /* mc68881_pkg.vhd:2092:41  */
+  /* mc68881_pkg.vhd:2113:41  */
   assign n654 = n652 == n653;
-  /* mc68881_pkg.vhd:2092:25  */
+  /* mc68881_pkg.vhd:2113:25  */
   assign n655 = n651 | n654;
-  /* mc68881_pkg.vhd:2091:42  */
+  /* mc68881_pkg.vhd:2112:42  */
   assign n656 = n655 & n648;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n668 = b_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n671 = b_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n673 = b_reg[63:0]; // extract
   assign n674 = {n673, n671, n668};
   assign n678 = n677[62:0]; // extract
-  /* mc68881_pkg.vhd:2091:20  */
+  /* mc68881_pkg.vhd:2112:20  */
   assign n679 = n674[15:1]; // extract
-  /* mc68881_pkg.vhd:2091:24  */
+  /* mc68881_pkg.vhd:2112:24  */
   assign n681 = n679 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2092:16  */
+  /* mc68881_pkg.vhd:2113:16  */
   assign n682 = n674[79:16]; // extract
-  /* mc68881_pkg.vhd:2092:21  */
+  /* mc68881_pkg.vhd:2113:21  */
   assign n684 = n682 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2092:36  */
+  /* mc68881_pkg.vhd:2113:36  */
   assign n685 = n674[79:16]; // extract
   assign n686 = {1'b1, n678};
-  /* mc68881_pkg.vhd:2092:41  */
+  /* mc68881_pkg.vhd:2113:41  */
   assign n687 = n685 == n686;
-  /* mc68881_pkg.vhd:2092:25  */
+  /* mc68881_pkg.vhd:2113:25  */
   assign n688 = n684 | n687;
-  /* mc68881_pkg.vhd:2091:42  */
+  /* mc68881_pkg.vhd:2112:42  */
   assign n689 = n688 & n681;
   /* mc68881_fp80_addsub_unit.vhd:204:35  */
   assign n690 = n689 & n656;
@@ -2846,30 +2846,30 @@ module mc68881_fp80_addsub_unit
   assign n708 = {n701, 15'b111111111111111, 64'b0000000000000000000000000000000000000000000000000000000000000000};
   /* mc68881_fp80_addsub_unit.vhd:207:15  */
   assign n709 = n700 ? n708 : n707;
-  /* mc68881_pkg.vhd:1535:25  */
+  /* mc68881_pkg.vhd:1556:25  */
   assign n721 = a_reg[79]; // extract
-  /* mc68881_pkg.vhd:1536:34  */
+  /* mc68881_pkg.vhd:1557:34  */
   assign n724 = a_reg[78:64]; // extract
-  /* mc68881_pkg.vhd:1537:34  */
+  /* mc68881_pkg.vhd:1558:34  */
   assign n726 = a_reg[63:0]; // extract
   assign n727 = {n726, n724, n721};
   assign n731 = n730[62:0]; // extract
-  /* mc68881_pkg.vhd:2091:20  */
+  /* mc68881_pkg.vhd:2112:20  */
   assign n732 = n727[15:1]; // extract
-  /* mc68881_pkg.vhd:2091:24  */
+  /* mc68881_pkg.vhd:2112:24  */
   assign n734 = n732 == 15'b111111111111111;
-  /* mc68881_pkg.vhd:2092:16  */
+  /* mc68881_pkg.vhd:2113:16  */
   assign n735 = n727[79:16]; // extract
-  /* mc68881_pkg.vhd:2092:21  */
+  /* mc68881_pkg.vhd:2113:21  */
   assign n737 = n735 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2092:36  */
+  /* mc68881_pkg.vhd:2113:36  */
   assign n738 = n727[79:16]; // extract
   assign n739 = {1'b1, n731};
-  /* mc68881_pkg.vhd:2092:41  */
+  /* mc68881_pkg.vhd:2113:41  */
   assign n740 = n738 == n739;
-  /* mc68881_pkg.vhd:2092:25  */
+  /* mc68881_pkg.vhd:2113:25  */
   assign n741 = n737 | n740;
-  /* mc68881_pkg.vhd:2091:42  */
+  /* mc68881_pkg.vhd:2112:42  */
   assign n742 = n741 & n734;
   /* mc68881_fp80_addsub_unit.vhd:225:58  */
   assign n743 = b_reg[79]; // extract
@@ -2945,818 +2945,818 @@ module mc68881_fp80_addsub_unit
   assign n790 = n788 - n789;
   /* mc68881_fp80_addsub_unit.vhd:260:15  */
   assign n791 = n790[30:0];  // trunc
-  /* mc68881_pkg.vhd:1558:14  */
+  /* mc68881_pkg.vhd:1579:14  */
   assign n800 = {1'b0, n791};  //  uext
-  /* mc68881_pkg.vhd:1558:14  */
+  /* mc68881_pkg.vhd:1579:14  */
   assign n802 = n800 == 32'b00000000000000000000000000000000;
-  /* mc68881_pkg.vhd:1558:5  */
+  /* mc68881_pkg.vhd:1579:5  */
   assign n805 = n802 ? 1'b0 : 1'b1;
-  /* mc68881_pkg.vhd:1558:5  */
+  /* mc68881_pkg.vhd:1579:5  */
   assign n809 = n802 ? 1'b0 : 1'b1;
-  /* mc68881_pkg.vhd:1558:5  */
+  /* mc68881_pkg.vhd:1579:5  */
   assign n811 = n802 ? mant_b_ext_reg : 67'bX;
-  /* mc68881_pkg.vhd:1562:14  */
+  /* mc68881_pkg.vhd:1583:14  */
   assign n812 = {1'b0, n791};  //  uext
-  /* mc68881_pkg.vhd:1562:14  */
+  /* mc68881_pkg.vhd:1583:14  */
   assign n814 = $signed(n812) >= $signed(32'b00000000000000000000000001000011);
-  /* mc68881_pkg.vhd:1563:16  */
+  /* mc68881_pkg.vhd:1584:16  */
   assign n816 = mant_b_ext_reg != 67'b0000000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:1564:9  */
+  /* mc68881_pkg.vhd:1585:9  */
   assign n819 = n805 ? 1'b1 : 1'b0;
-  /* mc68881_pkg.vhd:1563:7  */
+  /* mc68881_pkg.vhd:1584:7  */
   assign n821 = n816 ? n819 : 1'b0;
-  /* mc68881_pkg.vhd:1563:7  */
+  /* mc68881_pkg.vhd:1584:7  */
   assign n823 = n805 ? n821 : 1'b0;
-  /* mc68881_pkg.vhd:1566:7  */
+  /* mc68881_pkg.vhd:1587:7  */
   assign n825 = n805 ? n823 : 1'b0;
   assign n827 = {66'b000000000000000000000000000000000000000000000000000000000000000000, n825};
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n829 = n840 ? 1'b0 : n805;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n831 = n841 ? 1'b0 : n809;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n832 = n842 ? n827 : n811;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n833 = n805 & n814;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n834 = n805 & n814;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n835 = n805 & n814;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n837 = n814 ? n825 : 1'b0;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n839 = n814 ? n823 : 1'b0;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n840 = n833 & n805;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n841 = n834 & n805;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n842 = n835 & n805;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n844 = n805 ? n837 : 1'b0;
   assign n846 = n845[66:1]; // extract
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n848 = n805 ? n839 : 1'b0;
-  /* mc68881_pkg.vhd:1572:26  */
+  /* mc68881_pkg.vhd:1593:26  */
   assign n850 = mant_b_ext_reg[0]; // extract
-  /* mc68881_pkg.vhd:1572:5  */
+  /* mc68881_pkg.vhd:1593:5  */
   assign n852 = n829 ? n850 : 1'bX;
   assign n854 = n853[66:1]; // extract
   assign n855 = {n854, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n856 = n855[0]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n857 = mant_b_ext_reg[1]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n858 = n856 | n857;
   assign n859 = n853[1]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n860 = n829 ? n858 : n859;
   assign n861 = n853[66:2]; // extract
   assign n862 = {n861, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n863 = n862[1]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n864 = mant_b_ext_reg[2]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n865 = n863 | n864;
   assign n866 = n853[2]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n867 = n829 ? n865 : n866;
   assign n868 = n853[66:3]; // extract
   assign n869 = {n868, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n870 = n869[2]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n871 = mant_b_ext_reg[3]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n872 = n870 | n871;
   assign n873 = n853[3]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n874 = n829 ? n872 : n873;
   assign n875 = n853[66:4]; // extract
   assign n876 = {n875, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n877 = n876[3]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n878 = mant_b_ext_reg[4]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n879 = n877 | n878;
   assign n880 = n853[4]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n881 = n829 ? n879 : n880;
   assign n882 = n853[66:5]; // extract
   assign n883 = {n882, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n884 = n883[4]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n885 = mant_b_ext_reg[5]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n886 = n884 | n885;
   assign n887 = n853[5]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n888 = n829 ? n886 : n887;
   assign n889 = n853[66:6]; // extract
   assign n890 = {n889, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n891 = n890[5]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n892 = mant_b_ext_reg[6]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n893 = n891 | n892;
   assign n894 = n853[6]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n895 = n829 ? n893 : n894;
   assign n896 = n853[66:7]; // extract
   assign n897 = {n896, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n898 = n897[6]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n899 = mant_b_ext_reg[7]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n900 = n898 | n899;
   assign n901 = n853[7]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n902 = n829 ? n900 : n901;
   assign n903 = n853[66:8]; // extract
   assign n904 = {n903, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n905 = n904[7]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n906 = mant_b_ext_reg[8]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n907 = n905 | n906;
   assign n908 = n853[8]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n909 = n829 ? n907 : n908;
   assign n910 = n853[66:9]; // extract
   assign n911 = {n910, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n912 = n911[8]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n913 = mant_b_ext_reg[9]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n914 = n912 | n913;
   assign n915 = n853[9]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n916 = n829 ? n914 : n915;
   assign n917 = n853[66:10]; // extract
   assign n918 = {n917, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n919 = n918[9]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n920 = mant_b_ext_reg[10]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n921 = n919 | n920;
   assign n922 = n853[10]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n923 = n829 ? n921 : n922;
   assign n924 = n853[66:11]; // extract
   assign n925 = {n924, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n926 = n925[10]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n927 = mant_b_ext_reg[11]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n928 = n926 | n927;
   assign n929 = n853[11]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n930 = n829 ? n928 : n929;
   assign n931 = n853[66:12]; // extract
   assign n932 = {n931, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n933 = n932[11]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n934 = mant_b_ext_reg[12]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n935 = n933 | n934;
   assign n936 = n853[12]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n937 = n829 ? n935 : n936;
   assign n938 = n853[66:13]; // extract
   assign n939 = {n938, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n940 = n939[12]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n941 = mant_b_ext_reg[13]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n942 = n940 | n941;
   assign n943 = n853[13]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n944 = n829 ? n942 : n943;
   assign n945 = n853[66:14]; // extract
   assign n946 = {n945, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n947 = n946[13]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n948 = mant_b_ext_reg[14]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n949 = n947 | n948;
   assign n950 = n853[14]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n951 = n829 ? n949 : n950;
   assign n952 = n853[66:15]; // extract
   assign n953 = {n952, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n954 = n953[14]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n955 = mant_b_ext_reg[15]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n956 = n954 | n955;
   assign n957 = n853[15]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n958 = n829 ? n956 : n957;
   assign n959 = n853[66:16]; // extract
   assign n960 = {n959, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n961 = n960[15]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n962 = mant_b_ext_reg[16]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n963 = n961 | n962;
   assign n964 = n853[16]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n965 = n829 ? n963 : n964;
   assign n966 = n853[66:17]; // extract
   assign n967 = {n966, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n968 = n967[16]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n969 = mant_b_ext_reg[17]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n970 = n968 | n969;
   assign n971 = n853[17]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n972 = n829 ? n970 : n971;
   assign n973 = n853[66:18]; // extract
   assign n974 = {n973, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n975 = n974[17]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n976 = mant_b_ext_reg[18]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n977 = n975 | n976;
   assign n978 = n853[18]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n979 = n829 ? n977 : n978;
   assign n980 = n853[66:19]; // extract
   assign n981 = {n980, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n982 = n981[18]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n983 = mant_b_ext_reg[19]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n984 = n982 | n983;
   assign n985 = n853[19]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n986 = n829 ? n984 : n985;
   assign n987 = n853[66:20]; // extract
   assign n988 = {n987, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n989 = n988[19]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n990 = mant_b_ext_reg[20]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n991 = n989 | n990;
   assign n992 = n853[20]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n993 = n829 ? n991 : n992;
   assign n994 = n853[66:21]; // extract
   assign n995 = {n994, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n996 = n995[20]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n997 = mant_b_ext_reg[21]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n998 = n996 | n997;
   assign n999 = n853[21]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1000 = n829 ? n998 : n999;
   assign n1001 = n853[66:22]; // extract
   assign n1002 = {n1001, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1003 = n1002[21]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1004 = mant_b_ext_reg[22]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1005 = n1003 | n1004;
   assign n1006 = n853[22]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1007 = n829 ? n1005 : n1006;
   assign n1008 = n853[66:23]; // extract
   assign n1009 = {n1008, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1010 = n1009[22]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1011 = mant_b_ext_reg[23]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1012 = n1010 | n1011;
   assign n1013 = n853[23]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1014 = n829 ? n1012 : n1013;
   assign n1015 = n853[66:24]; // extract
   assign n1016 = {n1015, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1017 = n1016[23]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1018 = mant_b_ext_reg[24]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1019 = n1017 | n1018;
   assign n1020 = n853[24]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1021 = n829 ? n1019 : n1020;
   assign n1022 = n853[66:25]; // extract
   assign n1023 = {n1022, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1024 = n1023[24]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1025 = mant_b_ext_reg[25]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1026 = n1024 | n1025;
   assign n1027 = n853[25]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1028 = n829 ? n1026 : n1027;
   assign n1029 = n853[66:26]; // extract
   assign n1030 = {n1029, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1031 = n1030[25]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1032 = mant_b_ext_reg[26]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1033 = n1031 | n1032;
   assign n1034 = n853[26]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1035 = n829 ? n1033 : n1034;
   assign n1036 = n853[66:27]; // extract
   assign n1037 = {n1036, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1038 = n1037[26]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1039 = mant_b_ext_reg[27]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1040 = n1038 | n1039;
   assign n1041 = n853[27]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1042 = n829 ? n1040 : n1041;
   assign n1043 = n853[66:28]; // extract
   assign n1044 = {n1043, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1045 = n1044[27]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1046 = mant_b_ext_reg[28]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1047 = n1045 | n1046;
   assign n1048 = n853[28]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1049 = n829 ? n1047 : n1048;
   assign n1050 = n853[66:29]; // extract
   assign n1051 = {n1050, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1052 = n1051[28]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1053 = mant_b_ext_reg[29]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1054 = n1052 | n1053;
   assign n1055 = n853[29]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1056 = n829 ? n1054 : n1055;
   assign n1057 = n853[66:30]; // extract
   assign n1058 = {n1057, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1059 = n1058[29]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1060 = mant_b_ext_reg[30]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1061 = n1059 | n1060;
   assign n1062 = n853[30]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1063 = n829 ? n1061 : n1062;
   assign n1064 = n853[66:31]; // extract
   assign n1065 = {n1064, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1066 = n1065[30]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1067 = mant_b_ext_reg[31]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1068 = n1066 | n1067;
   assign n1069 = n853[31]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1070 = n829 ? n1068 : n1069;
   assign n1071 = n853[66:32]; // extract
   assign n1072 = {n1071, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1073 = n1072[31]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1074 = mant_b_ext_reg[32]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1075 = n1073 | n1074;
   assign n1076 = n853[32]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1077 = n829 ? n1075 : n1076;
   assign n1078 = n853[66:33]; // extract
   assign n1079 = {n1078, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1080 = n1079[32]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1081 = mant_b_ext_reg[33]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1082 = n1080 | n1081;
   assign n1083 = n853[33]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1084 = n829 ? n1082 : n1083;
   assign n1085 = n853[66:34]; // extract
   assign n1086 = {n1085, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1087 = n1086[33]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1088 = mant_b_ext_reg[34]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1089 = n1087 | n1088;
   assign n1090 = n853[34]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1091 = n829 ? n1089 : n1090;
   assign n1092 = n853[66:35]; // extract
   assign n1093 = {n1092, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1094 = n1093[34]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1095 = mant_b_ext_reg[35]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1096 = n1094 | n1095;
   assign n1097 = n853[35]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1098 = n829 ? n1096 : n1097;
   assign n1099 = n853[66:36]; // extract
   assign n1100 = {n1099, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1101 = n1100[35]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1102 = mant_b_ext_reg[36]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1103 = n1101 | n1102;
   assign n1104 = n853[36]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1105 = n829 ? n1103 : n1104;
   assign n1106 = n853[66:37]; // extract
   assign n1107 = {n1106, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1108 = n1107[36]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1109 = mant_b_ext_reg[37]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1110 = n1108 | n1109;
   assign n1111 = n853[37]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1112 = n829 ? n1110 : n1111;
   assign n1113 = n853[66:38]; // extract
   assign n1114 = {n1113, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1115 = n1114[37]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1116 = mant_b_ext_reg[38]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1117 = n1115 | n1116;
   assign n1118 = n853[38]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1119 = n829 ? n1117 : n1118;
   assign n1120 = n853[66:39]; // extract
   assign n1121 = {n1120, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1122 = n1121[38]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1123 = mant_b_ext_reg[39]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1124 = n1122 | n1123;
   assign n1125 = n853[39]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1126 = n829 ? n1124 : n1125;
   assign n1127 = n853[66:40]; // extract
   assign n1128 = {n1127, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1129 = n1128[39]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1130 = mant_b_ext_reg[40]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1131 = n1129 | n1130;
   assign n1132 = n853[40]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1133 = n829 ? n1131 : n1132;
   assign n1134 = n853[66:41]; // extract
   assign n1135 = {n1134, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1136 = n1135[40]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1137 = mant_b_ext_reg[41]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1138 = n1136 | n1137;
   assign n1139 = n853[41]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1140 = n829 ? n1138 : n1139;
   assign n1141 = n853[66:42]; // extract
   assign n1142 = {n1141, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1143 = n1142[41]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1144 = mant_b_ext_reg[42]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1145 = n1143 | n1144;
   assign n1146 = n853[42]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1147 = n829 ? n1145 : n1146;
   assign n1148 = n853[66:43]; // extract
   assign n1149 = {n1148, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1150 = n1149[42]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1151 = mant_b_ext_reg[43]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1152 = n1150 | n1151;
   assign n1153 = n853[43]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1154 = n829 ? n1152 : n1153;
   assign n1155 = n853[66:44]; // extract
   assign n1156 = {n1155, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1157 = n1156[43]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1158 = mant_b_ext_reg[44]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1159 = n1157 | n1158;
   assign n1160 = n853[44]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1161 = n829 ? n1159 : n1160;
   assign n1162 = n853[66:45]; // extract
   assign n1163 = {n1162, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1164 = n1163[44]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1165 = mant_b_ext_reg[45]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1166 = n1164 | n1165;
   assign n1167 = n853[45]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1168 = n829 ? n1166 : n1167;
   assign n1169 = n853[66:46]; // extract
   assign n1170 = {n1169, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1171 = n1170[45]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1172 = mant_b_ext_reg[46]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1173 = n1171 | n1172;
   assign n1174 = n853[46]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1175 = n829 ? n1173 : n1174;
   assign n1176 = n853[66:47]; // extract
   assign n1177 = {n1176, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1178 = n1177[46]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1179 = mant_b_ext_reg[47]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1180 = n1178 | n1179;
   assign n1181 = n853[47]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1182 = n829 ? n1180 : n1181;
   assign n1183 = n853[66:48]; // extract
   assign n1184 = {n1183, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1185 = n1184[47]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1186 = mant_b_ext_reg[48]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1187 = n1185 | n1186;
   assign n1188 = n853[48]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1189 = n829 ? n1187 : n1188;
   assign n1190 = n853[66:49]; // extract
   assign n1191 = {n1190, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1192 = n1191[48]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1193 = mant_b_ext_reg[49]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1194 = n1192 | n1193;
   assign n1195 = n853[49]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1196 = n829 ? n1194 : n1195;
   assign n1197 = n853[66:50]; // extract
   assign n1198 = {n1197, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1199 = n1198[49]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1200 = mant_b_ext_reg[50]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1201 = n1199 | n1200;
   assign n1202 = n853[50]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1203 = n829 ? n1201 : n1202;
   assign n1204 = n853[66:51]; // extract
   assign n1205 = {n1204, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1206 = n1205[50]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1207 = mant_b_ext_reg[51]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1208 = n1206 | n1207;
   assign n1209 = n853[51]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1210 = n829 ? n1208 : n1209;
   assign n1211 = n853[66:52]; // extract
   assign n1212 = {n1211, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1213 = n1212[51]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1214 = mant_b_ext_reg[52]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1215 = n1213 | n1214;
   assign n1216 = n853[52]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1217 = n829 ? n1215 : n1216;
   assign n1218 = n853[66:53]; // extract
   assign n1219 = {n1218, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1220 = n1219[52]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1221 = mant_b_ext_reg[53]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1222 = n1220 | n1221;
   assign n1223 = n853[53]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1224 = n829 ? n1222 : n1223;
   assign n1225 = n853[66:54]; // extract
   assign n1226 = {n1225, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1227 = n1226[53]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1228 = mant_b_ext_reg[54]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1229 = n1227 | n1228;
   assign n1230 = n853[54]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1231 = n829 ? n1229 : n1230;
   assign n1232 = n853[66:55]; // extract
   assign n1233 = {n1232, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1234 = n1233[54]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1235 = mant_b_ext_reg[55]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1236 = n1234 | n1235;
   assign n1237 = n853[55]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1238 = n829 ? n1236 : n1237;
   assign n1239 = n853[66:56]; // extract
   assign n1240 = {n1239, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1241 = n1240[55]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1242 = mant_b_ext_reg[56]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1243 = n1241 | n1242;
   assign n1244 = n853[56]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1245 = n829 ? n1243 : n1244;
   assign n1246 = n853[66:57]; // extract
   assign n1247 = {n1246, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1248 = n1247[56]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1249 = mant_b_ext_reg[57]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1250 = n1248 | n1249;
   assign n1251 = n853[57]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1252 = n829 ? n1250 : n1251;
   assign n1253 = n853[66:58]; // extract
   assign n1254 = {n1253, n1252, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1255 = n1254[57]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1256 = mant_b_ext_reg[58]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1257 = n1255 | n1256;
   assign n1258 = n853[58]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1259 = n829 ? n1257 : n1258;
   assign n1260 = n853[66:59]; // extract
   assign n1261 = {n1260, n1259, n1252, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1262 = n1261[58]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1263 = mant_b_ext_reg[59]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1264 = n1262 | n1263;
   assign n1265 = n853[59]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1266 = n829 ? n1264 : n1265;
   assign n1267 = n853[66:60]; // extract
   assign n1268 = {n1267, n1266, n1259, n1252, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1269 = n1268[59]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1270 = mant_b_ext_reg[60]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1271 = n1269 | n1270;
   assign n1272 = n853[60]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1273 = n829 ? n1271 : n1272;
   assign n1274 = n853[66:61]; // extract
   assign n1275 = {n1274, n1273, n1266, n1259, n1252, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1276 = n1275[60]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1277 = mant_b_ext_reg[61]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1278 = n1276 | n1277;
   assign n1279 = n853[61]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1280 = n829 ? n1278 : n1279;
   assign n1281 = n853[66:62]; // extract
   assign n1282 = {n1281, n1280, n1273, n1266, n1259, n1252, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1283 = n1282[61]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1284 = mant_b_ext_reg[62]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1285 = n1283 | n1284;
   assign n1286 = n853[62]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1287 = n829 ? n1285 : n1286;
   assign n1288 = n853[66:63]; // extract
   assign n1289 = {n1288, n1287, n1280, n1273, n1266, n1259, n1252, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1290 = n1289[62]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1291 = mant_b_ext_reg[63]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1292 = n1290 | n1291;
   assign n1293 = n853[63]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1294 = n829 ? n1292 : n1293;
   assign n1295 = n853[66:64]; // extract
   assign n1296 = {n1295, n1294, n1287, n1280, n1273, n1266, n1259, n1252, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1297 = n1296[63]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1298 = mant_b_ext_reg[64]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1299 = n1297 | n1298;
   assign n1300 = n853[64]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1301 = n829 ? n1299 : n1300;
   assign n1302 = n853[66:65]; // extract
   assign n1303 = {n1302, n1301, n1294, n1287, n1280, n1273, n1266, n1259, n1252, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1304 = n1303[64]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1305 = mant_b_ext_reg[65]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1306 = n1304 | n1305;
   assign n1307 = n853[65]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1308 = n829 ? n1306 : n1307;
   assign n1309 = n853[66]; // extract
   assign n1310 = {n1309, n1308, n1301, n1294, n1287, n1280, n1273, n1266, n1259, n1252, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860, n852};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1311 = n1310[65]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1312 = mant_b_ext_reg[66]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1313 = n1311 | n1312;
   assign n1314 = n853[66]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1315 = n829 ? n1313 : n1314;
-  /* mc68881_pkg.vhd:1573:5  */
+  /* mc68881_pkg.vhd:1594:5  */
   assign n1316 = n829 ? n831 : n829;
   assign n1317 = {n1315, n1308, n1301, n1294, n1287, n1280, n1273, n1266, n1259, n1252, n1245, n1238, n1231, n1224, n1217, n1210, n1203, n1196, n1189, n1182, n1175, n1168, n1161, n1154, n1147, n1140, n1133, n1126, n1119, n1112, n1105, n1098, n1091, n1084, n1077, n1070, n1063, n1056, n1049, n1042, n1035, n1028, n1021, n1014, n1007, n1000, n993, n986, n979, n972, n965, n958, n951, n944, n937, n930, n923, n916, n909, n902, n895, n888, n881, n874, n867, n860};
-  /* mc68881_pkg.vhd:1573:5  */
+  /* mc68881_pkg.vhd:1594:5  */
   assign n1318 = n829 ? n1317 : n854;
-  /* mc68881_pkg.vhd:1576:31  */
+  /* mc68881_pkg.vhd:1597:31  */
   assign n1319 = {1'b0, n791};  //  uext
-  /* mc68881_pkg.vhd:1576:31  */
+  /* mc68881_pkg.vhd:1597:31  */
   assign n1321 = n1319 - 32'b00000000000000000000000000000001;
-  /* mc68881_pkg.vhd:1576:31  */
+  /* mc68881_pkg.vhd:1597:31  */
   assign n1322 = n1321[6:0];  // trunc
-  /* mc68881_pkg.vhd:1576:24  */
+  /* mc68881_pkg.vhd:1597:24  */
   assign n1324 = {n1318, n852};
-  /* mc68881_pkg.vhd:1576:5  */
+  /* mc68881_pkg.vhd:1597:5  */
   assign n1326 = n1316 ? n2900 : n848;
-  /* mc68881_pkg.vhd:1578:15  */
+  /* mc68881_pkg.vhd:1599:15  */
   assign n1327 = mant_b_ext_reg >> n791;
   assign n1328 = {n846, n844};
-  /* mc68881_pkg.vhd:1578:5  */
+  /* mc68881_pkg.vhd:1599:5  */
   assign n1329 = n1316 ? n1327 : n1328;
   assign n1331 = n1329[0]; // extract
-  /* mc68881_pkg.vhd:1579:5  */
+  /* mc68881_pkg.vhd:1600:5  */
   assign n1332 = n1336 ? 1'b1 : n1331;
-  /* mc68881_pkg.vhd:1579:5  */
+  /* mc68881_pkg.vhd:1600:5  */
   assign n1334 = n1316 & n1326;
-  /* mc68881_pkg.vhd:1579:5  */
+  /* mc68881_pkg.vhd:1600:5  */
   assign n1336 = n1334 & n1316;
   assign n1337 = n1329[66:1]; // extract
   assign n1338 = {n1337, n1332};
-  /* mc68881_pkg.vhd:1582:5  */
+  /* mc68881_pkg.vhd:1603:5  */
   assign n1343 = n1316 ? n1338 : n832;
   /* mc68881_fp80_addsub_unit.vhd:262:15  */
   assign n1344 = {{14{a_exp_reg[17]}}, a_exp_reg}; // sext
@@ -3774,818 +3774,818 @@ module mc68881_fp80_addsub_unit
   assign n1350 = n1348 - n1349;
   /* mc68881_fp80_addsub_unit.vhd:264:15  */
   assign n1351 = n1350[30:0];  // trunc
-  /* mc68881_pkg.vhd:1558:14  */
+  /* mc68881_pkg.vhd:1579:14  */
   assign n1360 = {1'b0, n1351};  //  uext
-  /* mc68881_pkg.vhd:1558:14  */
+  /* mc68881_pkg.vhd:1579:14  */
   assign n1362 = n1360 == 32'b00000000000000000000000000000000;
-  /* mc68881_pkg.vhd:1558:5  */
+  /* mc68881_pkg.vhd:1579:5  */
   assign n1365 = n1362 ? 1'b0 : 1'b1;
-  /* mc68881_pkg.vhd:1558:5  */
+  /* mc68881_pkg.vhd:1579:5  */
   assign n1369 = n1362 ? 1'b0 : 1'b1;
-  /* mc68881_pkg.vhd:1558:5  */
+  /* mc68881_pkg.vhd:1579:5  */
   assign n1371 = n1362 ? mant_a_ext_reg : 67'bX;
-  /* mc68881_pkg.vhd:1562:14  */
+  /* mc68881_pkg.vhd:1583:14  */
   assign n1372 = {1'b0, n1351};  //  uext
-  /* mc68881_pkg.vhd:1562:14  */
+  /* mc68881_pkg.vhd:1583:14  */
   assign n1374 = $signed(n1372) >= $signed(32'b00000000000000000000000001000011);
-  /* mc68881_pkg.vhd:1563:16  */
+  /* mc68881_pkg.vhd:1584:16  */
   assign n1376 = mant_a_ext_reg != 67'b0000000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:1564:9  */
+  /* mc68881_pkg.vhd:1585:9  */
   assign n1379 = n1365 ? 1'b1 : 1'b0;
-  /* mc68881_pkg.vhd:1563:7  */
+  /* mc68881_pkg.vhd:1584:7  */
   assign n1381 = n1376 ? n1379 : 1'b0;
-  /* mc68881_pkg.vhd:1563:7  */
+  /* mc68881_pkg.vhd:1584:7  */
   assign n1383 = n1365 ? n1381 : 1'b0;
-  /* mc68881_pkg.vhd:1566:7  */
+  /* mc68881_pkg.vhd:1587:7  */
   assign n1385 = n1365 ? n1383 : 1'b0;
   assign n1387 = {66'b000000000000000000000000000000000000000000000000000000000000000000, n1385};
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1389 = n1400 ? 1'b0 : n1365;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1391 = n1401 ? 1'b0 : n1369;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1392 = n1402 ? n1387 : n1371;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1393 = n1365 & n1374;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1394 = n1365 & n1374;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1395 = n1365 & n1374;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1397 = n1374 ? n1385 : 1'b0;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1399 = n1374 ? n1383 : 1'b0;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1400 = n1393 & n1365;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1401 = n1394 & n1365;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1402 = n1395 & n1365;
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1404 = n1365 ? n1397 : 1'b0;
   assign n1406 = n1405[66:1]; // extract
-  /* mc68881_pkg.vhd:1562:5  */
+  /* mc68881_pkg.vhd:1583:5  */
   assign n1408 = n1365 ? n1399 : 1'b0;
-  /* mc68881_pkg.vhd:1572:26  */
+  /* mc68881_pkg.vhd:1593:26  */
   assign n1410 = mant_a_ext_reg[0]; // extract
-  /* mc68881_pkg.vhd:1572:5  */
+  /* mc68881_pkg.vhd:1593:5  */
   assign n1412 = n1389 ? n1410 : 1'bX;
   assign n1414 = n1413[66:1]; // extract
   assign n1415 = {n1414, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1416 = n1415[0]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1417 = mant_a_ext_reg[1]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1418 = n1416 | n1417;
   assign n1419 = n1413[1]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1420 = n1389 ? n1418 : n1419;
   assign n1421 = n1413[66:2]; // extract
   assign n1422 = {n1421, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1423 = n1422[1]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1424 = mant_a_ext_reg[2]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1425 = n1423 | n1424;
   assign n1426 = n1413[2]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1427 = n1389 ? n1425 : n1426;
   assign n1428 = n1413[66:3]; // extract
   assign n1429 = {n1428, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1430 = n1429[2]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1431 = mant_a_ext_reg[3]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1432 = n1430 | n1431;
   assign n1433 = n1413[3]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1434 = n1389 ? n1432 : n1433;
   assign n1435 = n1413[66:4]; // extract
   assign n1436 = {n1435, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1437 = n1436[3]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1438 = mant_a_ext_reg[4]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1439 = n1437 | n1438;
   assign n1440 = n1413[4]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1441 = n1389 ? n1439 : n1440;
   assign n1442 = n1413[66:5]; // extract
   assign n1443 = {n1442, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1444 = n1443[4]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1445 = mant_a_ext_reg[5]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1446 = n1444 | n1445;
   assign n1447 = n1413[5]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1448 = n1389 ? n1446 : n1447;
   assign n1449 = n1413[66:6]; // extract
   assign n1450 = {n1449, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1451 = n1450[5]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1452 = mant_a_ext_reg[6]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1453 = n1451 | n1452;
   assign n1454 = n1413[6]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1455 = n1389 ? n1453 : n1454;
   assign n1456 = n1413[66:7]; // extract
   assign n1457 = {n1456, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1458 = n1457[6]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1459 = mant_a_ext_reg[7]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1460 = n1458 | n1459;
   assign n1461 = n1413[7]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1462 = n1389 ? n1460 : n1461;
   assign n1463 = n1413[66:8]; // extract
   assign n1464 = {n1463, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1465 = n1464[7]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1466 = mant_a_ext_reg[8]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1467 = n1465 | n1466;
   assign n1468 = n1413[8]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1469 = n1389 ? n1467 : n1468;
   assign n1470 = n1413[66:9]; // extract
   assign n1471 = {n1470, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1472 = n1471[8]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1473 = mant_a_ext_reg[9]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1474 = n1472 | n1473;
   assign n1475 = n1413[9]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1476 = n1389 ? n1474 : n1475;
   assign n1477 = n1413[66:10]; // extract
   assign n1478 = {n1477, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1479 = n1478[9]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1480 = mant_a_ext_reg[10]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1481 = n1479 | n1480;
   assign n1482 = n1413[10]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1483 = n1389 ? n1481 : n1482;
   assign n1484 = n1413[66:11]; // extract
   assign n1485 = {n1484, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1486 = n1485[10]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1487 = mant_a_ext_reg[11]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1488 = n1486 | n1487;
   assign n1489 = n1413[11]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1490 = n1389 ? n1488 : n1489;
   assign n1491 = n1413[66:12]; // extract
   assign n1492 = {n1491, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1493 = n1492[11]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1494 = mant_a_ext_reg[12]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1495 = n1493 | n1494;
   assign n1496 = n1413[12]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1497 = n1389 ? n1495 : n1496;
   assign n1498 = n1413[66:13]; // extract
   assign n1499 = {n1498, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1500 = n1499[12]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1501 = mant_a_ext_reg[13]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1502 = n1500 | n1501;
   assign n1503 = n1413[13]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1504 = n1389 ? n1502 : n1503;
   assign n1505 = n1413[66:14]; // extract
   assign n1506 = {n1505, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1507 = n1506[13]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1508 = mant_a_ext_reg[14]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1509 = n1507 | n1508;
   assign n1510 = n1413[14]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1511 = n1389 ? n1509 : n1510;
   assign n1512 = n1413[66:15]; // extract
   assign n1513 = {n1512, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1514 = n1513[14]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1515 = mant_a_ext_reg[15]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1516 = n1514 | n1515;
   assign n1517 = n1413[15]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1518 = n1389 ? n1516 : n1517;
   assign n1519 = n1413[66:16]; // extract
   assign n1520 = {n1519, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1521 = n1520[15]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1522 = mant_a_ext_reg[16]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1523 = n1521 | n1522;
   assign n1524 = n1413[16]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1525 = n1389 ? n1523 : n1524;
   assign n1526 = n1413[66:17]; // extract
   assign n1527 = {n1526, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1528 = n1527[16]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1529 = mant_a_ext_reg[17]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1530 = n1528 | n1529;
   assign n1531 = n1413[17]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1532 = n1389 ? n1530 : n1531;
   assign n1533 = n1413[66:18]; // extract
   assign n1534 = {n1533, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1535 = n1534[17]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1536 = mant_a_ext_reg[18]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1537 = n1535 | n1536;
   assign n1538 = n1413[18]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1539 = n1389 ? n1537 : n1538;
   assign n1540 = n1413[66:19]; // extract
   assign n1541 = {n1540, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1542 = n1541[18]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1543 = mant_a_ext_reg[19]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1544 = n1542 | n1543;
   assign n1545 = n1413[19]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1546 = n1389 ? n1544 : n1545;
   assign n1547 = n1413[66:20]; // extract
   assign n1548 = {n1547, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1549 = n1548[19]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1550 = mant_a_ext_reg[20]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1551 = n1549 | n1550;
   assign n1552 = n1413[20]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1553 = n1389 ? n1551 : n1552;
   assign n1554 = n1413[66:21]; // extract
   assign n1555 = {n1554, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1556 = n1555[20]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1557 = mant_a_ext_reg[21]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1558 = n1556 | n1557;
   assign n1559 = n1413[21]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1560 = n1389 ? n1558 : n1559;
   assign n1561 = n1413[66:22]; // extract
   assign n1562 = {n1561, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1563 = n1562[21]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1564 = mant_a_ext_reg[22]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1565 = n1563 | n1564;
   assign n1566 = n1413[22]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1567 = n1389 ? n1565 : n1566;
   assign n1568 = n1413[66:23]; // extract
   assign n1569 = {n1568, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1570 = n1569[22]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1571 = mant_a_ext_reg[23]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1572 = n1570 | n1571;
   assign n1573 = n1413[23]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1574 = n1389 ? n1572 : n1573;
   assign n1575 = n1413[66:24]; // extract
   assign n1576 = {n1575, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1577 = n1576[23]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1578 = mant_a_ext_reg[24]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1579 = n1577 | n1578;
   assign n1580 = n1413[24]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1581 = n1389 ? n1579 : n1580;
   assign n1582 = n1413[66:25]; // extract
   assign n1583 = {n1582, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1584 = n1583[24]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1585 = mant_a_ext_reg[25]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1586 = n1584 | n1585;
   assign n1587 = n1413[25]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1588 = n1389 ? n1586 : n1587;
   assign n1589 = n1413[66:26]; // extract
   assign n1590 = {n1589, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1591 = n1590[25]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1592 = mant_a_ext_reg[26]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1593 = n1591 | n1592;
   assign n1594 = n1413[26]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1595 = n1389 ? n1593 : n1594;
   assign n1596 = n1413[66:27]; // extract
   assign n1597 = {n1596, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1598 = n1597[26]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1599 = mant_a_ext_reg[27]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1600 = n1598 | n1599;
   assign n1601 = n1413[27]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1602 = n1389 ? n1600 : n1601;
   assign n1603 = n1413[66:28]; // extract
   assign n1604 = {n1603, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1605 = n1604[27]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1606 = mant_a_ext_reg[28]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1607 = n1605 | n1606;
   assign n1608 = n1413[28]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1609 = n1389 ? n1607 : n1608;
   assign n1610 = n1413[66:29]; // extract
   assign n1611 = {n1610, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1612 = n1611[28]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1613 = mant_a_ext_reg[29]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1614 = n1612 | n1613;
   assign n1615 = n1413[29]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1616 = n1389 ? n1614 : n1615;
   assign n1617 = n1413[66:30]; // extract
   assign n1618 = {n1617, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1619 = n1618[29]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1620 = mant_a_ext_reg[30]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1621 = n1619 | n1620;
   assign n1622 = n1413[30]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1623 = n1389 ? n1621 : n1622;
   assign n1624 = n1413[66:31]; // extract
   assign n1625 = {n1624, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1626 = n1625[30]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1627 = mant_a_ext_reg[31]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1628 = n1626 | n1627;
   assign n1629 = n1413[31]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1630 = n1389 ? n1628 : n1629;
   assign n1631 = n1413[66:32]; // extract
   assign n1632 = {n1631, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1633 = n1632[31]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1634 = mant_a_ext_reg[32]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1635 = n1633 | n1634;
   assign n1636 = n1413[32]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1637 = n1389 ? n1635 : n1636;
   assign n1638 = n1413[66:33]; // extract
   assign n1639 = {n1638, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1640 = n1639[32]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1641 = mant_a_ext_reg[33]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1642 = n1640 | n1641;
   assign n1643 = n1413[33]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1644 = n1389 ? n1642 : n1643;
   assign n1645 = n1413[66:34]; // extract
   assign n1646 = {n1645, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1647 = n1646[33]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1648 = mant_a_ext_reg[34]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1649 = n1647 | n1648;
   assign n1650 = n1413[34]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1651 = n1389 ? n1649 : n1650;
   assign n1652 = n1413[66:35]; // extract
   assign n1653 = {n1652, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1654 = n1653[34]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1655 = mant_a_ext_reg[35]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1656 = n1654 | n1655;
   assign n1657 = n1413[35]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1658 = n1389 ? n1656 : n1657;
   assign n1659 = n1413[66:36]; // extract
   assign n1660 = {n1659, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1661 = n1660[35]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1662 = mant_a_ext_reg[36]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1663 = n1661 | n1662;
   assign n1664 = n1413[36]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1665 = n1389 ? n1663 : n1664;
   assign n1666 = n1413[66:37]; // extract
   assign n1667 = {n1666, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1668 = n1667[36]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1669 = mant_a_ext_reg[37]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1670 = n1668 | n1669;
   assign n1671 = n1413[37]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1672 = n1389 ? n1670 : n1671;
   assign n1673 = n1413[66:38]; // extract
   assign n1674 = {n1673, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1675 = n1674[37]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1676 = mant_a_ext_reg[38]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1677 = n1675 | n1676;
   assign n1678 = n1413[38]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1679 = n1389 ? n1677 : n1678;
   assign n1680 = n1413[66:39]; // extract
   assign n1681 = {n1680, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1682 = n1681[38]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1683 = mant_a_ext_reg[39]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1684 = n1682 | n1683;
   assign n1685 = n1413[39]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1686 = n1389 ? n1684 : n1685;
   assign n1687 = n1413[66:40]; // extract
   assign n1688 = {n1687, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1689 = n1688[39]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1690 = mant_a_ext_reg[40]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1691 = n1689 | n1690;
   assign n1692 = n1413[40]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1693 = n1389 ? n1691 : n1692;
   assign n1694 = n1413[66:41]; // extract
   assign n1695 = {n1694, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1696 = n1695[40]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1697 = mant_a_ext_reg[41]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1698 = n1696 | n1697;
   assign n1699 = n1413[41]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1700 = n1389 ? n1698 : n1699;
   assign n1701 = n1413[66:42]; // extract
   assign n1702 = {n1701, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1703 = n1702[41]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1704 = mant_a_ext_reg[42]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1705 = n1703 | n1704;
   assign n1706 = n1413[42]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1707 = n1389 ? n1705 : n1706;
   assign n1708 = n1413[66:43]; // extract
   assign n1709 = {n1708, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1710 = n1709[42]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1711 = mant_a_ext_reg[43]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1712 = n1710 | n1711;
   assign n1713 = n1413[43]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1714 = n1389 ? n1712 : n1713;
   assign n1715 = n1413[66:44]; // extract
   assign n1716 = {n1715, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1717 = n1716[43]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1718 = mant_a_ext_reg[44]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1719 = n1717 | n1718;
   assign n1720 = n1413[44]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1721 = n1389 ? n1719 : n1720;
   assign n1722 = n1413[66:45]; // extract
   assign n1723 = {n1722, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1724 = n1723[44]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1725 = mant_a_ext_reg[45]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1726 = n1724 | n1725;
   assign n1727 = n1413[45]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1728 = n1389 ? n1726 : n1727;
   assign n1729 = n1413[66:46]; // extract
   assign n1730 = {n1729, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1731 = n1730[45]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1732 = mant_a_ext_reg[46]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1733 = n1731 | n1732;
   assign n1734 = n1413[46]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1735 = n1389 ? n1733 : n1734;
   assign n1736 = n1413[66:47]; // extract
   assign n1737 = {n1736, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1738 = n1737[46]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1739 = mant_a_ext_reg[47]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1740 = n1738 | n1739;
   assign n1741 = n1413[47]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1742 = n1389 ? n1740 : n1741;
   assign n1743 = n1413[66:48]; // extract
   assign n1744 = {n1743, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1745 = n1744[47]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1746 = mant_a_ext_reg[48]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1747 = n1745 | n1746;
   assign n1748 = n1413[48]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1749 = n1389 ? n1747 : n1748;
   assign n1750 = n1413[66:49]; // extract
   assign n1751 = {n1750, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1752 = n1751[48]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1753 = mant_a_ext_reg[49]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1754 = n1752 | n1753;
   assign n1755 = n1413[49]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1756 = n1389 ? n1754 : n1755;
   assign n1757 = n1413[66:50]; // extract
   assign n1758 = {n1757, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1759 = n1758[49]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1760 = mant_a_ext_reg[50]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1761 = n1759 | n1760;
   assign n1762 = n1413[50]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1763 = n1389 ? n1761 : n1762;
   assign n1764 = n1413[66:51]; // extract
   assign n1765 = {n1764, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1766 = n1765[50]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1767 = mant_a_ext_reg[51]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1768 = n1766 | n1767;
   assign n1769 = n1413[51]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1770 = n1389 ? n1768 : n1769;
   assign n1771 = n1413[66:52]; // extract
   assign n1772 = {n1771, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1773 = n1772[51]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1774 = mant_a_ext_reg[52]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1775 = n1773 | n1774;
   assign n1776 = n1413[52]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1777 = n1389 ? n1775 : n1776;
   assign n1778 = n1413[66:53]; // extract
   assign n1779 = {n1778, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1780 = n1779[52]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1781 = mant_a_ext_reg[53]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1782 = n1780 | n1781;
   assign n1783 = n1413[53]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1784 = n1389 ? n1782 : n1783;
   assign n1785 = n1413[66:54]; // extract
   assign n1786 = {n1785, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1787 = n1786[53]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1788 = mant_a_ext_reg[54]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1789 = n1787 | n1788;
   assign n1790 = n1413[54]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1791 = n1389 ? n1789 : n1790;
   assign n1792 = n1413[66:55]; // extract
   assign n1793 = {n1792, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1794 = n1793[54]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1795 = mant_a_ext_reg[55]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1796 = n1794 | n1795;
   assign n1797 = n1413[55]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1798 = n1389 ? n1796 : n1797;
   assign n1799 = n1413[66:56]; // extract
   assign n1800 = {n1799, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1801 = n1800[55]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1802 = mant_a_ext_reg[56]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1803 = n1801 | n1802;
   assign n1804 = n1413[56]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1805 = n1389 ? n1803 : n1804;
   assign n1806 = n1413[66:57]; // extract
   assign n1807 = {n1806, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1808 = n1807[56]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1809 = mant_a_ext_reg[57]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1810 = n1808 | n1809;
   assign n1811 = n1413[57]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1812 = n1389 ? n1810 : n1811;
   assign n1813 = n1413[66:58]; // extract
   assign n1814 = {n1813, n1812, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1815 = n1814[57]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1816 = mant_a_ext_reg[58]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1817 = n1815 | n1816;
   assign n1818 = n1413[58]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1819 = n1389 ? n1817 : n1818;
   assign n1820 = n1413[66:59]; // extract
   assign n1821 = {n1820, n1819, n1812, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1822 = n1821[58]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1823 = mant_a_ext_reg[59]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1824 = n1822 | n1823;
   assign n1825 = n1413[59]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1826 = n1389 ? n1824 : n1825;
   assign n1827 = n1413[66:60]; // extract
   assign n1828 = {n1827, n1826, n1819, n1812, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1829 = n1828[59]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1830 = mant_a_ext_reg[60]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1831 = n1829 | n1830;
   assign n1832 = n1413[60]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1833 = n1389 ? n1831 : n1832;
   assign n1834 = n1413[66:61]; // extract
   assign n1835 = {n1834, n1833, n1826, n1819, n1812, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1836 = n1835[60]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1837 = mant_a_ext_reg[61]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1838 = n1836 | n1837;
   assign n1839 = n1413[61]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1840 = n1389 ? n1838 : n1839;
   assign n1841 = n1413[66:62]; // extract
   assign n1842 = {n1841, n1840, n1833, n1826, n1819, n1812, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1843 = n1842[61]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1844 = mant_a_ext_reg[62]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1845 = n1843 | n1844;
   assign n1846 = n1413[62]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1847 = n1389 ? n1845 : n1846;
   assign n1848 = n1413[66:63]; // extract
   assign n1849 = {n1848, n1847, n1840, n1833, n1826, n1819, n1812, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1850 = n1849[62]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1851 = mant_a_ext_reg[63]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1852 = n1850 | n1851;
   assign n1853 = n1413[63]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1854 = n1389 ? n1852 : n1853;
   assign n1855 = n1413[66:64]; // extract
   assign n1856 = {n1855, n1854, n1847, n1840, n1833, n1826, n1819, n1812, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1857 = n1856[63]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1858 = mant_a_ext_reg[64]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1859 = n1857 | n1858;
   assign n1860 = n1413[64]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1861 = n1389 ? n1859 : n1860;
   assign n1862 = n1413[66:65]; // extract
   assign n1863 = {n1862, n1861, n1854, n1847, n1840, n1833, n1826, n1819, n1812, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1864 = n1863[64]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1865 = mant_a_ext_reg[65]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1866 = n1864 | n1865;
   assign n1867 = n1413[65]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1868 = n1389 ? n1866 : n1867;
   assign n1869 = n1413[66]; // extract
   assign n1870 = {n1869, n1868, n1861, n1854, n1847, n1840, n1833, n1826, n1819, n1812, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420, n1412};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1871 = n1870[65]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1872 = mant_a_ext_reg[66]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1873 = n1871 | n1872;
   assign n1874 = n1413[66]; // extract
-  /* mc68881_pkg.vhd:1574:7  */
+  /* mc68881_pkg.vhd:1595:7  */
   assign n1875 = n1389 ? n1873 : n1874;
-  /* mc68881_pkg.vhd:1573:5  */
+  /* mc68881_pkg.vhd:1594:5  */
   assign n1876 = n1389 ? n1391 : n1389;
   assign n1877 = {n1875, n1868, n1861, n1854, n1847, n1840, n1833, n1826, n1819, n1812, n1805, n1798, n1791, n1784, n1777, n1770, n1763, n1756, n1749, n1742, n1735, n1728, n1721, n1714, n1707, n1700, n1693, n1686, n1679, n1672, n1665, n1658, n1651, n1644, n1637, n1630, n1623, n1616, n1609, n1602, n1595, n1588, n1581, n1574, n1567, n1560, n1553, n1546, n1539, n1532, n1525, n1518, n1511, n1504, n1497, n1490, n1483, n1476, n1469, n1462, n1455, n1448, n1441, n1434, n1427, n1420};
-  /* mc68881_pkg.vhd:1573:5  */
+  /* mc68881_pkg.vhd:1594:5  */
   assign n1878 = n1389 ? n1877 : n1414;
-  /* mc68881_pkg.vhd:1576:31  */
+  /* mc68881_pkg.vhd:1597:31  */
   assign n1879 = {1'b0, n1351};  //  uext
-  /* mc68881_pkg.vhd:1576:31  */
+  /* mc68881_pkg.vhd:1597:31  */
   assign n1881 = n1879 - 32'b00000000000000000000000000000001;
-  /* mc68881_pkg.vhd:1576:31  */
+  /* mc68881_pkg.vhd:1597:31  */
   assign n1882 = n1881[6:0];  // trunc
-  /* mc68881_pkg.vhd:1576:24  */
+  /* mc68881_pkg.vhd:1597:24  */
   assign n1884 = {n1878, n1412};
-  /* mc68881_pkg.vhd:1576:5  */
+  /* mc68881_pkg.vhd:1597:5  */
   assign n1886 = n1876 ? n2903 : n1408;
-  /* mc68881_pkg.vhd:1578:15  */
+  /* mc68881_pkg.vhd:1599:15  */
   assign n1887 = mant_a_ext_reg >> n1351;
   assign n1888 = {n1406, n1404};
-  /* mc68881_pkg.vhd:1578:5  */
+  /* mc68881_pkg.vhd:1599:5  */
   assign n1889 = n1876 ? n1887 : n1888;
   assign n1891 = n1889[0]; // extract
-  /* mc68881_pkg.vhd:1579:5  */
+  /* mc68881_pkg.vhd:1600:5  */
   assign n1892 = n1896 ? 1'b1 : n1891;
-  /* mc68881_pkg.vhd:1579:5  */
+  /* mc68881_pkg.vhd:1600:5  */
   assign n1894 = n1876 & n1886;
-  /* mc68881_pkg.vhd:1579:5  */
+  /* mc68881_pkg.vhd:1600:5  */
   assign n1896 = n1894 & n1876;
   assign n1897 = n1889[66:1]; // extract
   assign n1898 = {n1897, n1892};
-  /* mc68881_pkg.vhd:1582:5  */
+  /* mc68881_pkg.vhd:1603:5  */
   assign n1903 = n1876 ? n1898 : n1392;
   /* mc68881_fp80_addsub_unit.vhd:266:15  */
   assign n1904 = {{14{b_exp_reg[17]}}, b_exp_reg}; // sext
@@ -4631,543 +4631,543 @@ module mc68881_fp80_addsub_unit
   assign n1937 = n1936[67]; // extract
   /* mc68881_fp80_addsub_unit.vhd:292:58  */
   assign n1939 = n1936[66:0]; // extract
-  /* mc68881_pkg.vhd:1572:26  */
+  /* mc68881_pkg.vhd:1593:26  */
   assign n1947 = n1936[0]; // extract
   assign n1949 = n1948[66:1]; // extract
   assign n1950 = {n1949, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1951 = n1950[0]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1952 = n1936[1]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1953 = n1951 | n1952;
   assign n1954 = n1948[66:2]; // extract
   assign n1955 = {n1954, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1956 = n1955[1]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1957 = n1936[2]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1958 = n1956 | n1957;
   assign n1959 = n1948[66:3]; // extract
   assign n1960 = {n1959, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1961 = n1960[2]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1962 = n1936[3]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1963 = n1961 | n1962;
   assign n1964 = n1948[66:4]; // extract
   assign n1965 = {n1964, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1966 = n1965[3]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1967 = n1936[4]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1968 = n1966 | n1967;
   assign n1969 = n1948[66:5]; // extract
   assign n1970 = {n1969, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1971 = n1970[4]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1972 = n1936[5]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1973 = n1971 | n1972;
   assign n1974 = n1948[66:6]; // extract
   assign n1975 = {n1974, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1976 = n1975[5]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1977 = n1936[6]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1978 = n1976 | n1977;
   assign n1979 = n1948[66:7]; // extract
   assign n1980 = {n1979, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1981 = n1980[6]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1982 = n1936[7]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1983 = n1981 | n1982;
   assign n1984 = n1948[66:8]; // extract
   assign n1985 = {n1984, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1986 = n1985[7]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1987 = n1936[8]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1988 = n1986 | n1987;
   assign n1989 = n1948[66:9]; // extract
   assign n1990 = {n1989, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1991 = n1990[8]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1992 = n1936[9]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1993 = n1991 | n1992;
   assign n1994 = n1948[66:10]; // extract
   assign n1995 = {n1994, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n1996 = n1995[9]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n1997 = n1936[10]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n1998 = n1996 | n1997;
   assign n1999 = n1948[66:11]; // extract
   assign n2000 = {n1999, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2001 = n2000[10]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2002 = n1936[11]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2003 = n2001 | n2002;
   assign n2004 = n1948[66:12]; // extract
   assign n2005 = {n2004, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2006 = n2005[11]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2007 = n1936[12]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2008 = n2006 | n2007;
   assign n2009 = n1948[66:13]; // extract
   assign n2010 = {n2009, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2011 = n2010[12]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2012 = n1936[13]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2013 = n2011 | n2012;
   assign n2014 = n1948[66:14]; // extract
   assign n2015 = {n2014, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2016 = n2015[13]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2017 = n1936[14]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2018 = n2016 | n2017;
   assign n2019 = n1948[66:15]; // extract
   assign n2020 = {n2019, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2021 = n2020[14]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2022 = n1936[15]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2023 = n2021 | n2022;
   assign n2024 = n1948[66:16]; // extract
   assign n2025 = {n2024, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2026 = n2025[15]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2027 = n1936[16]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2028 = n2026 | n2027;
   assign n2029 = n1948[66:17]; // extract
   assign n2030 = {n2029, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2031 = n2030[16]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2032 = n1936[17]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2033 = n2031 | n2032;
   assign n2034 = n1948[66:18]; // extract
   assign n2035 = {n2034, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2036 = n2035[17]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2037 = n1936[18]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2038 = n2036 | n2037;
   assign n2039 = n1948[66:19]; // extract
   assign n2040 = {n2039, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2041 = n2040[18]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2042 = n1936[19]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2043 = n2041 | n2042;
   assign n2044 = n1948[66:20]; // extract
   assign n2045 = {n2044, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2046 = n2045[19]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2047 = n1936[20]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2048 = n2046 | n2047;
   assign n2049 = n1948[66:21]; // extract
   assign n2050 = {n2049, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2051 = n2050[20]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2052 = n1936[21]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2053 = n2051 | n2052;
   assign n2054 = n1948[66:22]; // extract
   assign n2055 = {n2054, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2056 = n2055[21]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2057 = n1936[22]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2058 = n2056 | n2057;
   assign n2059 = n1948[66:23]; // extract
   assign n2060 = {n2059, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2061 = n2060[22]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2062 = n1936[23]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2063 = n2061 | n2062;
   assign n2064 = n1948[66:24]; // extract
   assign n2065 = {n2064, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2066 = n2065[23]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2067 = n1936[24]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2068 = n2066 | n2067;
   assign n2069 = n1948[66:25]; // extract
   assign n2070 = {n2069, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2071 = n2070[24]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2072 = n1936[25]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2073 = n2071 | n2072;
   assign n2074 = n1948[66:26]; // extract
   assign n2075 = {n2074, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2076 = n2075[25]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2077 = n1936[26]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2078 = n2076 | n2077;
   assign n2079 = n1948[66:27]; // extract
   assign n2080 = {n2079, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2081 = n2080[26]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2082 = n1936[27]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2083 = n2081 | n2082;
   assign n2084 = n1948[66:28]; // extract
   assign n2085 = {n2084, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2086 = n2085[27]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2087 = n1936[28]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2088 = n2086 | n2087;
   assign n2089 = n1948[66:29]; // extract
   assign n2090 = {n2089, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2091 = n2090[28]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2092 = n1936[29]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2093 = n2091 | n2092;
   assign n2094 = n1948[66:30]; // extract
   assign n2095 = {n2094, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2096 = n2095[29]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2097 = n1936[30]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2098 = n2096 | n2097;
   assign n2099 = n1948[66:31]; // extract
   assign n2100 = {n2099, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2101 = n2100[30]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2102 = n1936[31]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2103 = n2101 | n2102;
   assign n2104 = n1948[66:32]; // extract
   assign n2105 = {n2104, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2106 = n2105[31]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2107 = n1936[32]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2108 = n2106 | n2107;
   assign n2109 = n1948[66:33]; // extract
   assign n2110 = {n2109, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2111 = n2110[32]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2112 = n1936[33]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2113 = n2111 | n2112;
   assign n2114 = n1948[66:34]; // extract
   assign n2115 = {n2114, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2116 = n2115[33]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2117 = n1936[34]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2118 = n2116 | n2117;
   assign n2119 = n1948[66:35]; // extract
   assign n2120 = {n2119, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2121 = n2120[34]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2122 = n1936[35]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2123 = n2121 | n2122;
   assign n2124 = n1948[66:36]; // extract
   assign n2125 = {n2124, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2126 = n2125[35]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2127 = n1936[36]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2128 = n2126 | n2127;
   assign n2129 = n1948[66:37]; // extract
   assign n2130 = {n2129, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2131 = n2130[36]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2132 = n1936[37]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2133 = n2131 | n2132;
   assign n2134 = n1948[66:38]; // extract
   assign n2135 = {n2134, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2136 = n2135[37]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2137 = n1936[38]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2138 = n2136 | n2137;
   assign n2139 = n1948[66:39]; // extract
   assign n2140 = {n2139, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2141 = n2140[38]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2142 = n1936[39]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2143 = n2141 | n2142;
   assign n2144 = n1948[66:40]; // extract
   assign n2145 = {n2144, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2146 = n2145[39]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2147 = n1936[40]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2148 = n2146 | n2147;
   assign n2149 = n1948[66:41]; // extract
   assign n2150 = {n2149, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2151 = n2150[40]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2152 = n1936[41]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2153 = n2151 | n2152;
   assign n2154 = n1948[66:42]; // extract
   assign n2155 = {n2154, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2156 = n2155[41]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2157 = n1936[42]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2158 = n2156 | n2157;
   assign n2159 = n1948[66:43]; // extract
   assign n2160 = {n2159, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2161 = n2160[42]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2162 = n1936[43]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2163 = n2161 | n2162;
   assign n2164 = n1948[66:44]; // extract
   assign n2165 = {n2164, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2166 = n2165[43]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2167 = n1936[44]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2168 = n2166 | n2167;
   assign n2169 = n1948[66:45]; // extract
   assign n2170 = {n2169, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2171 = n2170[44]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2172 = n1936[45]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2173 = n2171 | n2172;
   assign n2174 = n1948[66:46]; // extract
   assign n2175 = {n2174, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2176 = n2175[45]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2177 = n1936[46]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2178 = n2176 | n2177;
   assign n2179 = n1948[66:47]; // extract
   assign n2180 = {n2179, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2181 = n2180[46]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2182 = n1936[47]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2183 = n2181 | n2182;
   assign n2184 = n1948[66:48]; // extract
   assign n2185 = {n2184, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2186 = n2185[47]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2187 = n1936[48]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2188 = n2186 | n2187;
   assign n2189 = n1948[66:49]; // extract
   assign n2190 = {n2189, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2191 = n2190[48]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2192 = n1936[49]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2193 = n2191 | n2192;
   assign n2194 = n1948[66:50]; // extract
   assign n2195 = {n2194, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2196 = n2195[49]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2197 = n1936[50]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2198 = n2196 | n2197;
   assign n2199 = n1948[66:51]; // extract
   assign n2200 = {n2199, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2201 = n2200[50]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2202 = n1936[51]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2203 = n2201 | n2202;
   assign n2204 = n1948[66:52]; // extract
   assign n2205 = {n2204, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2206 = n2205[51]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2207 = n1936[52]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2208 = n2206 | n2207;
   assign n2209 = n1948[66:53]; // extract
   assign n2210 = {n2209, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2211 = n2210[52]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2212 = n1936[53]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2213 = n2211 | n2212;
   assign n2214 = n1948[66:54]; // extract
   assign n2215 = {n2214, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2216 = n2215[53]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2217 = n1936[54]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2218 = n2216 | n2217;
   assign n2219 = n1948[66:55]; // extract
   assign n2220 = {n2219, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2221 = n2220[54]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2222 = n1936[55]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2223 = n2221 | n2222;
   assign n2224 = n1948[66:56]; // extract
   assign n2225 = {n2224, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2226 = n2225[55]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2227 = n1936[56]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2228 = n2226 | n2227;
   assign n2229 = n1948[66:57]; // extract
   assign n2230 = {n2229, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2231 = n2230[56]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2232 = n1936[57]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2233 = n2231 | n2232;
   assign n2234 = n1948[66:58]; // extract
   assign n2235 = {n2234, n2233, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2236 = n2235[57]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2237 = n1936[58]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2238 = n2236 | n2237;
   assign n2239 = n1948[66:59]; // extract
   assign n2240 = {n2239, n2238, n2233, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2241 = n2240[58]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2242 = n1936[59]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2243 = n2241 | n2242;
   assign n2244 = n1948[66:60]; // extract
   assign n2245 = {n2244, n2243, n2238, n2233, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2246 = n2245[59]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2247 = n1936[60]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2248 = n2246 | n2247;
   assign n2249 = n1948[66:61]; // extract
   assign n2250 = {n2249, n2248, n2243, n2238, n2233, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2251 = n2250[60]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2252 = n1936[61]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2253 = n2251 | n2252;
   assign n2254 = n1948[66:62]; // extract
   assign n2255 = {n2254, n2253, n2248, n2243, n2238, n2233, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2256 = n2255[61]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2257 = n1936[62]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2258 = n2256 | n2257;
   assign n2259 = n1948[66:63]; // extract
   assign n2260 = {n2259, n2258, n2253, n2248, n2243, n2238, n2233, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2261 = n2260[62]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2262 = n1936[63]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2263 = n2261 | n2262;
   assign n2264 = n1948[66:64]; // extract
   assign n2265 = {n2264, n2263, n2258, n2253, n2248, n2243, n2238, n2233, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2266 = n2265[63]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2267 = n1936[64]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2268 = n2266 | n2267;
   assign n2269 = n1948[66:65]; // extract
   assign n2270 = {n2269, n2268, n2263, n2258, n2253, n2248, n2243, n2238, n2233, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2271 = n2270[64]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2272 = n1936[65]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2273 = n2271 | n2272;
   assign n2274 = n1948[66]; // extract
   assign n2275 = {n2274, n2273, n2268, n2263, n2258, n2253, n2248, n2243, n2238, n2233, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1574:32  */
+  /* mc68881_pkg.vhd:1595:32  */
   assign n2276 = n2275[65]; // extract
-  /* mc68881_pkg.vhd:1574:46  */
+  /* mc68881_pkg.vhd:1595:46  */
   assign n2277 = n1936[66]; // extract
-  /* mc68881_pkg.vhd:1574:38  */
+  /* mc68881_pkg.vhd:1595:38  */
   assign n2278 = n2276 | n2277;
   assign n2279 = {n2278, n2273, n2268, n2263, n2258, n2253, n2248, n2243, n2238, n2233, n2228, n2223, n2218, n2213, n2208, n2203, n2198, n2193, n2188, n2183, n2178, n2173, n2168, n2163, n2158, n2153, n2148, n2143, n2138, n2133, n2128, n2123, n2118, n2113, n2108, n2103, n2098, n2093, n2088, n2083, n2078, n2073, n2068, n2063, n2058, n2053, n2048, n2043, n2038, n2033, n2028, n2023, n2018, n2013, n2008, n2003, n1998, n1993, n1988, n1983, n1978, n1973, n1968, n1963, n1958, n1953, n1947};
-  /* mc68881_pkg.vhd:1576:24  */
+  /* mc68881_pkg.vhd:1597:24  */
   assign n2280 = n2279[0]; // extract
-  /* mc68881_pkg.vhd:1578:15  */
+  /* mc68881_pkg.vhd:1599:15  */
   assign n2283 = n1939 >> 31'b0000000000000000000000000000001;
   assign n2286 = n2283[0]; // extract
-  /* mc68881_pkg.vhd:1579:5  */
+  /* mc68881_pkg.vhd:1600:5  */
   assign n2287 = n2280 ? 1'b1 : n2286;
   assign n2288 = n2283[66:1]; // extract
   assign n2289 = {n2288, n2287};
@@ -5232,119 +5232,119 @@ module mc68881_fp80_addsub_unit
   assign n2338 = $signed(n2332) > $signed(32'b00000000000000000000000000000000);
   /* mc68881_fp80_addsub_unit.vhd:328:51  */
   assign n2339 = n2338 & n2336;
-  /* mc68881_pkg.vhd:2494:11  */
+  /* mc68881_pkg.vhd:2515:11  */
   assign n2346 = mant_sum_reg[66:3]; // extract
-  /* mc68881_pkg.vhd:2494:39  */
+  /* mc68881_pkg.vhd:2515:39  */
   assign n2348 = n2346 == 64'b0000000000000000000000000000000000000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2496:15  */
+  /* mc68881_pkg.vhd:2517:15  */
   assign n2349 = mant_sum_reg[2:0]; // extract
-  /* mc68881_pkg.vhd:2496:38  */
+  /* mc68881_pkg.vhd:2517:38  */
   assign n2351 = {n2349, 64'b0000000000000000000000000000000000000000000000000000000000000000};
-  /* mc68881_pkg.vhd:2494:7  */
+  /* mc68881_pkg.vhd:2515:7  */
   assign n2354 = n2348 ? 31'b0000000000000000000000001000000 : 31'b0000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2494:7  */
+  /* mc68881_pkg.vhd:2515:7  */
   assign n2356 = n2348 ? n2351 : n2331;
-  /* mc68881_pkg.vhd:2499:9  */
+  /* mc68881_pkg.vhd:2520:9  */
   assign n2357 = n2356[66:35]; // extract
-  /* mc68881_pkg.vhd:2499:37  */
+  /* mc68881_pkg.vhd:2520:37  */
   assign n2359 = n2357 == 32'b00000000000000000000000000000000;
-  /* mc68881_pkg.vhd:2500:18  */
+  /* mc68881_pkg.vhd:2521:18  */
   assign n2360 = {1'b0, n2354};  //  uext
-  /* mc68881_pkg.vhd:2500:18  */
+  /* mc68881_pkg.vhd:2521:18  */
   assign n2362 = n2360 + 32'b00000000000000000000000000100000;
-  /* mc68881_pkg.vhd:2500:7  */
+  /* mc68881_pkg.vhd:2521:7  */
   assign n2363 = n2362[30:0];  // trunc
-  /* mc68881_pkg.vhd:2501:13  */
+  /* mc68881_pkg.vhd:2522:13  */
   assign n2364 = n2356[34:0]; // extract
-  /* mc68881_pkg.vhd:2501:36  */
+  /* mc68881_pkg.vhd:2522:36  */
   assign n2366 = {n2364, 32'b00000000000000000000000000000000};
-  /* mc68881_pkg.vhd:2499:5  */
+  /* mc68881_pkg.vhd:2520:5  */
   assign n2367 = n2359 ? n2363 : n2354;
-  /* mc68881_pkg.vhd:2499:5  */
+  /* mc68881_pkg.vhd:2520:5  */
   assign n2368 = n2359 ? n2366 : n2356;
-  /* mc68881_pkg.vhd:2503:9  */
+  /* mc68881_pkg.vhd:2524:9  */
   assign n2369 = n2368[66:51]; // extract
-  /* mc68881_pkg.vhd:2503:37  */
+  /* mc68881_pkg.vhd:2524:37  */
   assign n2371 = n2369 == 16'b0000000000000000;
-  /* mc68881_pkg.vhd:2504:18  */
+  /* mc68881_pkg.vhd:2525:18  */
   assign n2372 = {1'b0, n2367};  //  uext
-  /* mc68881_pkg.vhd:2504:18  */
+  /* mc68881_pkg.vhd:2525:18  */
   assign n2374 = n2372 + 32'b00000000000000000000000000010000;
-  /* mc68881_pkg.vhd:2504:7  */
+  /* mc68881_pkg.vhd:2525:7  */
   assign n2375 = n2374[30:0];  // trunc
-  /* mc68881_pkg.vhd:2505:13  */
+  /* mc68881_pkg.vhd:2526:13  */
   assign n2376 = n2368[50:0]; // extract
-  /* mc68881_pkg.vhd:2505:36  */
+  /* mc68881_pkg.vhd:2526:36  */
   assign n2378 = {n2376, 16'b0000000000000000};
-  /* mc68881_pkg.vhd:2503:5  */
+  /* mc68881_pkg.vhd:2524:5  */
   assign n2379 = n2371 ? n2375 : n2367;
-  /* mc68881_pkg.vhd:2503:5  */
+  /* mc68881_pkg.vhd:2524:5  */
   assign n2380 = n2371 ? n2378 : n2368;
-  /* mc68881_pkg.vhd:2507:9  */
+  /* mc68881_pkg.vhd:2528:9  */
   assign n2381 = n2380[66:59]; // extract
-  /* mc68881_pkg.vhd:2507:36  */
+  /* mc68881_pkg.vhd:2528:36  */
   assign n2383 = n2381 == 8'b00000000;
-  /* mc68881_pkg.vhd:2508:18  */
+  /* mc68881_pkg.vhd:2529:18  */
   assign n2384 = {1'b0, n2379};  //  uext
-  /* mc68881_pkg.vhd:2508:18  */
+  /* mc68881_pkg.vhd:2529:18  */
   assign n2386 = n2384 + 32'b00000000000000000000000000001000;
-  /* mc68881_pkg.vhd:2508:7  */
+  /* mc68881_pkg.vhd:2529:7  */
   assign n2387 = n2386[30:0];  // trunc
-  /* mc68881_pkg.vhd:2509:13  */
+  /* mc68881_pkg.vhd:2530:13  */
   assign n2388 = n2380[58:0]; // extract
-  /* mc68881_pkg.vhd:2509:35  */
+  /* mc68881_pkg.vhd:2530:35  */
   assign n2390 = {n2388, 8'b00000000};
-  /* mc68881_pkg.vhd:2507:5  */
+  /* mc68881_pkg.vhd:2528:5  */
   assign n2391 = n2383 ? n2387 : n2379;
-  /* mc68881_pkg.vhd:2507:5  */
+  /* mc68881_pkg.vhd:2528:5  */
   assign n2392 = n2383 ? n2390 : n2380;
-  /* mc68881_pkg.vhd:2511:9  */
+  /* mc68881_pkg.vhd:2532:9  */
   assign n2393 = n2392[66:63]; // extract
-  /* mc68881_pkg.vhd:2511:36  */
+  /* mc68881_pkg.vhd:2532:36  */
   assign n2395 = n2393 == 4'b0000;
-  /* mc68881_pkg.vhd:2512:18  */
+  /* mc68881_pkg.vhd:2533:18  */
   assign n2396 = {1'b0, n2391};  //  uext
-  /* mc68881_pkg.vhd:2512:18  */
+  /* mc68881_pkg.vhd:2533:18  */
   assign n2398 = n2396 + 32'b00000000000000000000000000000100;
-  /* mc68881_pkg.vhd:2512:7  */
+  /* mc68881_pkg.vhd:2533:7  */
   assign n2399 = n2398[30:0];  // trunc
-  /* mc68881_pkg.vhd:2513:13  */
+  /* mc68881_pkg.vhd:2534:13  */
   assign n2400 = n2392[62:0]; // extract
-  /* mc68881_pkg.vhd:2513:35  */
+  /* mc68881_pkg.vhd:2534:35  */
   assign n2402 = {n2400, 4'b0000};
-  /* mc68881_pkg.vhd:2511:5  */
+  /* mc68881_pkg.vhd:2532:5  */
   assign n2403 = n2395 ? n2399 : n2391;
-  /* mc68881_pkg.vhd:2511:5  */
+  /* mc68881_pkg.vhd:2532:5  */
   assign n2404 = n2395 ? n2402 : n2392;
-  /* mc68881_pkg.vhd:2515:9  */
+  /* mc68881_pkg.vhd:2536:9  */
   assign n2405 = n2404[66:65]; // extract
-  /* mc68881_pkg.vhd:2515:36  */
+  /* mc68881_pkg.vhd:2536:36  */
   assign n2407 = n2405 == 2'b00;
-  /* mc68881_pkg.vhd:2516:18  */
+  /* mc68881_pkg.vhd:2537:18  */
   assign n2408 = {1'b0, n2403};  //  uext
-  /* mc68881_pkg.vhd:2516:18  */
+  /* mc68881_pkg.vhd:2537:18  */
   assign n2410 = n2408 + 32'b00000000000000000000000000000010;
-  /* mc68881_pkg.vhd:2516:7  */
+  /* mc68881_pkg.vhd:2537:7  */
   assign n2411 = n2410[30:0];  // trunc
-  /* mc68881_pkg.vhd:2517:13  */
+  /* mc68881_pkg.vhd:2538:13  */
   assign n2412 = n2404[64:0]; // extract
-  /* mc68881_pkg.vhd:2517:35  */
+  /* mc68881_pkg.vhd:2538:35  */
   assign n2414 = {n2412, 2'b00};
-  /* mc68881_pkg.vhd:2515:5  */
+  /* mc68881_pkg.vhd:2536:5  */
   assign n2415 = n2407 ? n2411 : n2403;
-  /* mc68881_pkg.vhd:2515:5  */
+  /* mc68881_pkg.vhd:2536:5  */
   assign n2416 = n2407 ? n2414 : n2404;
-  /* mc68881_pkg.vhd:2519:9  */
+  /* mc68881_pkg.vhd:2540:9  */
   assign n2417 = n2416[66]; // extract
-  /* mc68881_pkg.vhd:2519:18  */
+  /* mc68881_pkg.vhd:2540:18  */
   assign n2418 = ~n2417;
-  /* mc68881_pkg.vhd:2520:18  */
+  /* mc68881_pkg.vhd:2541:18  */
   assign n2419 = {1'b0, n2415};  //  uext
-  /* mc68881_pkg.vhd:2520:18  */
+  /* mc68881_pkg.vhd:2541:18  */
   assign n2421 = n2419 + 32'b00000000000000000000000000000001;
-  /* mc68881_pkg.vhd:2520:7  */
+  /* mc68881_pkg.vhd:2541:7  */
   assign n2422 = n2421[30:0];  // trunc
-  /* mc68881_pkg.vhd:2519:5  */
+  /* mc68881_pkg.vhd:2540:5  */
   assign n2423 = n2418 ? n2422 : n2415;
   /* mc68881_fp80_addsub_unit.vhd:332:22  */
   assign n2424 = {1'b0, n2423};  //  uext
@@ -6007,11 +6007,11 @@ module mc68881_fp80_addsub_unit
   initial
     n2897 = 80'b00000000000000000000000000000000000000000000000000000000000000000000000000000000;
   assign n2899 = {61'bX, n1324};
-  /* mc68881_pkg.vhd:1576:31  */
+  /* mc68881_pkg.vhd:1597:31  */
   assign n2900 = n2899[n1322 * 1 +: 1]; //(Bmux)
-  /* mc68881_pkg.vhd:1576:31  */
+  /* mc68881_pkg.vhd:1597:31  */
   assign n2902 = {61'bX, n1884};
-  /* mc68881_pkg.vhd:1576:31  */
+  /* mc68881_pkg.vhd:1597:31  */
   assign n2903 = n2902[n1882 * 1 +: 1]; //(Bmux)
 endmodule
 

@@ -1,29 +1,223 @@
-# M68K Emulator -- Hardware FPU Validation (Register-Mapped Mode)
+# M68K Emulator -- Hardware FPU Validation
 
 Runs a Musashi M68000 emulator bare-metal on the ARM Cortex-A53 (AXU3EG / ZU3EG).
 M68K floating-point instructions (F-line opcodes) are trapped and executed on the
-real mc68881 FPGA core using the **direct register-mapped interface** over AXI-Lite.
+real mc68881 FPGA core over AXI-Lite. The validation suite exercises **both**
+operating modes of the FPU:
 
-## Why No CIR?
+- **CIR dialog protocol** -- the authentic MC68881 coprocessor interface (AN-947)
+- **Peripheral (register-mapped)** -- direct register access for any host CPU
 
-The real MC68881 communicates with the host CPU via the **Coprocessor Interface
-Registers (CIR)** -- a stateful command/response/operand dialog protocol described
-in Motorola AN-947. The host writes a command word, polls the response register,
-transfers operands through a data register, and polls again until released.
+## Two Operating Modes
 
-This FPGA implementation exposes the FPU core through **two** interfaces:
+The FPGA FPU exposes a single 5-bit address space (32 registers) that serves two
+overlapping purposes. A mode flag (`cir_mode_reg`, address 13, bit 0) selects
+which decode path handles the overlapping addresses:
 
-1. **CIR dialog** -- faithful to the original 68881 protocol (for real 68K hardware)
-2. **Register-mapped** -- direct access to operand/result/control registers via AXI-Lite
+```
+Address   CIR mode (cir_mode=1)     Peripheral mode (cir_mode=0)
+-------   ----------------------     ----------------------------
+  0       OPSEL                      OPSEL
+  1       CIR Control/Ack            OPA_L  (operand A low)
+  2       --                         OPA_H  (operand A high)
+  3       --                         OPA_E  (operand A exponent)
+  4       CIR OpWord                 OPB_L  (operand B low)
+  5       CIR Command                OPB_H  (operand B high)
+  6       --                         OPB_E  (operand B exponent)
+  7       CIR Condition              RES_L  (result low)
+  8       CIR Operand                RES_H  (result high)
+  9       --                         RES_E  (result exponent)
+ 10       STATUS                     STATUS
+ 11       FPCR                       FPCR
+ 12       CIR Instruction Addr       --
+ 13       CIR Response / Mode        CIR Mode control
+ 14       CIR Operand Addr / FPSR    FPSR
+```
 
-This example uses **only the register-mapped interface**. The CIR state machine
-is not involved at all. This means:
+**Important:** addresses 1, 4, 5, 7, 8, and 14 overlap between the two modes.
+Writing to address 4 (OPB_L) while CIR mode is active will write the CIR OpWord
+register instead of the operand register, and vice versa. Software must explicitly
+switch modes before using the other interface.
 
+### Mode Switching
+
+```c
+/* Switch to peripheral mode */
+fpu_wr(OFF_CIR_MODE, 0);     // write 0 to address 13
+
+/* Switch to CIR mode */
+cir_wr(OFF_CIR_RESPONSE, 1); // write 1 to address 13
+```
+
+The FPU defaults to **CIR mode on reset**, matching real MC68881 behaviour. The
+`fpu_probe()` function and `fpu_exec()`/`fpu_exec_unary()` automatically disable
+CIR mode before accessing peripheral registers. The `cir_cpgen_*()` functions
+automatically re-enable CIR mode before starting a dialog.
+
+## Peripheral Mode
+
+Peripheral mode provides direct register access -- no state machine, no handshaking.
+Any host CPU (ARM, RISC-V, soft-core) can drive the FPU as a simple compute
+accelerator over AXI-Lite.
+
+### Protocol
+
+```c
+#include "fpu_periph.h"
+
+// Ensure peripheral mode
+fpu_wr(OFF_CIR_MODE, 0);
+
+// --- Binary operation: FADD 3.7 + 2.4 ---
+
+// 1. Load operands (FP80: exponent, significand high, significand low)
+fp80_t a = FP80(0x4000, 0xECCCCCCC, 0xCCCCCCCD);  // 3.7
+fp80_t b = FP80(0x4000, 0x99999999, 0x9999999A);  // 2.4
+fpu_load_opa(a);
+fpu_load_opb(b);
+
+// 2. Trigger operation (OPSEL write starts execution immediately)
+fpu_wr(OFF_OPSEL, OPSEL(FPOP_ADD));
+
+// 3. Poll for completion
+while (!(fpu_rd(OFF_STATUS) & STATUS_VALID)) { /* spin */ }
+
+// 4. Read result
+fp80_t result = fpu_read_res();
+// result ≈ 6.1 = FP80(0x4001, 0xC3333333, 0x33333334)
+
+
+// --- Unary operation: FSQRT(9) ---
+
+fp80_t nine = FP80(0x4002, 0x90000000, 0x00000000);
+fpu_load_opa(nine);                     // only OPA needed for unary ops
+fpu_wr(OFF_OPSEL, OPSEL(FPOP_SQRT));
+while (!(fpu_rd(OFF_STATUS) & STATUS_VALID)) { }
+fp80_t root = fpu_read_res();
+// root = 3.0 = FP80(0x4000, 0xC0000000, 0x00000000)
+```
+
+### Key Characteristics
 - **No command/response polling loop** -- just write operands, trigger, poll status, read result
 - **No coprocessor protocol overhead** -- one OPSEL write starts execution
-- **The CIR can be removed** from the design and the FPU core remains fully usable
-  as a standalone compute engine via AXI-Lite
-- **Any host CPU** (ARM, RISC-V, soft-core, etc.) can drive the FPU -- not just 68K
+- **Any host CPU** can drive the FPU -- not just 68K
+- **CIR is optional** -- the CIR logic can be removed and the FPU core remains fully
+  usable as a peripheral-mode compute engine (controlled by `cir_mode_reg`, address 13)
+- Operand A (`a_in`) goes to OPA registers; Operand B (`b_in`) goes to OPB registers
+- For unary/monadic ops (SQRT, SIN, ABS, NEG, etc.), only OPA is used
+- For FMOVECR, the constant ROM offset goes in OPA_L and MOVE_CFG selects the mode
+
+## CIR Dialog Protocol (AN-947)
+
+CIR mode implements the authentic MC68881 coprocessor interface. A real M68020/M68030
+CPU communicates with the MC68881 through exactly this command/response/operand
+dialog. The protocol is a stateful exchange:
+
+1. Host writes **Command** word (operation, source format, destination register)
+2. Host writes **OpWord** (instruction type -- cpGEN, cpBcc, cpScc, etc.)
+3. FPU responds with a **Response primitive** (transfer request, null release, exception)
+4. Host follows the response (write operand data, read result data, acknowledge)
+5. FPU issues **Null** response when the dialog is complete
+
+### Protocol Example: FMOVE.L #42, FP0
+
+```c
+#include "cir_periph.h"
+
+// CIR mode is default-on after reset; re-enable if peripheral ops ran
+cir_wr(OFF_CIR_RESPONSE, 1);
+
+// Build command word: mem-to-reg, Long format, dst=FP0, opcode=MOVE
+u16 cmd = CIR_CMD_MEM2REG(CIR_FMT_LONG, /*dst=*/0, FPOP_MOVE);
+
+// Step 1-2: Write Command then OpWord (OpWord write triggers FSM)
+cir_wr(OFF_CIR_COMMAND, (u32)cmd);
+cir_wr(OFF_CIR_OPWORD,  CIR_OPWORD_CPGEN);
+
+// Step 3: Poll for XFER_TO_CP response (FPU wants operand data)
+u16 resp = cir_poll_response();
+// resp = 0x7004 → "Transfer to coprocessor, 4 bytes"
+
+// Step 4: Write the operand (integer 42)
+cir_wr(OFF_CIR_OPERAND, 42);
+
+// Step 5: Poll for NULL release (operation complete)
+cir_wait_null();
+// FP0 now contains 42.0
+```
+
+### Protocol Example: FSQRT.L #9, FP3
+
+```c
+// Command: mem-to-reg, Long format, dst=FP3, opcode=SQRT
+u16 cmd = CIR_CMD_MEM2REG(CIR_FMT_LONG, /*dst=*/3, FPOP_SQRT);
+
+cir_wr(OFF_CIR_RESPONSE, 1);   // ensure CIR mode
+cir_wr(OFF_CIR_COMMAND, (u32)cmd);
+cir_wr(OFF_CIR_OPWORD,  CIR_OPWORD_CPGEN);
+
+u16 resp = cir_poll_response(); // → 0x7004 (XFER_TO_CP, 4 bytes)
+cir_wr(OFF_CIR_OPERAND, 9);    // write source operand
+
+cir_wait_null();                // FP3 = 3.0
+```
+
+### Protocol Example: Read back FP3 as extended
+
+```c
+// Command: reg-to-mem, Extended format, src=FP3
+u16 cmd = CIR_CMD_REG2MEM(CIR_FMT_EXTENDED, /*src=*/3, FPOP_MOVE);
+
+cir_wr(OFF_CIR_RESPONSE, 1);
+cir_wr(OFF_CIR_COMMAND, (u32)cmd);
+cir_wr(OFF_CIR_OPWORD,  CIR_OPWORD_CPGEN);
+
+u16 resp = cir_poll_response(); // → 0x600C (XFER_FROM_CP, 12 bytes)
+
+u32 words[3];
+words[0] = cir_rd(OFF_CIR_OPERAND);  // sign + exponent
+words[1] = cir_rd(OFF_CIR_OPERAND);  // significand high
+words[2] = cir_rd(OFF_CIR_OPERAND);  // significand low
+// words = {0x4000, 0xC0000000, 0x00000000} = 3.0
+
+cir_wait_null();
+```
+
+### CIR Response Primitives
+
+| Code     | Meaning | Action |
+|----------|---------|--------|
+| `0x0000` | Busy    | Keep polling |
+| `0x2001` | Null    | Dialog complete, release bus |
+| `0x7004` | Transfer to CP, 4 bytes  | Write 1 long word to CIR Operand |
+| `0x7008` | Transfer to CP, 8 bytes  | Write 2 long words |
+| `0x700C` | Transfer to CP, 12 bytes | Write 3 long words (extended) |
+| `0x6004` | Transfer from CP, 4 bytes  | Read 1 long word from CIR Operand |
+| `0x6008` | Transfer from CP, 8 bytes  | Read 2 long words |
+| `0x600C` | Transfer from CP, 12 bytes | Read 3 long words (extended) |
+
+### Key Characteristics
+- **Faithful AN-947 protocol** -- same dialog a real M68020 uses with a real MC68881
+- **Internal FP register file** -- the FPU maintains FP0-FP7 internally; the host
+  never sees raw FP80 values unless it explicitly reads them back via FMOVE
+- **Format conversion in hardware** -- single, double, long, word, byte, extended,
+  and packed decimal are all converted by the FPU, not the host
+- **Multi-instruction sessions** -- CIR mode persists; consecutive dialogs reuse
+  results in FP registers without readback
+
+## Comparison: When to Use Which Mode
+
+| | Peripheral Mode | CIR Dialog Mode |
+|---|---|---|
+| **Use case** | Any host CPU as FPU accelerator | Real M68K coprocessor protocol |
+| **Host CPU** | ARM, RISC-V, soft-core, anything | M68020/030 (or emulator) |
+| **Format conversion** | Host converts to FP80 in software | FPU converts all formats in hardware |
+| **FP register file** | Not used; host manages results | FPU maintains FP0-FP7 internally |
+| **Operand transfer** | 3 AXI writes per operand (L/H/E) | 1-3 words via CIR Operand register |
+| **Triggering** | OPSEL write starts immediately | OpWord write triggers FSM dialog |
+| **Completion** | Poll STATUS bit 0 | Poll CIR Response for Null |
+| **Complexity** | Simple | Stateful protocol |
+| **Mode switch** | `fpu_wr(OFF_CIR_MODE, 0)` | `cir_wr(OFF_CIR_RESPONSE, 1)` |
 
 ## Architecture
 
@@ -47,52 +241,17 @@ ARM Cortex-A53 (bare-metal Vitis BSP)
 |   +-- Polls STATUS register for completion
 |   +-- Reads RES registers (FP80 result)
 |
++-- CIR dialog driver (cir_periph.c)
+|   +-- Writes Command + OpWord to start dialog
+|   +-- Polls CIR Response for transfer/null primitives
+|   +-- Transfers operand words via CIR Operand register
+|   +-- Uses FPU's internal FP register file (FP0-FP7)
+|
 +-- AXI-Lite @ 0x80000000
          |
     mc68881_axilite_wrapper -> FPU core
-    (no CIR involvement)
+    (peripheral mode or CIR mode, selected by addr 13)
 ```
-
-## Register-Mapped FPU Protocol
-
-The protocol is simple -- no state machine, no handshaking:
-
-```c
-// 1. Load operands (FP80: sign+exponent, significand high, significand low)
-fpu_wr(OFF_OPA_L, op_a.l);  fpu_wr(OFF_OPA_H, op_a.h);  fpu_wr(OFF_OPA_E, op_a.e);
-fpu_wr(OFF_OPB_L, op_b.l);  fpu_wr(OFF_OPB_H, op_b.h);  fpu_wr(OFF_OPB_E, op_b.e);
-
-// 2. Trigger operation (OPSEL write starts execution immediately)
-fpu_wr(OFF_OPSEL, 0x01000001);  // CORE_V1 namespace | ADD opcode
-
-// 3. Poll for completion
-while (!(fpu_rd(OFF_STATUS) & 0x01)) { /* spin */ }
-
-// 4. Read result
-result.l = fpu_rd(OFF_RES_L);
-result.h = fpu_rd(OFF_RES_H);
-result.e = fpu_rd(OFF_RES_E);
-```
-
-For unary operations (SIN, SQRT, etc.), only OPA is loaded. For FMOVECR,
-the constant ROM offset goes in OPA_L and MOVE_CFG selects the mode.
-
-### Key Registers
-
-| Register | Offset | Access | Purpose |
-|----------|--------|--------|---------|
-| OPSEL    | 0x00   | W      | Operation select (write triggers execution) |
-| OPA_L/H/E| 0x04-0x0C | W  | Operand A (FP80) |
-| OPB_L/H/E| 0x10-0x18 | W  | Operand B (FP80) |
-| RES_L/H/E| 0x1C-0x24 | R  | Result (FP80) |
-| STATUS   | 0x28   | R      | bit 0=valid, bit 1=busy |
-| FPCR     | 0x2C   | R/W    | FP control (rounding mode, precision) |
-| FPSR     | 0x38   | R      | FP status (condition codes, exceptions) |
-| MOVE_CFG | 0x5C   | W      | FMOVECR/FMOVE/FMOVEM configuration |
-
-### OPSEL Encoding
-
-`namespace[31:24] | opcode_id[7:0]` -- CORE_V1 namespace = 0x01.
 
 ## How the F-line Handler Works
 
@@ -135,6 +294,16 @@ PASS SIN(1.0)
 PASS FMOVECR(pi)
 --- 7 passed, 0 failed ---
 
+--- CIR dialog protocol test ---
+PASS CIR.1 FMOVE.L round-trip (42)
+PASS CIR.2 FADD.S mem (42+3.7)
+PASS CIR.3 FADD reg-to-reg (FP1+FP0=46)
+PASS CIR.4 FMUL.S (3.7f*2.4f~8.88)
+PASS CIR.5 FSQRT(9)=3 exact
+PASS CIR.6 FSIN(1)
+PASS CIR.7 FMOVE.X extended round-trip (pi)
+--- CIR: 7 passed, 0 failed ---
+
 --- Basic FPU integration test (Musashi + F-line) ---
 PASS FMOVECR(pi)->FP0
 PASS FADD pi+1->FP1
@@ -143,7 +312,7 @@ PASS FSIN(1.0)->FP1
 PASS FSQRT(9)->FP5
 --- 5 passed, 0 failed ---
 
-ALL TESTS PASSED
+ALL TESTS PASSED (19/19)
 ```
 
 ## Building (Vitis 2025.2)
@@ -155,15 +324,17 @@ The project is a standard Vitis embedded application targeting the ZU3EG platfor
 | File | Purpose |
 |------|---------|
 | `main.c` | Entry point |
-| `fpu_periph.c` | FPU register-mapped driver |
+| `fpu_periph.c` | FPU peripheral-mode driver |
+| `cir_periph.c` | CIR dialog protocol driver |
 | `fp_regfile.c` | Software FP80 register file |
 | `fline_handler.c` | F-line instruction decode |
 | `emu_memory.c` | 16 MB emulated M68K RAM |
 | `musashi/m68kcpu.c` | Musashi M68000 core |
 | `musashi/m68kops.c` | Generated opcode handlers |
 | `musashi/softfloat/softfloat.c` | SoftFloat (required by Musashi types) |
-| `tests/periph_smoke.c` | Direct FPU driver test |
+| `tests/periph_smoke.c` | Direct FPU peripheral driver test |
 | `tests/basic_fpu.c` | Musashi + F-line integration test |
+| `tests/cir_dialog.c` | CIR dialog protocol test |
 | `platform.c` | Vitis BSP platform init |
 
 **Do NOT compile:** `m68kfpu.c` (Musashi's software FPU -- `#include`d by

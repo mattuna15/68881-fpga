@@ -36,6 +36,7 @@ architecture sim of tb_mc68881_fmove_fmovem is
   constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
   constant ADDR_FPCR : unsigned(4 downto 0) := to_unsigned(11, 5);
   constant ADDR_FPSR : unsigned(4 downto 0) := to_unsigned(14, 5);
+  constant ADDR_CIR_RESPONSE : unsigned(4 downto 0) := to_unsigned(13, 5);
   constant ADDR_MOVE_CFG : unsigned(4 downto 0) := to_unsigned(23, 5);
   constant ADDR_FPIAR : unsigned(4 downto 0) := to_unsigned(24, 5);
   constant FPSR_AEXC_BASE : natural := 0;
@@ -276,6 +277,9 @@ begin
     wait for 2 * CLK_PERIOD;
     reset_n <= '1';
     wait for 2 * CLK_PERIOD;
+
+    -- Disable CIR mode so overlapping addresses route to peripheral decode
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_CIR_RESPONSE, x"00000000");
 
     fp_val_a := fp80_from_int(42);
     report "FMOVE mem->reg setup value=" & to_hstring(fp_val_a) severity note;

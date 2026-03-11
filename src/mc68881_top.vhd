@@ -129,6 +129,13 @@ architecture rtl of mc68881_top is
   signal latched_size : std_logic_vector(1 downto 0) := (others => '0');
   signal latched_a4   : std_logic := '0';
   signal sync_read    : std_logic := '0';
+  signal sync_read_latched : std_logic := '0';  -- Holds sync_read active through full bus access
+  -- CIR-mode guard: when high, overlapping addresses are routed to CIR
+  -- decode and the peripheral decode ignores them (and vice versa).
+  -- Default '1' (CIR mode): matches real MC68881 coprocessor protocol.
+  -- Peripheral-mode apps write 0 to ADDR_CIR_RESPONSE to switch.
+  signal cir_mode_reg    : std_logic := '1';
+  signal cir_active      : std_logic := '0';
   signal d_out_reg    : std_logic_vector(31 downto 0) := (others => '0');
   signal d_out_comb   : std_logic_vector(31 downto 0) := (others => '0');
   constant DSACK_ASSERT_CYCLES_READ  : natural := 1;
@@ -1728,8 +1735,13 @@ begin
     end case;
   end process;
 
+  -- CIR is active when the mode register is set OR the FSM is running.
+  cir_active <= '1' when (cir_mode_reg = '1' or cir_state_reg /= CIR_IDLE) else '0';
+
   sync_read <= '1' when (bus_read = '1' and
-                         (access_class = ACCESS_CIR or cir_state_reg = CIR_SAVE_FRAME)) else '0';
+                         (access_class = ACCESS_CIR or cir_state_reg = CIR_SAVE_FRAME or
+                          (addr = CIR_ADDR_OPERAND and
+                           (cir_state_reg = CIR_XFER_DST or cir_state_reg = CIR_XFER_DST_WAIT)))) else '0';
   -- FPCR mode control: bits 7-6 precision, 5-4 rounding mode.
   round_mode <= decode_round_mode(fpcr_reg(5 downto 4));
   round_prec <= decode_round_prec(fpcr_reg(7 downto 6));
@@ -1835,6 +1847,7 @@ begin
     variable class_force_inexact : std_logic := '0';
     variable class_force_invalid : std_logic := '0';
     variable class_force_bsun : std_logic := '0';
+    variable cir_source_val : fp80_t := (others => '0');
   begin
     if reset_n = '0' then
       op_sel_reg <= FPU_OP_NOP;
@@ -1876,17 +1889,25 @@ begin
         case addr is
           when ADDR_OPSEL =>
             op_sel_reg <= op_sel_write_decoded;
+          -- Addresses 1,4,5,14 have write-side overlap with CIR registers; skip
+          -- when CIR active.  (7,8 also overlap but are read-only in peripheral mode.)
           when ADDR_OPA_L =>
-            operand_reg(0)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in;
+            if cir_active = '0' then
+              operand_reg(0)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in;
+            end if;
           when ADDR_OPA_H =>
             operand_reg(0)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in;
           when ADDR_OPA_E =>
             operand_reg(0)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH) <= d_in(FP80_RESULT_EX_WIDTH-1 downto 0);
             operand_hi16_reg(0) <= d_in(31 downto 16);
           when ADDR_OPB_L =>
-            operand_reg(1)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in;
+            if cir_active = '0' then
+              operand_reg(1)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in;
+            end if;
           when ADDR_OPB_H =>
-            operand_reg(1)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in;
+            if cir_active = '0' then
+              operand_reg(1)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in;
+            end if;
           when ADDR_OPB_E =>
             operand_reg(1)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH) <= d_in(FP80_RESULT_EX_WIDTH-1 downto 0);
             operand_hi16_reg(1) <= d_in(31 downto 16);
@@ -1894,7 +1915,9 @@ begin
             fpcr_reg(15 downto 0) <= d_in(15 downto 0);
             fpcr_reg(31 downto 16) <= (others => '0');
           when ADDR_FPSR =>
-            fpsr_reg <= d_in;
+            if cir_active = '0' then
+              fpsr_reg <= d_in;
+            end if;
           when ADDR_FPIAR =>
             fpiar_reg <= d_in;
           when ADDR_CIR_SAVE =>
@@ -1939,6 +1962,9 @@ begin
       end if;
 
       -- CIR launch: load operands (and op_sel for cpGEN) into ALU inputs.
+      -- For monadic ops the ALU uses only a_in (operand_reg(0)) as the source,
+      -- so we must place the source operand there (not the destination FP reg).
+      -- For dyadic ops, operand_reg(0) = FPn (destination), operand_reg(1) = source.
       if cir_launch_alu = '1' then
         if cir_instr_type = CIR_TYPE_CPCOND or
            cir_instr_type = CIR_TYPE_CPBCC_W or
@@ -1947,48 +1973,50 @@ begin
           operand_reg(0) <= (others => '0');
           operand_reg(0)(5 downto 0) <= cir_condition_reg;
         else
-          -- cpGEN: load destination FP register as operand A.
           op_sel_reg <= cir_decoded_op;
-          operand_reg(0) <= fp_reg_file_reg(cir_dst_reg_idx);
-        end if;
-        if cir_reg_to_reg = '1' then
-          -- Register-to-register: source from FP register file.
-          operand_reg(1) <= fp_reg_file_reg(cir_src_reg_idx);
-        else
-          -- Memory source: convert staged operand words to FP80.
-          case cir_src_fmt is
-            when CIR_SRC_LONG =>
-              operand_reg(1) <= fp80_from_int(
-                signed32_to_integer(cir_operand_staging(31 downto 0)));
-            when CIR_SRC_SINGLE =>
-              operand_reg(1) <= fp80_from_single(
-                cir_operand_staging(31 downto 0));
-            when CIR_SRC_EXTENDED =>
-              -- Word 0 bits[15:0] = sign+exp, word 1 = mant_hi, word 2 = mant_lo.
-              operand_reg(1) <= cir_operand_staging(15 downto 0) &
-                                cir_operand_staging(63 downto 32) &
-                                cir_operand_staging(95 downto 64);
-            when CIR_SRC_WORD =>
-              operand_reg(1) <= fp80_from_int(
-                signed16_to_integer(cir_operand_staging(15 downto 0)));
-            when CIR_SRC_DOUBLE =>
-              -- Word 0 = upper 32, word 1 = lower 32.
-              operand_reg(1) <= fp80_from_double(
-                cir_operand_staging(31 downto 0) &
-                cir_operand_staging(63 downto 32));
-            when CIR_SRC_BYTE =>
-              operand_reg(1) <= fp80_from_int(
-                signed8_to_integer(cir_operand_staging(7 downto 0)));
-            when CIR_SRC_PACKED =>
-              -- Word 0 (staging[31:0]) = packed[95:64], word 1 = [63:32], word 2 = [31:0].
-              operand_reg(1) <= packed96_to_fp80_fast(
-                cir_operand_staging(31 downto 0) &
-                cir_operand_staging(63 downto 32) &
-                cir_operand_staging(95 downto 64),
-                fp_reg_file_reg(cir_dst_reg_idx));
-            when others =>
-              operand_reg(1) <= (others => '0');
-          end case;
+          -- Compute source value into variable for potential use in both slots.
+          if cir_reg_to_reg = '1' then
+            cir_source_val := fp_reg_file_reg(cir_src_reg_idx);
+          else
+            case cir_src_fmt is
+              when CIR_SRC_LONG =>
+                cir_source_val := fp80_from_int(
+                  signed32_to_integer(cir_operand_staging(31 downto 0)));
+              when CIR_SRC_SINGLE =>
+                cir_source_val := fp80_from_single(
+                  cir_operand_staging(31 downto 0));
+              when CIR_SRC_EXTENDED =>
+                cir_source_val := cir_operand_staging(15 downto 0) &
+                                  cir_operand_staging(63 downto 32) &
+                                  cir_operand_staging(95 downto 64);
+              when CIR_SRC_WORD =>
+                cir_source_val := fp80_from_int(
+                  signed16_to_integer(cir_operand_staging(15 downto 0)));
+              when CIR_SRC_DOUBLE =>
+                cir_source_val := fp80_from_double(
+                  cir_operand_staging(31 downto 0) &
+                  cir_operand_staging(63 downto 32));
+              when CIR_SRC_BYTE =>
+                cir_source_val := fp80_from_int(
+                  signed8_to_integer(cir_operand_staging(7 downto 0)));
+              when CIR_SRC_PACKED =>
+                cir_source_val := packed96_to_fp80_fast(
+                  cir_operand_staging(31 downto 0) &
+                  cir_operand_staging(63 downto 32) &
+                  cir_operand_staging(95 downto 64),
+                  fp_reg_file_reg(cir_dst_reg_idx));
+              when others =>
+                cir_source_val := (others => '0');
+            end case;
+          end if;
+          operand_reg(1) <= cir_source_val;
+          -- Monadic ops: ALU uses only a_in, so source goes to operand_reg(0).
+          -- Dyadic ops: a_in = FPn (destination register), b_in = source.
+          if op_is_monadic(cir_decoded_op) then
+            operand_reg(0) <= cir_source_val;
+          else
+            operand_reg(0) <= fp_reg_file_reg(cir_dst_reg_idx);
+          end if;
         end if;
       end if;
 
@@ -3256,9 +3284,13 @@ begin
       latched_size <= (others => '0');
       latched_a4   <= '0';
       d_out_reg    <= (others => '0');
+      sync_read_latched <= '0';
     elsif rising_edge(clk) then
       if sync_read = '1' and start_access = '1' and dsack_state = DSACK_IDLE then
         d_out_reg <= d_out_comb;
+        sync_read_latched <= '1';
+      elsif start_access = '0' then
+        sync_read_latched <= '0';
       end if;
 
       case dsack_state is
@@ -3362,12 +3394,19 @@ begin
       cir_save_read_prev <= '0';
       cir_instaddr_reg <= (others => '0');
       cir_frame_data_reg <= (others => (others => '0'));
+      cir_mode_reg <= '1';  -- Default CIR mode on (real MC68881 protocol)
     elsif rising_edge(clk) then
       -- Clear one-shot flags
       cir_control_ack <= '0';
       cir_operand_word_arrived <= '0';
       cir_operand_read_done <= '0';
       cir_save_read_done <= '0';
+
+      -- CIR mode: controlled only by explicit writes to ADDR_CIR_RESPONSE.
+      -- No auto-clear: CIR mode persists across dialogs (matches real 68881).
+      if bus_write = '1' and addr = ADDR_CIR_RESPONSE then
+        cir_mode_reg <= d_in(0);
+      end if;
 
       -- Clear written flags when FSM consumes them (BEFORE bus_write handling
       -- so a fresh write in the same cycle takes priority over the clear).
@@ -3416,22 +3455,31 @@ begin
       if bus_write = '1' then
         case addr is
           when CIR_ADDR_OPWORD =>
-            cir_opword_reg <= d_in(15 downto 0);
-            cir_instr_type <= d_in(8 downto 6);
-            cir_opword_written <= '1';
+            -- Gate on cir_mode_reg: addr 4 overlaps ADDR_OPB_L in peripheral mode.
+            if cir_mode_reg = '1' then
+              cir_opword_reg <= d_in(15 downto 0);
+              cir_instr_type <= d_in(8 downto 6);
+              cir_opword_written <= '1';
+            end if;
 
           when CIR_ADDR_COMMAND =>
-            cir_command_reg <= d_in(15 downto 0);
-            cir_src_fmt <= d_in(12 downto 10);
-            cir_dst_reg_idx <= to_integer(unsigned(d_in(9 downto 7)));
-            cir_src_reg_idx <= to_integer(unsigned(d_in(12 downto 10)));
-            cir_reg_to_reg <= d_in(14);
-            cir_direction <= d_in(13);
-            cir_command_written <= '1';
+            -- Gate on cir_mode_reg: addr 5 overlaps ADDR_OPB_H in peripheral mode.
+            if cir_mode_reg = '1' then
+              cir_command_reg <= d_in(15 downto 0);
+              cir_src_fmt <= d_in(12 downto 10);
+              cir_dst_reg_idx <= to_integer(unsigned(d_in(9 downto 7)));
+              cir_src_reg_idx <= to_integer(unsigned(d_in(12 downto 10)));
+              cir_reg_to_reg <= d_in(14);
+              cir_direction <= d_in(13);
+              cir_command_written <= '1';
+            end if;
 
           when CIR_ADDR_CONDITION =>
-            cir_condition_reg <= d_in(5 downto 0);
-            cir_condition_written <= '1';
+            -- Gate on cir_mode_reg: addr 7 overlaps ADDR_RES_L in peripheral mode.
+            if cir_mode_reg = '1' then
+              cir_condition_reg <= d_in(5 downto 0);
+              cir_condition_written <= '1';
+            end if;
 
           when CIR_ADDR_OPERAND =>
             -- Store operand word during source transfer.
@@ -3461,7 +3509,10 @@ begin
             cir_instaddr_reg <= d_in;
 
           when CIR_ADDR_CONTROL =>
-            cir_control_ack <= d_in(0);
+            -- Gate on cir_mode_reg: addr 1 overlaps ADDR_OPA_L in peripheral mode.
+            if cir_mode_reg = '1' then
+              cir_control_ack <= d_in(0);
+            end if;
 
           when others =>
             null;
@@ -3872,7 +3923,9 @@ begin
   end process;
 
   -- CIR reads use a registered data path; other reads are combinational.
-  d_out <= d_out_reg when sync_read = '1' else d_out_comb;
+  -- sync_read_latched holds the registered path active through the full bus
+  -- access even if the FSM state changes mid-cycle (e.g. CIR_XFER_DST → IDLE).
+  d_out <= d_out_reg when (sync_read = '1' or sync_read_latched = '1') else d_out_comb;
   dsack0_n <= dsack0_i;
   dsack1_n <= dsack1_i;
   sense_drive <= '0' when status_busy_reg = '1' else '1';

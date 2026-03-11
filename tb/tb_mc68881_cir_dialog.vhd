@@ -118,6 +118,7 @@ architecture sim of tb_mc68881_cir_dialog is
   constant OPCODE_FCMP  : std_logic_vector(6 downto 0) := "0000111";  -- 0x07
   constant OPCODE_FNEG : std_logic_vector(6 downto 0) := "0010011";  -- 0x13
   constant OPCODE_FSIN : std_logic_vector(6 downto 0) := "0001101";  -- 0x0D
+  constant OPCODE_FSQRT : std_logic_vector(6 downto 0) := "0010001";  -- 0x11
 
   -- CIR Condition address.
   constant CIR_CONDITION : unsigned(4 downto 0) :=
@@ -358,6 +359,9 @@ architecture sim of tb_mc68881_cir_dialog is
   ) is
     variable status_word : std_logic_vector(31 downto 0) := (others => '0');
   begin
+    -- Enable CIR mode.
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_RESPONSE, x"00000001");
     -- Write OpWord (cpBcc or cpCond type).
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               CIR_OPWORD, opword);
@@ -391,6 +395,9 @@ architecture sim of tb_mc68881_cir_dialog is
     variable status_word : std_logic_vector(31 downto 0) := (others => '0');
     variable cfg_word : std_logic_vector(31 downto 0) := (others => '0');
   begin
+    -- Switch to peripheral mode for legacy register writes.
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_RESPONSE, x"00000000");
     -- Write FP80 value to operand A (legacy addresses 1-3).
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               ADDR_OPA_L, value(31 downto 0));
@@ -408,6 +415,9 @@ architecture sim of tb_mc68881_cir_dialog is
     -- Wait for completion.
     wait_for_valid(a_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
                    dsack0_n_s, dsack1_n_s, d_out_s, status_word);
+    -- Restore CIR mode.
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_RESPONSE, x"00000001");
   end procedure;
 
   -- ----- Read ALU result from legacy result registers -----
@@ -453,6 +463,10 @@ architecture sim of tb_mc68881_cir_dialog is
     variable status_word : std_logic_vector(31 downto 0) := (others => '0');
     variable cmd_word : std_logic_vector(31 downto 0) := (others => '0');
   begin
+    -- Enable CIR mode (guards overlapping peripheral addresses).
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_RESPONSE, x"00000001");
+
     -- Step 1: Write OpWord (cpGEN type).
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               CIR_OPWORD, CPGEN_OPWORD);
@@ -486,6 +500,9 @@ architecture sim of tb_mc68881_cir_dialog is
     variable status_word : std_logic_vector(31 downto 0) := (others => '0');
     variable cmd_word : std_logic_vector(31 downto 0) := (others => '0');
   begin
+    -- Enable CIR mode.
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_RESPONSE, x"00000001");
     -- Write OpWord (cpGEN type).
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               CIR_OPWORD, CPGEN_OPWORD);
@@ -518,6 +535,9 @@ architecture sim of tb_mc68881_cir_dialog is
   ) is
     variable cmd_word : std_logic_vector(31 downto 0) := (others => '0');
   begin
+    -- Enable CIR mode.
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_RESPONSE, x"00000001");
     -- Write OpWord (cpGEN type).
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               CIR_OPWORD, CPGEN_OPWORD);
@@ -555,6 +575,9 @@ architecture sim of tb_mc68881_cir_dialog is
   ) is
     variable cmd_word : std_logic_vector(31 downto 0) := (others => '0');
   begin
+    -- Enable CIR mode.
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := (others => '0');
@@ -587,6 +610,9 @@ architecture sim of tb_mc68881_cir_dialog is
     variable status_word : std_logic_vector(31 downto 0) := (others => '0');
     variable cmd_word : std_logic_vector(31 downto 0) := (others => '0');
   begin
+    -- Enable CIR mode.
+    bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_LONG, dst_reg, opcode);
@@ -922,6 +948,8 @@ begin
 
     -- Write OpWord + Command to start dialog.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
@@ -948,6 +976,8 @@ begin
     report "TEST 9: CIR Response for mem-source (Transfer Operand)" severity note;
 
     -- Write OpWord + Command for FADD.S (mem→reg).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_SINGLE, 0, OPCODE_FADD);
@@ -984,6 +1014,8 @@ begin
     report "TEST 10: CIR Response for dst-xfer (Transfer from-CP)" severity note;
 
     -- Write OpWord + Command for FMOVE FP0→mem single.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := (others => '0');
@@ -1127,6 +1159,8 @@ begin
     report "TEST 15: 16-bit peripheral mode E2E" severity note;
 
     -- Load FP2 = 10.0 via CIR FMOVE.S (16-bit bus, 2 beats per access)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n,
                     dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "10", 2);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_SINGLE, 2, OPCODE_FMOVE);
@@ -1139,6 +1173,8 @@ begin
                          dsack0_n, dsack1_n, d_out, status_word, "10", 2);
 
     -- Load FP3 = 3.0 via CIR FMOVE.S (16-bit bus)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n,
                     dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "10", 2);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_SINGLE, 3, OPCODE_FMOVE);
@@ -1151,6 +1187,8 @@ begin
                          dsack0_n, dsack1_n, d_out, status_word, "10", 2);
 
     -- FADD FP3,FP2 via CIR reg-to-reg (16-bit bus)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n,
                     dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "10", 2);
     cmd_word := make_cpgen_reg_cmd(3, 2, OPCODE_FADD);
@@ -1160,6 +1198,8 @@ begin
                          dsack0_n, dsack1_n, d_out, status_word, "10", 2);
 
     -- Readback FP2 as single via CIR FMOVE reg→mem (16-bit bus)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n,
                     dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "10", 2);
     cmd_word := (others => '0');
@@ -1192,6 +1232,8 @@ begin
     report "TEST 16: 8-bit peripheral mode E2E" severity note;
 
     -- Load FP4 = 8.0 via CIR FMOVE.S (8-bit bus, 4 beats per access)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n,
                     dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "01", 4);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_SINGLE, 4, OPCODE_FMOVE);
@@ -1204,6 +1246,8 @@ begin
                          dsack0_n, dsack1_n, d_out, status_word, "01", 4);
 
     -- FMUL.S #0.5,FP4 via CIR mem-source (8-bit bus)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n,
                     dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "01", 4);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_SINGLE, 4, OPCODE_FMUL);
@@ -1216,6 +1260,8 @@ begin
                          dsack0_n, dsack1_n, d_out, status_word, "01", 4);
 
     -- Readback FP4 as single via CIR FMOVE reg→mem (8-bit bus)
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n,
                     dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "01", 4);
     cmd_word := (others => '0');
@@ -1251,6 +1297,8 @@ begin
                      OPCODE_FMOVE, 0, x"40000000");  -- Load FP0 = 2.0
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_BYTE, 0, OPCODE_FADD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -1280,6 +1328,8 @@ begin
     report "TEST 18: FMUL.W #-4 (word source)" severity note;
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_WORD, 0, OPCODE_FMUL);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -1307,6 +1357,8 @@ begin
     -- ================================================================
     report "TEST 19: FSUB.L #7 (long source)" severity note;
 
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_LONG, 0, OPCODE_FSUB);
@@ -1339,6 +1391,8 @@ begin
     -- ================================================================
     report "TEST 20: FADD.P #70 (packed decimal source)" severity note;
 
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_PACKED, 0, OPCODE_FADD);
@@ -1377,6 +1431,8 @@ begin
                      OPCODE_FMOVE, 5, x"41200000");  -- FP5 = 10.0
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_BYTE, 5, OPCODE_FDIV);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -1408,6 +1464,8 @@ begin
                      dsack0_n, dsack1_n, d_out,
                      OPCODE_FMOVE, 5, x"41200000");  -- FP5 = 10.0
 
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_WORD, 5, OPCODE_FDIV);
@@ -1441,6 +1499,8 @@ begin
                      OPCODE_FMOVE, 5, x"41200000");  -- FP5 = 10.0
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_LONG, 5, OPCODE_FDIV);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -1472,6 +1532,8 @@ begin
                      dsack0_n, dsack1_n, d_out,
                      OPCODE_FMOVE, 5, x"41200000");  -- FP5 = 10.0
 
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_PACKED, 5, OPCODE_FDIV);
@@ -1693,6 +1755,8 @@ begin
 
     -- Force FPU to uninitialized state via FRESTORE with Null format word.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPRESTORE_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_RESTORE_ADDR, x"00000000");
@@ -1701,6 +1765,8 @@ begin
     end loop;
 
     -- Now issue cpSAVE.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     for i in 0 to 3 loop
@@ -1735,6 +1801,8 @@ begin
 
     -- Now issue cpSAVE.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     for i in 0 to 3 loop
       wait until rising_edge(clk);
@@ -1766,6 +1834,8 @@ begin
     report "TEST 34: FRESTORE Null (FPU reset)" severity note;
 
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPRESTORE_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_RESTORE_ADDR, x"00000000");
@@ -1774,6 +1844,8 @@ begin
     end loop;
 
     -- Verify FPU is in Null state: cpSAVE should return Null format word.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     for i in 0 to 3 loop
@@ -1807,6 +1879,8 @@ begin
 
     -- Issue cpRESTORE with Idle format word.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPRESTORE_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_RESTORE_ADDR, x"00000018");
@@ -1826,6 +1900,8 @@ begin
     end loop;
 
     -- Verify FPU is now initialized: cpSAVE should return Idle format word.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     for i in 0 to 3 loop
@@ -1853,6 +1929,8 @@ begin
     -- ================================================================
     report "TEST 36: FRESTORE invalid format word" severity note;
 
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPRESTORE_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -1886,6 +1964,8 @@ begin
                        dsack0_n, dsack1_n, d_out, 0, FP80_ONE_VAL);
     -- Start FSIN via CIR (reg-to-reg, FP0→FP0) but do NOT wait for completion.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(0, 0, OPCODE_FSIN));
@@ -1896,6 +1976,8 @@ begin
     end loop;
 
     -- Issue cpSAVE while busy.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     for i in 0 to 3 loop
@@ -1950,6 +2032,8 @@ begin
 
     -- Issue cpRESTORE with Busy format word.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPRESTORE_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_RESTORE_ADDR, x"000000B4");
@@ -1969,6 +2053,8 @@ begin
     end loop;
 
     -- Verify FPU is initialized after Busy restore.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     for i in 0 to 3 loop
@@ -2013,6 +2099,8 @@ begin
 
     -- Start FSIN via CIR.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(0, 0, OPCODE_FSIN));
@@ -2021,6 +2109,8 @@ begin
     end loop;
 
     -- Phase 1: FSAVE (Busy) — capture frame into save_buf.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     for i in 0 to 3 loop
@@ -2041,6 +2131,8 @@ begin
     end loop;
 
     -- Phase 2: FRESTORE (Busy) with captured frame data.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPRESTORE_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -2068,6 +2160,8 @@ begin
     -- Phase 3: FSAVE again. After Busy FRESTORE + commit, FPU is initialized
     -- but ALU is idle → produces Idle frame. Verify the FPSR field in the
     -- Idle frame matches what was restored.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     for i in 0 to 3 loop
@@ -2181,6 +2275,8 @@ begin
     -- Execute FDIV FP1,FP0 (FP0 = FP0 / FP1 = 1.0 / 0.0).
     -- Write OpWord (cpGEN).
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     -- Write Command: reg-to-reg, src=1, dst=0, opcode=FDIV.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -2249,6 +2345,8 @@ begin
 
     -- Execute FDIV FP1,FP0 via CIR.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FDIV));
@@ -2299,6 +2397,8 @@ begin
                        dsack0_n, dsack1_n, d_out, 5, FP80_ONE_VAL);
 
     -- Execute FADD FP4,FP5 via CIR (QNaN input → INVALID exception → FPIAR capture).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -2384,6 +2484,8 @@ begin
 
     -- Execute FMUL FP7,FP6 (FP6 = FP6 * FP7 = LARGE * LARGE → overflow).
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(7, 6, OPCODE_FMUL));
@@ -2455,6 +2557,8 @@ begin
 
     -- Execute FDIV FP1,FP0 (FP0 = SNaN / 0.0).
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FDIV));
@@ -2523,6 +2627,8 @@ begin
 
     -- Execute FADD FP1,FP0 (FP0 = SNaN + 1.0 → NaN, SNAN set).
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
@@ -2590,6 +2696,8 @@ begin
               ADDR_FPCR, x"00002000");  -- bit 13 = OPERR enable
 
     -- Execute FDIV FP1,FP0 (FP0 = 0.0 / 0.0 → NaN, OPERR set).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -2663,12 +2771,16 @@ begin
 
     -- Launch CIR FADD FP1,FP0 (FP0 = 1.0 + 2.0 = 3.0).
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
 
     -- Immediately write another OpWord while FSM is in DECODE/EXECUTE.
     wait for CLK_PERIOD;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
 
@@ -2698,6 +2810,8 @@ begin
     report "TEST 48: CIR response_pending lifecycle" severity note;
 
     -- Manually issue CIR FScc(T) -- do NOT use cir_cond_eval (it reads response).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPCOND_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -2744,12 +2858,16 @@ begin
 
     -- Issue first conditional: FScc(T) -- always true.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPCOND_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_CONDITION, x"000000" & "00" & FCC_T);
 
     -- Immediately write a second cpCond (FSM is in COND_EVAL, not IDLE).
     wait for CLK_PERIOD;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPCOND_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -2837,6 +2955,8 @@ begin
 
     -- Write OpWord.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     -- Response should still be Null (waiting for Command).
     cir_read_response(a_in, rw, cs_n, as_n, ds_n,
@@ -2876,6 +2996,8 @@ begin
 
     -- Write OpWord + Command (single-precision FMOVE to FP2).
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_mem_cmd(CIR_SRC_SINGLE, 2, OPCODE_FMOVE));
@@ -2914,6 +3036,8 @@ begin
     report "TEST 53: cpCond primitive progression" severity note;
 
     -- Write OpWord only — response should be Null (waiting for Condition).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPCOND_OPWORD);
     cir_read_response(a_in, rw, cs_n, as_n, ds_n,
@@ -2959,6 +3083,8 @@ begin
                      OPCODE_FCMP, 1, 0);
 
     -- Write OpWord (cpBcc word displacement).
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPBCC_W_OPWORD);
     cir_read_response(a_in, rw, cs_n, as_n, ds_n,
@@ -3008,6 +3134,8 @@ begin
 
     -- cpSAVE: write OpWord.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
 
     -- Wait for format word to be ready.
@@ -3038,6 +3166,8 @@ begin
       severity failure;
 
     -- cpRESTORE: write OpWord.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPRESTORE_OPWORD);
     wait for CLK_PERIOD * 2;
@@ -3072,12 +3202,16 @@ begin
 
     -- First dialog: FADD FP1,FP0 (FP0 = 1+2 = 3).
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
 
     -- Immediately try second dialog: FSUB FP2,FP0 — should be ignored.
     wait for CLK_PERIOD;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -3112,6 +3246,8 @@ begin
     report "TEST 57: FRESTORE operand write without format word" severity note;
 
     -- cpRESTORE OpWord.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPRESTORE_OPWORD);
     wait for CLK_PERIOD * 2;
@@ -3155,6 +3291,8 @@ begin
 
     -- Start cpGEN FADD.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
@@ -3191,6 +3329,8 @@ begin
 
     -- Launch FADD via CIR.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, make_cpgen_reg_cmd(1, 0, OPCODE_FADD));
@@ -3221,6 +3361,8 @@ begin
 
     t60_start := now;
 
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPCOND_OPWORD);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
@@ -3255,6 +3397,8 @@ begin
     t61_start := now;
 
     -- cpSAVE OpWord.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     wait for CLK_PERIOD * 4;
@@ -3298,6 +3442,8 @@ begin
     legacy_load_fp_reg(a_in, d_in, rw, cs_n, as_n, ds_n,
                        dsack0_n, dsack1_n, d_out, 0, FP80_FIVE_VAL);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     wait for CLK_PERIOD * 4;
     bus_read(a_in, rw, cs_n, as_n, ds_n,
@@ -3311,6 +3457,8 @@ begin
     -- Now measure FRESTORE.
     t62_start := now;
 
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPRESTORE_OPWORD);
     wait for CLK_PERIOD * 2;
@@ -3380,6 +3528,8 @@ begin
                        dsack0_n, dsack1_n, d_out, 0, FP80_TWO_VAL);
 
     -- Start FSAVE.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_RESPONSE, x"00000001");
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPSAVE_OPWORD);
     wait for CLK_PERIOD * 4;
@@ -3568,6 +3718,30 @@ begin
              to_hstring(int_result)
       severity failure;
     report "TEST 71 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 72: FSQRT.L #9 -> FP3 (monadic, memory-to-register)
+    --   Exercises op_is_monadic() routing for memory-source path.
+    --   Source operand must go to operand_reg(0) (a_in), not operand_reg(1).
+    --   Expected result: FSQRT(9) = 3, readback as long = 0x00000003
+    -- ================================================================
+    report "TEST 72: FSQRT.L #9 mem-to-reg (monadic memory-source)" severity note;
+
+    cpgen_mem_long(a_in, d_in, rw, cs_n, as_n, ds_n,
+                   dsack0_n, dsack1_n, d_out,
+                   OPCODE_FSQRT, 3, x"00000009");
+
+    -- Read back FP3 as long integer (should be 3)
+    cpgen_reg_to_mem(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     CIR_SRC_LONG, 3, int_result);
+
+    report "TEST 72 result=" & to_hstring(int_result) severity note;
+    assert int_result = x"00000003"
+      report "FAIL TEST 72: FSQRT(9) expected=00000003 got=" &
+             to_hstring(int_result)
+      severity failure;
+    report "TEST 72 PASSED" severity note;
 
     -- ================================================================
     report "All CIR dialog tests PASSED" severity note;

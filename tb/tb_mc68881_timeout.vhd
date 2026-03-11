@@ -42,8 +42,9 @@ architecture sim of tb_mc68881_timeout is
 
   signal test_pass_count : natural := 0;
 
-  constant AXI_ADDR_STATUS : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(10 * 4, 7));
-  constant AXI_ADDR_OPA_L  : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(1 * 4, 7));
+  constant AXI_ADDR_STATUS       : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(10 * 4, 7));
+  constant AXI_ADDR_OPA_L        : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(1 * 4, 7));
+  constant AXI_ADDR_CIR_RESPONSE : std_logic_vector(6 downto 0) := std_logic_vector(to_unsigned(13 * 4, 7));
 
 begin
 
@@ -90,6 +91,19 @@ begin
     wait for 10 * BUS_CLK_PERIOD;
     s_axi_aresetn <= '1';
     wait for 10 * BUS_CLK_PERIOD;
+
+    -- Disable CIR mode so overlapping addresses route to peripheral decode
+    s_axi_awaddr  <= AXI_ADDR_CIR_RESPONSE;
+    s_axi_awvalid <= '1';
+    s_axi_wdata   <= x"00000000";
+    s_axi_wvalid  <= '1';
+    s_axi_bready  <= '1';
+    wait until rising_edge(s_axi_aclk) and s_axi_bvalid = '1';
+    s_axi_awvalid <= '0';
+    s_axi_wvalid  <= '0';
+    wait until rising_edge(s_axi_aclk);
+    s_axi_bready  <= '0';
+    wait for 5 * BUS_CLK_PERIOD;
 
     -- ==================================================================
     report "=== TIMEOUT TEST 1: Read with DSACK timeout -> SLVERR ===" severity note;

@@ -392,6 +392,10 @@ begin
     wait for 2 * CLK_PERIOD;
     assert_idle_outputs(dsack0_n, dsack1_n, sense_n, "post-reset idle");
 
+    -- Disable CIR mode so overlapping addresses route to peripheral decode.
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              to_unsigned(13, 5), x"00000000");
+
     -- Write operands and op select (ADD)
     size_n <= "11";
     op_a := fp80_from_int(10);

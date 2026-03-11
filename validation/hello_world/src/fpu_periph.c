@@ -100,6 +100,7 @@ int fpu_exec_unary(u8 opcode, fp80_t a, fp80_t *result)
 /* ------------------------------------------------------------------ */
 int fpu_movecr(u8 rom_offset, fp80_t *result)
 {
+    fpu_wr(OFF_CIR_MODE, 0);   /* Ensure peripheral mode (OPA_L overlaps CIR) */
     fpu_wr(OFF_MOVE_CFG, MOVE_CFG_FMOVECR(0));   /* dst_idx=0 */
     fpu_wr(OFF_OPA_L, rom_offset & 0x7Fu);        /* constant code */
     fpu_wr(OFF_OPSEL, OPSEL(FPOP_MOVE));           /* trigger MOVE */

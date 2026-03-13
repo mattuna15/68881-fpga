@@ -74,6 +74,10 @@ int dp_video_init(uint32_t *pixel_buf)
 
     /* --- DPDMA --- */
     dma_cfg = XDpDma_LookupConfig(XPAR_XDPDMA_0_BASEADDR);
+    if (!dma_cfg) {
+        xil_printf("[DP] ERROR: DPDMA config not found\r\n");
+        return -1;
+    }
     XDpDma_CfgInitialize(&dma_inst, dma_cfg);
 
     /* --- DP TX core init (PHY, clocks) --- */

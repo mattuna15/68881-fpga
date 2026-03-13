@@ -78,6 +78,7 @@ static void rom_boot(void)
 {
     uint32_t *pixel_buf;
     int status;
+    int dp_ok = 0;
 
     /* Initialise emulated memory (16 MB flat, zeroed) */
     emu_mem_init();
@@ -114,6 +115,8 @@ static void rom_boot(void)
     if (status != 0) {
         xil_printf("[ROM] WARNING: DP init failed (%d), "
                    "continuing with UART-only output\r\n", status);
+    } else {
+        dp_ok = 1;
     }
 
     /* Initialise Musashi 68000 core */
@@ -134,7 +137,8 @@ static void rom_boot(void)
         if (text_fb_is_dirty()) {
             text_fb_render();
             Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
-            dp_video_refresh();
+            if (dp_ok)
+                dp_video_refresh();
             text_fb_mark_clean();
         }
 

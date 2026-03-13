@@ -129,6 +129,16 @@ ECHO_ON	  DS.B 1
 PROMPT_ON DS.B 1
 LF_DISPLAY DS.B 1
 
+* Saved registers from last G(o) command
+         EVEN
+SAVED_D  DS.L    8              D0-D7
+SAVED_A  DS.L    7              A0-A6
+SAVED_SP DS.L    1              A7/SP
+SAVED_PC DS.L    1              PC (return address)
+SAVED_SR DS.W    1              SR
+SAVED_FP DS.B    12*8           FP0-FP7 (12 bytes each, extended format)
+REGS_VALID DS.B  1              Non-zero if saved registers are valid
+
 *****************************************************************************************************
 *	Program section		
 *	The ROM in this BIOS is mapped to the variable
@@ -152,10 +162,11 @@ ROMSTART	EQU	*		BEGINNING OF PROGRAM SECTION
 		BSR.W	setTrap15	Initialize IO TRAP15 vector
 		BSR.W	setExcVectors	Initialize fault vectors 2-7
 
-WARMSTART	
+WARMSTART
 		MOVE.B #1,ECHO_ON
 		MOVE.B #1,PROMPT_ON
 		MOVE.B #1,LF_DISPLAY
+		CLR.B  REGS_VALID
 
 		LEA.L	msgBanner,A0	Print Banner    ****
 		BSR.W	printString  **********************
@@ -417,8 +428,10 @@ parseLine
 		BEQ.W	.examine
 		CMP.B	#'D',D0		DEPOSIT
 		BEQ.W	.deposit
-		CMP.B	#'R',D0		RUN
-		BEQ.W	.run	
+		CMP.B	#'G',D0		GO (execute)
+		BEQ.W	.run
+		CMP.B	#'R',D0		REGISTERS
+		BEQ.W	.regs
 		CMP.B	#'H',D0		HELP
 		BEQ.W	.help	
 		CMP.B	#'L',D0		*LOAD
@@ -506,9 +519,9 @@ parseLine
 		TST	D0		Check for end of line		
 		BEQ	.depEnd	
 
-		BSR.S	parseNumber	Read value
-		TST.B	D1		Test for validity		
-		BNE.S	.invalidVal
+		BSR.W	parseNumber	Read value
+		TST.B	D1		Test for validity
+		BNE.W	.invalidVal
 
 		MOVE.B	D0,(A3)+	Store the value into memory	
 		BRA.S	.depLoop	...and fetch next value		
@@ -528,13 +541,41 @@ parseLine
 		BRA.W	.exit	
 												  *
 												  *
-.run		BSR.W	parseNumber	Read in the address		
-		TST.B	D1		Test for validity		
+.run		BSR.W	parseNumber	Read in the address
+		TST.B	D1		Test for validity
 		BNE 	.invalidAddr
-		MOVE.L	D0,A0	
-		JSR	(A0)		Wheeeeeeeeeeeeeeeeeeeee!!!!	
-		JSR	WARMSTART	Return to known state		
-												  
+		MOVE.L	D0,A0
+		MOVE.L	A0,SAVED_PC     Save target PC for display
+		JSR	(A0)		Wheeeeeeeeeeeeeeeeeeeee!!!!
+* Save registers from user program return
+		MOVEM.L	D0-D7/A0-A6,SAVED_D Save D0-D7 and A0-A6
+		MOVE.L	A7,SAVED_SP     Save SP
+		MOVE.W	SR,SAVED_SR     Save SR
+* Save FP0-FP7 via FMOVE.X FPn,d(A0) — hand-encoded F-line opcodes
+* (vasm M68000 mode doesn't support FPU mnemonics)
+* Opword=$F228 (FPU, EA=d16(A0)), Cmdword=$6800|(n<<7), Disp=offset
+		LEA	SAVED_FP,A0
+		DC.W	$F210,$6800             FMOVE.X FP0,(A0)
+		DC.W	$F228,$6880,$000C       FMOVE.X FP1,12(A0)
+		DC.W	$F228,$6900,$0018       FMOVE.X FP2,24(A0)
+		DC.W	$F228,$6980,$0024       FMOVE.X FP3,36(A0)
+		DC.W	$F228,$6A00,$0030       FMOVE.X FP4,48(A0)
+		DC.W	$F228,$6A80,$003C       FMOVE.X FP5,60(A0)
+		DC.W	$F228,$6B00,$0048       FMOVE.X FP6,72(A0)
+		DC.W	$F228,$6B80,$0054       FMOVE.X FP7,84(A0)
+		MOVE.B	#1,REGS_VALID   Mark registers as valid
+		BRA.W	.exit           Return to prompt (not WARMSTART)
+*
+* Register dump
+*
+.regs		TST.B	REGS_VALID
+		BEQ.S	.regsNone
+		BSR.W	regDump
+		BRA.W	.exit
+.regsNone	LEA	msgNoRegs,A0
+		BSR.W	printString
+		BRA.W	.exit
+
 .help		LEA	msgHelp,A0
 		BSR.W	printString
 		BRA.W	.exit	
@@ -689,6 +730,114 @@ printHexByte	MOVE.L	D2,-(SP) *******************
 		MOVE.L	(SP)+,D2   *****************
 		RTS		
 
+****************************************
+*  regDump — print saved registers from last G(o) command
+*
+*  Format:
+*    D0=xxxxxxxx D1=xxxxxxxx D2=xxxxxxxx D3=xxxxxxxx
+*    D4=xxxxxxxx D5=xxxxxxxx D6=xxxxxxxx D7=xxxxxxxx
+*    A0=xxxxxxxx A1=xxxxxxxx A2=xxxxxxxx A3=xxxxxxxx
+*    A4=xxxxxxxx A5=xxxxxxxx A6=xxxxxxxx  SP=xxxxxxxx
+*      PC=xxxxxxxx SR=xxxx
+*     FP0=xxxxxxxx xxxxxxxx xxxxxxxx
+*     ...
+*     FP7=xxxxxxxx xxxxxxxx xxxxxxxx
+*
+regDump		MOVEM.L	D3-D5/A2,-(SP)
+* --- Data registers D0-D7 ---
+		LEA	SAVED_D,A2
+		MOVEQ	#0,D4		D4 = register counter
+.dloop		MOVE.B	#'D',D0
+		BSR.W	outChar
+		MOVE.L	D4,D0
+		ADD.B	#'0',D0
+		BSR.W	outChar
+		MOVE.B	#'=',D0
+		BSR.W	outChar
+		MOVE.L	(A2)+,D0
+		BSR.W	printHexLong
+		ADDQ.L	#1,D4
+		MOVE.L	D4,D3
+		ANDI.B	#3,D3		Newline every 4 regs
+		BNE.S	.dsp
+		LEA	msgNewline,A0
+		BSR.W	printString
+		BRA.S	.dnext
+.dsp		MOVE.B	#' ',D0
+		BSR.W	outChar
+.dnext		CMPI.B	#8,D4
+		BNE.S	.dloop
+* --- Address registers A0-A6 ---
+		LEA	SAVED_A,A2
+		MOVEQ	#0,D4
+.aloop		MOVE.B	#'A',D0
+		BSR.W	outChar
+		MOVE.L	D4,D0
+		ADD.B	#'0',D0
+		BSR.W	outChar
+		MOVE.B	#'=',D0
+		BSR.W	outChar
+		MOVE.L	(A2)+,D0
+		BSR.W	printHexLong
+		ADDQ.L	#1,D4
+		MOVE.L	D4,D3
+		ANDI.B	#3,D3
+		BNE.S	.asp
+		LEA	msgNewline,A0
+		BSR.W	printString
+		BRA.S	.anext
+.asp		MOVE.B	#' ',D0
+		BSR.W	outChar
+.anext		CMPI.B	#7,D4
+		BNE.S	.aloop
+* --- SP ---
+		LEA	msgSP,A0
+		BSR.W	printString
+		MOVE.L	SAVED_SP,D0
+		BSR.W	printHexLong
+		LEA	msgNewline,A0
+		BSR.W	printString
+* --- PC and SR ---
+		LEA	msgPC,A0
+		BSR.W	printString
+		MOVE.L	SAVED_PC,D0
+		BSR.W	printHexLong
+		LEA	msgSR,A0
+		BSR.W	printString
+		MOVE.L	SAVED_SR,D0
+		BSR.W	printHexWord
+		LEA	msgNewline,A0
+		BSR.W	printString
+* --- FP0-FP7 (extended: 3 x 32-bit words each) ---
+		LEA	SAVED_FP,A2
+		MOVEQ	#0,D4
+.fploop		LEA	msgFPpfx,A0
+		BSR.W	printString
+		MOVE.L	D4,D0
+		ADD.B	#'0',D0
+		BSR.W	outChar
+		MOVE.B	#'=',D0
+		BSR.W	outChar
+		MOVE.L	(A2)+,D0	Exponent word (sign+exp in upper 16)
+		BSR.W	printHexLong
+		MOVE.B	#' ',D0
+		BSR.W	outChar
+		MOVE.L	(A2)+,D0	Significand high
+		BSR.W	printHexLong
+		MOVE.B	#' ',D0
+		BSR.W	outChar
+		MOVE.L	(A2)+,D0	Significand low
+		BSR.W	printHexLong
+		LEA	msgNewline,A0
+		BSR.W	printString
+		ADDQ.L	#1,D4
+		CMPI.B	#8,D4
+		BNE.S	.fploop
+*
+		MOVEM.L	(SP)+,D3-D5/A2
+		RTS
+
+****************************************
 *  LOAD  Loads data formatted in hexadecimal "S" format from Port 2
 *        NOTE - I/O is automatically redirected to the aux port for
 *        loader functions. S1 or S2 records accepted
@@ -1912,6 +2061,7 @@ FOP      EQU     39        OFFSET TO OPERAND (NO LABEL FIELD)
 CODE68K  *LINK    A1,#0-(ESKE-ESKB)
          *MOVE.L  A1,LINK(A7)    SAVE LINKAGE
          LEA.L   DATASTR,A1          A1 = BASE REGISTER TO DATA
+         MOVE.L  A7,LINK(A1)    SAVE SP FOR ERROR PATH STACK CLEANUP
 
          MOVE.B  #BLANK,(A6)    INSURE LAST CHAR IS SPACE
 
@@ -2141,6 +2291,7 @@ CMMD35   MOVEM.L (A1),D0-D3       D0-D3 = DATA   *TDATA(A1),D0-D3
 
   *       MOVE.L  LINK(A1),A1
   *       UNLK    A1
+         MOVE.L  LINK(A1),A7    RESTORE SP (CLEANS UP NESTED BSR RETURNS ON ERROR PATH)
          RTS                    RETURN TO REQUESTOR
 *                               A3 = POINTER TO START OF BUFFER
 *                               D6 = NUMBER OF BYTES ASSEMBLED
@@ -6203,7 +6354,7 @@ msgColonSpc	DC.B	': ',0
 msgDepPrompt	DC.B	': ',0
 
 msgHelp		DC.B	'Available Commands: ',CR,LF
-			DC.B	'[A]ssemble [E]xamine [D]eposit [R]un [L]oad SREC file	[H]elp',CR,LF,0
+			DC.B	'[A]ssemble [E]xamine [D]eposit [G]o [R]egs [L]oad SREC [H]elp',CR,LF,0
 
 msgFault	DC.B	'FAULT AT $',0
 
@@ -6213,7 +6364,14 @@ ERMES3		DC.B	'Loading error',CR,LF,0
 ERMES4		DC.B	'Table full  ',CR,LF,0	
 ERMES5		DC.B	'Breakpoint not active   ',CR,LF,0	
 ERMES6		DC.B	'Uninitialized exception ',CR,LF,0	
-ERMES7		DC.B	' Range error',CR,LF,0	
+ERMES7		DC.B	' Range error',CR,LF,0
+
+msgNoRegs	DC.B	'No saved registers — run a program with G first',CR,LF,0
+msgPC		DC.B	'  PC=',0
+msgSR		DC.B	' SR=',0
+msgSP		DC.B	'  SP=',0
+msgFPpfx	DC.B	' FP',0
+msgEq		DC.B	'=',0
 
 
 TBLOPC   OPC     ABC,D,0,C1,00,0,0     ABCD

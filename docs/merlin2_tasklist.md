@@ -6,8 +6,8 @@
 - [x] **Fix M4324 FPU .S suffix** — clobbers D0 index for TBLKEYS lookup
 - [x] **Fix .S TLENGTH override** — M350 sets TLENGTH=$0040 (.W) but MC68881 single needs 4 bytes; MFPU_EA/EA2 now override to $0080
 - [x] **Fix MCMMD2 D3 upper bytes** — `MOVE.B TNB(A1),D3` left upper D3 bytes from command word building; added `CLR.L D3` before load
-- [ ] **Fix LINK/UNLK** — ER path corrupts stack on nested BSRs
-- [ ] **Fix FADD FP0,FP2 (R2R without suffix)** — OPC match or MFPU handler failing silently; debug markers added, awaiting test
+- [x] **Fix LINK/UNLK** — ER path corrupts stack on nested BSRs; save SP at CODE68K entry, restore at CMMD35 before RTS
+- [x] **Fix FADD FP0,FP2 (R2R without suffix)** — OPC match or MFPU handler failing silently; debug markers added, tested and working
 
 ## Disassembler Bugs
 
@@ -27,7 +27,7 @@
 - [x] **FP literal support (.D/.X)** — promote single → double (FSGL2DBL) or extended (FSGL2EXT); TDATA expanded to 18 bytes
 - [ ] **FP literal support for .P (packed BCD)** — FPARSLIT currently converts decimal → single → double/extended; .P needs a dedicated decimal → packed BCD converter
 - [ ] **Delete character support in line input** — handle backspace/delete in the assembler input loop
-- [ ] **Option R — register dump** — print current registers (D0–D7, A0–A7, FP0–FP7, SP, PC, SR, etc.)
+- [x] **Option R — register dump** — print saved registers (D0–D7, A0–A7, FP0–FP7, SP, PC, SR) from last G(o) command; R(un) renamed to G(o)
 - [ ] **Debug/trace/breakpoint support** — add interactive debugging commands to the monitor/assembler
 
 ## ROM / BIOS

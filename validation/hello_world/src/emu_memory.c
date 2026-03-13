@@ -9,6 +9,7 @@
 #include <string.h>
 #include "emu_memory.h"
 #include "mfp_emu.h"
+#include "xil_printf.h"
 
 /* Static allocation — lives in DDR on the ZU3EG */
 unsigned char emu_ram[EMU_RAM_SIZE];
@@ -108,6 +109,16 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
     }
     if (address >= EMU_ROM_BASE && address < EMU_ROM_BASE + EMU_ROM_SIZE)
         return;
+    /* DEBUG: trace TDATA, TLENGTH, and debug marker writes */
+    if (address == 0x064C)
+        xil_printf("[DBG] TDATA  w16 @%06X = %04X  PC=%06X\r\n",
+                   address, value & 0xFFFF, m68k_get_reg(0, M68K_REG_PC));
+    if (address == 0x0CA4)
+        xil_printf("[DBG] TLENGTH w16 @%06X = %04X  PC=%06X\r\n",
+                   address, value & 0xFFFF, m68k_get_reg(0, M68K_REG_PC));
+    if (address == 0x0120)
+        xil_printf("[DBG] MARKER w16 @%06X = %04X  PC=%06X\r\n",
+                   address, value & 0xFFFF, m68k_get_reg(0, M68K_REG_PC));
     emu_ram[ address      & EMU_RAM_MASK] = (value >> 8) & 0xFF;
     emu_ram[(address + 1) & EMU_RAM_MASK] =  value       & 0xFF;
 }
@@ -123,6 +134,20 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
     }
     if (address >= EMU_ROM_BASE && address < EMU_ROM_BASE + EMU_ROM_SIZE)
         return;
+    if (address == 0x0100)
+        xil_printf("[DBG] A5=%08X  PC=%06X\r\n",
+                   value, m68k_get_reg(0, M68K_REG_PC));
+    if (address == 0x0104)
+        xil_printf("[DBG] A6=%08X  PC=%06X\r\n",
+                   value, m68k_get_reg(0, M68K_REG_PC));
+    if (address == 0x0108)
+        xil_printf("[DBG] PTROP=%08X  PC=%06X\r\n",
+                   value, m68k_get_reg(0, M68K_REG_PC));
+    if (address == 0x010C)
+        xil_printf("[DBG] (A5)=%02X '%c'  PC=%06X\r\n",
+                   value & 0xFF,
+                   (value & 0xFF) >= 0x20 ? (value & 0xFF) : '.',
+                   m68k_get_reg(0, M68K_REG_PC));
     emu_ram[ address      & EMU_RAM_MASK] = (value >> 24) & 0xFF;
     emu_ram[(address + 1) & EMU_RAM_MASK] = (value >> 16) & 0xFF;
     emu_ram[(address + 2) & EMU_RAM_MASK] = (value >>  8) & 0xFF;

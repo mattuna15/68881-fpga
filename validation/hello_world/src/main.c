@@ -134,6 +134,7 @@ static void rom_boot(void)
         if (text_fb_is_dirty()) {
             text_fb_render();
             Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
+            dp_video_refresh();
             text_fb_mark_clean();
         }
 

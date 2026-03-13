@@ -305,10 +305,12 @@ The assembler and disassembler support all MC68881 FPU instructions:
   FBOGE, FBOLT, FBOLE, FBOGL, FBOR, FBUN, FBUEQ, FBUGT, FBUGE, FBULT,
   FBULE, FBNE, FBT, FBSF, FBST, FBSEQ, FBSNE, and negated variants
 - **All format suffixes**: `.B`, `.W`, `.L`, `.S`, `.D`, `.X`, `.P`
+- **Floating-point literals**: Decimal FP constants (e.g., `FADD.S #2.35,FP0`)
+  with IEEE 754 conversion for `.S` (single), `.D` (double), and `.X` (extended)
 - **FMOVE variants**: reg↔reg, mem↔reg, reg→mem, FMOVECR, FMOVE to/from
   FPCR/FPSR/FPIAR
 
-The BIOS ROM source is in `src/vitis/roms/bios.s`. Build with:
+The BIOS ROM source is in `validation/hello_world/src/roms/bios.s`. Build with:
 
 ```bash
 vasmm68k_mot -Fbin -o bios.bin bios.s

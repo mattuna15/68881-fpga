@@ -5,6 +5,9 @@ use ieee.numeric_std.all;
 use work.mc68881_pkg.all;
 
 entity mc68881_alu is
+  generic (
+    fpu_lite : boolean := false
+  );
   port (
     clk     : in  std_logic;
     reset_n : in  std_logic;
@@ -216,34 +219,50 @@ architecture rtl of mc68881_alu is
   signal shared_add_rp    : fp_round_prec_t;
 
 begin
-  trig_inst : entity work.mc68881_trig_unit
-    generic map (
-      table_impl => TABLE_IMPL_BRAM
-    )
-    port map (
-      clk        => clk,
-      reset_n    => reset_n,
-      start      => trig_start_reg,
-      op_sel     => op_pending_reg,
-      a_in       => a_in,
-      round_mode => round_mode,
-      round_prec => round_prec,
-      busy       => trig_busy,
-      done       => trig_done,
-      result     => trig_result,
-      aux_valid  => trig_aux_valid,
-      aux_result => trig_aux_result,
-      flag_divzero => trig_flag_divzero,
-      save_req       => save_req,
-      save_data      => trig_save_data,
-      save_addr      => trig_save_addr,
-      restore_req    => restore_req,
-      restore_data   => restore_data,
-      restore_addr   => trig_restore_addr,
-      restore_wr     => trig_restore_wr
-    );
+  gen_trig_full : if not fpu_lite generate
+    trig_inst : entity work.mc68881_trig_unit
+      generic map (
+        table_impl => TABLE_IMPL_BRAM
+      )
+      port map (
+        clk        => clk,
+        reset_n    => reset_n,
+        start      => trig_start_reg,
+        op_sel     => op_pending_reg,
+        a_in       => a_in,
+        round_mode => round_mode,
+        round_prec => round_prec,
+        busy       => trig_busy,
+        done       => trig_done,
+        result     => trig_result,
+        aux_valid  => trig_aux_valid,
+        aux_result => trig_aux_result,
+        flag_divzero => trig_flag_divzero,
+        save_req       => save_req,
+        save_data      => trig_save_data,
+        save_addr      => trig_save_addr,
+        restore_req    => restore_req,
+        restore_data   => restore_data,
+        restore_addr   => trig_restore_addr,
+        restore_wr     => trig_restore_wr
+      );
+  end generate;
+
+  gen_trig_lite : if fpu_lite generate
+  begin
+    trig_busy <= '0';
+    trig_done <= '0';
+    trig_result <= (others => '0');
+    trig_aux_result <= (others => '0');
+    trig_aux_valid <= '0';
+    trig_flag_divzero <= '0';
+    trig_save_data <= (others => '0');
+  end generate;
 
   divrem_inst : entity work.mc68881_divrem_unit
+    generic map (
+      enable_modrem_post => not fpu_lite
+    )
     port map (
       clk     => clk,
       reset_n => reset_n,
@@ -285,19 +304,28 @@ begin
       restore_wr     => divrem_restore_wr
     );
 
-  sglops_inst : entity work.mc68881_sgl_ops_unit
-    port map (
-      clk        => clk,
-      reset_n    => reset_n,
-      start      => sglops_start_reg,
-      op_sel     => sglops_op_reg,
-      a_in       => sglops_a_reg,
-      b_in       => sglops_b_reg,
-      round_mode => sglops_rm_reg,
-      busy       => sglops_busy,
-      done       => sglops_done,
-      result     => sglops_result
-    );
+  gen_sglops_full : if not fpu_lite generate
+    sglops_inst : entity work.mc68881_sgl_ops_unit
+      port map (
+        clk        => clk,
+        reset_n    => reset_n,
+        start      => sglops_start_reg,
+        op_sel     => sglops_op_reg,
+        a_in       => sglops_a_reg,
+        b_in       => sglops_b_reg,
+        round_mode => sglops_rm_reg,
+        busy       => sglops_busy,
+        done       => sglops_done,
+        result     => sglops_result
+      );
+  end generate;
+
+  gen_sglops_lite : if fpu_lite generate
+  begin
+    sglops_busy <= '0';
+    sglops_done <= '0';
+    sglops_result <= (others => '0');
+  end generate;
 
   -- Shared FP multiply operand mux (mutually exclusive: ALU own vs modrem vs packed)
   -- pragma translate_off
@@ -567,8 +595,18 @@ begin
                 when FPU_OP_ABS    => result_reg <= abs_fp80(simple_a_reg);
                 when FPU_OP_NEG    => result_reg <= neg_fp80(simple_a_reg);
                 when FPU_OP_INTRZ  => result_reg <= fintrz_fp80(simple_a_reg);
-                when FPU_OP_GETEXP => result_reg <= fgetexp_fp80(simple_a_reg);
-                when FPU_OP_GETMAN => result_reg <= fgetman_fp80(simple_a_reg);
+                when FPU_OP_GETEXP =>
+                  if not fpu_lite then
+                    result_reg <= fgetexp_fp80(simple_a_reg);
+                  else
+                    result_reg <= (others => '0');
+                  end if;
+                when FPU_OP_GETMAN =>
+                  if not fpu_lite then
+                    result_reg <= fgetman_fp80(simple_a_reg);
+                  else
+                    result_reg <= (others => '0');
+                  end if;
                 when FPU_OP_TST    => result_reg <= ftst_fp80(simple_a_reg);
                 when others        => result_reg <= (others => '0');
               end case;
@@ -599,7 +637,7 @@ begin
         sglops_done_seen_reg <= '0';
         simple_compute_pending_reg <= '0';
         op_pending_reg <= op_sel;
-        if is_trig_op(op_sel) then
+        if is_trig_op(op_sel) and not fpu_lite then
           trig_start_reg <= '1';
           busy_reg <= '1';
           trig_done_seen_reg <= '0';
@@ -642,7 +680,7 @@ begin
               latency_count_reg <= op_alu_latency(op_sel) - 1;
             end if;
           end if;
-        elsif is_divrem_op(op_sel) then
+        elsif is_divrem_op(op_sel) and (not fpu_lite or (op_sel = FPU_OP_DIV or op_sel = FPU_OP_SQRT)) then
           divrem_op_reg <= op_sel;
           divrem_a_reg <= a_in;
           divrem_b_reg <= b_in;
@@ -655,7 +693,7 @@ begin
           else
             latency_count_reg <= op_alu_latency(op_sel) - 2;
           end if;
-        elsif is_sglops_op(op_sel) then
+        elsif is_sglops_op(op_sel) and not fpu_lite then
           sglops_op_reg <= op_sel;
           sglops_a_reg <= a_in;
           sglops_b_reg <= b_in;
@@ -668,11 +706,18 @@ begin
             latency_count_reg <= op_alu_latency(op_sel) - 2;
           end if;
         else
+          -- Unsupported or NOP: return zero immediately
           result_reg <= (others => '0');
           if op_alu_latency(op_sel) = 0 then
             valid <= '1';
             busy_reg <= '0';
             op_pending_reg <= FPU_OP_NOP;
+            latency_count_reg <= 0;
+          elsif fpu_lite then
+            -- Unsupported op in lite mode: complete after 1 cycle
+            -- Force op_pending to NOP so the simple-ops completion path handles it
+            op_pending_reg <= FPU_OP_NOP;
+            busy_reg <= '1';
             latency_count_reg <= 0;
           else
             busy_reg <= '1';

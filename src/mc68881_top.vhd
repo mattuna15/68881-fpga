@@ -13,7 +13,10 @@ entity mc68881_top is
   generic (
     -- `true`: full packed-decimal conversion path.
     -- `false`: synthesis-safe packed-decimal fallback for debug/triage builds.
-    packed_decimal_full_g : boolean := true
+    packed_decimal_full_g : boolean := true;
+    -- `true`: MC68040 hardware subset (22 ALU ops, no trig/sglops/modrem/getexp/getman).
+    -- `false`: full MC68881 (48 ops).
+    fpu_lite_g : boolean := false
   );
   port (
     -- Bus interface
@@ -1779,6 +1782,9 @@ begin
   ) else '0';
 
   alu_inst : entity work.mc68881_alu
+    generic map (
+      fpu_lite => fpu_lite_g
+    )
     port map (
       clk    => clk,
       reset_n => reset_n,

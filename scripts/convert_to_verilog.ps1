@@ -94,6 +94,17 @@ try {
     if ($LASTEXITCODE -ne 0) { throw "GHDL synth failed: $entity" }
     $convertCount++
 
+    # --- Lite-mode top-level (fpu_lite_g => true) ---
+    $LiteDir = Join-Path $OutDir "fpu_lite"
+    if (-not (Test-Path $LiteDir)) {
+        New-Item -ItemType Directory -Path $LiteDir | Out-Null
+    }
+    $out = Join-Path $LiteDir "$entity.v"
+    Write-Host "  Converting: $TopFile -> $out (fpu_lite_g=true)"
+    & $GhdlPath synth --std=08 -fsynopsys -fexplicit --latches --out=verilog "-gfpu_lite_g=true" $entity | Out-File -Encoding ascii -FilePath $out
+    if ($LASTEXITCODE -ne 0) { throw "GHDL synth failed: $entity (lite)" }
+    $convertCount++
+
     Write-Host ""
 
     # ============================================================

@@ -97,6 +97,15 @@ ghdl synth --std=08 -fsynopsys -fexplicit --latches \
     --out=verilog "$entity" > "$out"
 convert_count=$((convert_count + 1))
 
+# Lite-mode top-level (fpu_lite_g => true)
+LITE_DIR="$OUT_DIR/fpu_lite"
+mkdir -p "$LITE_DIR"
+out="$LITE_DIR/${entity}.v"
+echo "  Converting: $TOP_FILE -> $out (fpu_lite_g=true)"
+ghdl synth --std=08 -fsynopsys -fexplicit --latches \
+    --out=verilog -gfpu_lite_g=true "$entity" > "$out"
+convert_count=$((convert_count + 1))
+
 echo ""
 
 # ============================================================

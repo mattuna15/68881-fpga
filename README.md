@@ -15,6 +15,10 @@ arithmetic, transcendental, exponential, and logarithmic operations.
 ## Features
 - **Full instruction set**: FADD, FSUB, FMUL, FDIV, FSQRT, FMOD, FREM, FSCALE,
   FSGLDIV, FSGLMUL, FABS, FNEG, FINT, FINTRZ, FGETEXP, FGETMAN, FTST, FCMP.
+- **Lite mode** (`fpu_lite_g => true`): MC68040 hardware subset -- keeps
+  ADD/SUB/MUL/DIV/SQRT/CMP/ABS/NEG/INT/INTRZ/TST plus control/move ops.
+  Removes trig engine, sglops unit, and modrem post-processing via VHDL generate
+  blocks (~57-60% LUT savings). Unsupported ops return zero in 1 cycle.
 - **Transcendental engine**: FSIN, FCOS, FTAN, FSINCOS, FASIN, FACOS, FATAN,
   FATANH, FSINH, FCOSH, FTANH, FETOX, FETOXM1, FTWOTOX, FTENTOX, FLOGN,
   FLOGNP1, FLOG2, FLOG10. BRAM coefficient ROM with degree-9 Horner polynomial
@@ -65,15 +69,16 @@ CIR coprocessor interface, and full exception dialog paths.*
 - Post-route WNS: **+0.405 ns** (timing met). WHS: **+0.022 ns** (no hold violations).
 
 ### Target device compatibility
-The design fits on several FPGA families. With CIR disabled (`ENABLE_CIR_g => false`),
-the core is ~56K LUTs:
+The design fits on several FPGA families. With `fpu_lite_g => true` (MC68040
+hardware subset: 22 ALU ops, no trig/sglops/modrem/getexp/getman), the core
+drops to ~28K-30K LUTs:
 
-| Device | LUTs | DSPs | Fit? |
-|--------|------|------|------|
-| Xilinx Artix-7 200T | 133,800 | 740 | Yes (47%) |
-| Xilinx Artix-7 100T | 63,400 | 240 | No (99%); Yes with CIR disabled (~88%) |
-| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~88%) |
-| Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes |
+| Device | LUTs | DSPs | Full fit? | Lite fit? |
+|--------|------|------|-----------|-----------|
+| Xilinx Artix-7 200T | 133,800 | 740 | Yes (47%) | Yes (~21%) |
+| Xilinx Artix-7 100T | 63,400 | 240 | Tight (99%) | Yes (~45%) |
+| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~88%) | Yes (~42%) |
+| Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
 
 All RTL is vendor-portable (inferred DSP/BRAM, no Xilinx IP cores). Porting to
 Intel/Quartus requires XDC-to-SDC constraint conversion and minor DSP inference
@@ -84,10 +89,10 @@ adjustments.
 ```
 mc68881_top                     Bus interface, format converters, FMOVECR ROM
 ├── alu_inst (mc68881_alu)      Opcode dispatch, shared FP unit mux
-│   ├── trig_inst               Transcendental engine (own mul/add/div — runs concurrently)
-│   ├── divrem_inst             Radix-4 SRT division, FSQRT, FMOD/FREM
-│   │   └── modrem_post         Post-processing (uses shared mul/add)
-│   ├── sglops_inst             FSCALE, FSGLDIV, FSGLMUL
+│   ├── trig_inst               Transcendental engine (generate: not fpu_lite)
+│   ├── divrem_inst             Radix-4 SRT division, FSQRT
+│   │   └── modrem_post         FMOD/FREM post-processing (generate: not fpu_lite)
+│   ├── sglops_inst             FSCALE, FSGLDIV, FSGLMUL (generate: not fpu_lite)
 │   ├── alu_mul_inst            Shared 64×64 sequential multiplier (DSP48E1 cascade)
 │   └── alu_add_inst            Shared 67-bit sequential adder/subtractor
 └── packed_unit_inst            Packed-decimal BCD encode/decode (uses shared mul/add)
@@ -125,7 +130,7 @@ instances per consumer.
 - `src/vitis/roms/` — 68000 BIOS ROM source (assembler, disassembler, monitor with FPU support)
 - `tb/` — VHDL-2008 self-checking testbenches (14 files, ~8.5K lines)
 - `docs/` — Implementation plan, timing notes, reference documentation
-- `verilog/` — Auto-generated Verilog conversion (see [verilog/README.md](verilog/README.md))
+- `verilog/` — Auto-generated Verilog conversion; `verilog/fpu_lite/` has the lite-mode variant (see [verilog/README.md](verilog/README.md))
 - `scripts/` — Test runner, golden vector generator, implementation TCL
 - `.github/workflows/ghdl.yml` — CI: GHDL analysis + 4 testbench runs
 - `.githooks/pre-push` — Pre-push GHDL regression gate
@@ -144,6 +149,7 @@ The script uses `GHDL_EXE` if set, otherwise defaults to
 ### CI testbenches
 The GitHub Actions workflow runs these testbenches on every push:
 - `tb_mc68881_alu` — Arithmetic, NaN/infinity, transcendental, special values
+- `tb_mc68881_alu_lite` — Lite-mode (`fpu_lite => true`): kept ops + removed ops return zero
 - `tb_mc68881_top` — Bus interface, format conversions, FPSR/exception checks
 - `tb_mc68881_ea_cycles` — Effective address cycle count tables
 - `tb_mc68881_cycle_counts` — Instruction cycle timing verification
@@ -210,7 +216,8 @@ automatically. To convert manually:
 powershell -ExecutionPolicy Bypass -File scripts/convert_to_verilog.ps1
 ```
 
-Output goes to [`verilog/`](verilog/). **These files are supplied as-is for
+Output goes to [`verilog/`](verilog/). A lite-mode variant (`fpu_lite_g => true`)
+is also generated into `verilog/fpu_lite/`. **These files are supplied as-is for
 information only — no guarantee of correctness is made and no tests are run on
 the converted code.** The VHDL sources remain the authoritative implementation.
 

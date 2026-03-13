@@ -626,7 +626,8 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   - LUT reductions offset CIR additions: net +565 LUTs vs pre-CIR baseline (66,007).
   - Timing dramatically improved: WNS from +0.404 ns to +11.404 ns (+11 ns gain)
     due to carry-propagation serialization breaking worst combinational paths.
-  - CIR feature is gatable (`ENABLE_CIR_g => false`) for smaller FPGAs.
+  - CIR was initially gatable (`ENABLE_CIR_g`); later replaced by a runtime
+    register (address 13 bit 0) and the generic was removed.
 - Run data (non-incremental synthesis + implementation):
   - Utilization (post-place): `Slice LUTs = 66572 / 133800 (49.75%)`
   - DSPs: 33 / 740 (4.46%)

@@ -110,13 +110,16 @@ static void rom_boot(void)
     text_fb_render();
     Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
 
-    /* Initialise DisplayPort output */
+    /* Initialise DisplayPort output.
+     * Returns: 0 = success, 1 = no monitor, <0 = error */
     status = dp_video_init(pixel_buf);
-    if (status != 0) {
+    if (status < 0) {
         xil_printf("[ROM] WARNING: DP init failed (%d), "
                    "continuing with UART-only output\r\n", status);
-    } else {
+    } else if (status == 0) {
         dp_ok = 1;
+    } else {
+        xil_printf("[ROM] No DP monitor — UART-only output\r\n");
     }
 
     /* Initialise Musashi 68000 core */
@@ -164,7 +167,8 @@ static void poll_uart_rx(void)
     /* Channel Status Register bit 1: RX FIFO empty */
     while (!((*uart_sr) & 0x02)) {
         u8 ch = XUartPs_RecvByte(XPAR_XUARTPS_0_BASEADDR);
-        mfp_rx_push(ch);
+        if (mfp_rx_push(ch) < 0)
+            xil_printf("[UART] RX buffer full, character dropped\r\n");
     }
 #endif
 }

@@ -64,8 +64,8 @@ unsigned int m68k_read_memory_8(unsigned int address)
 
 unsigned int m68k_read_memory_16(unsigned int address)
 {
-    /* MFP registers are byte-wide at odd addresses; a word read
-     * spanning two MFP bytes is uncommon but handle it correctly */
+    /* MFP registers are byte-wide; decompose word reads into byte
+     * reads when any byte falls in the MFP range */
     if (is_mfp(address) || is_mfp(address + 1)) {
         return ((unsigned int)m68k_read_memory_8(address) << 8) |
                 (unsigned int)m68k_read_memory_8(address + 1);
@@ -76,6 +76,9 @@ unsigned int m68k_read_memory_16(unsigned int address)
 
 unsigned int m68k_read_memory_32(unsigned int address)
 {
+    /* Check first and last byte; middle bytes are covered because the
+     * MFP region is wider than 4 bytes (0x30) so any straddling access
+     * will have either byte 0 or byte 3 inside the range */
     if (is_mfp(address) || is_mfp(address + 3)) {
         return ((unsigned int)m68k_read_memory_8(address)     << 24) |
                ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
@@ -94,9 +97,13 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
         mfp_write(address - EMU_MFP_BASE, value & 0xFF);
         return;
     }
-    /* ROM region: silently ignore writes */
-    if (address >= EMU_ROM_BASE && address < EMU_ROM_BASE + EMU_ROM_SIZE)
+    /* ROM region: ignore writes (write-protected) */
+    if (address >= EMU_ROM_BASE && address < EMU_ROM_BASE + EMU_ROM_SIZE) {
+#ifdef DEBUG
+        xil_printf("[MEM] WARNING: write to ROM @%06X ignored\r\n", address);
+#endif
         return;
+    }
     emu_ram[address & EMU_RAM_MASK] = value & 0xFF;
 }
 
@@ -107,9 +114,14 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
         m68k_write_memory_8(address + 1,  value       & 0xFF);
         return;
     }
-    if (address >= EMU_ROM_BASE && address < EMU_ROM_BASE + EMU_ROM_SIZE)
+    if (address >= EMU_ROM_BASE && address < EMU_ROM_BASE + EMU_ROM_SIZE) {
+#ifdef DEBUG
+        xil_printf("[MEM] WARNING: write to ROM @%06X ignored\r\n", address);
+#endif
         return;
-    /* DEBUG: trace TDATA, TLENGTH, and debug marker writes */
+    }
+#ifdef DEBUG
+    /* Trace TDATA, TLENGTH, and debug marker writes */
     if (address == 0x064C)
         xil_printf("[DBG] TDATA  w16 @%06X = %04X  PC=%06X\r\n",
                    address, value & 0xFFFF, m68k_get_reg(0, M68K_REG_PC));
@@ -119,6 +131,7 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
     if (address == 0x0120)
         xil_printf("[DBG] MARKER w16 @%06X = %04X  PC=%06X\r\n",
                    address, value & 0xFFFF, m68k_get_reg(0, M68K_REG_PC));
+#endif
     emu_ram[ address      & EMU_RAM_MASK] = (value >> 8) & 0xFF;
     emu_ram[(address + 1) & EMU_RAM_MASK] =  value       & 0xFF;
 }
@@ -132,8 +145,13 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
         m68k_write_memory_8(address + 3,  value        & 0xFF);
         return;
     }
-    if (address >= EMU_ROM_BASE && address < EMU_ROM_BASE + EMU_ROM_SIZE)
+    if (address >= EMU_ROM_BASE && address < EMU_ROM_BASE + EMU_ROM_SIZE) {
+#ifdef DEBUG
+        xil_printf("[MEM] WARNING: write to ROM @%06X ignored\r\n", address);
+#endif
         return;
+    }
+#ifdef DEBUG
     if (address == 0x0100)
         xil_printf("[DBG] A5=%08X  PC=%06X\r\n",
                    value, m68k_get_reg(0, M68K_REG_PC));
@@ -148,6 +166,7 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
                    value & 0xFF,
                    (value & 0xFF) >= 0x20 ? (value & 0xFF) : '.',
                    m68k_get_reg(0, M68K_REG_PC));
+#endif
     emu_ram[ address      & EMU_RAM_MASK] = (value >> 24) & 0xFF;
     emu_ram[(address + 1) & EMU_RAM_MASK] = (value >> 16) & 0xFF;
     emu_ram[(address + 2) & EMU_RAM_MASK] = (value >>  8) & 0xFF;

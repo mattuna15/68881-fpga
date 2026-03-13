@@ -335,7 +335,7 @@ provides an interactive monitor with a built-in assembler (CODE68K) and disassem
   and FBcc branches with all 32 condition codes
 - **MFP emulation** -- MC68901 USART emulation maps ARM UART RX/TX to the
   BIOS character I/O, enabling keyboard input and serial output
-- **DisplayPort text output** -- 80x45 character text framebuffer rendered
+- **DisplayPort text output** -- 80x30 character text framebuffer rendered
   to 1280x720@60Hz ARGB8888 via PS DisplayPort TX + DPDMA
 
 ### Memory Map
@@ -348,7 +348,7 @@ provides an interactive monitor with a built-in assembler (CODE68K) and disassem
 
 ### Building the ROM
 
-The BIOS source is in `src/vitis/roms/bios.s` (68000 assembly, Motorola syntax).
+The BIOS source is in `src/roms/bios.s` (68000 assembly, Motorola syntax).
 Assemble with vasm and convert to a C header:
 
 ```bash
@@ -408,7 +408,7 @@ The project is a standard Vitis embedded application targeting the ZU3EG platfor
 | `tests/cir_dialog.c` | CIR dialog protocol test |
 | `platform.c` | Vitis BSP platform init |
 | `dp_video.c` | PS DisplayPort TX + DPDMA output driver |
-| `text_fb.c` | 80x45 text framebuffer (8x16 font, ARGB8888) |
+| `text_fb.c` | 80x30 text framebuffer (8x16 font, ARGB8888) |
 | `mfp_emu.c` | MC68901 MFP USART emulation |
 
 **Do NOT compile:** `m68kfpu.c` (Musashi's software FPU -- `#include`d by

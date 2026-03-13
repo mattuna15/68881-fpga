@@ -92,11 +92,10 @@ int dp_video_init(uint32_t *pixel_buf)
     XDpPsu_SetHpdPulseHandler(&dp_inst, dp_hpd_pulse, &dp_inst);
 
     /* --- Configure DPDMA graphics format and QoS --- */
-    /* Framebuffer stores 0xAARRGGBB in each u32.  Xilinx ABGR8888 maps
-     * bits [31:24]=A [23:16]=B [15:8]=G [7:0]=R — which on little-endian
-     * AArch64 reads our A byte from the MSB position correctly.  Using
-     * RGBA8888 would put R in bits [31:24], making alpha=0 on every pixel
-     * and the blender would render everything as transparent black. */
+    /* Framebuffer stores 0xAARRGGBB in each u32.  The Xilinx RGBA8888
+     * enum selects the DPDMA/AVBuf pixel format that treats the MSB as
+     * alpha on little-endian AArch64, matching our 0xAARRGGBB layout.
+     * (The enum name refers to the logical channel order, not byte order.) */
     XDpDma_SetGraphicsFormat(&dma_inst, RGBA8888);
     XAVBuf_SetInputNonLiveGraphicsFormat(&avbuf_inst, RGBA8888);
     XDpDma_SetQOS(&dma_inst, 11);
@@ -138,7 +137,7 @@ int dp_video_init(uint32_t *pixel_buf)
     if (!XDpPsu_IsConnected(&dp_inst)) {
         xil_printf("[DP] No monitor detected — skipping link training\r\n");
         xil_printf("[DP] DPDMA configured but no video output\r\n");
-        return 0;
+        return 1;  /* no monitor — DPDMA not started, caller must not refresh */
     }
 
     /* Disable main link before training */
@@ -147,11 +146,13 @@ int dp_video_init(uint32_t *pixel_buf)
     /* Read sink (monitor) capabilities via AUX/DPCD */
     status = XDpPsu_GetRxCapabilities(&dp_inst);
     if (status != XST_SUCCESS) {
-        xil_printf("[DP] WARNING: Could not read sink caps (%lu)\r\n",
+        xil_printf("[DP] WARNING: Could not read sink caps (%lu), "
+                   "using conservative link parameters\r\n",
                    (unsigned long)status);
     }
 
-    /* Link parameters */
+    /* Link parameters — conservative defaults that work even if
+     * GetRxCapabilities failed (1-lane fallback below handles mismatches) */
     XDpPsu_SetLinkRate(&dp_inst, XDPPSU_LINK_BW_SET_270GBPS);
     XDpPsu_SetLaneCount(&dp_inst, 2);
     XDpPsu_SetEnhancedFrameMode(&dp_inst, 1);

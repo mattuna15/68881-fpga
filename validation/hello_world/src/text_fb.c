@@ -202,7 +202,7 @@ void text_fb_render(void)
         }
     }
 
-    /* Render a simple block cursor (inverted colours at cursor position) */
+    /* Render underline cursor at current position (last 2 scanlines, white) */
     if (cursor_row < TEXT_ROWS && cursor_col < TEXT_COLS) {
         int base_y = TEXT_OFS_Y + cursor_row * FONT_H;
         int base_x = TEXT_OFS_X + cursor_col * FONT_W;

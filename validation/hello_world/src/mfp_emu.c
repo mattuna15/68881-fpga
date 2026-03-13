@@ -63,8 +63,10 @@ static uint8_t rx_pop(void)
 
 uint8_t mfp_read(uint32_t offset)
 {
-    if (offset >= MFP_SIZE)
+    if (offset >= MFP_SIZE) {
+        xil_printf("[MFP] BUG: read offset 0x%02X out of range\r\n", offset);
         return 0;
+    }
 
     switch (offset) {
     case MFP_OFF_TSR:
@@ -86,8 +88,10 @@ uint8_t mfp_read(uint32_t offset)
 
 void mfp_write(uint32_t offset, uint8_t value)
 {
-    if (offset >= MFP_SIZE)
+    if (offset >= MFP_SIZE) {
+        xil_printf("[MFP] BUG: write offset 0x%02X out of range\r\n", offset);
         return;
+    }
 
     switch (offset) {
     case MFP_OFF_UDR:

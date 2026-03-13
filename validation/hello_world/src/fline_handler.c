@@ -481,8 +481,8 @@ static int handle_general(unsigned int opword, unsigned int pc)
             case FMT_SINGLE: src_val = single_to_fp80(dreg_val); break;
             default:
                 xil_printf("FLINE: Dn source with fmt %d unsupported\r\n", fmt);
-                src_val = FP80_ZERO;
-                break;
+                m68k_set_reg(M68K_REG_PC, pc);
+                return 0;  /* unhandled — let Musashi take the exception */
             }
             ea_addr = 0; /* not used */
         } else if (ea_mode == 7 && ea_reg == 4) {
@@ -828,8 +828,8 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
         }
         default:
             xil_printf("FLINE: FMOVE to Dn unsupported fmt=%d\r\n", fmt);
-            result_val = 0;
-            break;
+            m68k_set_reg(M68K_REG_PC, pc);
+            return 0;  /* unhandled — let Musashi take the exception */
         }
         m68k_set_reg(M68K_REG_D0 + ea_reg, result_val);
         m68k_set_reg(M68K_REG_PC, pc);
@@ -1036,6 +1036,10 @@ int fline_init(void)
     /* Disable CIR mode — use peripheral register interface (OPSEL/OPA/OPB).
      * CIR is enabled by default on the AXI peripheral. */
     fpu_wr(OFF_CIR_MODE, 0);
+    if (fpu_rd(OFF_CIR_MODE) != 0) {
+        xil_printf("FATAL: fline_init: CIR mode disable failed\r\n");
+        return FPU_BUS_ERR;
+    }
     fpu_write_fpcr(0);
     return FPU_OK;
 }

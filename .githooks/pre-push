@@ -24,6 +24,7 @@ echo "Running GHDL tests before push..."
   src/mc68881_top.vhd \
   tb/mc68881_golden_vectors_pkg.vhd \
   tb/tb_mc68881_alu.vhd \
+  tb/tb_mc68881_alu_lite.vhd \
   tb/tb_mc68881_known_defects.vhd \
   tb/tb_mc68881_top.vhd \
   tb/tb_mc68881_cir_dialog.vhd \
@@ -31,6 +32,9 @@ echo "Running GHDL tests before push..."
 
 "$GHDL_EXE" -e --std=08 tb_mc68881_alu
 "$GHDL_EXE" -r --std=08 tb_mc68881_alu --assert-level=error
+
+"$GHDL_EXE" -e --std=08 tb_mc68881_alu_lite
+"$GHDL_EXE" -r --std=08 tb_mc68881_alu_lite --assert-level=error
 
 "$GHDL_EXE" -e --std=08 tb_mc68881_top
 "$GHDL_EXE" -r --std=08 tb_mc68881_top --assert-level=error

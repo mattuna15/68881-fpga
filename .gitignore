@@ -47,3 +47,5 @@ validation/hello_world/src/roms/bios.bin
 validation/hello_world/src/roms/bios.L68
 validation/hello_world/src/roms/bios.S68
 validation/hello_world/src/roms/listing.txt
+*.ghw
+*.vcd

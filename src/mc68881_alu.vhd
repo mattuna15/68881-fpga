@@ -595,18 +595,8 @@ begin
                 when FPU_OP_ABS    => result_reg <= abs_fp80(simple_a_reg);
                 when FPU_OP_NEG    => result_reg <= neg_fp80(simple_a_reg);
                 when FPU_OP_INTRZ  => result_reg <= fintrz_fp80(simple_a_reg);
-                when FPU_OP_GETEXP =>
-                  if not fpu_lite then
-                    result_reg <= fgetexp_fp80(simple_a_reg);
-                  else
-                    result_reg <= (others => '0');
-                  end if;
-                when FPU_OP_GETMAN =>
-                  if not fpu_lite then
-                    result_reg <= fgetman_fp80(simple_a_reg);
-                  else
-                    result_reg <= (others => '0');
-                  end if;
+                when FPU_OP_GETEXP => result_reg <= fgetexp_fp80(simple_a_reg);
+                when FPU_OP_GETMAN => result_reg <= fgetman_fp80(simple_a_reg);
                 when FPU_OP_TST    => result_reg <= ftst_fp80(simple_a_reg);
                 when others        => result_reg <= (others => '0');
               end case;
@@ -646,7 +636,7 @@ begin
           else
             latency_count_reg <= op_alu_latency(op_sel) - 2;
           end if;
-        elsif is_simple_op(op_sel) then
+        elsif is_simple_op(op_sel) and (not fpu_lite or (op_sel /= FPU_OP_GETEXP and op_sel /= FPU_OP_GETMAN)) then
           if op_sel = FPU_OP_ADD or op_sel = FPU_OP_SUB or op_sel = FPU_OP_MUL then
             -- Sequential FP path: register operands, launch unit
             simple_a_reg <= a_in;
@@ -665,7 +655,7 @@ begin
             busy_reg <= '1';
             latency_count_reg <= op_alu_latency(op_sel) - 1;
           else
-            -- Lightweight combinational path (CMP/ABS/NEG/INT/INTRZ/GETEXP/GETMAN/TST)
+            -- Lightweight combinational path (CMP/ABS/NEG/INT/INTRZ/TST; GETEXP/GETMAN in full mode)
             simple_a_reg <= a_in;
             simple_b_reg <= b_in;
             simple_op_reg <= op_sel;

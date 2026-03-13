@@ -19,7 +19,7 @@
 
 ## Assembler Testing
 
-- [ ] **Test F-line FPU instruction assembly** — EA-to-FP works; R2R (no suffix) broken; FP-to-FP, FMOVE variants, FBcc still to verify
+- [x] **Test F-line FPU instruction assembly** — EA-to-FP, R2R, FP literals (.S), and non-FPU instructions (RTS, ADD) verified on hardware (2026-03-13)
 
 ## Assembler Features
 
@@ -28,13 +28,14 @@
 - [ ] **FP literal support for .P (packed BCD)** — FPARSLIT currently converts decimal → single → double/extended; .P needs a dedicated decimal → packed BCD converter
 - [ ] **Delete character support in line input** — handle backspace/delete in the assembler input loop
 - [x] **Option R — register dump** — print saved registers (D0–D7, A0–A7, FP0–FP7, SP, PC, SR) from last G(o) command; R(un) renamed to G(o)
-- [ ] **Debug/trace/breakpoint support** — add interactive debugging commands to the monitor/assembler
+- [x] **Debug/trace/breakpoint support** — T(race), B(reakpoint), N(o breakpoint) commands; saveRegs/unstack for RTE-based debug execution; swapIn/swapOut for $4AFB breakpoint opcodes; 8 regular + 1 temporary breakpoint slots with pass counts
 
 ## BIOS Bugs
 
 - [x] **Fix ECHO_ON DS.B 0** — reserved zero bytes, aliased on PROMPT_ON; changed to DS.B 1
 - [x] **Fix readLine echo** — unconditionally echoed characters; now gated on ECHO_ON flag
 - [x] **Fix SR display** — `MOVE.L SAVED_SR,D0` read longword from word-sized field, printing SAVED_FP garbage as SR; use `CLR.L D0` + `MOVE.W`
+- [x] **Fix .io2 D1 off-by-one** — TRAP #15 D0=2 returned D1 one too large (counted CR as stored char); broke all no-operand assembler instructions (RTS, NOP, RTE etc.) because NUL terminator wasn't overwritten by CODE68K's safety BLANK; changed `move.w #80,D0` to `#79`
 
 ## ROM / BIOS
 

@@ -325,7 +325,9 @@ provides an interactive monitor with a built-in assembler (CODE68K) and disassem
 ### BIOS Features
 
 - **Interactive monitor** -- command prompt with memory inspect/modify, register
-  display, breakpoints, and single-step
+  display, up to 8 software breakpoints with pass counts, single-step trace,
+  and debug-aware Go with RTE-based execution.
+  See the [BIOS User Guide](../../../docs/merlin2_bios.md) for full details
 - **68000 assembler (CODE68K)** -- table-driven, handles all standard 68000
   instructions plus 39 FPU arithmetic/transcendental mnemonics and 32 FBcc
   branch conditions. Supports all format suffixes: `.B`, `.W`, `.L`, `.S`,

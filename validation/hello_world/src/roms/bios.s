@@ -115,6 +115,7 @@ PTROP    DS.L    1              POINTER TO OPERAND
 PENDOP   DS.L    1              POINTER END OF OPERAND
 PTRBUFE  DS.L    1              POINTER TO END OF FORMATED SOURCE
 LINK     DS.L    1              SAVE FOR UNLINK
+FPUSCR   DS.W    2              FPU assembler scratch (opcode + temp)
 ESKE     DS.B    0
 
 
@@ -139,6 +140,19 @@ SAVED_SR DS.W    1              SR
 SAVED_FP DS.B    12*8           FP0-FP7 (12 bytes each, extended format)
 REGS_VALID DS.B  1              Non-zero if saved registers are valid
 
+         EVEN
+* Debug/trace state
+TRACECNT  DS.W    1              >0=instructions left, 0=stopped, -1=single-step-resume
+DEBUG_ON  DS.B    1              Non-zero = debug mode active
+         EVEN
+* Breakpoint table: 8 regular + 1 temporary
+NUMBP     EQU     8
+BPADD    DS.L    NUMBP           Breakpoint addresses (0=unused)
+BPDATA   DS.W    NUMBP           Saved original words
+BPCNT    DS.W    NUMBP           Pass counts (0=break every hit)
+BPTADD   DS.L    1               Temporary breakpoint address
+BPTDATA  DS.W    1               Temporary BP saved word
+
 *****************************************************************************************************
 *	Program section		
 *	The ROM in this BIOS is mapped to the variable
@@ -154,13 +168,14 @@ ROMSTART	EQU	*		BEGINNING OF PROGRAM SECTION
 ****************************************
 *	Initialize the MC68901 MFP
 
-		BSR.S	MFPINIT		DO SO AS SUBROUTINE FOR LATER USE
+		BSR.W	MFPINIT		DO SO AS SUBROUTINE FOR LATER USE
 
 ****************************************
 *	Initialize the TRAP vectors
 		BSR.W	setTrap1	Initialize MFP GPIO TRAP1 vector
 		BSR.W	setTrap15	Initialize IO TRAP15 vector
 		BSR.W	setExcVectors	Initialize fault vectors 2-7
+		BSR.W	setDebugVectors	Install trace + illegal vectors
 
 WARMSTART
 	IFEQ	EASY68K_SIM
@@ -172,6 +187,13 @@ WARMSTART
 		MOVE.B #1,PROMPT_ON
 		MOVE.B #1,LF_DISPLAY
 		CLR.B  REGS_VALID
+		CLR.W  TRACECNT
+		CLR.B  DEBUG_ON
+		LEA    BPADD,A0
+		MOVEQ  #NUMBP-1,D0
+.clrbp		CLR.L  (A0)+
+		DBRA   D0,.clrbp
+		CLR.L  BPTADD
 
 		LEA.L	msgBanner,A0	Print Banner    ****
 		BSR.W	printString  **********************
@@ -446,7 +468,13 @@ parseLine
 		CMP.B	#'L',D0		*LOAD
 		BEQ.W	load
 		CMP.B	#'A',D0		*Assemble
-		Beq  	assemble	
+		Beq  	assemble
+		CMP.B	#'T',D0		TRACE
+		BEQ.W	.trace
+		CMP.B	#'B',D0		BREAKPOINT
+		BEQ.W	.breakpoint
+		CMP.B	#'N',D0		NO BREAKPOINT (clear)
+		BEQ.W	.noBreak
 		CMP.B	#0,D0		BLANK LINE
 		BEQ.S	.exit
 	
@@ -553,8 +581,15 @@ parseLine
 .run		BSR.W	parseNumber	Read in the address
 		TST.B	D1		Test for validity
 		BNE 	.invalidAddr
-		MOVE.L	D0,A0
-		MOVE.L	A0,SAVED_PC     Save target PC for display
+		MOVE.L	D0,SAVED_PC     Save target PC
+* Check if any breakpoints are active
+		LEA	BPADD,A2
+		MOVEQ	#NUMBP-1,D1
+.gChk		TST.L	(A2)+
+		BNE.S	.runDebug
+		DBRA	D1,.gChk
+* No breakpoints — simple JSR mode (backward compatible)
+		MOVE.L	SAVED_PC,A0
 		JSR	(A0)		Wheeeeeeeeeeeeeeeeeeeee!!!!
 * Save registers from user program return
 		MOVEM.L	D0-D7/A0-A6,SAVED_D Save D0-D7 and A0-A6
@@ -576,6 +611,120 @@ parseLine
 	ENDC
 		MOVE.B	#1,REGS_VALID   Mark registers as valid
 		BRA.W	.exit           Return to prompt (not WARMSTART)
+.runDebug
+* Debug mode — RTE-based execution with breakpoints
+		MOVE.W	SR,SAVED_SR
+		ANDI.W	#$7FFF,SAVED_SR  Clear T bit initially
+		TST.B	REGS_VALID
+		BNE.S	.gKeep
+* First run — zero out saved regs
+		LEA	SAVED_D,A0
+		MOVEQ	#14,D0		15 longs (D0-D7 + A0-A6)
+.gClr		CLR.L	(A0)+
+		DBRA	D0,.gClr
+.gKeep		MOVE.B	#1,REGS_VALID
+		MOVE.B	#1,DEBUG_ON
+		ORI.W	#$8000,SAVED_SR  Set T bit for single-step past potential BP at PC
+		MOVE.W	#-1,TRACECNT     -1 = single-step-then-SWAPIN
+		LEA	SYSTACK,A7
+		BRA	unstack
+*
+* Trace command
+*
+.trace		TST.B	REGS_VALID
+		BEQ.S	.traceNeedPC
+* Parse optional count (default 1)
+		BSR.W	parseNumber
+		TST.B	D1		Non-zero = no number provided
+		BEQ.S	.traceGo
+		MOVEQ	#1,D0		Default: trace 1 instruction
+.traceGo	MOVE.W	D0,TRACECNT
+		ORI.W	#$8000,SAVED_SR  Set T bit
+		BSR.W	swapIn
+		LEA	SYSTACK,A7	Reset stack (won't return to parseLine)
+		BRA	unstack
+.traceNeedPC	LEA	msgNoRegs,A0
+		BSR.W	printString
+		BRA.W	.exit
+*
+* Breakpoint command
+*
+.breakpoint	MOVE.B	(A0),D0
+		BEQ.S	.bpDisplay	No arg = display
+		CMP.B	#' ',D0
+		BNE.S	.bpParse
+		ADDQ.L	#1,A0		Skip space
+		MOVE.B	(A0),D0
+		BEQ.S	.bpDisplay	Space only = display
+.bpParse	BSR.W	parseNumber
+		TST.B	D1
+		BNE.W	.invalidAddr
+		MOVE.L	D0,D3		Save address
+		MOVEQ	#0,D4		Default pass count = 0
+		CMP.B	#';',(A0)
+		BNE.S	.bpSet
+		ADDQ.L	#1,A0		Skip semicolon
+		BSR.W	parseNumber
+		MOVE.W	D0,D4
+.bpSet		LEA	BPADD,A2
+		LEA	BPCNT,A3
+		MOVEQ	#NUMBP-1,D1
+.bpFind		CMP.L	(A2),D3
+		BEQ.S	.bpUpdate	Already exists — update count
+		TST.L	(A2)
+		BEQ.S	.bpSlot		Empty slot
+		ADDQ.L	#4,A2
+		ADDQ.L	#2,A3
+		DBRA	D1,.bpFind
+		LEA	msgBPfull,A0
+		BSR.W	printString
+		BRA.W	.exit
+.bpSlot		MOVE.L	D3,(A2)
+.bpUpdate	MOVE.W	D4,(A3)
+		BRA.W	.exit
+.bpDisplay	LEA	BPADD,A2
+		LEA	BPCNT,A3
+		MOVEQ	#0,D4
+.bpDlp		MOVE.L	(A2)+,D0
+		BEQ.S	.bpDnx
+		BSR.W	printHexLong
+		MOVE.W	(A3),D1
+		BEQ.S	.bpDnc
+		LEA	msgBPcnt,A0
+		BSR.W	printString
+		CLR.L	D0
+		MOVE.W	(A3),D0
+		BSR.W	printHexWord
+.bpDnc		LEA	msgNewline,A0
+		BSR.W	printString
+.bpDnx		ADDQ.L	#2,A3
+		ADDQ.L	#1,D4
+		CMP.B	#NUMBP,D4
+		BNE.S	.bpDlp
+		BRA.W	.exit
+*
+* No-breakpoint (clear) command
+*
+.noBreak	MOVE.B	(A0),D0
+		BEQ.S	.nbrAll		No arg = clear all
+		BSR.W	parseNumber
+		TST.B	D1
+		BNE.W	.invalidAddr
+		LEA	BPADD,A2
+		MOVEQ	#NUMBP-1,D1
+.nbrFind	CMP.L	(A2),D0
+		BEQ.S	.nbrGot
+		ADDQ.L	#4,A2
+		DBRA	D1,.nbrFind
+		BRA.W	.exit		Not found — silently ignore
+.nbrGot		CLR.L	(A2)
+		BRA.W	.exit
+.nbrAll		LEA	BPADD,A2
+		MOVEQ	#NUMBP-1,D1
+.nbrClr		CLR.L	(A2)+
+		DBRA	D1,.nbrClr
+		CLR.L	BPTADD
+		BRA.W	.exit
 *
 * Register dump
 *
@@ -850,6 +999,227 @@ regDump		MOVEM.L	D3-D5/A2,-(SP)
 *
 		MOVEM.L	(SP)+,D3-D5/A2
 		RTS
+
+****************************************
+*  setDebugVectors — install trace and illegal instruction vectors
+*
+setDebugVectors
+		LEA	traceHandler,A0
+		MOVE.L	A0,$0024	Vector 9: Trace
+		LEA	illegalHandler,A0
+		MOVE.L	A0,$0010	Vector 4: Illegal instruction
+		RTS
+
+****************************************
+*  saveRegs — save all registers from exception context
+*  Called via BSR from handler, so stack is:
+*    (A7)+0: BSR return address (4 bytes)
+*    (A7)+4: SR from exception  (2 bytes)
+*    (A7)+6: PC from exception  (4 bytes)
+*
+saveRegs	MOVEM.L	D0-D7/A0-A6,SAVED_D
+		MOVE.L	A7,A0
+		ADDQ.L	#4,A0		Skip BSR return address
+		MOVE.W	(A0),SAVED_SR	SR from exception frame
+		MOVE.L	2(A0),SAVED_PC	PC from exception frame
+		ADDQ.L	#6,A0		Skip exception frame
+		MOVE.L	A0,SAVED_SP	Save user SP (past all frames)
+	IFEQ	EASY68K_SIM
+		LEA	SAVED_FP,A0
+		DC.W	$F210,$6800             FMOVE.X FP0,(A0)
+		DC.W	$F228,$6880,$000C       FMOVE.X FP1,12(A0)
+		DC.W	$F228,$6900,$0018       FMOVE.X FP2,24(A0)
+		DC.W	$F228,$6980,$0024       FMOVE.X FP3,36(A0)
+		DC.W	$F228,$6A00,$0030       FMOVE.X FP4,48(A0)
+		DC.W	$F228,$6A80,$003C       FMOVE.X FP5,60(A0)
+		DC.W	$F228,$6B00,$0048       FMOVE.X FP6,72(A0)
+		DC.W	$F228,$6B80,$0054       FMOVE.X FP7,84(A0)
+	ENDC
+		MOVE.B	#1,REGS_VALID
+		RTS
+
+****************************************
+*  unstack — restore all registers and RTE to user code
+*
+unstack
+	IFEQ	EASY68K_SIM
+		LEA	SAVED_FP,A0
+* FMOVE.X d(A0),FPn — hand-encoded (EA=d16(A0), direction=memory-to-reg)
+		DC.W	$F210,$4800             FMOVE.X (A0),FP0
+		DC.W	$F228,$4880,$000C       FMOVE.X 12(A0),FP1
+		DC.W	$F228,$4900,$0018       FMOVE.X 24(A0),FP2
+		DC.W	$F228,$4980,$0024       FMOVE.X 36(A0),FP3
+		DC.W	$F228,$4A00,$0030       FMOVE.X 48(A0),FP4
+		DC.W	$F228,$4A80,$003C       FMOVE.X 60(A0),FP5
+		DC.W	$F228,$4B00,$0048       FMOVE.X 72(A0),FP6
+		DC.W	$F228,$4B80,$0054       FMOVE.X 84(A0),FP7
+	ENDC
+		MOVE.L	SAVED_SP,A7	Set SSP to user's stack
+		MOVE.L	SAVED_PC,-(A7)	Push PC for RTE frame
+		MOVE.W	SAVED_SR,-(A7)	Push SR for RTE frame
+		MOVEM.L	SAVED_D,D0-D7/A0-A6  Restore all work regs (absolute EA, A7 preserved)
+		RTE			Pop SR+PC, jump to user
+
+****************************************
+*  swapIn — plant breakpoint opcodes into user code
+*
+swapIn		MOVEM.L	D0-D1/A0-A2,-(A7)
+		LEA	BPADD,A0
+		LEA	BPDATA,A1
+		MOVEQ	#NUMBP-1,D0
+.loop		MOVE.L	(A0)+,D1
+		BEQ.S	.skip
+		MOVE.L	D1,A2
+		MOVE.W	(A2),(A1)	Save original word
+		MOVE.W	#BKPOINT,(A2)	Plant $4AFB
+.skip		ADDQ.L	#2,A1
+		DBRA	D0,.loop
+		MOVE.L	BPTADD,D1	Temporary BP
+		BEQ.S	.done
+		MOVE.L	D1,A2
+		MOVE.W	(A2),BPTDATA
+		MOVE.W	#BKPOINT,(A2)
+.done		MOVEM.L	(A7)+,D0-D1/A0-A2
+		RTS
+
+****************************************
+*  swapOut — restore original code at breakpoint locations
+*
+swapOut		MOVEM.L	D0-D1/A0-A2,-(A7)
+		LEA	BPADD,A0
+		LEA	BPDATA,A1
+		MOVEQ	#NUMBP-1,D0
+.loop		MOVE.L	(A0)+,D1
+		BEQ.S	.skip
+		MOVE.L	D1,A2
+		MOVE.W	(A1),(A2)	Restore original word
+.skip		ADDQ.L	#2,A1
+		DBRA	D0,.loop
+		MOVE.L	BPTADD,D1
+		BEQ.S	.done
+		MOVE.L	D1,A2
+		MOVE.W	BPTDATA,(A2)
+		CLR.L	BPTADD		One-shot
+.done		MOVEM.L	(A7)+,D0-D1/A0-A2
+		RTS
+
+****************************************
+*  disasmNext — disassemble instruction at SAVED_PC using DCODE68K
+*
+disasmNext	MOVEM.L	D0-D2/A3-A6,-(A7)
+		MOVE.L	SAVED_PC,A4
+		MOVE.L	(A4),D0		Load 12 bytes of code
+		MOVE.L	4(A4),D1
+		MOVE.L	8(A4),D2
+		LEA	SYSTACK+17,A5	Output buffer
+		JSR	DCODE68K
+* A3 = start of formatted line, A6 = end
+		MOVE.B	#0,(A6)		Null-terminate
+		MOVE.L	A3,A0
+		BSR.W	printString	Print disassembled line
+		LEA	msgNewline,A0
+		BSR.W	printString
+		MOVEM.L	(A7)+,D0-D2/A3-A6
+		RTS
+
+****************************************
+*  traceHandler — vector 9: Trace exception
+*
+traceHandler
+		MOVE.W	#$2700,SR	Mask interrupts
+		BSR.W	saveRegs
+		ANDI.W	#$7FFF,SAVED_SR	Clear T bit in saved SR
+* Check trace count
+		MOVE.W	TRACECNT,D0
+		BMI.S	.resume		Negative = single-step-then-continue (BP resume)
+		BEQ.S	.stopped	Zero = shouldn't happen, stop
+		SUBQ.W	#1,D0
+		MOVE.W	D0,TRACECNT
+		BEQ.S	.stopped	Count reached zero
+* Still tracing — display and continue
+		BSR.W	regDump
+		BSR.W	disasmNext
+		ORI.W	#$8000,SAVED_SR	Re-set T bit
+		BSR.W	swapIn		Re-install BPs (in case we stepped past one)
+		BRA.W	unstack		RTE back to user
+.resume
+* Single-step past breakpoint complete — now install BPs and continue
+		CLR.W	TRACECNT
+		BSR.W	swapIn
+		BRA.W	unstack
+.stopped
+		BSR.W	swapOut
+		BSR.W	regDump
+		BSR.W	disasmNext
+		LEA	SYSTACK,A7
+		BRA	PROMPT
+
+****************************************
+*  illegalHandler — vector 4: Illegal instruction (breakpoint trap)
+*
+illegalHandler
+		TST.B	DEBUG_ON
+		BNE.S	.debugIll
+* Not in debug mode — fall through to excFault behavior
+		LEA.L	msgFault,A0
+		BSR.W	printString
+		MOVE.L	2(A7),D0	Get PC from exception frame (skip SR word)
+		BSR.W	printHexLong
+		LEA.L	msgNewline,A0
+		BSR.W	printString
+		BRA	WARMSTART
+.debugIll
+		MOVE.W	#$2700,SR
+		BSR.W	saveRegs
+		BSR.W	swapOut		Restore original code
+* On 68000, illegal instruction exception PC points AT the illegal word
+		MOVE.L	SAVED_PC,D0
+* Check temporary BP
+		CMP.L	BPTADD,D0
+		BEQ.S	.tmpHit
+* Search regular BPs
+		LEA	BPADD,A0
+		LEA	BPCNT,A1
+		MOVEQ	#NUMBP-1,D1
+.search		CMP.L	(A0)+,D0
+		BEQ.S	.found
+		ADDQ.L	#2,A1
+		DBRA	D1,.search
+* Not a known BP — genuine illegal instruction
+		LEA	msgIllegal,A0
+		BSR.W	printString
+		MOVE.L	SAVED_PC,D0
+		BSR.W	printHexLong
+		LEA	msgNewline,A0
+		BSR.W	printString
+		BRA.S	.toMonitor
+.found
+		MOVE.W	(A1),D1		Check pass count
+		BEQ.S	.doBreak	0 = break every time
+		SUBQ.W	#1,(A1)
+		BNE.S	.passThru	Count not zero — skip
+.doBreak
+		LEA	msgBreak,A0
+		BSR.W	printString
+		MOVE.L	SAVED_PC,D0
+		BSR.W	printHexLong
+		LEA	msgNewline,A0
+		BSR.W	printString
+		BSR.W	regDump
+		BSR.W	disasmNext
+		BRA.S	.toMonitor
+.tmpHit
+		CLR.L	BPTADD
+		BRA.S	.doBreak
+.passThru
+* Step past BP: trace 1 instruction, then re-SWAPIN in trace handler
+		ORI.W	#$8000,SAVED_SR	Set T bit
+		MOVE.W	#-1,TRACECNT	Special: resume after single-step
+		BRA.W	unstack		RTE (BPs are already swapped out)
+.toMonitor
+		CLR.B	DEBUG_ON
+		LEA	SYSTACK,A7
+		BRA	PROMPT
 
 ****************************************
 *  LOAD  Loads data formatted in hexadecimal "S" format from Port 2
@@ -1277,7 +1647,7 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 	MOVE.B  D0,MFPUDR	Put character into USART data register
 
 .RETURN
-    move.w  #80,D0                      * Compute length...
+    move.w  #79,D0                      * Compute length (79 = max_count, not 80)
     add.w   #1,D1
     sub.w   D1,D0
     move.w  D0,D1                       * Shuffle around to stay compatible...
@@ -2219,7 +2589,7 @@ M4326
 * FORMAT OPERAND IF REGUIRED
 
          TST.B   D1             LOOK AT KEY
-         BMI.S   M440           OPERAND NOT REQUIRED
+         BMI.S   M440NOC        OPERAND NOT REQUIRED
 
          MOVE.L  A3,A0
          ADD.L   #FOP,A0        STORE POINTER
@@ -2234,8 +2604,11 @@ M437     MOVE.B  D0,(A0)+       MOVE REST OF SOURCE LINE
          BPL     M437
          MOVE.L  A0,PTRBUFE(A1) POINTER TO END FORMATED SOURCE
          MOVE.L  A0,A6          A6 = POINTER TO END OF SOURCE
+         BRA.S   M440
+M440NOC
+* No operand — point PTROP at a null so CMMD2 termination check passes
+         MOVE.L  A6,PTROP(A1)   A6 = end of source (points at null/space)
 M440
-
          MOVE.L  PTROP(A1),A5   A5 = PTR TO OPERAND
          LEA.L   DATASTR+2,A4 A4 = BASE ADDR FOR DATA STORE
          CLR.L   D3             D3 = OFFSET FOR DATA STORE
@@ -3334,14 +3707,14 @@ MDC      DS      0              (INDEX 37) .W ONLY ALLOWED
 * D2 = OPC mask word: high=$00, low=FP opcode
 *       $FF = FMOVECR, $00 = FMOVE, else = arithmetic
 *
-* FP opcode saved to LINK(A1) — preserves D4 (PC) for EA/GETFIELD.
-* Scratch values saved to LINK+2(A1) — avoids stack pushes before EA
+* FP opcode saved to FPUSCR(A1) — preserves D4 (PC) for EA/GETFIELD.
+* Scratch values saved to FPUSCR+2(A1) — avoids stack pushes before EA
 * so that ER→ERDONE→RTS cannot corrupt the stack.
 *------------------------------------------------------------------------
 MFPU     DS      0
          MOVE.W  D2,D0
          ANDI.W  #$FF,D0
-         MOVE.W  D0,LINK(A1)     FP opcode → scratch (preserves D4=PC)
+         MOVE.W  D0,FPUSCR(A1)   FP opcode → scratch (preserves D4=PC)
 
 * Check for FMOVECR ($FF sentinel)
          CMPI.B  #$FF,D0
@@ -3360,7 +3733,7 @@ MFPU_R2R BSR     GETFPREG        D0 = source FP reg
          MOVE.W  D0,D5           D5 = source FP reg
 
 * Check for FTST (opcode $3A, single operand)
-         MOVE.W  LINK(A1),D1
+         MOVE.W  FPUSCR(A1),D1
          CMPI.B  #$3A,D1
          BEQ.S   MFPU_1OP
 
@@ -3368,7 +3741,7 @@ MFPU_R2R BSR     GETFPREG        D0 = source FP reg
          BSR     GETFPREG        D0 = dest FP reg
 
 * Build command word: R/M=0, src=D5[12:10], dst=D0[9:7], opcode[6:0]
-         MOVE.W  LINK(A1),D1     FP opcode from scratch
+         MOVE.W  FPUSCR(A1),D1   FP opcode from scratch
          MOVE.W  D5,D3
          LSL.W   #3,D3
          LSL.W   #7,D3
@@ -3381,7 +3754,7 @@ MFPU_R2R BSR     GETFPREG        D0 = source FP reg
          BRA     CMMD2
 
 *--- Single operand: FTST FPsrc ---
-MFPU_1OP MOVE.W  LINK(A1),D1     FP opcode from scratch
+MFPU_1OP MOVE.W  FPUSCR(A1),D1   FP opcode from scratch
          MOVE.W  D5,D3
          LSL.W   #3,D3
          LSL.W   #7,D3
@@ -3395,7 +3768,7 @@ MFPU_1OP MOVE.W  LINK(A1),D1     FP opcode from scratch
 MFPU_FMT BSR     MFPU_PFM        D5 = format code
 
 * For FMOVE (opcode=0): check for FP reg source or control reg
-         TST.B   LINK+1(A1)
+         TST.B   FPUSCR+1(A1)
          BNE     MFPU_EA         Non-FMOVE → always EA,FPn
 
 * FMOVE with format suffix: check source type
@@ -3415,14 +3788,14 @@ MFPU_FMT BSR     MFPU_PFM        D5 = format code
 
 * FPn source → FMOVE.fmt FPn,<ea>
          BSR     GETFPREG        D0 = source FP reg
-         MOVE.W  D0,LINK+2(A1)   Save source reg to scratch
+         MOVE.W  D0,FPUSCR+2(A1)   Save source reg to scratch
          MOVE.W  D5,PENDOP(A1)   Save format code to scratch
          BSR     COMMA
          MOVEQ   #2,D3
          MOVE.W  #$1FD,D7        Data alterable
          BSR     EA
          MOVE.W  PENDOP(A1),D5   Restore format
-         MOVE.W  LINK+2(A1),D0   Restore source reg
+         MOVE.W  FPUSCR+2(A1),D0   Restore source reg
 
 * Build opword: $F200 | EA
          MOVE.W  #$F200,D2
@@ -3442,12 +3815,12 @@ MFPU_FMT BSR     MFPU_PFM        D5 = format code
 
 *--- FMOVE.L FPcr,<ea> (control reg → EA) ---
 MFPU_CRS BSR     MFPU_PCR        D0 = reg select bits
-         MOVE.W  D0,LINK+2(A1)   Save reg select to scratch
+         MOVE.W  D0,FPUSCR+2(A1)   Save reg select to scratch
          BSR     COMMA
          MOVEQ   #2,D3
          MOVE.W  #$1FD,D7        Data alterable
          BSR     EA
-         MOVE.W  LINK+2(A1),D0   Restore reg select
+         MOVE.W  FPUSCR+2(A1),D0   Restore reg select
 
 * Build opword: $F200 | EA
          MOVE.W  #$F200,D2
@@ -3463,13 +3836,13 @@ MFPU_CRS BSR     MFPU_PCR        D0 = reg select bits
          BRA     CMMD2
 
 *--- EA source: check if dest is FPn or FPcr ---
-MFPU_EA2 MOVE.W  D5,LINK+2(A1)   Save format to scratch (opcode in LINK)
+MFPU_EA2 MOVE.W  D5,FPUSCR+2(A1)   Save format to scratch (opcode in LINK)
          BSR     MFPFLIT
          BEQ.S   MFA2_DN         FP literal handled
 MFA2_EA  MOVEQ   #2,D3
          MOVE.W  #$FFF,D7        All modes
          BSR     EA
-MFA2_DN  MOVE.W  LINK+2(A1),D5   Restore format
+MFA2_DN  MOVE.W  FPUSCR+2(A1),D5   Restore format
 
          BSR     COMMA
 
@@ -3523,13 +3896,13 @@ MFPU_CRD BSR     MFPU_PCR        D0 = reg select bits
          BRA     CMMD2
 
 *--- Non-FMOVE with format: .fmt <ea>,FPdst ---
-MFPU_EA  MOVE.W  D5,LINK+2(A1)   Save format to scratch (opcode in LINK)
+MFPU_EA  MOVE.W  D5,FPUSCR+2(A1)   Save format to scratch (opcode in LINK)
          BSR     MFPFLIT
          BEQ.S   MFEA_DN         FP literal handled
 MFEA_EA  MOVEQ   #2,D3
          MOVE.W  #$FFF,D7        All addressing modes
          BSR     EA
-MFEA_DN  MOVE.W  LINK+2(A1),D5   Restore format
+MFEA_DN  MOVE.W  FPUSCR+2(A1),D5   Restore format
 
          BSR     COMMA
          BSR     GETFPREG        D0 = dest FP reg
@@ -3539,7 +3912,7 @@ MFEA_DN  MOVE.W  LINK+2(A1),D5   Restore format
          OR.W    D6,D2
 
 * Build command word: R/M=1, fmt=D5[12:10], dst=D0[9:7], opcode[6:0]
-         MOVE.W  LINK(A1),D1     FP opcode from scratch
+         MOVE.W  FPUSCR(A1),D1   FP opcode from scratch
          ORI.W   #$4000,D1       R/M=1 (bit 14)
          MOVE.W  D5,D3
          LSL.W   #3,D3
@@ -3842,7 +4215,7 @@ MFBCC    DS      0
 *------------------------------------------------------------------------
 * MFPFLIT — Handle FP literal for formats .S(1)/.X(2)/.D(5)
 *
-* Entry:  D5 = format code, LINK+2(A1) = format saved, A5 → text
+* Entry:  D5 = format code, FPUSCR+2(A1) = format saved, A5 → text
 * Return: EQ = literal handled (D3/TNB/D6 set), NE = not handled
 *------------------------------------------------------------------------
 MFPFLIT  CMPI.W  #1,D5
@@ -3861,9 +4234,9 @@ MFPFLIT  CMPI.W  #1,D5
          BSR     FPARSLIT        D0 = IEEE 754 single
          MOVEQ   #2,D3
 * Format dispatch
-         CMPI.W  #1,LINK+2(A1)
+         CMPI.W  #1,FPUSCR+2(A1)
          BEQ.S   .sgl
-         CMPI.W  #5,LINK+2(A1)
+         CMPI.W  #5,FPUSCR+2(A1)
          BEQ.S   .dbl
 * Extended (.X format 2): 12 bytes
          BSR     FSGL2EXT        D0/D1/D2 = extended
@@ -6367,9 +6740,18 @@ msgColonSpc	DC.B	': ',0
 msgDepPrompt	DC.B	': ',0
 
 msgHelp		DC.B	'Available Commands: ',CR,LF
-			DC.B	'[A]ssemble [E]xamine [D]eposit [G]o [R]egs [L]oad SREC [H]elp',CR,LF,0
+			DC.B	'[A]ssemble [B]reakpoint [D]eposit [E]xamine [G]o [H]elp',CR,LF
+			DC.B	'[L]oad SREC [N]o-break [R]egs [T]race',CR,LF
+			DC.B	'B addr[;cnt]  Set breakpoint (cnt=pass count)',CR,LF
+			DC.B	'B             List breakpoints',CR,LF
+			DC.B	'N [addr]      Clear one/all breakpoints',CR,LF
+			DC.B	'T [count]     Trace (single-step) instructions',CR,LF,0
 
 msgFault	DC.B	'FAULT AT $',0
+msgBreak	DC.B	'Break at $',0
+msgIllegal	DC.B	'Illegal instruction at $',0
+msgBPfull	DC.B	'Breakpoint table full',CR,LF,0
+msgBPcnt	DC.B	';',0
 
 ERMES1		DC.B	'Non-valid hexadecimal input  ',CR,LF,0
 ERMES2		DC.B	'Invalid command  ',CR,LF,0	

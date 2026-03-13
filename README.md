@@ -310,11 +310,16 @@ The assembler and disassembler support all MC68881 FPU instructions:
 - **FMOVE variants**: reg↔reg, mem↔reg, reg→mem, FMOVECR, FMOVE to/from
   FPCR/FPSR/FPIAR
 
+The monitor supports Go (execute), single-step Trace, software Breakpoints
+(up to 8), register dump (CPU + FPU), and memory inspect/modify. See the
+[BIOS User Guide](docs/merlin2_bios.md) for full command reference and build
+instructions.
+
 The BIOS ROM source is in `validation/hello_world/src/roms/bios.s`. Build with:
 
 ```bash
-vasmm68k_mot -Fbin -o bios.bin bios.s
-# Extract ROM section and convert to C header (see validation README)
+vasmm68k_mot -Fbin -m68000 -o bios.bin bios.s
+# Extract ROM section and convert to C header (see docs/merlin2_bios.md)
 ```
 
 ### Hardware validation output
@@ -357,6 +362,7 @@ All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
 
 ## Key documentation
 - Master checklist: `docs/fpu-progress-checklist.md`
+- BIOS user guide: [`docs/merlin2_bios.md`](docs/merlin2_bios.md)
 - GHDL test results (349 tests): `docs/tests.txt`
 - Programming reference: `docs/68881-programming.txt`
 - FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`

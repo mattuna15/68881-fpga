@@ -28,6 +28,7 @@ architecture sim of tb_mc68881_alu_lite is
   signal busy   : std_logic;
 
   constant CLK_PERIOD : time := 10 ns;
+  constant TIMEOUT    : time := 1 us;
 
   -- Helper: split fp80 for assertions
   procedure split_fp80(
@@ -75,6 +76,17 @@ architecture sim of tb_mc68881_alu_lite is
       severity failure;
   end procedure;
 
+  -- Wait for valid with timeout protection
+  procedure wait_valid(constant test_name : string) is
+  begin
+    wait until valid = '1' for TIMEOUT;
+    assert valid = '1'
+      report "TIMEOUT: " & test_name & " did not complete within " &
+             time'image(TIMEOUT)
+      severity failure;
+    wait for 0 ns;
+  end procedure;
+
 begin
   clk <= not clk after CLK_PERIOD / 2;
 
@@ -120,7 +132,7 @@ begin
     );
 
   process
-    -- FP80 constants: 1.0, 2.0, 3.0, -1.5
+    -- FP80 constants
     constant FP80_ONE : fp80_t := x"3FFF" & x"8000000000000000";
     constant FP80_TWO : fp80_t := x"4000" & x"8000000000000000";
     constant FP80_THREE : fp80_t := x"4000" & x"C000000000000000";
@@ -135,8 +147,10 @@ begin
     wait for CLK_PERIOD * 2;
 
     -- ================================================================
-    -- Test 1: FADD (kept op) -- 1.0 + 2.0 = 3.0
+    -- Kept ops (11 ALU operations)
     -- ================================================================
+
+    -- Test 1: FADD 1.0 + 2.0 = 3.0
     report "LITE: Testing FADD 1.0 + 2.0";
     a_in <= FP80_ONE;
     b_in <= FP80_TWO;
@@ -146,16 +160,13 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FADD");
     check_result_exact(result, FP80_THREE, "FADD 1.0+2.0=3.0");
     report "LITE: FADD passed";
 
     wait for CLK_PERIOD * 2;
 
-    -- ================================================================
-    -- Test 2: FSUB (kept op) -- 2.0 - 1.0 = 1.0
-    -- ================================================================
+    -- Test 2: FSUB 2.0 - 1.0 = 1.0
     report "LITE: Testing FSUB 2.0 - 1.0";
     a_in <= FP80_TWO;
     b_in <= FP80_ONE;
@@ -165,16 +176,13 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FSUB");
     check_result_exact(result, FP80_ONE, "FSUB 2.0-1.0=1.0");
     report "LITE: FSUB passed";
 
     wait for CLK_PERIOD * 2;
 
-    -- ================================================================
-    -- Test 3: FMUL (kept op) -- 1.0 * 2.0 = 2.0
-    -- ================================================================
+    -- Test 3: FMUL 1.0 * 2.0 = 2.0
     report "LITE: Testing FMUL 1.0 * 2.0";
     a_in <= FP80_ONE;
     b_in <= FP80_TWO;
@@ -184,16 +192,13 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FMUL");
     check_result_exact(result, FP80_TWO, "FMUL 1.0*2.0=2.0");
     report "LITE: FMUL passed";
 
     wait for CLK_PERIOD * 2;
 
-    -- ================================================================
-    -- Test 4: FDIV (kept op) -- 2.0 / 2.0 = 1.0
-    -- ================================================================
+    -- Test 4: FDIV 2.0 / 2.0 = 1.0
     report "LITE: Testing FDIV 2.0 / 2.0";
     a_in <= FP80_TWO;
     b_in <= FP80_TWO;
@@ -203,16 +208,13 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FDIV");
     check_result_exact(result, FP80_ONE, "FDIV 2.0/2.0=1.0");
     report "LITE: FDIV passed";
 
     wait for CLK_PERIOD * 2;
 
-    -- ================================================================
-    -- Test 5: FABS (kept op) -- ABS(-1.0) = 1.0
-    -- ================================================================
+    -- Test 5: FABS(-1.0) = 1.0
     report "LITE: Testing FABS -1.0";
     a_in <= FP80_NEG_ONE;
     b_in <= ZERO80;
@@ -222,16 +224,13 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FABS");
     check_result_exact(result, FP80_ONE, "FABS(-1.0)=1.0");
     report "LITE: FABS passed";
 
     wait for CLK_PERIOD * 2;
 
-    -- ================================================================
-    -- Test 6: FNEG (kept op) -- NEG(1.0) = -1.0
-    -- ================================================================
+    -- Test 6: FNEG(1.0) = -1.0
     report "LITE: Testing FNEG 1.0";
     a_in <= FP80_ONE;
     b_in <= ZERO80;
@@ -241,16 +240,13 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FNEG");
     check_result_exact(result, FP80_NEG_ONE, "FNEG(1.0)=-1.0");
     report "LITE: FNEG passed";
 
     wait for CLK_PERIOD * 2;
 
-    -- ================================================================
-    -- Test 7: FINTRZ (kept op) -- INTRZ(2.0) = 2.0
-    -- ================================================================
+    -- Test 7: FINTRZ(2.0) = 2.0
     report "LITE: Testing FINTRZ 2.0";
     a_in <= FP80_TWO;
     b_in <= ZERO80;
@@ -260,16 +256,13 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FINTRZ");
     check_result_exact(result, FP80_TWO, "FINTRZ(2.0)=2.0");
     report "LITE: FINTRZ passed";
 
     wait for CLK_PERIOD * 2;
 
-    -- ================================================================
-    -- Test 8: FSQRT (kept op) -- SQRT(1.0) = 1.0
-    -- ================================================================
+    -- Test 8: FSQRT(1.0) = 1.0
     report "LITE: Testing FSQRT 1.0";
     a_in <= FP80_ONE;
     b_in <= ZERO80;
@@ -279,16 +272,13 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FSQRT");
     check_result_exact(result, FP80_ONE, "FSQRT(1.0)=1.0");
     report "LITE: FSQRT passed";
 
     wait for CLK_PERIOD * 2;
 
-    -- ================================================================
-    -- Test 9: FCMP (kept op) -- CMP(2.0, 1.0) => positive (fp80_from_int(1) = 1.0)
-    -- ================================================================
+    -- Test 9: FCMP(2.0, 1.0) => positive
     report "LITE: Testing FCMP 2.0 vs 1.0";
     a_in <= FP80_TWO;
     b_in <= FP80_ONE;
@@ -298,16 +288,13 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FCMP");
     check_result_exact(result, FP80_ONE, "FCMP(2.0,1.0)=+1");
     report "LITE: FCMP passed";
 
     wait for CLK_PERIOD * 2;
 
-    -- ================================================================
-    -- Test 10: FINT (kept op) -- INT(2.0, nearest) = 2.0
-    -- ================================================================
+    -- Test 10: FINT(2.0, nearest) = 2.0
     report "LITE: Testing FINT 2.0";
     a_in <= FP80_TWO;
     b_in <= ZERO80;
@@ -317,16 +304,13 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FINT");
     check_result_exact(result, FP80_TWO, "FINT(2.0)=2.0");
     report "LITE: FINT passed";
 
     wait for CLK_PERIOD * 2;
 
-    -- ================================================================
-    -- Test 11: FTST (kept op) -- TST(1.0) passthrough = 1.0
-    -- ================================================================
+    -- Test 11: FTST(1.0) passthrough = 1.0
     report "LITE: Testing FTST 1.0";
     a_in <= FP80_ONE;
     b_in <= ZERO80;
@@ -336,8 +320,7 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FTST");
     check_result_exact(result, FP80_ONE, "FTST(1.0)=1.0");
     report "LITE: FTST passed";
 
@@ -357,10 +340,9 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FSIN removed");
     check_result_zero(result, "FSIN (removed) returns zero");
-    report "LITE: FSIN (removed) passed -- returned zero";
+    report "LITE: FSIN (removed) passed";
 
     wait for CLK_PERIOD * 2;
 
@@ -374,10 +356,9 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FCOS removed");
     check_result_zero(result, "FCOS (removed) returns zero");
-    report "LITE: FCOS (removed) passed -- returned zero";
+    report "LITE: FCOS (removed) passed";
 
     wait for CLK_PERIOD * 2;
 
@@ -391,10 +372,41 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FETOX removed");
     check_result_zero(result, "FETOX (removed) returns zero");
-    report "LITE: FETOX (removed) passed -- returned zero";
+    report "LITE: FETOX (removed) passed";
+
+    wait for CLK_PERIOD * 2;
+
+    -- FATAN (inverse trig -- removed)
+    report "LITE: Testing FATAN (removed op, expect zero)";
+    a_in <= FP80_ONE;
+    b_in <= ZERO80;
+    op_sel <= FPU_OP_ATAN;
+    wait until rising_edge(clk);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait_valid("FATAN removed");
+    check_result_zero(result, "FATAN (removed) returns zero");
+    report "LITE: FATAN (removed) passed";
+
+    wait for CLK_PERIOD * 2;
+
+    -- FLOGN (logarithmic -- removed)
+    report "LITE: Testing FLOGN (removed op, expect zero)";
+    a_in <= FP80_ONE;
+    b_in <= ZERO80;
+    op_sel <= FPU_OP_LOGN;
+    wait until rising_edge(clk);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait_valid("FLOGN removed");
+    check_result_zero(result, "FLOGN (removed) returns zero");
+    report "LITE: FLOGN (removed) passed";
 
     wait for CLK_PERIOD * 2;
 
@@ -408,10 +420,9 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FSCALE removed");
     check_result_zero(result, "FSCALE (removed) returns zero");
-    report "LITE: FSCALE (removed) passed -- returned zero";
+    report "LITE: FSCALE (removed) passed";
 
     wait for CLK_PERIOD * 2;
 
@@ -425,10 +436,25 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FSGLDIV removed");
     check_result_zero(result, "FSGLDIV (removed) returns zero");
-    report "LITE: FSGLDIV (removed) passed -- returned zero";
+    report "LITE: FSGLDIV (removed) passed";
+
+    wait for CLK_PERIOD * 2;
+
+    -- FSGLMUL (sglops -- removed)
+    report "LITE: Testing FSGLMUL (removed op, expect zero)";
+    a_in <= FP80_TWO;
+    b_in <= FP80_THREE;
+    op_sel <= FPU_OP_SGLMUL;
+    wait until rising_edge(clk);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait_valid("FSGLMUL removed");
+    check_result_zero(result, "FSGLMUL (removed) returns zero");
+    report "LITE: FSGLMUL (removed) passed";
 
     wait for CLK_PERIOD * 2;
 
@@ -442,10 +468,9 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FMOD removed");
     check_result_zero(result, "FMOD (removed) returns zero");
-    report "LITE: FMOD (removed) passed -- returned zero";
+    report "LITE: FMOD (removed) passed";
 
     wait for CLK_PERIOD * 2;
 
@@ -459,10 +484,9 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FREM removed");
     check_result_zero(result, "FREM (removed) returns zero");
-    report "LITE: FREM (removed) passed -- returned zero";
+    report "LITE: FREM (removed) passed";
 
     wait for CLK_PERIOD * 2;
 
@@ -476,10 +500,9 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FGETEXP removed");
     check_result_zero(result, "FGETEXP (removed) returns zero");
-    report "LITE: FGETEXP (removed) passed -- returned zero";
+    report "LITE: FGETEXP (removed) passed";
 
     wait for CLK_PERIOD * 2;
 
@@ -493,15 +516,14 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FGETMAN removed");
     check_result_zero(result, "FGETMAN (removed) returns zero");
-    report "LITE: FGETMAN (removed) passed -- returned zero";
+    report "LITE: FGETMAN (removed) passed";
 
     wait for CLK_PERIOD * 2;
 
     -- ================================================================
-    -- Test: FADD after removed ops (verify pipeline not corrupted)
+    -- Pipeline integrity: FADD after removed ops
     -- ================================================================
     report "LITE: Testing FADD after removed ops (pipeline integrity)";
     a_in <= FP80_ONE;
@@ -512,10 +534,67 @@ begin
     wait until rising_edge(clk);
     start <= '0';
     wait for 0 ns;
-    wait until valid = '1';
-    wait for 0 ns;
+    wait_valid("FADD after removed ops");
     check_result_exact(result, FP80_TWO, "FADD 1.0+1.0=2.0 after removed ops");
     report "LITE: Post-removed-ops FADD passed";
+
+    wait for CLK_PERIOD * 2;
+
+    -- ================================================================
+    -- Back-to-back: removed op then kept op with no gap
+    -- Verifies busy/valid handshake works without idle cycles
+    -- ================================================================
+    report "LITE: Testing back-to-back: FSIN(removed) then FADD(kept), no gap";
+    -- Issue FSIN (removed)
+    a_in <= FP80_ONE;
+    b_in <= ZERO80;
+    op_sel <= FPU_OP_SIN;
+    wait until rising_edge(clk);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait_valid("FSIN back-to-back");
+    check_result_zero(result, "FSIN back-to-back returns zero");
+    -- Immediately issue FADD with no gap (start on next clock)
+    a_in <= FP80_ONE;
+    b_in <= FP80_TWO;
+    op_sel <= FPU_OP_ADD;
+    wait until rising_edge(clk);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait_valid("FADD back-to-back after FSIN");
+    check_result_exact(result, FP80_THREE, "FADD 1+2=3 back-to-back after removed op");
+    report "LITE: Back-to-back (removed then kept) passed";
+
+    wait for CLK_PERIOD * 2;
+
+    -- Back-to-back: kept op then removed op
+    report "LITE: Testing back-to-back: FNEG(kept) then FSCALE(removed), no gap";
+    a_in <= FP80_ONE;
+    b_in <= ZERO80;
+    op_sel <= FPU_OP_NEG;
+    wait until rising_edge(clk);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait_valid("FNEG back-to-back");
+    check_result_exact(result, FP80_NEG_ONE, "FNEG(1.0) back-to-back");
+    -- Immediately issue FSCALE (removed)
+    a_in <= FP80_ONE;
+    b_in <= FP80_TWO;
+    op_sel <= FPU_OP_SCALE;
+    wait until rising_edge(clk);
+    start <= '1';
+    wait until rising_edge(clk);
+    start <= '0';
+    wait for 0 ns;
+    wait_valid("FSCALE back-to-back after FNEG");
+    check_result_zero(result, "FSCALE back-to-back returns zero");
+    report "LITE: Back-to-back (kept then removed) passed";
 
     report "LITE: All lite-mode tests passed";
     std.env.stop;

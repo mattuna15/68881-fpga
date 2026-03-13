@@ -15,10 +15,11 @@ arithmetic, transcendental, exponential, and logarithmic operations.
 ## Features
 - **Full instruction set**: FADD, FSUB, FMUL, FDIV, FSQRT, FMOD, FREM, FSCALE,
   FSGLDIV, FSGLMUL, FABS, FNEG, FINT, FINTRZ, FGETEXP, FGETMAN, FTST, FCMP.
-- **Lite mode** (`fpu_lite_g => true`): MC68040 hardware subset -- keeps
-  ADD/SUB/MUL/DIV/SQRT/CMP/ABS/NEG/INT/INTRZ/TST plus control/move ops.
+- **Lite mode** (`fpu_lite_g => true`): MC68040 hardware subset -- keeps 11 ALU
+  ops (ADD/SUB/MUL/DIV/SQRT/CMP/ABS/NEG/INT/INTRZ/TST) plus control/move ops.
   Removes trig engine, sglops unit, and modrem post-processing via VHDL generate
-  blocks (~57-60% LUT savings). Unsupported ops return zero in 1 cycle.
+  blocks; stubs out GETEXP/GETMAN inline. Estimated ~57-60% LUT savings (pending
+  synthesis verification). Unsupported ops return zero in 1 cycle.
 - **Transcendental engine**: FSIN, FCOS, FTAN, FSINCOS, FASIN, FACOS, FATAN,
   FATANH, FSINH, FCOSH, FTANH, FETOX, FETOXM1, FTWOTOX, FTENTOX, FLOGN,
   FLOGNP1, FLOG2, FLOG10. BRAM coefficient ROM with degree-9 Horner polynomial
@@ -70,8 +71,8 @@ CIR coprocessor interface, and full exception dialog paths.*
 
 ### Target device compatibility
 The design fits on several FPGA families. With `fpu_lite_g => true` (MC68040
-hardware subset: 22 ALU ops, no trig/sglops/modrem/getexp/getman), the core
-drops to ~28K-30K LUTs:
+hardware subset: 11 ALU ops, no trig/sglops/modrem), the core is estimated at
+~28K-30K LUTs (pending synthesis verification):
 
 | Device | LUTs | DSPs | Full fit? | Lite fit? |
 |--------|------|------|-----------|-----------|
@@ -91,7 +92,7 @@ mc68881_top                     Bus interface, format converters, FMOVECR ROM
 ├── alu_inst (mc68881_alu)      Opcode dispatch, shared FP unit mux
 │   ├── trig_inst               Transcendental engine (generate: not fpu_lite)
 │   ├── divrem_inst             Radix-4 SRT division, FSQRT
-│   │   └── modrem_post         FMOD/FREM post-processing (generate: not fpu_lite)
+│   │   └── modrem_post         FMOD/FREM post-processing (generic: enable_modrem_post)
 │   ├── sglops_inst             FSCALE, FSGLDIV, FSGLMUL (generate: not fpu_lite)
 │   ├── alu_mul_inst            Shared 64×64 sequential multiplier (DSP48E1 cascade)
 │   └── alu_add_inst            Shared 67-bit sequential adder/subtractor

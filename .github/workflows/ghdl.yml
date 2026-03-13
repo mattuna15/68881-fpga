@@ -27,10 +27,13 @@ jobs:
             src/mc68881_top.vhd \
             tb/mc68881_golden_vectors_pkg.vhd \
             tb/tb_mc68881_alu.vhd \
+            tb/tb_mc68881_alu_lite.vhd \
             tb/tb_mc68881_known_defects.vhd \
             tb/tb_mc68881_top.vhd \
             tb/tb_mc68881_ea_cycles.vhd \
-            tb/tb_mc68881_cycle_counts.vhd
+            tb/tb_mc68881_cycle_counts.vhd \
+            tb/tb_mc68881_cir_dialog.vhd \
+            tb/tb_mc68881_torture.vhd
       - name: Run tb_mc68881_alu
         run: |
           ghdl -e --std=08 tb_mc68881_alu
@@ -47,3 +50,15 @@ jobs:
         run: |
           ghdl -e --std=08 tb_mc68881_cycle_counts
           ghdl -r --std=08 tb_mc68881_cycle_counts --assert-level=error
+      - name: Run tb_mc68881_alu_lite
+        run: |
+          ghdl -e --std=08 tb_mc68881_alu_lite
+          ghdl -r --std=08 tb_mc68881_alu_lite --assert-level=error
+      - name: Run tb_mc68881_cir_dialog
+        run: |
+          ghdl -e --std=08 tb_mc68881_cir_dialog
+          ghdl -r --std=08 tb_mc68881_cir_dialog --assert-level=error
+      - name: Run tb_mc68881_torture
+        run: |
+          ghdl -e --std=08 tb_mc68881_torture
+          ghdl -r --std=08 tb_mc68881_torture --assert-level=error

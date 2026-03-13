@@ -40,3 +40,10 @@ validation/hello_world/src/platform.h
 validation/hello_world/src/lscript.ld
 validation/hello_world/compile_commands.json
 validation/hello_world/src/UserConfig.cmake
+docs/AXU3EG_User_Manual.pdf
+*.x68
+docs/MecbManual.pdf
+validation/hello_world/src/roms/bios.bin
+validation/hello_world/src/roms/bios.L68
+validation/hello_world/src/roms/bios.S68
+validation/hello_world/src/roms/listing.txt

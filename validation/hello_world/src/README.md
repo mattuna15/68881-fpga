@@ -315,6 +315,79 @@ PASS FSQRT(9)->FP5
 ALL TESTS PASSED (19/19)
 ```
 
+## ROM Boot Mode
+
+The default build (`ROM_BOOT_MODE`, no defines needed) boots a 68000 BIOS ROM under
+Musashi emulation with DisplayPort text output and MFP serial emulation. The BIOS
+provides an interactive monitor with a built-in assembler (CODE68K) and disassembler
+(DCODE68K) that support the full MC68881 FPU instruction set.
+
+### BIOS Features
+
+- **Interactive monitor** -- command prompt with memory inspect/modify, register
+  display, up to 8 software breakpoints with pass counts, single-step trace,
+  and debug-aware Go with RTE-based execution.
+  See the [BIOS User Guide](../../../docs/merlin2_bios.md) for full details
+- **68000 assembler (CODE68K)** -- table-driven, handles all standard 68000
+  instructions plus 39 FPU arithmetic/transcendental mnemonics and 32 FBcc
+  branch conditions. Supports all format suffixes: `.B`, `.W`, `.L`, `.S`,
+  `.D`, `.X`, `.P`
+- **68000 disassembler (DCODE68K)** -- decodes F-line opcodes including FPU
+  arithmetic, FMOVECR, FMOVE to/from control registers, FMOVE to memory,
+  and FBcc branches with all 32 condition codes
+- **MFP emulation** -- MC68901 USART emulation maps ARM UART RX/TX to the
+  BIOS character I/O, enabling keyboard input and serial output
+- **DisplayPort text output** -- 80x30 character text framebuffer rendered
+  to 1280x720@60Hz ARGB8888 via PS DisplayPort TX + DPDMA
+
+### Memory Map
+
+| Address | Size | Description |
+|---------|------|-------------|
+| `$000000-$00FFFF` | 64K | RAM (workspace, stack) |
+| `$FD0000-$FD003F` | 64 bytes | MC68901 MFP (emulated) |
+| `$FE0000-$FFFFFF` | 128K | ROM (BIOS image) |
+
+### Building the ROM
+
+The BIOS source is in `src/roms/bios.s` (68000 assembly, Motorola syntax).
+Assemble with vasm and convert to a C header:
+
+```bash
+cd src/vitis/roms
+vasmm68k_mot -Fbin -o bios.bin bios.s
+```
+
+The binary output spans the full address range (0x402 to ROM end). Extract just the
+ROM section and generate the C header:
+
+```python
+python -c "
+data = open('bios.bin','rb').read()
+rom = data[0xFE0000 - 0x402:]  # ROM at address 0xFE0000, file starts at 0x402
+open('bios_rom.bin','wb').write(rom)
+"
+xxd -i bios_rom.bin > rom_image_raw.h
+```
+
+Then adapt the output to match `rom_image.h` format (`rom_image_data[]` /
+`rom_image_size` naming, `uint8_t` type).
+
+### FPU Instruction Flow (ROM Boot)
+
+When M68K code assembled by CODE68K executes an FPU instruction:
+
+1. CODE68K encodes the F-line opword (`$F200` + EA) and command word
+2. Musashi encounters the `$Fxxx` opcode and calls `fline_illg_callback()`
+3. The F-line handler decodes the command word, fetches operands from
+   emulated memory, and drives the hardware FPU via AXI-Lite
+4. Results are stored in the software FP register file (`fp_regs[0-7]`)
+
+### Build Mode Selection
+
+- **ROM boot** (default): Define `ROM_BOOT_MODE` or leave undefined
+- **Test suite**: Define `TEST_MODE` to run the original validation tests
+
 ## Building (Vitis 2025.2)
 
 The project is a standard Vitis embedded application targeting the ZU3EG platform.
@@ -336,6 +409,9 @@ The project is a standard Vitis embedded application targeting the ZU3EG platfor
 | `tests/basic_fpu.c` | Musashi + F-line integration test |
 | `tests/cir_dialog.c` | CIR dialog protocol test |
 | `platform.c` | Vitis BSP platform init |
+| `dp_video.c` | PS DisplayPort TX + DPDMA output driver |
+| `text_fb.c` | 80x30 text framebuffer (8x16 font, ARGB8888) |
+| `mfp_emu.c` | MC68901 MFP USART emulation |
 
 **Do NOT compile:** `m68kfpu.c` (Musashi's software FPU -- `#include`d by
 m68kcpu.c but its functions are dead code with all higher CPUs disabled),

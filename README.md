@@ -121,7 +121,8 @@ instances per consumer.
   - `mc68881_smoke_test.c` — Register read/write connectivity test (FPCR, FPIAR)
   - `mc68881_fsin_test.c` — FSIN computation test (sin(1.0), sin(0.0))
   - `mc68881_e2e_test.c` — End-to-end test with 15 vectors from GHDL testbench
-- `validation/hello_world/` — M68K emulator + hardware FPU validation (Musashi, register-mapped mode)
+- `validation/hello_world/` — M68K emulator + hardware FPU validation (Musashi, F-line trapping, ROM boot)
+- `src/vitis/roms/` — 68000 BIOS ROM source (assembler, disassembler, monitor with FPU support)
 - `tb/` — VHDL-2008 self-checking testbenches (14 files, ~8.5K lines)
 - `docs/` — Implementation plan, timing notes, reference documentation
 - `verilog/` — Auto-generated Verilog conversion (see [verilog/README.md](verilog/README.md))
@@ -290,6 +291,37 @@ for the full address map, protocol details, and code examples.
 
 19/19 tests pass: 7 peripheral smoke + 7 CIR dialog + 5 Musashi integration.
 
+### BIOS ROM boot mode
+
+The default build boots a 68000 BIOS ROM with an interactive monitor, built-in
+assembler (CODE68K), and disassembler (DCODE68K). Character I/O is routed through
+MC68901 MFP emulation (ARM UART ↔ emulated MFP USART) and rendered to a text
+framebuffer displayed on the PS DisplayPort output (1280×720@60Hz).
+
+The assembler and disassembler support all MC68881 FPU instructions:
+- **39 FPU mnemonics**: FMOVE through FMOVECR (all arithmetic, transcendental,
+  data movement, and compare/test operations)
+- **32 FBcc conditions**: FBEQ, FBGT, FBGE, FBLT, FBLE, FBGL, FBGLE, FBOGT,
+  FBOGE, FBOLT, FBOLE, FBOGL, FBOR, FBUN, FBUEQ, FBUGT, FBUGE, FBULT,
+  FBULE, FBNE, FBT, FBSF, FBST, FBSEQ, FBSNE, and negated variants
+- **All format suffixes**: `.B`, `.W`, `.L`, `.S`, `.D`, `.X`, `.P`
+- **Floating-point literals**: Decimal FP constants (e.g., `FADD.S #2.35,FP0`)
+  with IEEE 754 conversion for `.S` (single), `.D` (double), and `.X` (extended)
+- **FMOVE variants**: reg↔reg, mem↔reg, reg→mem, FMOVECR, FMOVE to/from
+  FPCR/FPSR/FPIAR
+
+The monitor supports Go (execute), single-step Trace, software Breakpoints
+(up to 8), register dump (CPU + FPU), and memory inspect/modify. See the
+[BIOS User Guide](docs/merlin2_bios.md) for full command reference and build
+instructions.
+
+The BIOS ROM source is in `validation/hello_world/src/roms/bios.s`. Build with:
+
+```bash
+vasmm68k_mot -Fbin -m68000 -o bios.bin bios.s
+# Extract ROM section and convert to C header (see docs/merlin2_bios.md)
+```
+
 ### Hardware validation output
 
 E2e test run on AXU3EG (Zynq UltraScale+ ZU3EG), Vitis 2025.2:
@@ -330,6 +362,7 @@ All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
 
 ## Key documentation
 - Master checklist: `docs/fpu-progress-checklist.md`
+- BIOS user guide: [`docs/merlin2_bios.md`](docs/merlin2_bios.md)
 - GHDL test results (349 tests): `docs/tests.txt`
 - Programming reference: `docs/68881-programming.txt`
 - FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`

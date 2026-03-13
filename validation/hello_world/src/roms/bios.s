@@ -163,7 +163,12 @@ ROMSTART	EQU	*		BEGINNING OF PROGRAM SECTION
 		BSR.W	setExcVectors	Initialize fault vectors 2-7
 
 WARMSTART
+	IFEQ	EASY68K_SIM
 		MOVE.B #1,ECHO_ON
+	ENDC
+	IFNE	EASY68K_SIM
+		CLR.B  ECHO_ON
+	ENDC
 		MOVE.B #1,PROMPT_ON
 		MOVE.B #1,LF_DISPLAY
 		CLR.B  REGS_VALID
@@ -367,22 +372,26 @@ readLine
 		BEQ.S	.endline
 		CMP.B	#LF,D0		We don't care about LFs... everything else continues	*****
 		BEQ.S	.loop		and doesn't make this loop back	
-.char		CMP.W	#MAX_LINELEN,D2	If the line is too long...	
+.char		CMP.W	#MAX_LINELEN,D2	If the line is too long...
 		BGE.S	.loop		...we're going to stop listening to the user		*****
-		MOVE.B	D0,(A2)+	Otherwise,store character	
+		MOVE.B	D0,(A2)+	Otherwise,store character
 		ADDQ.W	#1,D2		...and increment character count
+		TST.B	ECHO_ON		Echo enabled?
+		BEQ.S	.loop		No — skip echo (Easy68K terminal echoes for us)
 		BSR.S	outChar		Local echo
 		BRA.S	.loop		Get next character		
 .backspace	TST.W	D2		Are we at beginning of the line?
 		BEQ.S	.loop		If so,user has doublefailed and we'll ignore BKSP	*****
 *					but seriously,we should send a BEL just for insult	*****
+		SUBQ.L	#1,A2		Move back in buffer one space
+		SUBQ.L	#1,D2		And reduce character count by one
+		TST.B	ECHO_ON		Echo enabled?
+		BEQ.S	.loop		No — terminal handles its own backspace
 		BSR.S	outChar		Remove the previous character from the user's console	*****
 		MOVE.B	#' ',D0		*via a complex and convoluted process of writing a space	*****
-		BSR.S	outChar		after going back a space...	
-		MOVE.B	#BKSP,D0	...and going back a space again	
-		BSR.S	outChar		just to keep things tidy.	
-		SUBQ.L	#1,A2		Move back in buffer one space	
-		SUBQ.L	#1,D2		And reduce character count by one
+		BSR.S	outChar		after going back a space...
+		MOVE.B	#BKSP,D0	...and going back a space again
+		BSR.S	outChar		just to keep things tidy.
 		BRA.S	.loop		Get next character		
 .lineclear	TST	D2		Is there even data to clear?	
 		BEQ.S	.loop		If not,just ignore and fetch next character		*****
@@ -554,6 +563,7 @@ parseLine
 * Save FP0-FP7 via FMOVE.X FPn,d(A0) — hand-encoded F-line opcodes
 * (vasm M68000 mode doesn't support FPU mnemonics)
 * Opword=$F228 (FPU, EA=d16(A0)), Cmdword=$6800|(n<<7), Disp=offset
+	IFEQ	EASY68K_SIM
 		LEA	SAVED_FP,A0
 		DC.W	$F210,$6800             FMOVE.X FP0,(A0)
 		DC.W	$F228,$6880,$000C       FMOVE.X FP1,12(A0)
@@ -563,6 +573,7 @@ parseLine
 		DC.W	$F228,$6A80,$003C       FMOVE.X FP5,60(A0)
 		DC.W	$F228,$6B00,$0048       FMOVE.X FP6,72(A0)
 		DC.W	$F228,$6B80,$0054       FMOVE.X FP7,84(A0)
+	ENDC
 		MOVE.B	#1,REGS_VALID   Mark registers as valid
 		BRA.W	.exit           Return to prompt (not WARMSTART)
 *
@@ -809,6 +820,7 @@ regDump		MOVEM.L	D3-D5/A2,-(SP)
 		LEA	msgNewline,A0
 		BSR.W	printString
 * --- FP0-FP7 (extended: 3 x 32-bit words each) ---
+	IFEQ	EASY68K_SIM
 		LEA	SAVED_FP,A2
 		MOVEQ	#0,D4
 .fploop		LEA	msgFPpfx,A0
@@ -833,6 +845,7 @@ regDump		MOVEM.L	D3-D5/A2,-(SP)
 		ADDQ.L	#1,D4
 		CMPI.B	#8,D4
 		BNE.S	.fploop
+	ENDC
 *
 		MOVEM.L	(SP)+,D3-D5/A2
 		RTS

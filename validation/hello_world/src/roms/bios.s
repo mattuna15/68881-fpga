@@ -640,7 +640,6 @@ parseLine
 		MOVEQ	#1,D0		Default: trace 1 instruction
 .traceGo	MOVE.W	D0,TRACECNT
 		ORI.W	#$8000,SAVED_SR  Set T bit
-		BSR.W	swapIn
 		LEA	SYSTACK,A7	Reset stack (won't return to parseLine)
 		BRA	unstack
 .traceNeedPC	LEA	msgNoRegs,A0
@@ -1140,8 +1139,7 @@ traceHandler
 		BSR.W	regDump
 		BSR.W	disasmNext
 		ORI.W	#$8000,SAVED_SR	Re-set T bit
-		BSR.W	swapIn		Re-install BPs (in case we stepped past one)
-		BRA.W	unstack		RTE back to user
+		BRA.W	unstack		RTE back to user (BPs already planted)
 .resume
 * Single-step past breakpoint complete — now install BPs and continue
 		CLR.W	TRACECNT
@@ -1389,6 +1387,7 @@ digit_done:
 * Return value will be in A0
 print_signed:
 
+    MOVEQ   #0,D5            * Clear negative flag
     lea.l   BUFFER,A0
     MOVE.B  #0,-(A0)          * Null-terminate the string
     MOVE.L  D1,D3            * Copy value to D3 for manipulation
@@ -1463,8 +1462,7 @@ convert_loop:
     BRA     call_fw_print
 
 handle_zero:
-    MOVE.B  #'0',(A0)       * Store '0' in buffer
-    SUBQ.W  #1,A0           * Decrement buffer pointer
+    MOVE.B  #'0',-(A0)      * Store '0' in buffer (pre-decrement like convert_loop)
 
 call_fw_print:
     MOVE.L  A0,A1     * Set up pointer for FW_PRINT
@@ -1616,7 +1614,7 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 .RECV:
     BTST.B  #7,MFPRSR	Check for empty receive buffer	
 	BEQ.S	.RECV    	Bail if nothing to return	
-	MOVE.B  MFPUDR,D0	Else move character to D1	
+	MOVE.B  MFPUDR,D0	Else move character to D0
     cmp.b   #$0D,D0                     * Is it CR?
     beq.s   .DONE                       * Done if so,else
     move.b  D0,(A1)+                    * Store char in buffer and advance
@@ -1658,7 +1656,8 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 .io3		jsr print_signed
 			BRA	.ioExcEnd	Return from exception		
 
-.io4		BEQ	.ioExcEnd	Return from exception		
+.io4		CLR.L	D1		Unimplemented — clear D1
+		BRA	.ioExcEnd	Return from exception
 
 
 .io5		BTST.B  #7,MFPRSR	Check for empty receive buffer
@@ -1678,7 +1677,8 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 		MOVEQ	#1,D1		Set return to indicate character waiting		*****
 		bra	.ioExcEnd	Return from exception		
 
-.io8	BRA	.ioExcEnd	Return from exception		
+.io8	CLR.L	D1		Unimplemented — clear D1
+	BRA	.ioExcEnd	Return from exception
 
 .io12
 		move.b  D1,ECHO_ON
@@ -6655,7 +6655,7 @@ OPCTBL   DS      0
          N68     FMO,D     98
          N68     FRE,M     99
          N68     FSCAL,E   100
-         N68     FSGIDI,V  101
+         N68     FSGLDI,V  101
          N68     FSGLMU,L  102
          N68     FSINCO,S  103
          N68     FMOVEC,R  104
@@ -6928,7 +6928,7 @@ TBLOPC   OPC     ABC,D,0,C1,00,0,0     ABCD
          OPC     FMO,D,38,00,21,0,0      FMOD
          OPC     FRE,M,38,00,25,0,0      FREM
          OPC     FSCAL,E,38,00,26,0,0    FSCALE
-         OPC     FSGIDI,V,38,00,24,0,0   FSGLDIV
+         OPC     FSGLDI,V,38,00,24,0,0   FSGLDIV
          OPC     FSGLMU,L,38,00,27,0,0   FSGLMUL
 * FBcc branch instructions — TBLKEYS index 39
 * Longer mnemonics must precede shorter prefixes (FBGLE before FBGL, etc.)

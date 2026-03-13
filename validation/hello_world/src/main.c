@@ -99,7 +99,9 @@ static void rom_boot(void)
     mfp_init();
 
     /* Initialise F-line handler (hardware FPU via AXI-Lite) */
-    fline_init();
+    if (fline_init() != 0) {
+        xil_printf("[ROM] WARNING: F-line handler init failed\r\n");
+    }
 
     /* Initialise text framebuffer */
     pixel_buf = text_fb_init();

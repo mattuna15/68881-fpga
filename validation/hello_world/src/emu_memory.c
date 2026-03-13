@@ -21,9 +21,10 @@ void emu_mem_init(void)
 
 int emu_mem_load(unsigned int addr, const unsigned char *data, unsigned int len)
 {
-    if ((addr & EMU_RAM_MASK) + len > EMU_RAM_SIZE)
+    unsigned int offset = addr & EMU_RAM_MASK;
+    if (len > EMU_RAM_SIZE || offset + len > EMU_RAM_SIZE)
         return -1;
-    memcpy(&emu_ram[addr & EMU_RAM_MASK], data, len);
+    memcpy(&emu_ram[offset], data, len);
     return 0;
 }
 

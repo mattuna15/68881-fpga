@@ -22,7 +22,7 @@ on the AXU3EG validation platform.
 | Address | Size | Description |
 |---------|------|-------------|
 | `$000000-$00FFFF` | 64K | RAM (workspace, vectors, stack) |
-| `$FD0000-$FD003F` | 64 bytes | MC68901 MFP (USART, timers, GPIO) |
+| `$FD0000-$FD002F` | 48 bytes | MC68901 MFP (USART, timers, GPIO) |
 | `$FE0000-$FFFFFF` | 128K | ROM (BIOS image) |
 
 Stack pointer initializes to `$1000`. System stack (SYSTACK) is at `$5AE`.
@@ -32,8 +32,10 @@ Stack pointer initializes to `$1000`. System stack (SYSTACK) is at `$5AE`.
 | Command | Syntax | Description |
 |---------|--------|-------------|
 | **A** | `A <addr>` | Assemble — enter interactive assembler at address |
-| **D** | `D <addr>` | Dump — display memory contents in hex |
-| **E** | `E <addr>` | Examine/modify — inspect and change memory bytes |
+| **D** | `D <addr> <data>` | Deposit — write bytes to memory at address |
+| **E** | `E <addr>` | Examine — display memory contents in hex |
+| **H** | `H` | Help — display available commands |
+| **L** | `L` | Load — receive Motorola S-record via UART |
 | **G** | `G <addr>` | Go — execute code at address |
 | **R** | `R` | Registers — display saved CPU and FPU registers |
 | **T** | `T [count]` | Trace — single-step (default 1 instruction) |

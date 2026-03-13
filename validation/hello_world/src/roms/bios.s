@@ -815,7 +815,8 @@ regDump		MOVEM.L	D3-D5/A2,-(SP)
 		BSR.W	printHexLong
 		LEA	msgSR,A0
 		BSR.W	printString
-		MOVE.L	SAVED_SR,D0
+		CLR.L	D0
+		MOVE.W	SAVED_SR,D0
 		BSR.W	printHexWord
 		LEA	msgNewline,A0
 		BSR.W	printString

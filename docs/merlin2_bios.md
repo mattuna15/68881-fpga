@@ -95,6 +95,7 @@ disassembled instruction at the break point.
 The **A** command enters the one-line assembler. Each line shows the current
 address, existing hex/disassembly, then prompts for input. Type an instruction
 to assemble it at that address, or press Enter to skip, or type **X** to exit.
+Backspace and Delete keys work for correcting typos during input.
 
 ```
 >A 1000
@@ -231,7 +232,7 @@ validation/hello_world/src/roms/bios.s
 |----|----------|
 | 0 | Display string at (A1), D1.W bytes, with CR+LF |
 | 1 | Display string at (A1), D1.W bytes, no CR+LF |
-| 2 | Read string into (A1), null-terminated; D1.W = length |
+| 2 | Read string into (A1), null-terminated; D1.W = length. Supports backspace/delete editing |
 | 3 | Display signed number D1.L in decimal |
 | 5 | Read single character into D1.B |
 | 6 | Display character D1.B |

@@ -1616,15 +1616,31 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 	BEQ.S	.RECV    	Bail if nothing to return	
 	MOVE.B  MFPUDR,D0	Else move character to D0
     cmp.b   #$0D,D0                     * Is it CR?
-    beq.s   .DONE                       * Done if so,else
+    beq.s   .DONE                       * Done if so
+    cmp.b   #BKSP,D0                   * Backspace?
+    beq.s   .io2bs
+    cmp.b   #DEL,D0                    * Delete key?
+    beq.s   .io2bs
     move.b  D0,(A1)+                    * Store char in buffer and advance
 
     tst.b   D2                          * Is echo flag non-zero?
-    beq.s   .LOOP         
-	              * Nope,just loop...
-.xmit:	BTST.B  #7,MFPTSR	Check for empty transmit buffer	
-	BEQ.S   .xmit	Loop until ready		
+    beq.s   .LOOP                       * Nope,just loop...
+.xmit:	BTST.B  #7,MFPTSR	Check for empty transmit buffer
+	BEQ.S   .xmit	Loop until ready
 	MOVE.B  D0,MFPUDR	Put character into USART data register
+    bra.s   .LOOP
+.io2bs  cmpa.l  4(A7),A1               * Compare A1 with saved buffer start
+    beq.s   .LOOP                       * Already at start — ignore
+    subq.l  #1,A1                       * Back up buffer pointer
+    addq.w  #2,D1                       * Undo DBRA for BS char + deleted char
+    tst.b   D2                          * Echo enabled?
+    beq.s   .LOOP                       * No — skip visual erase
+    move.b  #BKSP,D0
+    bsr.w   outChar                     * Cursor back
+    move.b  #' ',D0
+    bsr.w   outChar                     * Overwrite with space
+    move.b  #BKSP,D0
+    bsr.w   outChar                     * Cursor back again
 
 .LOOP:
     dbra    D1,.RECV                    * Go again?

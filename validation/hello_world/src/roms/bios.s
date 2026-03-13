@@ -2165,8 +2165,7 @@ M426     ADDQ.L  #3,A0          ADJUST PTR TO TABLE
          CMP.L   A0,A2
          BNE     M410
 
-M428     MOVE.W  #$DEAD,$0120.W DEBUG: OPC match failed
-         MOVEQ   #FOC,D7        ERROR CODE
+M428     MOVEQ   #FOC,D7        ERROR CODE
          BRA     ERDONE
 
 * GET GOTO INDEX

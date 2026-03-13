@@ -41,7 +41,7 @@
 - [x] **Merlin 2 FPU banner** — add startup banner to ROM boot sequence
 - [x] **Easy68K compatibility** — wrap F-line FP save/dump in `IFEQ EASY68K_SIM`; disable echo for Easy68K terminal
 - [x] **Add build number in banner** — version string now shows `ver 2.1 build 001`; increment build number manually each release
-- [ ] **Remove debug traces** — clean up debug markers in `emu_memory.c` and `bios.s` after all fixes are done
+- [x] **Remove debug traces** — removed `$DEAD` marker write in `bios.s` M428, removed TDATA/TLENGTH/MARKER/A5/A6/PTROP traces in `emu_memory.c`; kept ROM write warnings under `#ifdef DEBUG`
 
 ## Hardware
 

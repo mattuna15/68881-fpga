@@ -30,10 +30,17 @@
 - [x] **Option R — register dump** — print saved registers (D0–D7, A0–A7, FP0–FP7, SP, PC, SR) from last G(o) command; R(un) renamed to G(o)
 - [ ] **Debug/trace/breakpoint support** — add interactive debugging commands to the monitor/assembler
 
+## BIOS Bugs
+
+- [x] **Fix ECHO_ON DS.B 0** — reserved zero bytes, aliased on PROMPT_ON; changed to DS.B 1
+- [x] **Fix readLine echo** — unconditionally echoed characters; now gated on ECHO_ON flag
+- [x] **Fix SR display** — `MOVE.L SAVED_SR,D0` read longword from word-sized field, printing SAVED_FP garbage as SR; use `CLR.L D0` + `MOVE.W`
+
 ## ROM / BIOS
 
 - [x] **Merlin 2 FPU banner** — add startup banner to ROM boot sequence
-- [ ] **Add build number in banner** — display a build/version number in the startup banner
+- [x] **Easy68K compatibility** — wrap F-line FP save/dump in `IFEQ EASY68K_SIM`; disable echo for Easy68K terminal
+- [x] **Add build number in banner** — version string now shows `ver 2.1 build 001`; increment build number manually each release
 - [ ] **Remove debug traces** — clean up debug markers in `emu_memory.c` and `bios.s` after all fixes are done
 
 ## Hardware

@@ -80,20 +80,18 @@ hardware subset: 11 ALU ops, no trig/sglops/modrem), the core is estimated at
 | Xilinx Artix-7 100T | 63,400 | 240 | Tight (99%) | Yes (~45%) |
 | Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~88%) | Yes (~42%) |
 | Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
-| Intel Cyclone V SE 5CSEBA6 (MiSTer DE10-Nano) | 41,910 ALMs | 112 | No (~150%) | Marginal (~70%) |
+| Intel Cyclone V SE 5CSEBA6 (MiSTer DE10-Nano) | 41,910 ALMs | 112 | No (~75%) | Likely (~35%) |
 
 All RTL is vendor-portable (inferred DSP/BRAM, no Xilinx IP cores). Porting to
 Intel/Quartus requires XDC-to-SDC constraint conversion and minor DSP inference
 adjustments.
 
 **MiSTer note:** The DE10-Nano's Cyclone V SE has 41,910 ALMs (each ALM roughly
-maps to 2 Xilinx LUTs, giving ~84K LUT-equivalent). The full FPU (~63K LUTs)
-exceeds the device capacity. Lite mode (~28K-30K LUTs, ~14K-15K ALMs) should fit,
-but the 48 DSP multipliers required by the full design also exceed the 112
-available -- lite mode uses 16, which fits. The DSP shortfall in full mode would
-force Vivado/Quartus to infer multipliers in fabric, further increasing ALM usage.
-These are rough estimates; actual Quartus ALM counts may differ from Xilinx LUT
-counts due to architectural differences.
+maps to 2 Xilinx LUTs, giving ~84K LUT-equivalent). The full FPU (~63K LUTs /
+34 DSPs) exceeds ALM capacity but fits within the 112 DSP budget. Lite mode
+(~28K-30K LUTs, ~14K-15K ALMs, ~17 DSPs) should fit comfortably. These are rough
+estimates; actual Quartus ALM counts may differ from Xilinx LUT counts due to
+architectural differences.
 
 ## Architecture
 

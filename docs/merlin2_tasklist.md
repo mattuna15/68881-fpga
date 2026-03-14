@@ -25,7 +25,7 @@
 
 - [x] **FP literal support (.S)** — parse decimal (e.g., `#2.35`) → IEEE 754 single via FPARSLIT
 - [x] **FP literal support (.D/.X)** — promote single → double (FSGL2DBL) or extended (FSGL2EXT); TDATA expanded to 18 bytes
-- [ ] **FP literal support for .P (packed BCD)** — FPARSLIT currently converts decimal → single → double/extended; .P needs a dedicated decimal → packed BCD converter
+- [x] **FP literal support for .P (packed BCD)** — FDEC2PKD: direct decimal string → 96-bit packed BCD (no IEEE intermediate), preserves up to 17 significant digits
 - [x] **Delete character support in line input** — handle backspace ($08) and delete ($7F) in TRAP #15 D0=2 (.io2) input loop; visual erase via outChar when echo enabled
 - [x] **Option R — register dump** — print saved registers (D0–D7, A0–A7, FP0–FP7, SP, PC, SR) from last G(o) command; R(un) renamed to G(o)
 - [x] **Debug/trace/breakpoint support** — T(race), B(reakpoint), N(o breakpoint) commands; saveRegs/unstack for RTE-based debug execution; swapIn/swapOut for $4AFB breakpoint opcodes; 8 regular + 1 temporary breakpoint slots with pass counts

@@ -4229,7 +4229,7 @@ MFBCC    DS      0
 
 
 *------------------------------------------------------------------------
-* MFPFLIT — Handle FP literal for formats .S(1)/.X(2)/.D(5)
+* MFPFLIT — Handle FP literal for formats .S(1)/.X(2)/.P(3)/.D(5)
 *
 * Entry:  D5 = format code, FPUSCR+2(A1) = format saved, A5 → text
 * Return: EQ = literal handled (D3/TNB/D6 set), NE = not handled
@@ -4240,13 +4240,18 @@ MFPFLIT  CMPI.W  #1,D5
          BEQ.S   .go
          CMPI.W  #2,D5
          BEQ.S   .go
+         CMPI.W  #3,D5
+         BEQ.S   .go
          MOVEQ   #1,D0           NE = not an FP-literal format
          RTS
 .go      MOVE.W  #$80,TLENGTH(A1)
          BSR     CHKFPLIT
          BNE.S   .no
-* Parse decimal → IEEE 754 single (base conversion)
          ADDQ.L  #1,A5           Skip '#'
+* Packed BCD (.P format 3): direct decimal → packed, no IEEE intermediate
+         CMPI.W  #3,FPUSCR+2(A1)
+         BEQ.S   .pkd
+* Parse decimal → IEEE 754 single (base conversion)
          BSR     FPARSLIT        D0 = IEEE 754 single
          MOVEQ   #2,D3
 * Format dispatch
@@ -4276,6 +4281,12 @@ MFPFLIT  CMPI.W  #1,D5
 .done    MOVE.B  #$3C,D6         Immediate mode
          MOVEQ   #0,D0           EQ = handled
          RTS
+* Packed BCD (.P format 3): 12 bytes
+.pkd     MOVEQ   #2,D3
+         BSR     FDEC2PKD        Stores 12 bytes at (A4,D3)
+         ADD.B   #12,TNB(A1)
+         ADD.L   #12,D3
+         BRA.S   .done
 .no      MOVEQ   #1,D0           NE = not FP literal
          RTS
 
@@ -4363,6 +4374,227 @@ FSGL2EXT MOVE.L  D0,D3           Save single
          ANDI.L  #$80000000,D0   Preserve ±0 sign
          CLR.L   D1
          CLR.L   D2
+         RTS
+
+*------------------------------------------------------------------------
+* FDEC2PKD — Parse decimal literal → MC68881 96-bit packed BCD
+*
+* Converts a decimal string directly to packed BCD without any IEEE
+* intermediate, preserving up to 17 significant digits.
+*
+* Entry:  A5 → first char of literal (past '#'), A4+D3 → output buffer
+* Return: 12 bytes written at (A4,D3), A5 advanced past literal
+* Uses:   D0-D7, A0, A2, 24 bytes stack scratch
+*
+* Packed BCD layout (12 bytes, big-endian):
+*   Byte 0: SM(7) | SE(6) | YY=00(5:4) | exp_hundreds(3:0)
+*   Byte 1: exp_tens(7:4) | exp_ones(3:0)
+*   Byte 2: exp_thousands(7:4) | 0000(3:0)
+*   Byte 3: 0000(7:4) | d0(3:0)          -- leading significant digit
+*   Bytes 4-11: d1..d16                   -- 2 BCD digits per byte
+*
+* Exponent tracking: A pre-scan counts total integer digits into D5.
+* During the main scan, D5 decrements per integer digit (giving
+* "digits remaining after this one"). For fraction digits, D5 counts
+* position (1-based). When the first significant digit is found:
+*   - In integer part: exp = D5 (remaining integer digits)
+*   - In fraction part: exp = -D5 (negative fraction position)
+*------------------------------------------------------------------------
+FDEC2PKD MOVEM.L D6-D7/A0,-(A7)
+* Allocate 24-byte scratch on stack: 17 digits + 3 pad + 4 for saved D3
+         LEA     -24(A7),A7
+         MOVEA.L A7,A0              A0 → digit buffer (20 bytes)
+         MOVE.L  D3,20(A0)         Save D3 (TDATA offset) on stack
+* Zero the digit buffer
+         CLR.L   (A0)
+         CLR.L   4(A0)
+         CLR.L   8(A0)
+         CLR.L   12(A0)
+         CLR.L   16(A0)
+*
+* Register usage during scan:
+*   D6 = mantissa sign (0=pos, $80=neg for byte 0 bit 7)
+*   D7 = significant digit count collected (0-17)
+*   D1 = exponent (set when first sig digit found)
+*   D4 = state: 0=before dot, 1=after dot
+*   D5 = position counter: before dot = int digits remaining after current
+*        after dot = frac position (1-based), used to compute exp
+*   D2 = flag: 0=no sig digit yet, 1=found first sig digit
+*   D3 = scratch (saved on stack)
+*
+         CLR.L   D6
+         CLR.L   D7
+         CLR.L   D1              Exponent
+         CLR.L   D4              Dot state: 0=before dot
+         CLR.L   D2              Significant flag
+* Parse optional sign
+         CMPI.B  #'+',(A5)
+         BEQ.S   .sksgn
+         CMPI.B  #'-',(A5)
+         BNE.S   .prescan
+         MOVE.B  #$80,D6
+.sksgn   ADDQ.L  #1,A5
+*
+* Pre-scan: count total integer digits so we can compute exponent
+* during the main scan. We need to know how many integer digits
+* follow the current one to get the exponent right.
+*
+* Save A5, count digits before '.', restore A5.
+*
+.prescan MOVE.L  A5,D5           Save start position
+         CLR.L   D3              Integer digit counter
+.pcnt    MOVE.B  (A5),D0
+         CMPI.B  #'.',D0
+         BEQ.S   .pdn
+         SUBI.B  #'0',D0
+         BMI.S   .pdn
+         CMPI.B  #9,D0
+         BGT.S   .pdn
+         ADDQ.L  #1,D3
+         ADDQ.L  #1,A5
+         BRA.S   .pcnt
+.pdn     MOVEA.L D5,A5           Restore A5 to start
+         MOVE.L  D3,D5           D5 = total integer digit count
+*
+* Main scan loop
+* D5 = integer digits remaining (decremented as we consume them)
+*
+.scan    MOVE.B  (A5),D0
+         CMPI.B  #'.',D0
+         BNE.S   .notdot
+* Decimal point
+         TST.L   D4
+         BNE.S   .end            Second dot ends number
+         MOVEQ   #1,D4           Mark dot seen
+         ADDQ.L  #1,A5
+         CLR.L   D5              Reset position counter for fraction
+         BRA.S   .scan
+.notdot  SUBI.B  #'0',D0
+         BMI.S   .end
+         CMPI.B  #9,D0
+         BGT.S   .end
+         ADDQ.L  #1,A5
+* D0 = digit value 0-9
+* Update position tracking
+         TST.L   D4
+         BNE.S   .frac
+* Integer digit: decrement remaining count
+         SUBQ.L  #1,D5           D5 = integer digits after this one
+         BRA.S   .chksig
+* Fraction digit: track negative position
+.frac    ADDQ.L  #1,D5           D5 = fraction position (1-based)
+*
+.chksig  TST.B   D0
+         BNE.S   .sig
+         TST.L   D2
+         BEQ.S   .scan           Skip leading zero
+* Significant digit (or zero after first significant)
+.sig     TST.L   D2
+         BNE.S   .noexp          Already have exponent
+* First significant digit: compute exponent
+         MOVEQ   #1,D2           Mark significant digit found
+         TST.L   D4
+         BNE.S   .fexp
+* First sig in integer part: exp = digits remaining after this one
+         MOVE.L  D5,D1           D1 = exponent (e.g., "314" first sig '3' has 2 remaining)
+         BRA.S   .noexp
+* First sig in fraction part: exp = -position
+.fexp    MOVE.L  D5,D1
+         NEG.L   D1              D1 = -(frac position), e.g., "0.045" → first sig '4' at pos 2 → exp=-2
+.noexp   CMPI.L  #17,D7
+         BGE.S   .scan           Already have 17 digits, skip rest
+         MOVE.B  D0,(A0,D7.L)   Store digit in buffer
+         ADDQ.L  #1,D7
+         BRA.S   .scan
+*
+* End of scan — pack into 96-bit packed BCD
+*
+.end     MOVE.L  20(A0),D3       Restore D3 (TDATA offset from stack)
+* Handle zero input
+         TST.L   D7
+         BNE.S   .pack
+* All zeros: write 12 zero bytes
+         CLR.L   (A4,D3.L)
+         CLR.L   4(A4,D3.L)
+         CLR.L   8(A4,D3.L)
+         BRA     .ret
+*
+* Pack exponent and mantissa into 12 bytes
+* Use A2 as output pointer: A2 = A4 + D3
+*
+.pack    MOVEA.L A4,A2
+         ADDA.L  D3,A2           A2 → output buffer (12 bytes)
+* Clear the 12 output bytes
+         CLR.L   (A2)
+         CLR.L   4(A2)
+         CLR.L   8(A2)
+* Compute absolute exponent and sign
+         MOVE.L  D1,D0           D0 = exponent (signed)
+         CLR.L   D2              D2 = exponent sign byte (0 or $40)
+         TST.L   D0
+         BPL.S   .epos
+         NEG.L   D0              D0 = |exponent|
+         MOVE.B  #$40,D2         SE bit = bit 6
+.epos    DS      0
+* Split exponent into 4 BCD digits: D0 = abs(exp)
+* exp_thousands
+         CLR.L   D4
+.ethous  CMPI.L  #1000,D0
+         BLT.S   .ehund
+         SUBI.L  #1000,D0
+         ADDQ.L  #1,D4
+         BRA.S   .ethous
+.ehund   MOVE.L  D4,D5           D5 = thousands digit
+         LSL.B   #4,D5           Shift to high nibble for byte 2
+* exp_hundreds
+         CLR.L   D4
+.eh2     CMPI.L  #100,D0
+         BLT.S   .etens
+         SUBI.L  #100,D0
+         ADDQ.L  #1,D4
+         BRA.S   .eh2
+.etens   DS      0
+* D4 = hundreds digit, D0 = remainder 0-99
+* exp_tens and exp_ones via DIVU
+         DIVU    #10,D0          D0.W = tens, D0 high word = ones
+         MOVE.W  D0,D1           D1 = tens digit
+         SWAP    D0              D0 = ones digit
+*
+* Build byte 0: SM(7) | SE(6) | YY=00(5:4) | exp_hundreds(3:0)
+         OR.B    D6,D4           Add SM (bit 7) to hundreds
+         OR.B    D2,D4           Add SE (bit 6)
+         MOVE.B  D4,(A2)         Store byte 0
+*
+* Build byte 1: exp_tens(7:4) | exp_ones(3:0)
+         LSL.B   #4,D1           Tens to high nibble
+         OR.B    D0,D1           Ones to low nibble
+         MOVE.B  D1,1(A2)        Store byte 1
+*
+* Build byte 2: exp_thousands(7:4) | 0000(3:0)
+         MOVE.B  D5,2(A2)        Store byte 2 (thousands in high nibble, low=0)
+*
+* Build byte 3: 0000(7:4) | d0(3:0) -- leading significant digit
+         MOVE.B  (A0),3(A2)      d0 is in low nibble (high nibble already 0)
+*
+* Build bytes 4-11: d1..d16, two digits per byte
+         MOVEQ   #1,D0           Source index into digit buffer
+         LEA     4(A2),A2        A2 -> byte 4 of output
+.dpair   CMP.L   D7,D0
+         BGE.S   .dpad           No more digits, rest is zero (already cleared)
+         MOVE.B  (A0,D0.L),D2   High nibble digit
+         LSL.B   #4,D2
+         ADDQ.L  #1,D0
+         CMP.L   D7,D0
+         BGE.S   .dlast          Only high nibble has a digit
+         OR.B    (A0,D0.L),D2   Low nibble digit
+         ADDQ.L  #1,D0
+.dlast   MOVE.B  D2,(A2)+
+         CMPI.L  #17,D0
+         BLT.S   .dpair
+.dpad    DS      0
+*
+.ret     LEA     24(A7),A7      Free scratch buffer (20 digits + 4 saved D3)
+         MOVEM.L (A7)+,D6-D7/A0
          RTS
 
 *-------------------------------------------------------------------------

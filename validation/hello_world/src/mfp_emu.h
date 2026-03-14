@@ -15,7 +15,7 @@
 
 /* MC68901 MFP base address and register span (as expected by bios.s) */
 #define MFP_BASE        0xFD0000
-#define MFP_SIZE        0x30        /* registers at odd bytes 0x01..0x2F */
+#define MFP_SIZE        0x34        /* registers 0x01..0x2F + tick counter 0x30..0x33 */
 #define MFP_END         (MFP_BASE + MFP_SIZE)
 
 /* ROM region */
@@ -48,6 +48,9 @@
 #define MFP_OFF_RSR     0x2B    /* Receiver Status Register */
 #define MFP_OFF_TSR     0x2D    /* Transmitter Status Register */
 #define MFP_OFF_UDR     0x2F    /* USART Data Register */
+
+/* Extension: 32-bit millisecond tick counter (read-only, big-endian) */
+#define MFP_OFF_TICK    0x30    /* 4 bytes: ms since mfp_init() */
 
 /* Initialize MFP emulation state */
 void mfp_init(void);

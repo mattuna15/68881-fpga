@@ -1693,7 +1693,7 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 		MOVEQ	#1,D1		Set return to indicate character waiting		*****
 		bra	.ioExcEnd	Return from exception		
 
-.io8	CLR.L	D1		Unimplemented — clear D1
+.io8	MOVE.L	MFPBAS+$30,D1	Read 32-bit ms tick counter
 	BRA	.ioExcEnd	Return from exception
 
 .io12

@@ -17,7 +17,7 @@
 #define EMU_ROM_BASE  0xFE0000      /* 128 KB ROM image */
 #define EMU_ROM_SIZE  0x020000
 #define EMU_MFP_BASE  0xFD0000      /* MC68901 MFP I/O */
-#define EMU_MFP_SIZE  0x000030
+#define EMU_MFP_SIZE  0x000034
 
 /* The emulated RAM buffer (statically allocated in DDR) */
 extern unsigned char emu_ram[];

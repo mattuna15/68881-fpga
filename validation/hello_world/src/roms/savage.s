@@ -27,6 +27,11 @@ START    LEA     msgTitle,A1
          MOVEQ   #13,D0
          TRAP    #15             Print title with CR+LF
 
+* Record start time
+         MOVEQ   #8,D0
+         TRAP    #15
+         MOVE.L  D1,TSTART
+
 * FP0 = 1.0
          FMOVE.L #1,FP0
 
@@ -89,6 +94,23 @@ LOOP     FMUL.X  FP0,FP0         x = x*x
          MOVEQ   #13,D0
          TRAP    #15
 
+* Record end time and print elapsed
+         MOVEQ   #8,D0
+         TRAP    #15
+         SUB.L   TSTART,D1       D1 = elapsed ms
+         MOVE.L  D1,-(SP)        Save for later
+
+         LEA     msgElapsed,A1
+         MOVEQ   #14,D0
+         TRAP    #15
+         MOVE.L  (SP)+,D1
+         MOVEQ   #10,D2
+         MOVEQ   #15,D0
+         TRAP    #15
+         LEA     msgMs,A1
+         MOVEQ   #13,D0
+         TRAP    #15
+
 * Done
          LEA     msgDone,A1
          MOVEQ   #13,D0
@@ -121,11 +143,14 @@ PRTHEX32 MOVEM.L D2-D3,-(SP)
 *------------------------------------------------------------------------
          EVEN
 FPTEMP   DS.B    12              Temp for FP extended (96 bits)
+TSTART   DS.L    1               Start time (ms)
 
 msgTitle   DC.B  '=== Savage Benchmark ===',0
 msgResult  DC.B  'Result: ',0
 msgExpect  DC.B  'Expect: 3FFF0000 80000000 00000000  (1.0)',0
 msgIters   DC.B  'Iterations: ',0
+msgElapsed DC.B  'Elapsed: ',0
+msgMs      DC.B  ' ms',0
 msgDone    DC.B  'Done.',0
 msgNewline DC.B  0
 

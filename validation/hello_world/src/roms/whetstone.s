@@ -9,7 +9,7 @@
 * KWIPS = NLOOP * 1000 / elapsed_ms
 *
 * Usage: Load via S-record (L command), execute with G 2000.
-*        Time externally; KWIPS = NLOOP / seconds.
+*        KWIPS auto-calculated via MFP ms tick counter (TRAP #15 D0=8).
 *
 * Assemble: vasmm68k_mot -Fsrec -m68000 -m68881 -o whetstone.srec whetstone.s
 *------------------------------------------------------------------------
@@ -59,6 +59,11 @@ START   LEA     msgTitle,A1
         MOVE.L  #1,VJ
         MOVE.L  #2,VK
         MOVE.L  #3,VL
+
+* Record start time (ms tick counter in D1)
+        MOVEQ   #8,D0
+        TRAP    #15
+        MOVE.L  D1,TSTART
 
 *------------------------------------------------------------------------
 * Module 2: Array elements — N2*NLOOP iterations
@@ -277,6 +282,11 @@ M8DONE  LEA     msgOK,A1
 *------------------------------------------------------------------------
 * Results
 *------------------------------------------------------------------------
+* Record end time
+        MOVEQ   #8,D0
+        TRAP    #15
+        MOVE.L  D1,TEND
+
         LEA     msgNewline,A1
         MOVEQ   #13,D0
         TRAP    #15
@@ -292,11 +302,49 @@ M8DONE  LEA     msgOK,A1
         MOVEQ   #13,D0
         TRAP    #15
 
-        LEA     msgKWIPS,A1
+* Print elapsed time in ms
+        LEA     msgElapsed,A1
+        MOVEQ   #14,D0
+        TRAP    #15
+        MOVE.L  TEND,D1
+        SUB.L   TSTART,D1
+        MOVE.L  D1,TELAPSED         Save for KWIPS calc
+        MOVEQ   #10,D2
+        MOVEQ   #15,D0
+        TRAP    #15
+        LEA     msgMs,A1
         MOVEQ   #13,D0
         TRAP    #15
 
-        LEA     msgDone,A1
+* KWIPS = NLOOP * 1000 / elapsed_seconds = NLOOP * 1000000 / elapsed_ms
+        LEA     msgKWIPS,A1
+        MOVEQ   #14,D0
+        TRAP    #15
+
+        MOVE.L  TELAPSED,D1
+        BEQ.S   .notime             Avoid divide by zero
+        SWAP    D1
+        TST.W   D1                  Check if elapsed > 65535 ms
+        BNE.S   .notime             Too long for 16-bit DIVU
+        SWAP    D1                  Restore D1 = elapsed_ms (low word)
+        MOVE.L  #NLOOP*1000000,D0   Numerator
+        DIVU.W  D1,D0               D0.W = KWIPS
+        BVS.S   .notime             Quotient overflow
+        AND.L   #$FFFF,D0           Clear remainder in upper word
+        MOVE.L  D0,D1
+        MOVEQ   #10,D2
+        MOVEQ   #15,D0
+        TRAP    #15
+        LEA     msgNewline,A1
+        MOVEQ   #13,D0
+        TRAP    #15
+        BRA.S   .done
+
+.notime LEA     msgNoTime,A1
+        MOVEQ   #13,D0
+        TRAP    #15
+
+.done   LEA     msgDone,A1
         MOVEQ   #13,D0
         TRAP    #15
 
@@ -382,6 +430,9 @@ VY      DS.B    12
 VJ      DS.L    1
 VK      DS.L    1
 VL      DS.L    1
+TSTART  DS.L    1               Start time (ms)
+TEND    DS.L    1               End time (ms)
+TELAPSED DS.L   1               Elapsed time (ms)
 
 *------------------------------------------------------------------------
 * Strings
@@ -395,7 +446,10 @@ msgM7     DC.B  'M7 (proc calls)... ',0
 msgM8     DC.B  'M8 (trig)... ',0
 msgOK     DC.B  'OK',0
 msgLoops  DC.B  'Passes: ',0
-msgKWIPS  DC.B  'KWIPS = passes * 1000 / elapsed_seconds',0
+msgElapsed DC.B 'Elapsed: ',0
+msgMs     DC.B  ' ms',0
+msgKWIPS  DC.B  'KWIPS: ',0
+msgNoTime DC.B  'KWIPS: N/A (timer returned 0)',0
 msgDone   DC.B  'Whetstone complete.',0
 msgNewline DC.B 0
 

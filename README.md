@@ -373,6 +373,43 @@ PASS DIV(pi/3)
 ALL TESTS PASSED
 ```
 
+### FPU benchmarks
+
+Standard floating-point benchmarks run on the M68K emulator with hardware FPU
+(F-line trapping to FPGA), measured on AXU3EG at 100 MHz AXI / 33 MHz FPU:
+
+**Whetstone** (NLOOP=10, exercises ADD/SUB/MUL/DIV/SQRT/SIN/COS/ATAN/LOG/EXP):
+```
+=== Whetstone Benchmark ===
+M2 (array)... OK
+M3 (proc array)... OK
+M4 (conditionals)... OK
+M6 (log/exp/sqrt)... OK
+M7 (proc calls)... OK
+M8 (trig)... OK
+
+Passes: 10
+Elapsed: 2191 ms
+KWIPS: 4564
+Whetstone complete.
+```
+
+**Savage** (2500 iterations of x = tan(atan(exp(ln(sqrt(x*x)))))), result should be 1.0):
+```
+=== Savage Benchmark ===
+Result: 3FFE0000 FFFFFFFF FFFE54C8
+Expect: 3FFF0000 80000000 00000000  (1.0)
+Iterations: 2500
+Elapsed: 210 ms
+Done.
+```
+
+The Savage result (~0.999999999999994) shows ~6×10⁻¹⁵ accumulated rounding error
+over 2500 iterations of 6 chained transcendental operations — reasonable for
+64-bit extended precision.
+
+Benchmark sources are in `validation/hello_world/src/roms/` (`savage.s`, `whetstone.s`).
+
 ## Status
 All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
 

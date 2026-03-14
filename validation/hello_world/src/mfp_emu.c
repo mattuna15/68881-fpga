@@ -14,9 +14,13 @@
 #include "mfp_emu.h"
 #include "text_fb.h"
 #include "xil_printf.h"
+#include "xiltimer.h"
 
 /* Shadow registers — most are don't-care, just store writes */
 static uint8_t mfp_regs[MFP_SIZE];
+
+/* Millisecond tick counter baseline */
+static XTime mfp_time_base;
 
 /* UART RX circular buffer */
 #define RX_BUF_SIZE 256
@@ -35,6 +39,9 @@ void mfp_init(void)
 
     /* TSR: bit 7 (buffer empty) always starts set */
     mfp_regs[MFP_OFF_TSR] = 0x80;
+
+    /* Latch ARM timer baseline for ms tick counter */
+    XTime_GetTime(&mfp_time_base);
 }
 
 int mfp_rx_has_data(void)
@@ -80,6 +87,18 @@ uint8_t mfp_read(uint32_t offset)
     case MFP_OFF_UDR:
         /* Read = dequeue from RX buffer */
         return rx_pop();
+
+    case MFP_OFF_TICK:
+    case MFP_OFF_TICK + 1:
+    case MFP_OFF_TICK + 2:
+    case MFP_OFF_TICK + 3: {
+        /* 32-bit ms tick counter (big-endian), derived from ARM physical timer */
+        XTime now;
+        XTime_GetTime(&now);
+        uint32_t ms = (uint32_t)((now - mfp_time_base) / (COUNTS_PER_SECOND / 1000));
+        int shift = (3 - (offset - MFP_OFF_TICK)) * 8;
+        return (ms >> shift) & 0xFF;
+    }
 
     default:
         return mfp_regs[offset];

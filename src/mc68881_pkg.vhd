@@ -1591,7 +1591,7 @@ package body mc68881_pkg is
     -- OR-prefix scan: or_prefix(i) = value(0) | ... | value(i)
     -- Then sticky = or_prefix(shift-1) via single dynamic mux
     or_prefix(0) := value(0);
-    for i in 1 to value'length-1 loop
+    for i in 1 to value'high loop
       or_prefix(i) := or_prefix(i-1) or value(i);
     end loop;
     sticky := or_prefix(shift - 1);
@@ -1613,7 +1613,7 @@ package body mc68881_pkg is
     variable exp_var : unsigned(exp_in'range) := exp_in;
   begin
     -- Bound the iteration count for synthesis convergence.
-    for i in 0 to value'length-1 loop
+    for i in 0 to value'high loop
       exit when not (result(result'left) = '0' and exp_var /= 0 and result /= 0);
       result := result(result'left-1 downto 0) & '0';
       exp_var := exp_var - 1;
@@ -2217,7 +2217,7 @@ package body mc68881_pkg is
     variable a_abs : fp80_t := abs_fp80(a);
     variable b_abs : fp80_t := abs_fp80(b);
   begin
-    if a_abs = (a_abs'range => '0') and b_abs = (b_abs'range => '0') then
+    if a_abs = FP80_ZERO and b_abs = FP80_ZERO then
       return 0;
     end if;
 

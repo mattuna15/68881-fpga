@@ -82,9 +82,10 @@ hardware subset: 11 ALU ops, no trig/sglops/modrem), the core is estimated at
 | Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
 | Intel Cyclone V SE 5CSEBA6 (MiSTer DE10-Nano) | 41,910 ALMs | 112 | No (~75%) | Likely (~35%) |
 
-All RTL is vendor-portable (inferred DSP/BRAM, no Xilinx IP cores). Porting to
-Intel/Quartus requires XDC-to-SDC constraint conversion and minor DSP inference
-adjustments.
+All RTL is VHDL-93 compatible and vendor-portable (inferred DSP/BRAM, no Xilinx
+IP cores). The source synthesizes directly in Quartus 17+ (as used by MiSTer)
+without requiring VHDL-2008 support. Porting requires XDC-to-SDC constraint
+conversion and minor DSP inference adjustments.
 
 **MiSTer note:** The DE10-Nano's Cyclone V SE has 41,910 ALMs (each ALM roughly
 maps to 2 Xilinx LUTs, giving ~84K LUT-equivalent). The full FPU (~63K LUTs /

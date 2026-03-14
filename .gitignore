@@ -49,3 +49,4 @@ validation/hello_world/src/roms/bios.S68
 validation/hello_world/src/roms/listing.txt
 *.ghw
 *.vcd
+validation/hello_world/src/roms/savage.bin

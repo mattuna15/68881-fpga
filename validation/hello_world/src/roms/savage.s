@@ -124,7 +124,7 @@ FPTEMP   DS.B    12              Temp for FP extended (96 bits)
 
 msgTitle   DC.B  '=== Savage Benchmark ===',0
 msgResult  DC.B  'Result: ',0
-msgExpect  DC.B  'Expect: 3FFF 80000000 00000000',0
+msgExpect  DC.B  'Expect: 3FFF0000 80000000 00000000  (1.0)',0
 msgIters   DC.B  'Iterations: ',0
 msgDone    DC.B  'Done.',0
 msgNewline DC.B  0

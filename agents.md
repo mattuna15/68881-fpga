@@ -1,7 +1,7 @@
 # agents.md
 
 ## Repository overview
-- MC68881-compatible FPU core targeting VHDL-2008 and Xilinx Artix-7.
+- MC68881-compatible FPU core in VHDL-93 targeting Xilinx Artix-7 and Intel Cyclone V (MiSTer).
 - Sources live in `src/` with testbenches under `tb/`.
 
 ## Development notes
@@ -30,7 +30,8 @@
   cross-reference (`target/m68k/fpu_helper.c`, `fpu_rom[128]`) and keep
   `docs/fmovecr_qemu_summary.md` in sync when constants or expectations change.
 - Add or extend testbench coverage in `tb/` for any new RTL behavior.
-- Maintain VHDL-2008 compatibility and avoid vendor-specific primitives.
+- Maintain VHDL-93 compatibility in RTL (for Quartus 17/MiSTer portability) and avoid vendor-specific primitives.
+  Testbenches may use VHDL-2008.
 - Follow Vivado/VRFC parameter mode rules in VHDL subprograms: never read an `out`
   parameter and never write to an `in` parameter (use local variables or `buffer`/`inout`
   only when semantically required).

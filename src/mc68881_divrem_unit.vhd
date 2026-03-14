@@ -824,7 +824,7 @@ begin
             if lead_idx > FP_MANT_EXT_WIDTH then
               -- OR-prefix scan: single dynamic mux instead of N comparators
               quot_or_prefix(0) := quot_reg(0);
-              for i in 1 to quot_reg'length-1 loop
+              for i in 1 to quot_reg'high loop
                 quot_or_prefix(i) := quot_or_prefix(i-1) or quot_reg(i);
               end loop;
               if quot_or_prefix(lead_idx - FP_MANT_EXT_WIDTH - 1) = '1' then

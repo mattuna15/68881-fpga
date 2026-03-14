@@ -95,35 +95,35 @@ architecture rtl of mc68881_top is
   signal addr      : unsigned(4 downto 0);
 
   -- Memory-mapped register offsets used by host-side command/data protocol.
-  constant ADDR_OPSEL  : unsigned(4 downto 0) := to_unsigned(0, 5);
-  constant ADDR_OPA_L  : unsigned(4 downto 0) := to_unsigned(1, 5);
-  constant ADDR_OPA_H  : unsigned(4 downto 0) := to_unsigned(2, 5);
-  constant ADDR_OPA_E  : unsigned(4 downto 0) := to_unsigned(3, 5);
-  constant ADDR_OPB_L  : unsigned(4 downto 0) := to_unsigned(4, 5);
-  constant ADDR_OPB_H  : unsigned(4 downto 0) := to_unsigned(5, 5);
-  constant ADDR_OPB_E  : unsigned(4 downto 0) := to_unsigned(6, 5);
-  constant ADDR_RES_L  : unsigned(4 downto 0) := to_unsigned(7, 5);
-  constant ADDR_RES_H  : unsigned(4 downto 0) := to_unsigned(8, 5);
-  constant ADDR_RES_E  : unsigned(4 downto 0) := to_unsigned(9, 5);
-  constant ADDR_STATUS : unsigned(4 downto 0) := to_unsigned(10, 5);
-  constant ADDR_FPCR   : unsigned(4 downto 0) := to_unsigned(11, 5);
-  constant ADDR_CIR_SAVE    : unsigned(4 downto 0) := to_unsigned(12, 5);
-  constant ADDR_CIR_RESPONSE: unsigned(4 downto 0) := to_unsigned(13, 5);
-  constant ADDR_FPSR   : unsigned(4 downto 0) := to_unsigned(14, 5);
-  constant ADDR_CYCLE_CFG0 : unsigned(4 downto 0) := to_unsigned(15, 5);
-  constant ADDR_CYCLE_CFG1 : unsigned(4 downto 0) := to_unsigned(16, 5);
-  constant ADDR_FRAME_CMD  : unsigned(4 downto 0) := to_unsigned(17, 5);
-  constant ADDR_FRAME_W0   : unsigned(4 downto 0) := to_unsigned(18, 5);
-  constant ADDR_FRAME_W1   : unsigned(4 downto 0) := to_unsigned(19, 5);
-  constant ADDR_FRAME_W2   : unsigned(4 downto 0) := to_unsigned(20, 5);
-  constant ADDR_FRAME_W3   : unsigned(4 downto 0) := to_unsigned(21, 5);
-  constant ADDR_CYCLE_TOTAL: unsigned(4 downto 0) := to_unsigned(22, 5);
-  constant ADDR_MOVE_CFG   : unsigned(4 downto 0) := to_unsigned(23, 5);
-  constant ADDR_FPIAR      : unsigned(4 downto 0) := to_unsigned(24, 5);
-  constant ADDR_AUX_RES_L  : unsigned(4 downto 0) := to_unsigned(25, 5);
-  constant ADDR_AUX_RES_H  : unsigned(4 downto 0) := to_unsigned(26, 5);
-  constant ADDR_AUX_RES_E  : unsigned(4 downto 0) := to_unsigned(27, 5);
-  constant ADDR_CIR_RESTORE : unsigned(4 downto 0) := to_unsigned(28, 5);
+  constant ADDR_OPSEL  : unsigned(4 downto 0) := "00000";  -- 0
+  constant ADDR_OPA_L  : unsigned(4 downto 0) := "00001";  -- 1
+  constant ADDR_OPA_H  : unsigned(4 downto 0) := "00010";  -- 2
+  constant ADDR_OPA_E  : unsigned(4 downto 0) := "00011";  -- 3
+  constant ADDR_OPB_L  : unsigned(4 downto 0) := "00100";  -- 4
+  constant ADDR_OPB_H  : unsigned(4 downto 0) := "00101";  -- 5
+  constant ADDR_OPB_E  : unsigned(4 downto 0) := "00110";  -- 6
+  constant ADDR_RES_L  : unsigned(4 downto 0) := "00111";  -- 7
+  constant ADDR_RES_H  : unsigned(4 downto 0) := "01000";  -- 8
+  constant ADDR_RES_E  : unsigned(4 downto 0) := "01001";  -- 9
+  constant ADDR_STATUS : unsigned(4 downto 0) := "01010";  -- 10
+  constant ADDR_FPCR   : unsigned(4 downto 0) := "01011";  -- 11
+  constant ADDR_CIR_SAVE    : unsigned(4 downto 0) := "01100";  -- 12
+  constant ADDR_CIR_RESPONSE: unsigned(4 downto 0) := "01101";  -- 13
+  constant ADDR_FPSR   : unsigned(4 downto 0) := "01110";  -- 14
+  constant ADDR_CYCLE_CFG0 : unsigned(4 downto 0) := "01111";  -- 15
+  constant ADDR_CYCLE_CFG1 : unsigned(4 downto 0) := "10000";  -- 16
+  constant ADDR_FRAME_CMD  : unsigned(4 downto 0) := "10001";  -- 17
+  constant ADDR_FRAME_W0   : unsigned(4 downto 0) := "10010";  -- 18
+  constant ADDR_FRAME_W1   : unsigned(4 downto 0) := "10011";  -- 19
+  constant ADDR_FRAME_W2   : unsigned(4 downto 0) := "10100";  -- 20
+  constant ADDR_FRAME_W3   : unsigned(4 downto 0) := "10101";  -- 21
+  constant ADDR_CYCLE_TOTAL: unsigned(4 downto 0) := "10110";  -- 22
+  constant ADDR_MOVE_CFG   : unsigned(4 downto 0) := "10111";  -- 23
+  constant ADDR_FPIAR      : unsigned(4 downto 0) := "11000";  -- 24
+  constant ADDR_AUX_RES_L  : unsigned(4 downto 0) := "11001";  -- 25
+  constant ADDR_AUX_RES_H  : unsigned(4 downto 0) := "11010";  -- 26
+  constant ADDR_AUX_RES_E  : unsigned(4 downto 0) := "11011";  -- 27
+  constant ADDR_CIR_RESTORE : unsigned(4 downto 0) := "11100";  -- 28
 
   type dsack_state_t is (DSACK_IDLE, DSACK_WAIT_ASSERT, DSACK_ASSERTED);
   signal dsack_state  : dsack_state_t := DSACK_IDLE;

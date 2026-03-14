@@ -1,7 +1,7 @@
 # MC68881 FPGA Core
 
 ## Overview
-A VHDL-2008 implementation of a Motorola MC68881-compatible floating-point
+A VHDL implementation of a Motorola MC68881-compatible floating-point
 coprocessor targeting Xilinx 7-series and UltraScale+ FPGAs. The design implements
 the full MC68881 instruction set including all arithmetic, transcendental,
 program-control, system-control, and packed-decimal operations. It uses

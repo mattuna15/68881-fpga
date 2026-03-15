@@ -84,8 +84,9 @@ hardware subset: 11 ALU ops, no trig/sglops/modrem), the core uses 37,380 LUTs
 
 All RTL is VHDL-93 compatible and vendor-portable (inferred DSP/BRAM, no Xilinx
 IP cores). The source synthesizes directly in Quartus 17+ (as used by MiSTer)
-without requiring VHDL-2008 support. Porting requires XDC-to-SDC constraint
-conversion and minor DSP inference adjustments.
+without requiring VHDL-2008 support. Verify with `scripts/check_vhdl93.sh`.
+Porting requires XDC-to-SDC constraint conversion and minor DSP inference
+adjustments.
 
 **MiSTer note:** The DE10-Nano's Cyclone V SE has 41,910 ALMs (each ALM roughly
 maps to 2 Xilinx LUTs, giving ~84K LUT-equivalent). The full FPU (62K LUTs /

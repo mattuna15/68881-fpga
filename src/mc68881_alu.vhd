@@ -747,7 +747,11 @@ begin
                         & alu_fp_seq_pending_reg
                         & alu_fp_is_mul_reg
                         & (x"00000" & '0');  -- 21-bit padding (alu_fp_subtract is boolean, encode as bit)
-        shadow_regs(1)(20) <= '1' when alu_fp_subtract_reg else '0';
+        if alu_fp_subtract_reg then
+          shadow_regs(1)(20) <= '1';
+        else
+          shadow_regs(1)(20) <= '0';
+        end if;
         -- Word 2: simple_op (16b) | simple_rm (8b) | simple_rp (8b)
         shadow_regs(2) <= std_logic_vector(to_unsigned(fpu_op_t'pos(simple_op_reg), 16))
                         & std_logic_vector(to_unsigned(fp_round_mode_t'pos(simple_rm_reg), 8))

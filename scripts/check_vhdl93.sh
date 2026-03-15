@@ -1,5 +1,5 @@
 #!/bin/bash
-# Verify all RTL sources compile under strict VHDL-93.
+# Verify all RTL sources compile under VHDL-93 (-fsynopsys -fexplicit).
 # Testbenches are excluded — they may use VHDL-2008.
 # Usage: bash scripts/check_vhdl93.sh
 

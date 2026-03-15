@@ -83,8 +83,8 @@ hardware subset: 11 ALU ops, no trig/sglops/modrem), the core uses 37,380 LUTs
 | Intel Cyclone V SE 5CSEBA6 (MiSTer DE10-Nano) | 41,910 ALMs | 112 | No (~75%) | Yes (~45%) |
 
 All RTL is VHDL-93 compatible and vendor-portable (inferred DSP/BRAM, no Xilinx
-IP cores). The source synthesizes directly in Quartus 17+ (as used by MiSTer)
-without requiring VHDL-2008 support. Verify with `scripts/check_vhdl93.sh`.
+IP cores). The source is VHDL-93 compatible (verified via `ghdl --std=93`) and
+should synthesize directly in Quartus 17+ (as used by MiSTer). Verify with `scripts/check_vhdl93.sh`.
 Porting requires XDC-to-SDC constraint conversion and minor DSP inference
 adjustments.
 

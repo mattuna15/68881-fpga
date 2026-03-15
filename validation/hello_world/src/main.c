@@ -21,6 +21,7 @@
 #include "fline_handler.h"
 #include "mfp_emu.h"
 #include "text_fb.h"
+#include "gfx_fb.h"
 #include "dp_video.h"
 #include "rom_image.h"
 
@@ -108,6 +109,9 @@ static void rom_boot(void)
     xil_printf("[ROM] Text framebuffer initialised (%dx%d chars)\r\n",
                TEXT_COLS, TEXT_ROWS);
 
+    /* Initialise graphics framebuffer (shares pixel buffer with text) */
+    gfx_init(pixel_buf);
+
     /* Initial render — black screen with no text */
     text_fb_render();
     Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
@@ -138,13 +142,24 @@ static void rom_boot(void)
         /* Execute a batch of M68K instructions */
         m68k_execute(EMU_CYCLES_PER_TICK);
 
-        /* Re-render text to pixel buffer if anything changed */
-        if (text_fb_is_dirty()) {
-            text_fb_render();
-            Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
-            if (dp_ok)
-                dp_video_refresh();
-            text_fb_mark_clean();
+        /* Refresh display based on active mode */
+        if (gfx_get_mode()) {
+            /* Graphics mode: flush pixel buffer directly */
+            if (gfx_is_dirty()) {
+                Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
+                if (dp_ok)
+                    dp_video_refresh();
+                gfx_mark_clean();
+            }
+        } else {
+            /* Text mode: re-render text to pixel buffer if changed */
+            if (text_fb_is_dirty()) {
+                text_fb_render();
+                Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
+                if (dp_ok)
+                    dp_video_refresh();
+                text_fb_mark_clean();
+            }
         }
 
         /* Feed ARM UART RX into MFP RX buffer for keyboard input */

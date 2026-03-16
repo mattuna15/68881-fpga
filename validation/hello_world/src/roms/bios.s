@@ -1785,6 +1785,10 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 *   D3.L = ARGB colour value
 *----------------------------------------------------------------------
 .io19
+	CMP.W	#1280,D1
+	BHS	.ioExcEnd	X out of bounds
+	CMP.W	#720,D2
+	BHS	.ioExcEnd	Y out of bounds
 	MOVEM.L	D4-D5/A0,-(SP)
 	MOVE.W	D2,D4		D4 = Y
 	MULU.W	#1280,D4	D4 = Y * 1280
@@ -1805,6 +1809,10 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 *   Returns: D1.L = ARGB colour value
 *----------------------------------------------------------------------
 .io20
+	CMP.W	#1280,D1
+	BHS	.ioExcEnd	X out of bounds
+	CMP.W	#720,D2
+	BHS	.ioExcEnd	Y out of bounds
 	MOVEM.L	D4-D5/A0,-(SP)
 	MOVE.W	D2,D4		D4 = Y
 	MULU.W	#1280,D4	D4 = Y * 1280

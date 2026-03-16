@@ -5,7 +5,7 @@
 * FPU F-line instructions.  Isometric projection onto 1280x720.
 *
 * Grid:     32 x 32 points over x,y in [-3, 3]
-* Surface:  z = sin(x) * cos(y), amplitude scaled x2
+* Surface:  z = sin(x) * cos(y)
 * Projection: azimuth 45 deg, elevation 30 deg
 * Colour:   white lines on black background
 *
@@ -203,10 +203,6 @@ COLLOOP
             MOVE.L  #$FFFFFFFF,D5      * D5 = white colour (ARGB)
 
 * --- Draw horizontal grid lines ---
-            LEA     GRID_BUF,A3
-            CLR.W   D5                 * reuse D5 as j counter? No, need colour.
-
-            MOVE.L  #$FFFFFFFF,D5      * colour
             CLR.W   D7                 * D7 = j (row counter)
 
 HROW        CLR.W   D6                 * D6 = i (column counter)
@@ -297,7 +293,7 @@ VSEG        MOVE.W  (A3),D1            * x0 from point(i, j)
 * DRAWLINE — Bresenham line from (D1.W,D2.W) to (D3.W,D4.W)
 *            Colour in D5.L.  Writes directly to framebuffer.
 *
-* Destroys: D0-D4, D6-D7, A0  (D5 preserved)
+* Preserves all registers (via MOVEM save/restore)
 *========================================================================
 DRAWLINE
             MOVEM.L D0-D4/D6-D7/A0,-(SP)

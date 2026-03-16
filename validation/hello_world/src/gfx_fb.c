@@ -7,7 +7,7 @@
  * switching and commands (clear, flush).
  *
  * Byte ordering: 68k stores big-endian ARGB as bytes A,R,G,B.
- * The pixel_fb[] is uint32_t on ARM.  The DPDMA/DisplayPort expects
+ * The pixel_buf[] is uint32_t on ARM.  The DPDMA/DisplayPort expects
  * ABGR uint32_t layout, so we swap R and B channels on every access.
  * The 68k programmer always works in ARGB — the swap is transparent.
  */
@@ -34,7 +34,11 @@ void gfx_set_mode(int mode)
 {
     if (pixel_buf == NULL)
         return;
-    gfx_mode = (mode != 0) ? 1 : 0;
+    int new_mode = (mode != 0) ? 1 : 0;
+    if (new_mode != gfx_mode) {
+        gfx_mode = new_mode;
+        dirty = 1;  /* force display refresh on mode transition */
+    }
 }
 
 int gfx_get_mode(void)
@@ -150,6 +154,14 @@ void gfx_write_32(unsigned int addr, unsigned int value)
 
 /* ------------------------------------------------------------------ */
 /* Control register access                                             */
+/*                                                                     */
+/* GFX I/O register map (base = 0xFD0040):                            */
+/*   0x00  R/W  Mode (0=text, 1=graphics)                             */
+/*   0x01  W    Command (1=clear, 2=flush)                            */
+/*   0x04  R/W  Clear/fill colour (ARGB, 32-bit via byte accumulation)*/
+/*   0x08  R    Screen width (byte reads return low 8 bits only)      */
+/*   0x0A  R    Screen height (byte reads return low 8 bits only)     */
+/*   0x0C  R    Framebuffer base address (byte reads truncated)       */
 /* ------------------------------------------------------------------ */
 
 unsigned int gfx_io_read(unsigned int offset)
@@ -160,7 +172,11 @@ unsigned int gfx_io_read(unsigned int offset)
     case 0x08: return GFX_SCREEN_W;
     case 0x0A: return GFX_SCREEN_H;
     case 0x0C: return GFX_FB_BASE;
-    default:   return 0;
+    default:
+#ifdef DEBUG
+        xil_printf("[GFX] WARNING: unknown I/O read offset 0x%02X\r\n", offset);
+#endif
+        return 0;
     }
 }
 
@@ -178,12 +194,33 @@ void gfx_io_write(unsigned int offset, unsigned int value)
         case 2:  /* Flush (mark dirty for display refresh) */
             dirty = 1;
             break;
+#ifdef DEBUG
+        default:
+            xil_printf("[GFX] WARNING: unknown command 0x%02X\r\n", value & 0xFF);
+            break;
+#endif
         }
         break;
-    case 0x04:  /* Clear/fill colour */
-        clear_color = value;
+    /* Clear/fill colour: accumulate big-endian bytes into 32-bit ARGB.
+     * A 68k MOVE.L to $FD0044 is decomposed into 4 byte writes at
+     * offsets 0x04..0x07 (MSB first), so we shift each byte into the
+     * correct position within clear_color. */
+    case 0x04:
+        clear_color = (clear_color & 0x00FFFFFF) | ((value & 0xFF) << 24);
+        break;
+    case 0x05:
+        clear_color = (clear_color & 0xFF00FFFF) | ((value & 0xFF) << 16);
+        break;
+    case 0x06:
+        clear_color = (clear_color & 0xFFFF00FF) | ((value & 0xFF) <<  8);
+        break;
+    case 0x07:
+        clear_color = (clear_color & 0xFFFFFF00) | (value & 0xFF);
         break;
     default:
+#ifdef DEBUG
+        xil_printf("[GFX] WARNING: unknown I/O write offset 0x%02X\r\n", offset);
+#endif
         break;
     }
 }

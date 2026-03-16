@@ -52,5 +52,5 @@
 
 - [x] **M68K FLOPS benchmark** — floating-point operations per second benchmark exercising the MC68881 FPU via F-line trapping
 - [x] **Coloured pixel graphics mode** — pixel-addressable colour mode (ARGB8888) for visual FP demos, integrated with existing DP video output (1280x720)
-- [ ] **Mandelbrot set renderer** — FPU demo using pixel graphics mode
-- [ ] **3D trig point/surface graphs** — FPU demo plotting trigonometric 3D surfaces
+- [x] **Mandelbrot set renderer** — FPU demo using pixel graphics mode
+- [x] **3D trig point/surface graphs** — FPU demo plotting trigonometric 3D surfaces

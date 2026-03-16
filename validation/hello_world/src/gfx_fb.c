@@ -32,6 +32,8 @@ void gfx_init(uint32_t *buf)
 
 void gfx_set_mode(int mode)
 {
+    if (pixel_buf == NULL)
+        return;
     gfx_mode = (mode != 0) ? 1 : 0;
 }
 
@@ -76,6 +78,8 @@ static const unsigned int byte_shift[4] = { 24, 0, 8, 16 };
 unsigned int gfx_read_8(unsigned int addr)
 {
     unsigned int offset = addr - GFX_FB_BASE;
+    if (offset >= GFX_FB_SIZE)
+        return 0;
     unsigned int pixel_idx = offset >> 2;
     unsigned int byte_pos  = offset & 3;
     uint32_t pixel = pixel_buf[pixel_idx];
@@ -108,6 +112,8 @@ unsigned int gfx_read_32(unsigned int addr)
 void gfx_write_8(unsigned int addr, unsigned int value)
 {
     unsigned int offset = addr - GFX_FB_BASE;
+    if (offset >= GFX_FB_SIZE)
+        return;
     unsigned int pixel_idx = offset >> 2;
     unsigned int byte_pos  = offset & 3;
     unsigned int shift = byte_shift[byte_pos];
@@ -198,6 +204,8 @@ void gfx_mark_clean(void)
 
 void gfx_clear(uint32_t color)
 {
+    if (pixel_buf == NULL)
+        return;
     uint32_t hw_color = swap_rb(color);
     unsigned int total_pixels = GFX_SCREEN_W * GFX_SCREEN_H;
     for (unsigned int i = 0; i < total_pixels; i++)

@@ -157,7 +157,7 @@ BRGT     MOVEQ   #19,D0
 
 *------------------------------------------------------------------------
 * Draw a horizontal red gradient bar (Y=100..139, full width)
-* Red channel = X * 255 / 1279
+* Red channel = X/4, capped at 255 (saturates at X=1020)
 *------------------------------------------------------------------------
          LEA     msgGrad,A1
          MOVEQ   #13,D0
@@ -209,13 +209,14 @@ GROK
          TRAP    #15
 
 *------------------------------------------------------------------------
-* Readback test: read pixel at (640, 50) — should be green bar colour
+* Readback test: read pixel at (500, 50) — should be green bar colour
+*   Bar 3 = Green, X=480..639
 *------------------------------------------------------------------------
          LEA     msgRead2,A1
          MOVEQ   #14,D0
          TRAP    #15
 
-         MOVE.W  #640,D1         X=640 (bar 4 = green, starts at X=640)
+         MOVE.W  #500,D1         X=500 (bar 3 = green, X=480..639)
          MOVE.W  #50,D2          Y=50 (within bar height)
          MOVEQ   #20,D0
          TRAP    #15
@@ -298,7 +299,7 @@ msgBorder    DC.B  'Drawing border...',0
 msgGrad      DC.B  'Drawing red gradient...',0
 msgReadback  DC.B  'Readback (0,0): ',0
 msgExpWhite  DC.B  '  (expect FFFFFFFF = white)',0
-msgRead2     DC.B  'Readback (640,50): ',0
+msgRead2     DC.B  'Readback (500,50): ',0
 msgExpGreen  DC.B  '  (expect FF00FF00 = green)',0
 msgKey       DC.B  'Press any key to return to text mode...',0
 msgDone      DC.B  'Back in text mode. Test complete.',0

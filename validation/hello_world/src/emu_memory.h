@@ -18,8 +18,6 @@
 #define EMU_ROM_SIZE  0x020000
 #define EMU_MFP_BASE  0xFD0000      /* MC68901 MFP I/O */
 #define EMU_MFP_SIZE  0x000034
-#define EMU_GFX_IO_BASE  0xFD0040   /* Graphics control registers */
-#define EMU_GFX_IO_SIZE  0x000010
 
 /* The emulated RAM buffer (statically allocated in DDR) */
 extern unsigned char emu_ram[];

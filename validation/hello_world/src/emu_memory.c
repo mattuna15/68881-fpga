@@ -76,8 +76,10 @@ unsigned int m68k_read_memory_16(unsigned int address)
         return ((unsigned int)m68k_read_memory_8(address) << 8) |
                 (unsigned int)m68k_read_memory_8(address + 1);
     }
-    if (gfx_is_io(address) || gfx_is_io(address + 1))
-        return gfx_io_read(address - GFX_IO_BASE);
+    if (gfx_is_io(address) || gfx_is_io(address + 1)) {
+        return ((unsigned int)m68k_read_memory_8(address) << 8) |
+                (unsigned int)m68k_read_memory_8(address + 1);
+    }
     if (gfx_is_fb(address))
         return gfx_read_16(address);
     return ((unsigned int)emu_ram[ address      & EMU_RAM_MASK] << 8) |
@@ -95,8 +97,12 @@ unsigned int m68k_read_memory_32(unsigned int address)
                ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
                 (unsigned int)m68k_read_memory_8(address + 3);
     }
-    if (gfx_is_io(address))
-        return gfx_io_read(address - GFX_IO_BASE);
+    if (gfx_is_io(address) || gfx_is_io(address + 3)) {
+        return ((unsigned int)m68k_read_memory_8(address)     << 24) |
+               ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
+               ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
+                (unsigned int)m68k_read_memory_8(address + 3);
+    }
     if (gfx_is_fb(address))
         return gfx_read_32(address);
     return ((unsigned int)emu_ram[ address      & EMU_RAM_MASK] << 24) |
@@ -137,7 +143,8 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
         return;
     }
     if (gfx_is_io(address) || gfx_is_io(address + 1)) {
-        gfx_io_write(address - GFX_IO_BASE, value);
+        m68k_write_memory_8(address,     (value >> 8) & 0xFF);
+        m68k_write_memory_8(address + 1,  value       & 0xFF);
         return;
     }
     if (gfx_is_fb(address)) {
@@ -163,8 +170,11 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
         m68k_write_memory_8(address + 3,  value        & 0xFF);
         return;
     }
-    if (gfx_is_io(address)) {
-        gfx_io_write(address - GFX_IO_BASE, value);
+    if (gfx_is_io(address) || gfx_is_io(address + 3)) {
+        m68k_write_memory_8(address,     (value >> 24) & 0xFF);
+        m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
+        m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);
+        m68k_write_memory_8(address + 3,  value        & 0xFF);
         return;
     }
     if (gfx_is_fb(address)) {

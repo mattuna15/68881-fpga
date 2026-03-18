@@ -44,6 +44,10 @@
 - [x] **Add build number in banner** — version string now shows `ver 2.1 build 001`; increment build number manually each release
 - [x] **Remove debug traces** — removed `$DEAD` marker write in `bios.s` M428, removed TDATA/TLENGTH/MARKER/A5/A6/PTROP traces in `emu_memory.c`; kept ROM write warnings under `#ifdef DEBUG`
 
+## Toolchain
+
+- [x] **GCC cross-compiler for M68K emulator** — m68k-elf GCC toolchain to compile C programs targeting the emulator (newlib/nosys, F-line FPU support, S-record output) — `toolchain/` with Cygwin build wrapper, Merlin 2 BSP (TRAP #15), and examples
+
 ## Hardware
 
 - [ ] **KiCad hardware validation board** — PCB design for real-hardware validation of the MC68881 FPU (MC68000 + FPGA + support circuitry)
@@ -54,3 +58,4 @@
 - [x] **Coloured pixel graphics mode** — pixel-addressable colour mode (ARGB8888) for visual FP demos, integrated with existing DP video output (1280x720)
 - [x] **Mandelbrot set renderer** — FPU demo using pixel graphics mode
 - [x] **3D trig point/surface graphs** — FPU demo plotting trigonometric 3D surfaces
+- [x] **Particle fireworks simulation** — FPU demo in C using hardware FSIN/FCOS, direct framebuffer writes, per-particle erase-and-redraw

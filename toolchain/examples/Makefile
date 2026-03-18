@@ -10,14 +10,14 @@ CC       = $(PREFIX)gcc
 CFLAGS   = -m68000 -O2 -Wall
 LDFLAGS  = -Tmerlin2.ld
 
+# Library sources
+LIB_DIR  = ../lib
+LIB_SRCS = $(LIB_DIR)/merlin2_gfx.c $(LIB_DIR)/merlin2_rand.c
+
 # FPU examples need -m68881
-FPU_CFLAGS = $(CFLAGS) -m68881 -Wa,-mcpu=68020 -ffast-math
+FPU_CFLAGS = $(CFLAGS) -m68881 -Wa,-mcpu=68020 -ffast-math -I$(LIB_DIR)
 
-SRCS     = hello.c fputest.c
-SRECS    = $(SRCS:.c=.srec)
-LSTS     = $(SRCS:.c=.lst)
-
-all: $(SRECS) $(LSTS)
+all: hello.srec hello.lst fputest.srec fputest.lst fireworks.srec fireworks.lst
 
 # Non-FPU targets
 hello.srec: hello.c
@@ -33,5 +33,12 @@ fputest.srec: fputest.c
 fputest.lst: fputest.c
 	$(CC) $(FPU_CFLAGS) -S -fverbose-asm -o $@ $<
 
+# Fireworks (FPU + graphics library)
+fireworks.srec: fireworks.c $(LIB_SRCS)
+	$(CC) $(FPU_CFLAGS) $(LDFLAGS) -o $@ $< $(LIB_SRCS) -lm
+
+fireworks.lst: fireworks.c
+	$(CC) $(FPU_CFLAGS) -S -fverbose-asm -o $@ $<
+
 clean:
-	rm -f $(SRECS) $(LSTS) *.o
+	rm -f *.srec *.lst *.o

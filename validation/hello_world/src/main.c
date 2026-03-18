@@ -86,8 +86,8 @@ static void rom_boot(void)
 
     /* Load ROM image at ROMBAS */
     xil_printf("[ROM] Loading ROM image (%u bytes) at 0x%06X\r\n",
-               rom_image_size, BIOS_ROMBAS);
-    status = emu_mem_load(BIOS_ROMBAS, rom_image_data, rom_image_size);
+               ROM_IMAGE_SIZE, BIOS_ROMBAS);
+    status = emu_mem_load(BIOS_ROMBAS, rom_image_data, ROM_IMAGE_SIZE);
     if (status != 0) {
         xil_printf("[ROM] ERROR: ROM load failed\r\n");
         return;

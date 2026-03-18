@@ -51,3 +51,4 @@ validation/hello_world/src/roms/listing.txt
 *.vcd
 validation/hello_world/src/roms/savage.bin
 /validation/NextCuboid
+.claude/settings.local.json

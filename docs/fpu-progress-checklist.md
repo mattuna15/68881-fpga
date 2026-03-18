@@ -505,6 +505,26 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 - **Subnormal reference flush**: `fp80_hex_safe` flushes subnormal results to zero.
   DIV TINY/TWO and MUL TINY*HALF comments should note the reference is flushed to zero.
 
+## Implementation Snapshot (2026-03-18, Graphics + Toolchain + FMOVECR)
+- Milestone:
+  - **GCC cross-compiler toolchain** — m68k-elf-gcc 14.2.0 with `--with-cpu=68000`
+    producing clean 68000 + 68881 code. Hardware `FSIN` verified: `sin(1.0) = 0.841471`.
+  - **Undocumented FMOVECR constants** — 10 undocumented ROM entries (offsets 0x01-0x0A)
+    added from WinUAE (Toni Wilen, verified against real 68881/68882 silicon), plus
+    undocumented default for offsets 0x10-0x2F. Testbench extended to 36 constants.
+  - **BIOS S-record loader fix** — drains termination record line to prevent trailing
+    bytes appearing as invalid command.
+  - LUT increase of ~1.2K from previous snapshot (61.6K → 62.8K) due to expanded
+    FMOVECR ROM table (64 entries vs 22) and graphics framebuffer support.
+  - Timing still met at 33 MHz with +0.045ns slack.
+- Run data (non-incremental synthesis + implementation):
+  - Utilization (post-place): `Slice LUTs = 62834 / 133800 (46.96%)`
+  - DSPs: 34 / 740 (4.59%)
+  - Registers: 13661 / 267600 (5.11%)
+  - BRAM: 8 tiles / 365 (2.19%)
+  - Timing: `WNS=+0.045ns`, `TNS=0.000ns`, `WHS=+0.035ns`, `THS=0.000ns`
+  - 349/349 GHDL regression tests passing.
+
 ## Implementation Snapshot (2026-03-07, Timing Hardening)
 - Milestone:
   - **33 MHz timing hardened** — WNS improved from +0.026ns to +0.265ns (+10× margin).

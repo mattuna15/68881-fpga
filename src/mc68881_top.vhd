@@ -443,7 +443,7 @@ architecture rtl of mc68881_top is
     16#07# => x"0001F65D8D9C00000000", -- undoc: sets NaN CC, rounding-dependent
     16#08# => x"7FFF001E000000000000", -- undoc
     16#09# => x"3FFF000E000000000000", -- undoc
-    16#0A# => x"7F000006000000000000", -- undoc (also used for offsets > 0x0A)
+    16#0A# => x"7F000006000000000000", -- undoc
     -- Offsets 0x10-0x2F: undocumented, all return same default value
     16#10# => FMOVECR_UNDOC_DEFAULT, 16#11# => FMOVECR_UNDOC_DEFAULT,
     16#12# => FMOVECR_UNDOC_DEFAULT, 16#13# => FMOVECR_UNDOC_DEFAULT,

@@ -5,6 +5,6 @@
 
 void rand_seed(uint32_t s);
 uint32_t rand_next(void);
-int rand_range(int min, int max);
+int rand_range(int min, int max);  /* returns random int in [min, max] inclusive */
 
 #endif /* MERLIN2_RAND_H */

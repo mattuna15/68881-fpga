@@ -9,47 +9,47 @@
 	.type	spawn_rocket, @function
 spawn_rocket:
 	move.l %a2,-(%sp)	|,
-| fireworks.c:70:     rocket.x = (float)rand_range(120, VP_W - 120);
+| fireworks.c:74:     rocket.x = (float)rand_range(120, VP_W - 120);
 	pea 520.w		|
 	pea 120.w		|
 	lea rand_range,%a2	|, tmp41
 	jsr (%a2)		| tmp41
-| fireworks.c:70:     rocket.x = (float)rand_range(120, VP_W - 120);
+| fireworks.c:74:     rocket.x = (float)rand_range(120, VP_W - 120);
 	fmove.l %d0,%fp0	| tmp56,
 	fmove.s %fp0,rocket	|, rocket.x
-| fireworks.c:71:     rocket.y = (float)(VP_H - 1);
+| fireworks.c:75:     rocket.y = (float)(VP_H - 1);
 	move.l #0x43ef8000,rocket+4	|, rocket.y
-| fireworks.c:72:     rocket.dy = -4.0f - (float)rand_range(0, 15) * 0.1f;
+| fireworks.c:76:     rocket.dy = -4.0f - (float)rand_range(0, 15) * 0.1f;
 	pea 15.w		|
 	clr.l -(%sp)	|
 	jsr (%a2)		| tmp41
-| fireworks.c:72:     rocket.dy = -4.0f - (float)rand_range(0, 15) * 0.1f;
+| fireworks.c:76:     rocket.dy = -4.0f - (float)rand_range(0, 15) * 0.1f;
 	fmove.s #0x3dcccccd,%fp0	|, _5
 	fsglmul.l %d0,%fp0	| tmp57, _5
-| fireworks.c:72:     rocket.dy = -4.0f - (float)rand_range(0, 15) * 0.1f;
+| fireworks.c:76:     rocket.dy = -4.0f - (float)rand_range(0, 15) * 0.1f;
 	fmove.s #0xc0800000,%fp1	|,
 	fsub.x %fp0,%fp1	| _5,
 	fmove.s %fp1,rocket+8	|, rocket.dy
-| fireworks.c:73:     rocket.target_y = (float)rand_range(80, VP_H / 3);
+| fireworks.c:77:     rocket.target_y = (float)rand_range(80, VP_H / 3);
 	pea 160.w		|
 	pea 80.w		|
 	jsr (%a2)		| tmp41
-| fireworks.c:73:     rocket.target_y = (float)rand_range(80, VP_H / 3);
+| fireworks.c:77:     rocket.target_y = (float)rand_range(80, VP_H / 3);
 	fmove.l %d0,%fp0	| tmp58,
 	fmove.s %fp0,rocket+12	|, rocket.target_y
-| fireworks.c:74:     rocket.colour = palette[rand_range(0, (int)PALETTE_SIZE - 1)];
+| fireworks.c:78:     rocket.colour = palette[rand_range(0, (int)PALETTE_SIZE - 1)];
 	pea 5.w		|
 	clr.l -(%sp)	|
 	jsr (%a2)		| tmp41
-| fireworks.c:74:     rocket.colour = palette[rand_range(0, (int)PALETTE_SIZE - 1)];
+| fireworks.c:78:     rocket.colour = palette[rand_range(0, (int)PALETTE_SIZE - 1)];
 	lsl.l #2,%d0	|, tmp54
-| fireworks.c:74:     rocket.colour = palette[rand_range(0, (int)PALETTE_SIZE - 1)];
+| fireworks.c:78:     rocket.colour = palette[rand_range(0, (int)PALETTE_SIZE - 1)];
 	lea palette,%a0	|, tmp52
 	move.l (%a0,%d0.l),rocket+16	| palette[_9], rocket.colour
-| fireworks.c:75:     rocket.state = ROCKET_RISING;
+| fireworks.c:79:     rocket.state = ROCKET_RISING;
 	moveq #1,%d0	|,
 	move.l %d0,rocket+20	|, rocket.state
-| fireworks.c:76: }
+| fireworks.c:80: }
 	lea (32,%sp),%sp	|,
 	move.l (%sp)+,%a2	|,
 	rts	
@@ -64,379 +64,407 @@ spawn_rocket:
 	.globl	main
 	.type	main, @function
 main:
-	subq.l #8,%sp	|,
+	subq.l #4,%sp	|,
 	fmovem #4,-(%sp)	|,
 	movem.l #16190,-(%sp)	|,
-| fireworks.c:152:     printf("Fireworks demo - press any key to exit\n");
+| fireworks.c:156:     printf("Fireworks demo - press any key to exit\n");
 	pea .LC0		|
 	jsr puts		|
-| fireworks.c:154:     rand_seed(gfx_get_time());
+| fireworks.c:158:     rand_seed(gfx_get_time());
 	jsr gfx_get_time		|
-| fireworks.c:154:     rand_seed(gfx_get_time());
+| fireworks.c:158:     rand_seed(gfx_get_time());
 	move.l %d0,-(%sp)	| tmp255,
 	jsr rand_seed		|
-| fireworks.c:155:     gfx_set_mode(1);
+| fireworks.c:159:     gfx_set_mode(1);
 	pea 1.w		|
 	jsr gfx_set_mode		|
-| fireworks.c:156:     gfx_clear(0xFF000000);
+| fireworks.c:160:     gfx_clear(0xFF000000);
 	move.l #-16777216,-(%sp)	|,
 	jsr gfx_clear		|
-| fireworks.c:158:     rocket.state = ROCKET_DEAD;
+| fireworks.c:162:     rocket.state = ROCKET_DEAD;
 	clr.l rocket+20	| rocket.state
 	lea particles+28,%a0	|, ivtmp.41
 	lea (16,%sp),%sp	|,
 .L4:
-| fireworks.c:160:         particles[i].life = 0;
-	clr.l (%a0)	| MEM[(int *)_205]
-| fireworks.c:159:     for (i = 0; i < PARTICLES_PER_BURST; i++)
+| fireworks.c:164:         particles[i].life = 0;
+	clr.l (%a0)	| MEM[(int *)_5]
+| fireworks.c:163:     for (i = 0; i < PARTICLES_PER_BURST; i++)
 	lea (36,%a0),%a0	|, ivtmp.41
 	cmp.l #particles+1180,%a0	|, ivtmp.41
 	jne .L4		|
-| fireworks.c:162:     spawn_rocket();
+| fireworks.c:166:     spawn_rocket();
 	jsr spawn_rocket		|
-	lea particles+1152,%a6	|, _185
-| fireworks.c:62:     r = r * (unsigned)life / (unsigned)max_life;
-	lea __mulsi3,%a5	|, tmp251
-| fireworks.c:62:     r = r * (unsigned)life / (unsigned)max_life;
-	lea __udivsi3,%a4	|, tmp252
+| fireworks.c:66:     r = r * (unsigned)life / (unsigned)max_life;
+	lea __mulsi3,%a4	|, tmp250
+| fireworks.c:66:     r = r * (unsigned)life / (unsigned)max_life;
+	lea __udivsi3,%a3	|, tmp251
 .L5:
-| fireworks.c:164:     while (!gfx_char_ready()) {
+| fireworks.c:168:     while (!gfx_char_ready()) {
 	jsr gfx_char_ready		|
-	move.l %d0,56(%sp)	| tmp264, %sfp
-| fireworks.c:164:     while (!gfx_char_ready()) {
-	jne .L31		|
-.L21:
-| fireworks.c:105:     if (rocket.state == ROCKET_RISING) {
-	move.l rocket+20,60(%sp)	| rocket.state, %sfp
-| fireworks.c:105:     if (rocket.state == ROCKET_RISING) {
+	move.l %d0,%d3	| tmp264, alive
+| fireworks.c:168:     while (!gfx_char_ready()) {
+	jne .L34		|
+.L22:
+| fireworks.c:109:     if (rocket.state == ROCKET_RISING) {
+	move.l rocket+20,56(%sp)	| rocket.state, %sfp
+| fireworks.c:109:     if (rocket.state == ROCKET_RISING) {
 	moveq #1,%d0	|,
-	cmp.l 60(%sp),%d0	| %sfp,
-	jeq .L32		|
+	cmp.l 56(%sp),%d0	| %sfp,
+	jeq .L35		|
 .L7:
-| fireworks.c:97: }
+| fireworks.c:101: }
 	lea particles,%a2	|, ivtmp.28
-.L19:
-| fireworks.c:118:         if (p->life <= 0)
-	move.l 28(%a2),%a0	| MEM[(int *)_167 + 28B], _35
-| fireworks.c:118:         if (p->life <= 0)
-	cmp.w #0,%a0	|, _35
+.L20:
+| fireworks.c:122:         if (p->life <= 0)
+	move.l 28(%a2),%a1	| MEM[(int *)_191 + 28B], _35
+| fireworks.c:122:         if (p->life <= 0)
+	cmp.w #0,%a1	|, _35
 	jle .L18		|
-| fireworks.c:122:         put_pixel((int)p->old_x, (int)p->old_y, 0xFF000000);
-	fintrz.s 8(%a2),%fp0	| MEM[(float *)_167 + 8B], tmp186
+| fireworks.c:126:         put_pixel((int)p->old_x, (int)p->old_y, 0xFF000000);
+	fintrz.s 8(%a2),%fp0	| MEM[(float *)_191 + 8B], tmp186
 	fmove.l %fp0,%d0	| tmp186, _39
-| fireworks.c:53:     if ((unsigned)x < VP_W && (unsigned)y < VP_H)
+| fireworks.c:55:     if ((unsigned)x < VP_W && (unsigned)y < VP_H)
 	cmp.l #639,%d0	|, _39
 	jhi .L15		|
-| fireworks.c:122:         put_pixel((int)p->old_x, (int)p->old_y, 0xFF000000);
-	fintrz.s 12(%a2),%fp0	| MEM[(float *)_167 + 12B], tmp187
-	fmove.l %fp0,%d2	| tmp187, _37
-| fireworks.c:53:     if ((unsigned)x < VP_W && (unsigned)y < VP_H)
-	cmp.l #479,%d2	|, _37
+| fireworks.c:126:         put_pixel((int)p->old_x, (int)p->old_y, 0xFF000000);
+	fintrz.s 12(%a2),%fp0	| MEM[(float *)_191 + 12B], tmp187
+	fmove.l %fp0,%d1	| tmp187, _37
+| fireworks.c:55:     if ((unsigned)x < VP_W && (unsigned)y < VP_H)
+	cmp.l #479,%d1	|, _37
 	jhi .L15		|
-| fireworks.c:54:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
-	moveq #120,%d1	|,
-	add.l %d1,%d2	|, _94
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
-	muls.w #1280,%d2	|, _96
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
-	add.l %d2,%d0	| _96, _97
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+| fireworks.c:56:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+	moveq #120,%d4	|,
+	add.l %d4,%d1	|, _94
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	muls.w #1280,%d1	|, _96
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	add.l %d1,%d0	| _96, _97
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
 	add.l #2097472,%d0	|, _98
 	add.l %d0,%d0	| _98, tmp194
-	move.l %d0,%a1	| tmp194, _99
-	add.l %d0,%a1	| tmp194, _99
-| fireworks.c:54:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
-	move.l #-16777216,(%a1)	|, *_100
+	move.l %d0,%a0	| tmp194, _99
+	add.l %d0,%a0	| tmp194, _99
+| fireworks.c:56:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+	move.l #-16777216,(%a0)	|, *_100
 .L15:
-| fireworks.c:125:         p->vy += GRAVITY;
-	fmove.s 20(%a2),%fp1	| MEM[(float *)_167 + 20B], _41
+| fireworks.c:129:         p->vy += GRAVITY;
+	fmove.s 20(%a2),%fp1	| MEM[(float *)_191 + 20B], _41
 	fadd.s #0x3d75c28f,%fp1	|, _41
-	fmove.s %fp1,20(%a2)	| _41, MEM[(float *)_167 + 20B]
-| fireworks.c:126:         p->old_x = p->x;
-	fmove.s (%a2),%fp0	| MEM[(float *)_167], _42
-| fireworks.c:126:         p->old_x = p->x;
-	fmove.s %fp0,8(%a2)	| _42, MEM[(float *)_167 + 8B]
-| fireworks.c:127:         p->old_y = p->y;
-	move.l 4(%a2),%d0	| MEM[(float *)_167 + 4B], _43
-| fireworks.c:127:         p->old_y = p->y;
-	move.l %d0,12(%a2)	| _43, MEM[(float *)_167 + 12B]
-| fireworks.c:128:         p->x += p->vx;
-	fadd.s 16(%a2),%fp0	| MEM[(float *)_167 + 16B], _45
-	fmove.s %fp0,(%a2)	| _45, MEM[(float *)_167]
-| fireworks.c:129:         p->y += p->vy;
+	fmove.s %fp1,20(%a2)	| _41, MEM[(float *)_191 + 20B]
+| fireworks.c:130:         p->old_x = p->x;
+	fmove.s (%a2),%fp0	| MEM[(float *)_191], _42
+| fireworks.c:130:         p->old_x = p->x;
+	fmove.s %fp0,8(%a2)	| _42, MEM[(float *)_191 + 8B]
+| fireworks.c:131:         p->old_y = p->y;
+	move.l 4(%a2),%d0	| MEM[(float *)_191 + 4B], _43
+| fireworks.c:131:         p->old_y = p->y;
+	move.l %d0,12(%a2)	| _43, MEM[(float *)_191 + 12B]
+| fireworks.c:132:         p->x += p->vx;
+	fadd.s 16(%a2),%fp0	| MEM[(float *)_191 + 16B], _45
+	fmove.s %fp0,(%a2)	| _45, MEM[(float *)_191]
+| fireworks.c:133:         p->y += p->vy;
 	fadd.s %d0,%fp1	| _43, _46
-	fmove.s %fp1,4(%a2)	| _46, MEM[(float *)_167 + 4B]
-| fireworks.c:130:         p->life--;
-	lea (-1,%a0),%a3	|, _35, _47
-	move.l %a3,28(%a2)	| _47, MEM[(int *)_167 + 28B]
-| fireworks.c:133:         if ((int)p->x < 0 || (int)p->x >= VP_W ||
+	fmove.s %fp1,4(%a2)	| _46, MEM[(float *)_191 + 4B]
+| fireworks.c:134:         p->life--;
+	lea (-1,%a1),%a5	|, _35, _47
+	move.l %a5,28(%a2)	| _47, MEM[(int *)_191 + 28B]
+| fireworks.c:137:         if ((int)p->x < 0 || (int)p->x >= VP_W ||
 	fintrz.x %fp0,%fp0	| _45, tmp196
-	fmove.l %fp0,%d2	| tmp196, _48
-| fireworks.c:133:         if ((int)p->x < 0 || (int)p->x >= VP_W ||
-	cmp.l #639,%d2	|, _48
+	fmove.l %fp0,%d7	| tmp196, _48
+| fireworks.c:137:         if ((int)p->x < 0 || (int)p->x >= VP_W ||
+	cmp.l #639,%d7	|, _48
 	jhi .L16		|
-| fireworks.c:134:             (int)p->y < 0 || (int)p->y >= VP_H) {
+| fireworks.c:138:             (int)p->y < 0 || (int)p->y >= VP_H) {
 	fintrz.x %fp1,%fp1	| _46, tmp197
-	fmove.l %fp1,%d3	| tmp197, _50
-| fireworks.c:133:         if ((int)p->x < 0 || (int)p->x >= VP_W ||
-	cmp.l #479,%d3	|, _50
+	fmove.l %fp1,%d6	| tmp197, _50
+| fireworks.c:137:         if ((int)p->x < 0 || (int)p->x >= VP_W ||
+	cmp.l #479,%d6	|, _50
 	jhi .L16		|
-| fireworks.c:59:     unsigned r = (colour >> 16) & 0xFF;
-	move.l 24(%a2),%d4	| MEM[(long unsigned int *)_167 + 24B], _52
-| fireworks.c:59:     unsigned r = (colour >> 16) & 0xFF;
+| fireworks.c:144:         uint32_t c = dim_colour(p->colour, p->life, p->max_life);
+	move.l 32(%a2),%d2	| MEM[(int *)_191 + 32B], _51
+| fireworks.c:61:     if (max_life <= 0 || life <= 0)
+	jle .L24		|
+| fireworks.c:61:     if (max_life <= 0 || life <= 0)
+	cmp.w #0,%a5	|, _47
+	jeq .L24		|
+| fireworks.c:63:     unsigned r = (colour >> 16) & 0xFF;
+	move.l 24(%a2),%d4	| MEM[(long unsigned int *)_191 + 24B], _52
+| fireworks.c:63:     unsigned r = (colour >> 16) & 0xFF;
 	moveq #0,%d0	| r_104
-	move.b 25(%a2),%d0	| MEM[(long unsigned int *)_167 + 24B], r_104
-| fireworks.c:62:     r = r * (unsigned)life / (unsigned)max_life;
-	move.l %a3,-(%sp)	| _47,
+	move.b 25(%a2),%d0	| MEM[(long unsigned int *)_191 + 24B], r_104
+| fireworks.c:66:     r = r * (unsigned)life / (unsigned)max_life;
+	move.l %a5,-(%sp)	| _47,
 	move.l %d0,-(%sp)	| r_104,
-	jsr (%a5)		| tmp251
+	jsr (%a4)		| tmp250
 	addq.l #8,%sp	|,
-	move.l %d0,%d6	| tmp258, _109
-| fireworks.c:62:     r = r * (unsigned)life / (unsigned)max_life;
-	move.l 32(%a2),%d5	| MEM[(int *)_167 + 32B], max_life.1_110
-| fireworks.c:60:     unsigned g = (colour >> 8) & 0xFF;
+	move.l %d0,%d5	| tmp258, _109
+| fireworks.c:64:     unsigned g = (colour >> 8) & 0xFF;
 	move.l %d4,%d0	| _52, _105
 	lsr.l #8,%d0	|, _105
-| fireworks.c:63:     g = g * (unsigned)life / (unsigned)max_life;
-	move.l %a3,-(%sp)	| _47,
+| fireworks.c:67:     g = g * (unsigned)life / (unsigned)max_life;
+	move.l %a5,-(%sp)	| _47,
 	moveq #0,%d1	|,
 	not.b %d1	|
 	and.l %d0,%d1	| _105,
 	move.l %d1,-(%sp)	|,
-	jsr (%a5)		| tmp251
+	jsr (%a4)		| tmp250
 	addq.l #8,%sp	|,
-	move.l %d0,%d7	| tmp259, _112
-| fireworks.c:64:     b = b * (unsigned)life / (unsigned)max_life;
-	move.l %a3,-(%sp)	| _47,
+	move.l %d0,%a6	| tmp259, _112
+| fireworks.c:68:     b = b * (unsigned)life / (unsigned)max_life;
+	move.l %a5,-(%sp)	| _47,
 	moveq #0,%d0	|,
 	not.b %d0	|
 	and.l %d4,%d0	| _52,
 	move.l %d0,-(%sp)	|,
-	jsr (%a5)		| tmp251
+	jsr (%a4)		| tmp250
 	addq.l #8,%sp	|,
 	move.l %d0,%d4	| tmp260, _114
-| fireworks.c:62:     r = r * (unsigned)life / (unsigned)max_life;
-	move.l %d5,-(%sp)	| max_life.1_110,
-	move.l %d6,-(%sp)	| _109,
-	jsr (%a4)		| tmp252
+| fireworks.c:66:     r = r * (unsigned)life / (unsigned)max_life;
+	move.l %d2,-(%sp)	| _51,
+	move.l %d5,-(%sp)	| _109,
+	jsr (%a3)		| tmp251
 	addq.l #8,%sp	|,
-| fireworks.c:65:     return 0xFF000000 | (r << 16) | (g << 8) | b;
-	move.l %d0,%d6	| tmp261, _116
-	swap %d6	| _116
-	clr.w %d6	| _116
-| fireworks.c:63:     g = g * (unsigned)life / (unsigned)max_life;
-	move.l %d5,-(%sp)	| max_life.1_110,
-	move.l %d7,-(%sp)	| _112,
-	jsr (%a4)		| tmp252
+| fireworks.c:69:     return 0xFF000000 | (r << 16) | (g << 8) | b;
+	move.l %d0,%d5	| tmp261, _116
+	swap %d5	| _116
+	clr.w %d5	| _116
+| fireworks.c:67:     g = g * (unsigned)life / (unsigned)max_life;
+	move.l %d2,-(%sp)	| _51,
+	move.l %a6,-(%sp)	| _112,
+	jsr (%a3)		| tmp251
 	addq.l #8,%sp	|,
-| fireworks.c:65:     return 0xFF000000 | (r << 16) | (g << 8) | b;
+| fireworks.c:69:     return 0xFF000000 | (r << 16) | (g << 8) | b;
 	lsl.l #8,%d0	|, _117
-| fireworks.c:65:     return 0xFF000000 | (r << 16) | (g << 8) | b;
-	or.l %d0,%d6	| _117, _118
-| fireworks.c:64:     b = b * (unsigned)life / (unsigned)max_life;
-	move.l %d5,-(%sp)	| max_life.1_110,
+| fireworks.c:69:     return 0xFF000000 | (r << 16) | (g << 8) | b;
+	or.l %d0,%d5	| _117, _118
+| fireworks.c:68:     b = b * (unsigned)life / (unsigned)max_life;
+	move.l %d2,-(%sp)	| _51,
 	move.l %d4,-(%sp)	| _114,
-	jsr (%a4)		| tmp252
+	jsr (%a3)		| tmp251
 	addq.l #8,%sp	|,
-| fireworks.c:65:     return 0xFF000000 | (r << 16) | (g << 8) | b;
-	or.l %d0,%d6	| tmp263, _119
-	or.l #-16777216,%d6	|, _120
-| fireworks.c:54:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
-	moveq #120,%d1	|,
-	add.l %d1,%d3	|, _121
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
-	muls.w #1280,%d3	|, _123
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
-	add.l %d3,%d2	| _123, _124
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
-	add.l #2097472,%d2	|, _125
-	add.l %d2,%d2	| _125, tmp234
-	move.l %d2,%a0	| tmp234, _126
-	add.l %d2,%a0	| tmp234, _126
-| fireworks.c:54:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
-	move.l %d6,(%a0)	| _120, *_127
-| fireworks.c:142:         alive++;
-	addq.l #1,56(%sp)	|, %sfp
+| fireworks.c:69:     return 0xFF000000 | (r << 16) | (g << 8) | b;
+	or.l %d0,%d5	| tmp263, _119
+	or.l #-16777216,%d5	|, _120
+| fireworks.c:56:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+	move.w #120,%a0	|, _122
+	add.l %d6,%a0	| _50, _122
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	move.w %a0,%d0	|,
+	muls.w #1280,%d0	|, _124
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	move.l %d7,%d1	| _48, _125
+	add.l %d0,%d1	| _124, _125
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	add.l #2097472,%d1	|, _126
+	add.l %d1,%d1	| _126, tmp234
+	move.l %d1,%a0	| tmp234, _127
+	add.l %d1,%a0	| tmp234, _127
+| fireworks.c:56:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+	move.l %d5,(%a0)	| _120, *_128
+| fireworks.c:146:         alive++;
+	addq.l #1,%d3	|, alive
 .L18:
-| fireworks.c:116:     for (i = 0; i < PARTICLES_PER_BURST; i++) {
+| fireworks.c:120:     for (i = 0; i < PARTICLES_PER_BURST; i++) {
 	lea (36,%a2),%a2	|, ivtmp.28
-	cmp.l %a6,%a2	| _185, ivtmp.28
-	jne .L19		|
-.L33:
-| fireworks.c:168:         if (rocket.state != ROCKET_RISING && alive == 0)
-	moveq #1,%d0	|,
-	cmp.l 60(%sp),%d0	| %sfp,
+	cmp.l #particles+1152,%a2	|, ivtmp.28
+	jne .L20		|
+.L36:
+| fireworks.c:172:         if (rocket.state != ROCKET_RISING && alive == 0)
+	moveq #1,%d1	|,
+	cmp.l 56(%sp),%d1	| %sfp,
 	jeq .L5		|
-| fireworks.c:168:         if (rocket.state != ROCKET_RISING && alive == 0)
-	tst.l 56(%sp)	| %sfp
+| fireworks.c:172:         if (rocket.state != ROCKET_RISING && alive == 0)
+	tst.l %d3	| alive
 	jne .L5		|
-| fireworks.c:169:             spawn_rocket();
+| fireworks.c:173:             spawn_rocket();
 	jsr spawn_rocket		|
-| fireworks.c:164:     while (!gfx_char_ready()) {
+| fireworks.c:168:     while (!gfx_char_ready()) {
 	jsr gfx_char_ready		|
-	move.l %d0,56(%sp)	| tmp264, %sfp
-| fireworks.c:164:     while (!gfx_char_ready()) {
-	jeq .L21		|
-.L31:
-| fireworks.c:172:     gfx_set_mode(0);
+	move.l %d0,%d3	| tmp264, alive
+| fireworks.c:168:     while (!gfx_char_ready()) {
+	jeq .L22		|
+.L34:
+| fireworks.c:176:     gfx_set_mode(0);
 	clr.l -(%sp)	|
 	jsr gfx_set_mode		|
-| fireworks.c:173:     printf("Done.\n");
+| fireworks.c:177:     printf("Done.\n");
 	pea .LC1		|
 	jsr puts		|
-| fireworks.c:175: }
+| fireworks.c:179: }
 	addq.l #8,%sp	|,
 	moveq #0,%d0	|
 	movem.l (%sp)+,#31996	|,
 	fmovem (%sp)+,#32	|,
-	addq.l #8,%sp	|,
+	addq.l #4,%sp	|,
 	rts	
-.L32:
-| fireworks.c:107:         put_pixel((int)rocket.x, (int)rocket.y + 1, 0xFF000000);
+.L35:
+| fireworks.c:111:         put_pixel((int)rocket.x, (int)rocket.y + 1, 0xFF000000);
 	fmove.s rocket+4,%fp1	| rocket.y, _25
-| fireworks.c:107:         put_pixel((int)rocket.x, (int)rocket.y + 1, 0xFF000000);
+| fireworks.c:111:         put_pixel((int)rocket.x, (int)rocket.y + 1, 0xFF000000);
 	lea rocket,%a0	|,
 	fintrz.s (%a0),%fp0	| rocket.x, tmp152
 	fmove.l %fp0,%d0	| tmp152, _29
-| fireworks.c:108:         rocket.y += rocket.dy;
+| fireworks.c:112:         rocket.y += rocket.dy;
 	fmove.x %fp1,%fp0	| _25, _53
 	fadd.s rocket+8,%fp0	| rocket.dy, _53
-| fireworks.c:53:     if ((unsigned)x < VP_W && (unsigned)y < VP_H)
+| fireworks.c:55:     if ((unsigned)x < VP_W && (unsigned)y < VP_H)
 	cmp.l #639,%d0	|, _29
 	jls .L8		|
-| fireworks.c:108:         rocket.y += rocket.dy;
+| fireworks.c:112:         rocket.y += rocket.dy;
 	fmove.s %fp0,rocket+4	| _53, rocket.y
 .L9:
-| fireworks.c:111:         if (rocket.y <= rocket.target_y)
+| fireworks.c:115:         if (rocket.y <= rocket.target_y)
 	fcmp.s rocket+12,%fp0	| rocket.target_y, _53
 	fjgt .L7		|
-.L34:
-	lea particles,%a2	|, ivtmp.35
-| fireworks.c:82:     for (i = 0; i < PARTICLES_PER_BURST; i++) {
+.L37:
+	lea particles,%a6	|, ivtmp.35
+| fireworks.c:86:     for (i = 0; i < PARTICLES_PER_BURST; i++) {
 	moveq #0,%d2	| i
-	lea rand_range,%a3	|, tmp246
+	lea rand_range,%a2	|, tmp244
 .L13:
-| fireworks.c:84:         float angle = (float)i * (2.0f * (float)M_PI / (float)PARTICLES_PER_BURST);
+| fireworks.c:88:         float angle = (float)i * (2.0f * (float)M_PI / (float)PARTICLES_PER_BURST);
 	fmove.s #0x3e490fdb,%fp2	|, angle
 	fsglmul.l %d2,%fp2	| i, angle
-| fireworks.c:85:         float speed = speed_base + (float)rand_range(0, 10) * 0.1f;
+| fireworks.c:89:         float speed = speed_base + (float)rand_range(0, 10) * 0.1f;
 	pea 10.w		|
 	clr.l -(%sp)	|
-	jsr (%a3)		| tmp246
-| fireworks.c:85:         float speed = speed_base + (float)rand_range(0, 10) * 0.1f;
+	jsr (%a2)		| tmp244
+| fireworks.c:89:         float speed = speed_base + (float)rand_range(0, 10) * 0.1f;
 	fmove.s #0x3dcccccd,%fp0	|, _81
 	fsglmul.l %d0,%fp0	| tmp256, _81
-| fireworks.c:85:         float speed = speed_base + (float)rand_range(0, 10) * 0.1f;
+| fireworks.c:89:         float speed = speed_base + (float)rand_range(0, 10) * 0.1f;
 	fadd.s #0x3fc00000,%fp0	|, speed
-| fireworks.c:86:         p->x = rocket.x;
+| fireworks.c:90:         p->x = rocket.x;
 	lea rocket,%a0	|,
-	move.l (%a0),%a1	| rocket.x, _83
-| fireworks.c:86:         p->x = rocket.x;
-	move.l %a1,(%a2)	| _83, MEM[(float *)_189]
-| fireworks.c:87:         p->y = rocket.y;
+	move.l (%a0),%d1	| rocket.x, _83
+| fireworks.c:90:         p->x = rocket.x;
+	move.l %d1,(%a6)	| _83, MEM[(float *)_201]
+| fireworks.c:91:         p->y = rocket.y;
 	move.l rocket+4,%d0	| rocket.y, _84
-| fireworks.c:87:         p->y = rocket.y;
-	move.l %d0,4(%a2)	| _84, MEM[(float *)_189 + 4B]
-| fireworks.c:88:         p->old_x = rocket.x;
-	move.l %a1,8(%a2)	| _83, MEM[(float *)_189 + 8B]
-| fireworks.c:89:         p->old_y = rocket.y;
-	move.l %d0,12(%a2)	| _84, MEM[(float *)_189 + 12B]
-| fireworks.c:90:         p->vx = cosf(angle) * speed;
+| fireworks.c:91:         p->y = rocket.y;
+	move.l %d0,4(%a6)	| _84, MEM[(float *)_201 + 4B]
+| fireworks.c:92:         p->old_x = rocket.x;
+	move.l %d1,8(%a6)	| _83, MEM[(float *)_201 + 8B]
+| fireworks.c:93:         p->old_y = rocket.y;
+	move.l %d0,12(%a6)	| _84, MEM[(float *)_201 + 12B]
+| fireworks.c:94:         p->vx = cosf(angle) * speed;
 	fcos.x %fp2,%fp1	| angle, _85
-| fireworks.c:90:         p->vx = cosf(angle) * speed;
+| fireworks.c:94:         p->vx = cosf(angle) * speed;
 	fsglmul.x %fp0,%fp1	| speed, _85
-	fmove.s %fp1,16(%a2)	| _85, MEM[(float *)_189 + 16B]
-| fireworks.c:91:         p->vy = sinf(angle) * speed;
+	fmove.s %fp1,16(%a6)	| _85, MEM[(float *)_201 + 16B]
+| fireworks.c:95:         p->vy = sinf(angle) * speed;
 	fsin.x %fp2,%fp2	| angle, _87
-| fireworks.c:91:         p->vy = sinf(angle) * speed;
+| fireworks.c:95:         p->vy = sinf(angle) * speed;
 	fsglmul.x %fp2,%fp0	| _87, speed
-	fmove.s %fp0,20(%a2)	| speed, MEM[(float *)_189 + 20B]
-| fireworks.c:92:         p->colour = rocket.colour;
-	move.l rocket+16,24(%a2)	| rocket.colour, MEM[(long unsigned int *)_189 + 24B]
-| fireworks.c:93:         p->max_life = rand_range(30, 50);
+	fmove.s %fp0,20(%a6)	| speed, MEM[(float *)_201 + 20B]
+| fireworks.c:96:         p->colour = rocket.colour;
+	move.l rocket+16,24(%a6)	| rocket.colour, MEM[(long unsigned int *)_201 + 24B]
+| fireworks.c:97:         p->max_life = rand_range(30, 50);
 	pea 50.w		|
 	pea 30.w		|
-	jsr (%a3)		| tmp246
-| fireworks.c:93:         p->max_life = rand_range(30, 50);
-	move.l %d0,32(%a2)	| _90, MEM[(int *)_189 + 32B]
-| fireworks.c:94:         p->life = p->max_life;
-	move.l %d0,28(%a2)	| _90, MEM[(int *)_189 + 28B]
-| fireworks.c:82:     for (i = 0; i < PARTICLES_PER_BURST; i++) {
+	jsr (%a2)		| tmp244
+| fireworks.c:97:         p->max_life = rand_range(30, 50);
+	move.l %d0,32(%a6)	| _90, MEM[(int *)_201 + 32B]
+| fireworks.c:98:         p->life = p->max_life;
+	move.l %d0,28(%a6)	| _90, MEM[(int *)_201 + 28B]
+| fireworks.c:86:     for (i = 0; i < PARTICLES_PER_BURST; i++) {
 	addq.l #1,%d2	|, i
-| fireworks.c:82:     for (i = 0; i < PARTICLES_PER_BURST; i++) {
-	lea (36,%a2),%a2	|, ivtmp.35
+| fireworks.c:86:     for (i = 0; i < PARTICLES_PER_BURST; i++) {
+	lea (36,%a6),%a6	|, ivtmp.35
 	lea (16,%sp),%sp	|,
 	moveq #32,%d0	|,
 	cmp.l %d2,%d0	| i,
 	jne .L13		|
-| fireworks.c:96:     rocket.state = ROCKET_BURST;
+| fireworks.c:100:     rocket.state = ROCKET_BURST;
 	moveq #2,%d1	|,
 	move.l %d1,rocket+20	|, rocket.state
-| fireworks.c:97: }
-	move.l %d1,60(%sp)	|, %sfp
+| fireworks.c:101: }
+	moveq #2,%d2	|,
+	move.l %d2,56(%sp)	|, %sfp
 	lea particles,%a2	|, ivtmp.28
-	jra .L19		|
+	jra .L20		|
 .L16:
-| fireworks.c:135:             p->life = 0;
-	clr.l 28(%a2)	| MEM[(int *)_167 + 28B]
-| fireworks.c:116:     for (i = 0; i < PARTICLES_PER_BURST; i++) {
+| fireworks.c:139:             p->life = 0;
+	clr.l 28(%a2)	| MEM[(int *)_191 + 28B]
+| fireworks.c:120:     for (i = 0; i < PARTICLES_PER_BURST; i++) {
 	lea (36,%a2),%a2	|, ivtmp.28
-	cmp.l %a6,%a2	| _185, ivtmp.28
-	jne .L19		|
-	jra .L33		|
+	cmp.l #particles+1152,%a2	|, ivtmp.28
+	jne .L20		|
+	jra .L36		|
+.L24:
+| fireworks.c:62:         return 0xFF000000;
+	move.l #-16777216,%d5	|, _120
+| fireworks.c:56:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+	move.w #120,%a0	|, _122
+	add.l %d6,%a0	| _50, _122
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	move.w %a0,%d0	|,
+	muls.w #1280,%d0	|, _124
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	move.l %d7,%d1	| _48, _125
+	add.l %d0,%d1	| _124, _125
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	add.l #2097472,%d1	|, _126
+	add.l %d1,%d1	| _126, tmp234
+	move.l %d1,%a0	| tmp234, _127
+	add.l %d1,%a0	| tmp234, _127
+| fireworks.c:56:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+	move.l %d5,(%a0)	| _120, *_128
+| fireworks.c:146:         alive++;
+	addq.l #1,%d3	|, alive
+	jra .L18		|
 .L8:
-| fireworks.c:107:         put_pixel((int)rocket.x, (int)rocket.y + 1, 0xFF000000);
+| fireworks.c:111:         put_pixel((int)rocket.x, (int)rocket.y + 1, 0xFF000000);
 	fintrz.x %fp1,%fp1	| _25, tmp155
-	fmove.l %fp1,%d2	| tmp155, _26
-| fireworks.c:110:         put_pixel((int)rocket.x, (int)rocket.y, 0xFFFFFFFF);
+	fmove.l %fp1,%d1	| tmp155, _26
+| fireworks.c:114:         put_pixel((int)rocket.x, (int)rocket.y, 0xFFFFFFFF);
 	fintrz.x %fp0,%fp1	| _53, tmp156
-	fmove.l %fp1,%d3	| tmp156, _4
-| fireworks.c:107:         put_pixel((int)rocket.x, (int)rocket.y + 1, 0xFF000000);
-	move.l %d2,%a0	| _26, _27
+	fmove.l %fp1,%d2	| tmp156, _4
+| fireworks.c:111:         put_pixel((int)rocket.x, (int)rocket.y + 1, 0xFF000000);
+	move.l %d1,%a0	| _26, _27
 	addq.l #1,%a0	|, _27
-| fireworks.c:53:     if ((unsigned)x < VP_W && (unsigned)y < VP_H)
+| fireworks.c:55:     if ((unsigned)x < VP_W && (unsigned)y < VP_H)
 	cmp.w #479,%a0	|, _27
 	jhi .L10		|
-| fireworks.c:54:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
-	move.w #121,%a0	|, _62
-	add.l %d2,%a0	| _26, _62
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
-	move.w %a0,%d1	|,
-	muls.w #1280,%d1	|,
-	move.l %d1,%a0	|, _64
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
-	add.l %d0,%a0	| _29, _65
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
-	add.l #2097472,%a0	|, _66
-	add.l %a0,%a0	| _66, tmp164
-	add.l %a0,%a0	| tmp164, _67
-| fireworks.c:54:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+| fireworks.c:56:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+	moveq #121,%d4	|,
+	add.l %d4,%d1	|, _62
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	muls.w #1280,%d1	|, _64
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	add.l %d0,%d1	| _29, _65
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	add.l #2097472,%d1	|, _66
+	add.l %d1,%d1	| _66, tmp164
+	add.l %d1,%d1	| tmp164, _67
+| fireworks.c:56:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+	move.l %d1,%a0	| _67,
 	move.l #-16777216,(%a0)	|, *_68
 .L10:
-| fireworks.c:108:         rocket.y += rocket.dy;
+| fireworks.c:112:         rocket.y += rocket.dy;
 	fmove.s %fp0,rocket+4	| _53, rocket.y
-| fireworks.c:53:     if ((unsigned)x < VP_W && (unsigned)y < VP_H)
-	cmp.l #479,%d3	|, _4
+| fireworks.c:55:     if ((unsigned)x < VP_W && (unsigned)y < VP_H)
+	cmp.l #479,%d2	|, _4
 	jhi .L9		|
-| fireworks.c:54:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
-	moveq #120,%d2	|, _69
-	add.l %d3,%d2	| _4, _69
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
-	muls.w #1280,%d2	|, _71
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
-	add.l %d2,%d0	| _71, _72
-| ../lib/merlin2_gfx.h:22:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+| fireworks.c:56:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+	moveq #120,%d1	|, _69
+	add.l %d2,%d1	| _4, _69
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	muls.w #1280,%d1	|, _71
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
+	add.l %d1,%d0	| _71, _72
+| ../lib/merlin2_gfx.h:26:     return (volatile uint32_t *)(GFX_FB_BASE + (y * GFX_SCREEN_W + x) * 4);
 	add.l #2097472,%d0	|, _73
 	add.l %d0,%d0	| _73, tmp173
 	add.l %d0,%d0	| tmp173, _74
-| fireworks.c:54:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
+| fireworks.c:56:         *gfx_fb_ptr(x + VP_X, y + VP_Y) = argb;
 	moveq #-1,%d1	|,
 	move.l %d0,%a0	| _74,
 	move.l %d1,(%a0)	|, *_75
-| fireworks.c:111:         if (rocket.y <= rocket.target_y)
+| fireworks.c:115:         if (rocket.y <= rocket.target_y)
 	fcmp.s rocket+12,%fp0	| rocket.target_y, _53
 	fjgt .L7		|
-	jra .L34		|
+	jra .L37		|
 	.size	main, .-main
 	.section	.rodata
 	.align	2

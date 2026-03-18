@@ -3,11 +3,13 @@
 #include "../lib/merlin2_gfx.h"
 #include "../lib/merlin2_rand.h"
 
-/* Viewport (centred on 1280x720) */
+/* 640x480 viewport centred on 1280x720 framebuffer */
 #define VP_W    640
 #define VP_H    480
 #define VP_X    320
 #define VP_Y    120
+_Static_assert(VP_X + VP_W <= GFX_SCREEN_W, "Viewport exceeds screen width");
+_Static_assert(VP_Y + VP_H <= GFX_SCREEN_H, "Viewport exceeds screen height");
 
 /* Physics */
 #define GRAVITY     0.06f
@@ -56,6 +58,8 @@ static inline void put_pixel(int x, int y, uint32_t argb)
 
 static uint32_t dim_colour(uint32_t colour, int life, int max_life)
 {
+    if (max_life <= 0 || life <= 0)
+        return 0xFF000000;
     unsigned r = (colour >> 16) & 0xFF;
     unsigned g = (colour >> 8) & 0xFF;
     unsigned b = colour & 0xFF;

@@ -28,7 +28,7 @@ environ:
 	.align 2
 	.global _monitor_sp
 _monitor_sp:
-	.long 0
+	.long 0		/* MUST be in .data, NOT .bss -- written before BSS is zeroed */
 
 	.align	2
 	.text

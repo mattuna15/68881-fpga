@@ -9,6 +9,7 @@
 #include <string.h>
 #include "emu_memory.h"
 #include "mfp_emu.h"
+#include "gfx_fb.h"
 #include "xil_printf.h"
 
 /* Static allocation — lives in DDR on the ZU3EG */
@@ -60,6 +61,10 @@ unsigned int m68k_read_memory_8(unsigned int address)
 {
     if (is_mfp(address))
         return mfp_read(address - EMU_MFP_BASE);
+    if (gfx_is_io(address))
+        return gfx_io_read(address - GFX_IO_BASE);
+    if (gfx_is_fb(address))
+        return gfx_read_8(address);
     return emu_ram[address & EMU_RAM_MASK];
 }
 
@@ -68,6 +73,14 @@ unsigned int m68k_read_memory_16(unsigned int address)
     /* MFP registers are byte-wide; decompose word reads into byte
      * reads when any byte falls in the MFP range */
     if (is_mfp(address) || is_mfp(address + 1)) {
+        return ((unsigned int)m68k_read_memory_8(address) << 8) |
+                (unsigned int)m68k_read_memory_8(address + 1);
+    }
+    if (gfx_is_io(address) || gfx_is_io(address + 1)) {
+        return ((unsigned int)m68k_read_memory_8(address) << 8) |
+                (unsigned int)m68k_read_memory_8(address + 1);
+    }
+    if (gfx_is_fb(address) || gfx_is_fb(address + 1)) {
         return ((unsigned int)m68k_read_memory_8(address) << 8) |
                 (unsigned int)m68k_read_memory_8(address + 1);
     }
@@ -86,6 +99,18 @@ unsigned int m68k_read_memory_32(unsigned int address)
                ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
                 (unsigned int)m68k_read_memory_8(address + 3);
     }
+    if (gfx_is_io(address) || gfx_is_io(address + 3)) {
+        return ((unsigned int)m68k_read_memory_8(address)     << 24) |
+               ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
+               ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
+                (unsigned int)m68k_read_memory_8(address + 3);
+    }
+    if (gfx_is_fb(address) || gfx_is_fb(address + 3)) {
+        return ((unsigned int)m68k_read_memory_8(address)     << 24) |
+               ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
+               ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
+                (unsigned int)m68k_read_memory_8(address + 3);
+    }
     return ((unsigned int)emu_ram[ address      & EMU_RAM_MASK] << 24) |
            ((unsigned int)emu_ram[(address + 1) & EMU_RAM_MASK] << 16) |
            ((unsigned int)emu_ram[(address + 2) & EMU_RAM_MASK] <<  8) |
@@ -96,6 +121,14 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
     if (is_mfp(address)) {
         mfp_write(address - EMU_MFP_BASE, value & 0xFF);
+        return;
+    }
+    if (gfx_is_io(address)) {
+        gfx_io_write(address - GFX_IO_BASE, value);
+        return;
+    }
+    if (gfx_is_fb(address)) {
+        gfx_write_8(address, value);
         return;
     }
     /* ROM region: ignore writes (write-protected) */
@@ -115,6 +148,16 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
         m68k_write_memory_8(address + 1,  value       & 0xFF);
         return;
     }
+    if (gfx_is_io(address) || gfx_is_io(address + 1)) {
+        m68k_write_memory_8(address,     (value >> 8) & 0xFF);
+        m68k_write_memory_8(address + 1,  value       & 0xFF);
+        return;
+    }
+    if (gfx_is_fb(address) || gfx_is_fb(address + 1)) {
+        m68k_write_memory_8(address,     (value >> 8) & 0xFF);
+        m68k_write_memory_8(address + 1,  value       & 0xFF);
+        return;
+    }
     if (address >= EMU_ROM_BASE && address < EMU_ROM_BASE + EMU_ROM_SIZE) {
 #ifdef DEBUG
         xil_printf("[MEM] WARNING: write to ROM @%06X ignored\r\n", address);
@@ -128,6 +171,20 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
     if (is_mfp(address) || is_mfp(address + 3)) {
+        m68k_write_memory_8(address,     (value >> 24) & 0xFF);
+        m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
+        m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);
+        m68k_write_memory_8(address + 3,  value        & 0xFF);
+        return;
+    }
+    if (gfx_is_io(address) || gfx_is_io(address + 3)) {
+        m68k_write_memory_8(address,     (value >> 24) & 0xFF);
+        m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
+        m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);
+        m68k_write_memory_8(address + 3,  value        & 0xFF);
+        return;
+    }
+    if (gfx_is_fb(address) || gfx_is_fb(address + 3)) {
         m68k_write_memory_8(address,     (value >> 24) & 0xFF);
         m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
         m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);

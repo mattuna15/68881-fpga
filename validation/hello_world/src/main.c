@@ -21,6 +21,7 @@
 #include "fline_handler.h"
 #include "mfp_emu.h"
 #include "text_fb.h"
+#include "gfx_fb.h"
 #include "dp_video.h"
 #include "rom_image.h"
 
@@ -85,8 +86,8 @@ static void rom_boot(void)
 
     /* Load ROM image at ROMBAS */
     xil_printf("[ROM] Loading ROM image (%u bytes) at 0x%06X\r\n",
-               rom_image_size, BIOS_ROMBAS);
-    status = emu_mem_load(BIOS_ROMBAS, rom_image_data, rom_image_size);
+               ROM_IMAGE_SIZE, BIOS_ROMBAS);
+    status = emu_mem_load(BIOS_ROMBAS, rom_image_data, ROM_IMAGE_SIZE);
     if (status != 0) {
         xil_printf("[ROM] ERROR: ROM load failed\r\n");
         return;
@@ -107,6 +108,9 @@ static void rom_boot(void)
     pixel_buf = text_fb_init();
     xil_printf("[ROM] Text framebuffer initialised (%dx%d chars)\r\n",
                TEXT_COLS, TEXT_ROWS);
+
+    /* Initialise graphics framebuffer (shares pixel buffer with text) */
+    gfx_init(pixel_buf);
 
     /* Initial render — black screen with no text */
     text_fb_render();
@@ -138,13 +142,24 @@ static void rom_boot(void)
         /* Execute a batch of M68K instructions */
         m68k_execute(EMU_CYCLES_PER_TICK);
 
-        /* Re-render text to pixel buffer if anything changed */
-        if (text_fb_is_dirty()) {
-            text_fb_render();
-            Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
-            if (dp_ok)
-                dp_video_refresh();
-            text_fb_mark_clean();
+        /* Refresh display based on active mode */
+        if (gfx_get_mode()) {
+            /* Graphics mode: flush pixel buffer directly */
+            if (gfx_is_dirty()) {
+                Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
+                if (dp_ok)
+                    dp_video_refresh();
+                gfx_mark_clean();
+            }
+        } else {
+            /* Text mode: re-render text to pixel buffer if changed */
+            if (text_fb_is_dirty()) {
+                text_fb_render();
+                Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
+                if (dp_ok)
+                    dp_video_refresh();
+                text_fb_mark_clean();
+            }
         }
 
         /* Feed ARM UART RX into MFP RX buffer for keyboard input */

@@ -1,0 +1,50 @@
+--- a/Makefile.in
++++ b/Makefile.in
+@@ -98,6 +98,14 @@
+ BCC_BSP=	libbcc.a
+ BCC_OBJS=	cpu32bug.o
+
++#
++# here's all the Merlin 2 target stuff
++#
++MERLIN2_LDFLAGS=	-L${srcdir} -Tmerlin2.ld
++MERLIN2_BSP=	libmerlin2.a
++MERLIN2_OBJS=	merlin2.o
++MERLIN2_CRT0=	merlin2-crt0.o
++
+ #
+ # here's all the IDP target stuff
+ #
+@@ -209,7 +217,7 @@
+
+ .PHONY: all_m68k
+ all_m68k :: ${SIM_CRT0} ${SIM_BSP} ${CRT0} ${BCC_BSP} ${IDP_BSP} \
+-	${IDPGDB_BSP} ${MVME135_BSP} ${MVME162_BSP}
++	${IDPGDB_BSP} ${MVME135_BSP} ${MERLIN2_BSP} ${MERLIN2_CRT0} ${MVME162_BSP}
+ .PHONY: all_cf
+ all_cf :: ${CF_CRT0S} ${CF_BSP} ${CF_SCRIPTS} ${HOSTED_BSP} ${UNHOSTED_BSP}
+
+@@ -239,6 +247,13 @@
+ 	${AR} ${ARFLAGS} $@ $(OBJS) ${MVME162_OBJS}
+ 	${RANLIB} $@
+
++${MERLIN2_BSP}: $(OBJS) ${MERLIN2_OBJS}
++	${AR} ${ARFLAGS} $@ $(OBJS) ${MERLIN2_OBJS}
++	${RANLIB} $@
++
++${MERLIN2_CRT0}: ${srcdir}/crt0-68000.S
++	$(CC) $(CFLAGS_FOR_TARGET) $(CFLAGS) $(INCLUDES) -mcpu=68000 -c $< -o $@
++
+ # build hosted library
+ $(HOSTED_OBJS): hosted%.o: io%.c io.h
+ 	$(CC) $(CFLAGS_FOR_TARGET) $(CFLAGS) -DHOSTED=1 $(INCLUDES) -c $< -o $@
+@@ -433,6 +448,11 @@
+ 	$(INSTALL_DATA) ${srcdir}/mvme135.ld $(DESTDIR)$(tooldir)/lib${MULTISUBDIR}/mvme135.ld
++	# install Merlin 2 stuff
++	$(INSTALL_PROGRAM) $(MERLIN2_BSP) $(DESTDIR)$(tooldir)/lib${MULTISUBDIR}/$(MERLIN2_BSP)
++	$(INSTALL_PROGRAM) $(MERLIN2_CRT0) $(DESTDIR)$(tooldir)/lib${MULTISUBDIR}/$(MERLIN2_CRT0)
++	$(INSTALL_DATA) ${srcdir}/merlin2.ld $(DESTDIR)$(tooldir)/lib${MULTISUBDIR}/merlin2.ld
++	$(INSTALL_DATA) ${srcdir}/merlin2.h $(DESTDIR)$(tooldir)/lib${MULTISUBDIR}/merlin2.h
+ 	# install MVME162lx stuff
+ 	$(INSTALL_PROGRAM) $(MVME162_BSP) $(DESTDIR)$(tooldir)/lib${MULTISUBDIR}/$(MVME162_BSP)
+ 	$(INSTALL_DATA) ${srcdir}/mvme162.ld $(DESTDIR)$(tooldir)/lib${MULTISUBDIR}/mvme162.ld

@@ -1238,6 +1238,13 @@ load2    BSR      inChar           Records from the host must begin
          CMP.B    #'7',D0           for S8 terminator. Fall through to
          BNE.S    load6             exit on S8 else continue search
 load3    EQU      *                 Exit point from LOAD
+* Drain remaining characters of the termination record line
+.loadDrain BSR    inChar            Read next char from serial
+         CMP.B    #CR,D0            Is it carriage return?
+         BEQ.S    .loadDrained      Yes — line consumed
+         CMP.B    #LF,D0            Is it line feed?
+         BNE.S    .loadDrain        No — keep draining
+.loadDrained EQU  *
 *         CLR.B    ECHO(A6)          Restore input character echo
          BTST     #0,D7             Test for input errors
          BEQ.S    load4             If no I/P error then look at checksum
@@ -1563,7 +1570,22 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 		CMP.B	#16,D0		d0 = 16  Adjust display properties
 		BEQ .io16
 
-.ioExcEnd	RTE			Return from exception		
+		CMP.B	#17,D0		D0= 17 Set video mode (D1.B: 0=text, 1=graphics)
+		BEQ	.io17
+
+		CMP.B	#18,D0		D0= 18 Clear graphics FB (D1.L = ARGB fill colour)
+		BEQ	.io18
+
+		CMP.B	#19,D0		D0= 19 Set pixel (D1.W=X, D2.W=Y, D3.L=ARGB colour)
+		BEQ	.io19
+
+		CMP.B	#20,D0		D0= 20 Get pixel (D1.W=X, D2.W=Y) -> D1.L=ARGB
+		BEQ	.io20
+
+		CMP.B	#21,D0		D0= 21 Screen info -> D1.W=width, D2.W=height
+		BEQ	.io21
+
+.ioExcEnd	RTE			Return from exception
 
 .io0		move.l	A0,-(A7)	Save A0
 		move.l	A1,A0		Source pointer
@@ -1745,6 +1767,81 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 .LF_ON
     move.b  #1,LF_DISPLAY
 	BRA	.ioExcEnd	Return from exception
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=17: Set video mode
+*   D1.B = 0 for text mode, 1 for graphics mode
+*----------------------------------------------------------------------
+.io17
+	MOVE.B	D1,$FD0040	Write mode register
+	BRA	.ioExcEnd
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=18: Clear graphics framebuffer
+*   D1.L = ARGB fill colour
+*----------------------------------------------------------------------
+.io18
+	MOVE.L	D1,$FD0044	Set clear colour
+	MOVE.B	#1,$FD0041	Issue clear command
+	BRA	.ioExcEnd
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=19: Set pixel
+*   D1.W = X coordinate (0-1279)
+*   D2.W = Y coordinate (0-719)
+*   D3.L = ARGB colour value
+*----------------------------------------------------------------------
+.io19
+	CMP.W	#1280,D1
+	BHS	.ioExcEnd	X out of bounds
+	CMP.W	#720,D2
+	BHS	.ioExcEnd	Y out of bounds
+	MOVEM.L	D4-D5/A0,-(SP)
+	MOVE.W	D2,D4		D4 = Y
+	MULU.W	#1280,D4	D4 = Y * 1280
+	MOVE.W	D1,D5		D5 = X
+	EXT.L	D5
+	ADD.L	D5,D4		D4 = Y*1280 + X (pixel index)
+	ASL.L	#2,D4		D4 = pixel_index * 4 (byte offset)
+	ADD.L	#$800000,D4	D4 = framebuffer address
+	MOVE.L	D4,A0
+	MOVE.L	D3,(A0)		Write pixel colour
+	MOVEM.L	(SP)+,D4-D5/A0
+	BRA	.ioExcEnd
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=20: Get pixel
+*   D1.W = X coordinate (0-1279)
+*   D2.W = Y coordinate (0-719)
+*   Returns: D1.L = ARGB colour value
+*----------------------------------------------------------------------
+.io20
+	CMP.W	#1280,D1
+	BHS	.ioExcEnd	X out of bounds
+	CMP.W	#720,D2
+	BHS	.ioExcEnd	Y out of bounds
+	MOVEM.L	D4-D5/A0,-(SP)
+	MOVE.W	D2,D4		D4 = Y
+	MULU.W	#1280,D4	D4 = Y * 1280
+	MOVE.W	D1,D5		D5 = X
+	EXT.L	D5
+	ADD.L	D5,D4		D4 = Y*1280 + X (pixel index)
+	ASL.L	#2,D4		D4 = pixel_index * 4 (byte offset)
+	ADD.L	#$800000,D4	D4 = framebuffer address
+	MOVE.L	D4,A0
+	MOVE.L	(A0),D1		Read pixel colour into D1
+	MOVEM.L	(SP)+,D4-D5/A0
+	BRA	.ioExcEnd
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=21: Get screen info
+*   Returns: D1.W = screen width (1280)
+*            D2.W = screen height (720)
+*----------------------------------------------------------------------
+.io21
+	MOVE.W	#1280,D1
+	MOVE.W	#720,D2
+	BRA	.ioExcEnd
 	
 cvtCase
 		LEA	LINEBUF,A0	Get start of line

@@ -1015,8 +1015,20 @@ int fline_illg_callback(int opcode)
     case 3: /* FBcc.L */
         return handle_fbcc(opword, pc);
 
+    case 4: /* FSAVE <ea> */
+        /* No preemptive context — write a 4-byte null (idle) frame.
+         * Format: opword is F327 xxxx etc.; EA in bits 5-0.
+         * For now, just advance past the 2-byte opword.  The destination
+         * gets a null frame (all zeros) which newlib/libgcc won't inspect. */
+        m68k_set_reg(M68K_REG_PC, pc);
+        return 1;
+
+    case 5: /* FRESTORE <ea> */
+        /* Restoring from a null frame is a no-op — FPU stays idle. */
+        m68k_set_reg(M68K_REG_PC, pc);
+        return 1;
+
     default:
-        /* FSAVE/FRESTORE or unknown — skip */
         xil_printf("FLINE: type %d not implemented\r\n", type);
         return 0;
     }

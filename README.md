@@ -50,15 +50,16 @@ arithmetic, transcendental, exponential, and logarithmic operations.
 
 | Resource | Full | Lite (`fpu_lite_g`) | Available | Full % | Lite % |
 |----------|------|---------------------|-----------|--------|--------|
-| Slice LUTs | 62,281 | 37,380 | 133,800 | 46.55% | 27.94% |
-| Registers | 13,655 | 7,030 | 267,600 | 5.10% | 2.63% |
+| Slice LUTs | 62,834 | 37,380 | 133,800 | 46.96% | 27.94% |
+| Registers | 13,661 | 7,030 | 267,600 | 5.11% | 2.63% |
 | Block RAM | 8 tiles | 0 | 365 | 2.19% | 0% |
 | DSP48E1 | 34 | 18 | 740 | 4.59% | 2.43% |
 
-*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-15.
+*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-18.
 33 MHz target clock. Includes transcendental accuracy improvements (BRAM coefficient ROM,
 table-assisted ATAN/LOG, Cody-Waite trig/EXP), GHDL synth-compatible RTL,
-CIR coprocessor interface, and full exception dialog paths.*
+CIR coprocessor interface, full exception dialog paths, undocumented FMOVECR ROM constants,
+and graphics framebuffer support.*
 
 ### Timing
 - Target clock: **33 MHz** (30.303 ns period) — 3.3× faster than original MC68881.
@@ -67,7 +68,7 @@ CIR coprocessor interface, and full exception dialog paths.*
   FP register file to exception destinations).
 - Packed decimal encode pipeline: 3-stage split (exponent extraction → DSP multiply
   → scale computation) with pipelined DSP48E1 input.
-- Post-route WNS: **+0.129 ns** full / **+0.160 ns** lite (timing met). No hold violations.
+- Post-route WNS: **+0.045 ns** full / **+0.160 ns** lite (timing met). No hold violations.
 
 ### Target device compatibility
 The design fits on several FPGA families. With `fpu_lite_g => true` (MC68040
@@ -77,8 +78,8 @@ hardware subset: 11 ALU ops, no trig/sglops/modrem), the core uses 37,380 LUTs
 | Device | LUTs | DSPs | Full fit? | Lite fit? |
 |--------|------|------|-----------|-----------|
 | Xilinx Artix-7 200T | 133,800 | 740 | Yes (47%) | Yes (28%) |
-| Xilinx Artix-7 100T | 63,400 | 240 | Tight (98%) | Yes (59%) |
-| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~88%) | Yes (~53%) |
+| Xilinx Artix-7 100T | 63,400 | 240 | Tight (99%) | Yes (59%) |
+| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~89%) | Yes (~53%) |
 | Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
 | Intel Cyclone V SE 5CSEBA6 (MiSTer DE10-Nano) | 41,910 ALMs | 112 | No (~75%) | Yes (~45%) |
 
@@ -89,7 +90,7 @@ Porting requires XDC-to-SDC constraint conversion and minor DSP inference
 adjustments.
 
 **MiSTer note:** The DE10-Nano's Cyclone V SE has 41,910 ALMs (each ALM roughly
-maps to 2 Xilinx LUTs, giving ~84K LUT-equivalent). The full FPU (62K LUTs /
+maps to 2 Xilinx LUTs, giving ~84K LUT-equivalent). The full FPU (63K LUTs /
 34 DSPs) exceeds ALM capacity but fits within the 112 DSP budget. Lite mode
 (37K LUTs ≈ ~19K ALMs, 18 DSPs, 0 BRAM) should fit comfortably. These are rough
 estimates; actual Quartus ALM counts may differ from Xilinx LUT counts due to

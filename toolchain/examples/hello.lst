@@ -1,0 +1,24 @@
+	.file	"hello.c"
+| GNU C17 (GCC) version 14.2.0 (m68k-elf)
+|	compiled by GNU C version 11.5.0, GMP version 6.2.1, MPFR version 4.1.0, MPC version 1.2.1, isl version isl-0.24-GMP
+
+| GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+| options passed: -mcpu=68000 -O2
+	.text
+	.section	.rodata.str1.1,"aMS",@progbits,1
+.LC0:
+	.string	"Hello from Merlin 2 GCC!"
+	.section	.text.startup,"ax",@progbits
+	.align	2
+	.globl	main
+	.type	main, @function
+main:
+| hello.c:5:     printf("Hello from Merlin 2 GCC!\n");
+	pea .LC0		|
+	jsr puts		|
+| hello.c:7: }
+	addq.l #4,%sp	|,
+	moveq #0,%d0	|
+	rts	
+	.size	main, .-main
+	.ident	"GCC: (GNU) 14.2.0"

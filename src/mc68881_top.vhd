@@ -403,7 +403,13 @@ architecture rtl of mc68881_top is
   end function;
 
   type fmovecr_rom_t is array (0 to 127) of fp80_t;
+
+  -- Undocumented constant used as default for offsets 0x10-0x2F
+  -- (from WinUAE / Toni Wilen, verified against real 68881/68882 silicon)
+  constant FMOVECR_UNDOC_DEFAULT : fp80_t := x"40000000000000000000";
+
   constant FMOVECR_ROM : fmovecr_rom_t := (
+    -- Documented constants (offsets 0x00, 0x0B-0x0F, 0x30-0x3F)
     16#00# => x"4000C90FDAA22168C235", -- pi
     16#0B# => x"3FFD9A209A84FBCFF798", -- log10(2)
     16#0C# => x"4000ADF85458A2BB4A9A", -- e
@@ -426,6 +432,37 @@ architecture rtl of mc68881_top is
     16#3D# => x"4D48C976758681750C17", -- 10^1024
     16#3E# => x"5A929E8B3B5DC53D5DE5", -- 10^2048
     16#3F# => x"7525C46052028A20979B", -- 10^4096
+    -- Undocumented constants (offsets 0x01-0x0A)
+    -- From WinUAE / Toni Wilen, verified against real 68881/68882 silicon
+    16#01# => x"4001FE00068200000000", -- undoc: rounding-dependent
+    16#02# => x"4001FFC0050380000000", -- undoc
+    16#03# => x"20007FFFFFFF00000000", -- undoc: can set Inf/NaN CC bits
+    16#04# => x"0000FFFFFFFFFFFFFFFF", -- undoc
+    16#05# => x"3C00FFFFFFFFFFFFF800", -- undoc
+    16#06# => x"3F80FFFFFF0000000000", -- undoc
+    16#07# => x"0001F65D8D9C00000000", -- undoc: sets NaN CC, rounding-dependent
+    16#08# => x"7FFF001E000000000000", -- undoc
+    16#09# => x"3FFF000E000000000000", -- undoc
+    16#0A# => x"7F000006000000000000", -- undoc
+    -- Offsets 0x10-0x2F: undocumented, all return same default value
+    16#10# => FMOVECR_UNDOC_DEFAULT, 16#11# => FMOVECR_UNDOC_DEFAULT,
+    16#12# => FMOVECR_UNDOC_DEFAULT, 16#13# => FMOVECR_UNDOC_DEFAULT,
+    16#14# => FMOVECR_UNDOC_DEFAULT, 16#15# => FMOVECR_UNDOC_DEFAULT,
+    16#16# => FMOVECR_UNDOC_DEFAULT, 16#17# => FMOVECR_UNDOC_DEFAULT,
+    16#18# => FMOVECR_UNDOC_DEFAULT, 16#19# => FMOVECR_UNDOC_DEFAULT,
+    16#1A# => FMOVECR_UNDOC_DEFAULT, 16#1B# => FMOVECR_UNDOC_DEFAULT,
+    16#1C# => FMOVECR_UNDOC_DEFAULT, 16#1D# => FMOVECR_UNDOC_DEFAULT,
+    16#1E# => FMOVECR_UNDOC_DEFAULT, 16#1F# => FMOVECR_UNDOC_DEFAULT,
+    16#20# => FMOVECR_UNDOC_DEFAULT, 16#21# => FMOVECR_UNDOC_DEFAULT,
+    16#22# => FMOVECR_UNDOC_DEFAULT, 16#23# => FMOVECR_UNDOC_DEFAULT,
+    16#24# => FMOVECR_UNDOC_DEFAULT, 16#25# => FMOVECR_UNDOC_DEFAULT,
+    16#26# => FMOVECR_UNDOC_DEFAULT, 16#27# => FMOVECR_UNDOC_DEFAULT,
+    16#28# => FMOVECR_UNDOC_DEFAULT, 16#29# => FMOVECR_UNDOC_DEFAULT,
+    16#2A# => FMOVECR_UNDOC_DEFAULT, 16#2B# => FMOVECR_UNDOC_DEFAULT,
+    16#2C# => FMOVECR_UNDOC_DEFAULT, 16#2D# => FMOVECR_UNDOC_DEFAULT,
+    16#2E# => FMOVECR_UNDOC_DEFAULT, 16#2F# => FMOVECR_UNDOC_DEFAULT,
+    -- Offsets 0x40-0x7F: generate F-line exception on real hardware
+    -- (handled by decode logic, not ROM — filled with zero here)
     others => (others => '0')
   );
 

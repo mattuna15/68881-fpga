@@ -1238,6 +1238,13 @@ load2    BSR      inChar           Records from the host must begin
          CMP.B    #'7',D0           for S8 terminator. Fall through to
          BNE.S    load6             exit on S8 else continue search
 load3    EQU      *                 Exit point from LOAD
+* Drain remaining characters of the termination record line
+.loadDrain BSR    inChar            Read next char from serial
+         CMP.B    #CR,D0            Is it carriage return?
+         BEQ.S    .loadDrained      Yes — line consumed
+         CMP.B    #LF,D0            Is it line feed?
+         BNE.S    .loadDrain        No — keep draining
+.loadDrained EQU  *
 *         CLR.B    ECHO(A6)          Restore input character echo
          BTST     #0,D7             Test for input errors
          BEQ.S    load4             If no I/P error then look at checksum

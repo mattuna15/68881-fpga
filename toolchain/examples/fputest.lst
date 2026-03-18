@@ -1,0 +1,37 @@
+	.file	"fputest.c"
+| GNU C17 (GCC) version 14.2.0 (m68k-elf)
+|	compiled by GNU C version 11.5.0, GMP version 6.2.1, MPFR version 4.1.0, MPC version 1.2.1, isl version isl-0.24-GMP
+
+| GGC heuristics: --param ggc-min-expand=100 --param ggc-min-heapsize=131072
+| options passed: -mcpu=68000 -m68881 -O2 -ffast-math
+	.text
+	.section	.rodata.str1.1,"aMS",@progbits,1
+.LC0:
+	.string	"sin(%f) = %f\n"
+	.section	.text.startup,"ax",@progbits
+	.align	2
+	.globl	main
+	.type	main, @function
+main:
+| fputest.c:8:     double x = input;
+	fmove.d input,%fp0	| input, x
+| fputest.c:10:     printf("sin(%f) = %f\n", x, s);
+	fsin.x %fp0,%fp1	| x,
+	fmove.d %fp1,-(%sp)	|,
+	fmove.d %fp0,-(%sp)	| x,
+	pea .LC0		|
+	jsr printf		|
+| fputest.c:12: }
+	lea (20,%sp),%sp	|,
+	moveq #0,%d0	|
+	rts	
+	.size	main, .-main
+	.globl	input
+	.data
+	.align	2
+	.type	input, @object
+	.size	input, 8
+input:
+	.long	1072693248
+	.long	0
+	.ident	"GCC: (GNU) 14.2.0"

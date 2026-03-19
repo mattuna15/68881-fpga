@@ -336,16 +336,56 @@ provides an interactive monitor with a built-in assembler (CODE68K) and disassem
   arithmetic, FMOVECR, FMOVE to/from control registers, FMOVE to memory,
   and FBcc branches with all 32 condition codes
 - **MFP emulation** -- MC68901 USART emulation maps ARM UART RX/TX to the
-  BIOS character I/O, enabling keyboard input and serial output
+  BIOS character I/O, enabling keyboard input and serial output. Includes
+  millisecond tick counter, RTC (Unix seconds + BCD datetime via ZynqMP PS
+  RTC), and Timer C periodic interrupt (~38 Hz, IPL 6 autovectored)
+- **Real-time clock** -- TRAP #15 D0=22 (GET_RTC), D0=23 (GET_DATETIME),
+  D0=24 (SET_RTC). Backed by ZynqMP PS hardware RTC with battery retention.
+  BCD datetime returns packed YYYYMMDD + HHMMSSwd
+- **Timer C interrupt** -- MC68901-compatible Timer C with configurable
+  prescaler (TCDCR bits 6-4) and counter (TCDR). Default ~38 Hz. Fires
+  IPL 6 autovector (vector 70). BIOS tick counter via TRAP #15 D0=25
+- **Graphics mode** -- 1280x720 ARGB8888 pixel-addressable framebuffer at
+  `$800000`. TRAP #15 D0=17-21 for mode switching, clear, set/get pixel,
+  screen info. Direct framebuffer writes for high-speed rendering
 - **DisplayPort text output** -- 80x30 character text framebuffer rendered
   to 1280x720@60Hz ARGB8888 via PS DisplayPort TX + DPDMA
+- **S-record loader** -- `L` command loads Motorola S-record files (S1/S2/S3
+  data records, S7/S8/S9 termination). Used to load GCC-compiled programs
+
+### TRAP #15 Functions
+
+| D0 | Function | Parameters | Returns |
+|----|----------|-----------|---------|
+| 0 | Print string (CRLF) | A1=string, D1.W=len | — |
+| 1 | Print string (raw) | A1=string, D1.W=len | — |
+| 2 | Read string | A1=buffer | D1.W=len |
+| 3 | Print signed decimal | D1.L=number | — |
+| 5 | Read char | — | D1.B=char |
+| 6 | Write char | D1.B=char | — |
+| 7 | Char ready | — | D1.B (0/1) |
+| 8 | Get time (ms) | — | D1.L=milliseconds |
+| 12 | Set echo | D1.B (0=off, 1=on) | — |
+| 17 | Set video mode | D1.B (0=text, 1=gfx) | — |
+| 18 | Clear framebuffer | D1.L=ARGB colour | — |
+| 19 | Set pixel | D1.W=X, D2.W=Y, D3.L=ARGB | — |
+| 20 | Get pixel | D1.W=X, D2.W=Y | D1.L=ARGB |
+| 21 | Screen info | — | D1.W=width, D2.W=height |
+| 22 | Get RTC | — | D1.L=Unix seconds |
+| 23 | Get datetime | — | D1.L=YYYYMMDD, D2.L=HHMMSSwd (BCD) |
+| 24 | Set RTC | D1.L=Unix seconds | — |
+| 25 | Get ticks | — | D1.L=Timer C tick count |
 
 ### Memory Map
 
 | Address | Size | Description |
 |---------|------|-------------|
-| `$000000-$00FFFF` | 64K | RAM (workspace, stack) |
-| `$FD0000-$FD003F` | 64 bytes | MC68901 MFP (emulated) |
+| `$000000-$001FFF` | 8K | BIOS workspace (vectors, variables, stack) |
+| `$002000-$7FDFFF` | ~8 MB | Program RAM (code, data, BSS, heap) |
+| `$7FDFFC` | — | Stack top (grows down) |
+| `$800000-$B84FFF` | 3.6 MB | Graphics framebuffer (1280x720 ARGB8888) |
+| `$FD0000-$FD003F` | 64 bytes | MC68901 MFP (emulated, incl. RTC + timers) |
+| `$FD0040-$FD004F` | 16 bytes | Graphics control registers |
 | `$FE0000-$FFFFFF` | 128K | ROM (BIOS image) |
 
 ### Building the ROM

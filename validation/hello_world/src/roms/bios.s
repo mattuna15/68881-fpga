@@ -217,10 +217,10 @@ WARMSTART
 		BSR.W	printString
 .rtcDone
 
-* Enable Timer C: prescaler /200 (bits 6-4 = 111), counter 192 -> ~38 Hz
-		MOVE.B	#$70,MFPTCDCR
-		MOVE.B	#192,MFPTCDR
-		ANDI.W	#$F8FF,SR	Enable interrupts (clear IPL mask)
+* Timer C already configured by MFPINIT (TCDCR=$71: TC /200, TD /4; TCDR=$5C=92)
+* -> Timer C rate = 2457600 / 200 / 92 = ~133.6 Hz
+* Enable interrupts so Timer C handler fires
+		ANDI.W	#$F8FF,SR	Clear IPL mask (enable all interrupts)
 
 PROMPT		LEA.L	msgPrompt,A0	Print prompt************************
 		BSR.W	printString  **********************

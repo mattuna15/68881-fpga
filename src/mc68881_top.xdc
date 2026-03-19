@@ -100,11 +100,39 @@ set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_hi_reg_reg*/D}]
 set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_hi_reg_reg*/D}]
 
-# --- CIR state -> MOVE exception destinations (2-cycle MCP) ---
+# --- CIR state -> MOVE exception + result destinations (2-cycle MCP) ---
 # CIR FSM state decode feeds into MOVE dispatch and format conversion
 # (fp80_to_single/double rounding). State is stable through MOVE execution.
 set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_force_*_reg}]
 set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_force_*_reg}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_result_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_result_reg_reg*}]
+
+# --- cir_dst_reg_idx -> MOVE result + exception destinations (2-cycle MCP) ---
+# Destination register index is decoded during CIR cpGEN dispatch, stable
+# through the entire MOVE/ALU execution pipeline. Feeds into fp_reg_file_reg
+# write mux, exc_event_result format conversion, and exc_event_force_* comparison.
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_force_*_reg}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_force_*_reg}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_result_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_result_reg_reg*}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *fp_reg_file_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *fp_reg_file_reg_reg*}]
+
+# --- operand_reg -> fp_reg_file_reg (2-cycle MCP) ---
+# Operand data feeds through format conversion (fp80_to_single/double or
+# direct writeback) into register file. Operand is loaded during CIR transfer,
+# stable through MOVE execution.
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *operand_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *fp_reg_file_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *operand_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *fp_reg_file_reg_reg*}]
+
+# --- operand_reg -> result_ex_reg (2-cycle MCP) ---
+# Operand format conversion path to result exponent register.
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *operand_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *result_ex_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *operand_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *result_ex_reg_reg*}]
 
 # --- fp_reg_file_reg -> MOVE REG_TO_MEM destinations (2-cycle MCP) ---
 # MOVE REG_TO_MEM reads fp_reg_file_reg(src_idx), does format conversion

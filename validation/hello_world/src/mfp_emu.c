@@ -71,7 +71,18 @@ static uint32_t rtc_read_seconds(void)
 
 static void rtc_write_seconds(uint32_t secs)
 {
+    /* ZynqMP RTC: SET_TIME_WR loads a new value into the seconds counter.
+     * The write takes effect at the next tick boundary.  We also need to
+     * ensure the calibration max_tick is set (default crystal = 32768 Hz). */
+    uint32_t calib = Xil_In32(XRTC_BASEADDR + XRTC_CALIB_RD_OFFSET);
+    if ((calib & XRTC_CALIB_RD_MAX_TCK_MASK) == 0) {
+        /* Calibration not set — write default 32.768 kHz tick count */
+        Xil_Out32(XRTC_BASEADDR + XRTC_CALIB_WR_OFFSET, 0x00007FFF);
+    }
     Xil_Out32(XRTC_BASEADDR + XRTC_SET_TIME_WR_OFFSET, secs);
+    xil_printf("[RTC] Set time to %lu (readback: %lu)\r\n",
+               (unsigned long)secs,
+               (unsigned long)Xil_In32(XRTC_BASEADDR + XRTC_CUR_TIME_OFFSET));
 }
 
 /* RTC write accumulator (big-endian byte writes build a 32-bit value) */

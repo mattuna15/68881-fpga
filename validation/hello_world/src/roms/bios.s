@@ -1034,11 +1034,12 @@ setDebugVectors
 
 ****************************************
 *  setTimerCVector — install Timer C IPL 6 autovector handler
-*  Vector 70 = autovector level 6 at address $118
+*  68000 autovector level 6 = vector 30 = address $78
+*  (vector number = 24 + IPL level)
 *
 setTimerCVector
 		LEA	timerCHandler,A0
-		MOVE.L	A0,$118		Vector 70: autovector level 6
+		MOVE.L	A0,$78		Vector 30: autovector level 6
 		CLR.L	TIMER_TICK
 		RTS
 

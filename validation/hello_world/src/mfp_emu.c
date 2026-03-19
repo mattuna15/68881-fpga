@@ -64,25 +64,46 @@ static void tc_recompute(void)
 /* RTC helpers — access ZynqMP PS RTC at 0xFFA60000                   */
 /* ------------------------------------------------------------------ */
 
-static uint32_t rtc_read_seconds(void)
-{
-    return Xil_In32(XRTC_BASEADDR + XRTC_CUR_TIME_OFFSET);
-}
+/*
+ * ZynqMP RTC set time.
+ *
+ * The PS RTC has a free-running seconds counter. CUR_TIME reads the live
+ * counter. SET_TIME_WR sets the counter value, but it latches on the next
+ * second tick — so CUR_TIME may briefly return the old value.
+ *
+ * The Xilinx standalone driver (XRtcPsu_SetTime) writes to SET_TIME_WR
+ * and the hardware reloads the counter at the next tick boundary.
+ * We also store the last-written value so reads immediately after a write
+ * can return the intended time rather than a stale hardware readback.
+ */
+static uint32_t rtc_set_value;      /* last value written via SET_RTC */
+static int rtc_set_pending;         /* 1 = write pending hardware latch */
 
 static void rtc_write_seconds(uint32_t secs)
 {
-    /* ZynqMP RTC: SET_TIME_WR loads a new value into the seconds counter.
-     * The write takes effect at the next tick boundary.  We also need to
-     * ensure the calibration max_tick is set (default crystal = 32768 Hz). */
     uint32_t calib = Xil_In32(XRTC_BASEADDR + XRTC_CALIB_RD_OFFSET);
     if ((calib & XRTC_CALIB_RD_MAX_TCK_MASK) == 0) {
-        /* Calibration not set — write default 32.768 kHz tick count */
         Xil_Out32(XRTC_BASEADDR + XRTC_CALIB_WR_OFFSET, 0x00007FFF);
     }
     Xil_Out32(XRTC_BASEADDR + XRTC_SET_TIME_WR_OFFSET, secs);
-    xil_printf("[RTC] Set time to %lu (readback: %lu)\r\n",
-               (unsigned long)secs,
-               (unsigned long)Xil_In32(XRTC_BASEADDR + XRTC_CUR_TIME_OFFSET));
+    rtc_set_value = secs;
+    rtc_set_pending = 1;
+}
+
+static uint32_t rtc_read_seconds(void)
+{
+    uint32_t hw = Xil_In32(XRTC_BASEADDR + XRTC_CUR_TIME_OFFSET);
+    if (rtc_set_pending) {
+        /* Hardware may not have latched yet — if readback is still the
+         * old value, return what we wrote + elapsed since write. */
+        int32_t diff = (int32_t)(hw - rtc_set_value);
+        if (diff < -1 || diff > 2) {
+            /* Hardware hasn't latched the new value yet — use our value */
+            return rtc_set_value;
+        }
+        rtc_set_pending = 0;  /* hardware caught up */
+    }
+    return hw;
 }
 
 /* RTC write accumulator (big-endian byte writes build a 32-bit value) */
@@ -191,6 +212,7 @@ void mfp_init(void)
     rtc_write_count = 0;
     rtc_latch_valid = 0;
     datetime_latch_valid = 0;
+    rtc_set_pending = 0;
 }
 
 int mfp_timer_tick(uint32_t cycles_elapsed)

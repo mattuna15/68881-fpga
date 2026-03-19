@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 #include "../lib/merlin2_gfx.h"
 #include "../lib/merlin2_rtc.h"
 
@@ -24,7 +25,6 @@ static int is_leap(int y)
     return (y % 4 == 0 && (y % 100 != 0 || y % 400 == 0));
 }
 
-/* Convert date/time to Unix timestamp */
 static uint32_t datetime_to_epoch(int year, int month, int day,
                                    int hour, int min, int sec)
 {
@@ -42,75 +42,88 @@ static uint32_t datetime_to_epoch(int year, int month, int day,
     return days * 86400u + (uint32_t)hour * 3600u + (uint32_t)min * 60u + (uint32_t)sec;
 }
 
-/* Disable/enable BIOS echo via TRAP #15 D0=12 */
-static void set_echo(int on)
+/* Read a line using BIOS TRAP #15 D0=2 (readline with echo + editing).
+ * Returns pointer to null-terminated string in a static buffer. */
+static char line_buf[82];
+
+static char *bios_readline(void)
 {
-    register long d0 __asm__("d0") = 12;
-    register long d1 __asm__("d1") = on;
-    __asm__ volatile("trap #15" : "+d"(d0), "+d"(d1) : : "a0", "a1", "memory", "cc");
+    register long d0 __asm__("d0") = 2;
+    register long a1 __asm__("a1") = (long)line_buf;
+    __asm__ volatile("trap #15" : "+d"(d0), "+r"(a1) : : "d1", "a0", "memory", "cc");
+    return line_buf;
 }
 
-/* Read a single character, echo it ourselves */
-static int readch(void)
+/* Read a single char using BIOS TRAP #15 D0=5 */
+static int bios_getchar(void)
 {
-    int ch = getchar();
-    putchar(ch);
-    return ch;
+    register long d0 __asm__("d0") = 5;
+    register long d1 __asm__("d1");
+    __asm__ volatile("trap #15" : "+d"(d0), "=d"(d1) : : "a0", "a1", "memory", "cc");
+    return (int)(d1 & 0xFF);
 }
 
-/* Read a decimal number terminated by delimiter char. */
-static int read_num(char term)
+/* Parse "YYYY-MM-DD" from string, returns number of chars consumed */
+static int parse_date(const char *s, int *year, int *month, int *day)
 {
-    int val = 0;
-    int ch;
-    while (1) {
-        ch = readch();
-        if (ch == term || ch == '\r' || ch == '\n')
-            break;
-        if (ch >= '0' && ch <= '9')
-            val = val * 10 + (ch - '0');
-    }
-    return val;
+    int n = 0;
+    *year = *month = *day = 0;
+    /* YYYY */
+    while (s[n] >= '0' && s[n] <= '9') { *year = *year * 10 + (s[n] - '0'); n++; }
+    if (s[n] == '-') n++;
+    /* MM */
+    while (s[n] >= '0' && s[n] <= '9') { *month = *month * 10 + (s[n] - '0'); n++; }
+    if (s[n] == '-') n++;
+    /* DD */
+    while (s[n] >= '0' && s[n] <= '9') { *day = *day * 10 + (s[n] - '0'); n++; }
+    return n;
+}
+
+/* Parse "HH:MM:SS" from string */
+static int parse_time(const char *s, int *hour, int *min, int *sec)
+{
+    int n = 0;
+    *hour = *min = *sec = 0;
+    while (s[n] >= '0' && s[n] <= '9') { *hour = *hour * 10 + (s[n] - '0'); n++; }
+    if (s[n] == ':') n++;
+    while (s[n] >= '0' && s[n] <= '9') { *min = *min * 10 + (s[n] - '0'); n++; }
+    if (s[n] == ':') n++;
+    while (s[n] >= '0' && s[n] <= '9') { *sec = *sec * 10 + (s[n] - '0'); n++; }
+    return n;
 }
 
 int main(void)
 {
     printf("RTC test\n\n");
 
-    /* Show current RTC */
     printf("Current RTC: ");
     print_datetime();
     printf("Unix timestamp: %lu\n\n", (unsigned long)rtc_get_time());
 
-    /* Prompt to set time */
     printf("Set date/time? (y/n): ");
-
-    /* Disable BIOS echo so we control it ourselves */
-    set_echo(0);
-
-    int ch = readch();
+    int ch = bios_getchar();
     printf("\n");
 
     if (ch == 'y' || ch == 'Y') {
         int year, month, day, hour, min, sec;
+        char *line;
 
-        printf("Enter date/time as: YYYY-MM-DD HH:MM:SS\n");
         printf("Date (YYYY-MM-DD): ");
-        year  = read_num('-');
-        month = read_num('-');
-        day   = read_num('\r');
+        line = bios_readline();
+        parse_date(line, &year, &month, &day);
         printf("\n");
 
         printf("Time (HH:MM:SS): ");
-        hour = read_num(':');
-        min  = read_num(':');
-        sec  = read_num('\r');
+        line = bios_readline();
+        parse_time(line, &hour, &min, &sec);
         printf("\n");
 
-        uint32_t epoch = datetime_to_epoch(year, month, day, hour, min, sec);
         printf("Parsed: %04d-%02d-%02d %02d:%02d:%02d\n",
                year, month, day, hour, min, sec);
-        printf("Setting RTC to %lu...\n", (unsigned long)epoch);
+
+        uint32_t epoch = datetime_to_epoch(year, month, day, hour, min, sec);
+        printf("Unix epoch: %lu\n", (unsigned long)epoch);
+        printf("Setting RTC...\n");
         rtc_set_time(epoch);
 
         printf("RTC now: ");
@@ -118,10 +131,6 @@ int main(void)
         printf("\n");
     }
 
-    /* Re-enable BIOS echo */
-    set_echo(1);
-
-    /* Show tick counter */
     printf("Timer C ticks (press any key to stop):\n");
     uint32_t last = rtc_get_ticks();
     while (!gfx_char_ready()) {

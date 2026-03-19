@@ -99,10 +99,15 @@ static void rom_boot(void)
     /* Initialise MFP emulation */
     mfp_init();
 
-    /* Initialise F-line handler (hardware FPU via AXI-Lite) */
+    /* Initialise F-line handler (hardware FPU via AXI-Lite).
+     * Skip under QEMU — PL fabric not present. */
+#ifndef QEMU_MODE
     if (fline_init() != 0) {
         xil_printf("[ROM] WARNING: F-line handler init failed\r\n");
     }
+#else
+    xil_printf("[ROM] QEMU mode — F-line handler skipped (no PL)\r\n");
+#endif
 
     /* Initialise text framebuffer */
     pixel_buf = text_fb_init();
@@ -116,8 +121,9 @@ static void rom_boot(void)
     text_fb_render();
     Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
 
-    /* Initialise DisplayPort output.
+    /* Initialise DisplayPort output (skip under QEMU — DP hardware not present).
      * Returns: 0 = success, 1 = no monitor, <0 = error */
+#ifndef QEMU_MODE
     status = dp_video_init(pixel_buf);
     if (status < 0) {
         xil_printf("[ROM] WARNING: DP init failed (%d), "
@@ -127,6 +133,9 @@ static void rom_boot(void)
     } else {
         xil_printf("[ROM] No DP monitor — UART-only output\r\n");
     }
+#else
+    xil_printf("[ROM] QEMU mode — DP init skipped\r\n");
+#endif
 
     /* Initialise Musashi 68000 core */
     m68k_set_cpu_type(M68K_CPU_TYPE_68000);

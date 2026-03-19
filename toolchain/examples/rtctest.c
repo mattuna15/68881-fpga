@@ -94,6 +94,14 @@ static int parse_time(const char *s, int *hour, int *min, int *sec)
 
 int main(void)
 {
+    /* Disable stdout buffering so prompts appear immediately,
+     * and ensure clean state on re-run without reload */
+    setvbuf(stdout, NULL, _IONBF, 0);
+
+    /* Drain any pending keypress from previous run */
+    while (gfx_char_ready())
+        bios_getchar();
+
     printf("RTC test\n\n");
 
     printf("Current RTC: ");
@@ -101,7 +109,6 @@ int main(void)
     printf("Unix timestamp: %lu\n\n", (unsigned long)rtc_get_time());
 
     printf("Set date/time? (y/n): ");
-    fflush(stdout);
     int ch = bios_getchar();
     printf("\n");
 
@@ -110,13 +117,11 @@ int main(void)
         char *line;
 
         printf("Date (YYYY-MM-DD): ");
-        fflush(stdout);
         line = bios_readline();
         parse_date(line, &year, &month, &day);
         printf("\n");
 
         printf("Time (HH:MM:SS): ");
-        fflush(stdout);
         line = bios_readline();
         parse_time(line, &hour, &min, &sec);
         printf("\n");

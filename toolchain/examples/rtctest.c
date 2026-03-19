@@ -98,9 +98,14 @@ int main(void)
      * and ensure clean state on re-run without reload */
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    /* Drain any pending keypress from previous run */
-    while (gfx_char_ready())
-        bios_getchar();
+    /* Brief delay then drain any pending characters from previous run
+     * or from the BIOS "G 2004\r\n" command that launched us */
+    {
+        volatile int i;
+        for (i = 0; i < 100000; i++) ;  /* let UART settle */
+        while (gfx_char_ready())
+            bios_getchar();
+    }
 
     printf("RTC test\n\n");
 
@@ -109,7 +114,10 @@ int main(void)
     printf("Unix timestamp: %lu\n\n", (unsigned long)rtc_get_time());
 
     printf("Set date/time? (y/n): ");
-    int ch = bios_getchar();
+    int ch;
+    do {
+        ch = bios_getchar();
+    } while (ch == '\r' || ch == '\n');  /* skip leftover line endings */
     printf("\n");
 
     if (ch == 'y' || ch == 'Y') {

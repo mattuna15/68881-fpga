@@ -171,17 +171,19 @@ ROMSTART	EQU	*		BEGINNING OF PROGRAM SECTION
 	*	MOVEC.L	D0,VBR		AND INITIALIZE VBR TO POINT THERE
 
 ****************************************
-*	Initialize the MC68901 MFP
-
-		BSR.W	MFPINIT		DO SO AS SUBROUTINE FOR LATER USE
-
-****************************************
-*	Initialize the TRAP vectors
+*	Initialize the TRAP and interrupt vectors (BEFORE MFP init,
+*	because MFPINIT configures Timer C which starts the emulator's
+*	cycle counter — vector 70 must be valid before that happens)
 		BSR.W	setTrap1	Initialize MFP GPIO TRAP1 vector
 		BSR.W	setTrap15	Initialize IO TRAP15 vector
 		BSR.W	setExcVectors	Initialize fault vectors 2-7
 		BSR.W	setDebugVectors	Install trace + illegal vectors
 		BSR.W	setTimerCVector	Install Timer C IPL 6 handler
+
+****************************************
+*	Initialize the MC68901 MFP
+
+		BSR.W	MFPINIT		DO SO AS SUBROUTINE FOR LATER USE
 
 WARMSTART
 	IFEQ	EASY68K_SIM

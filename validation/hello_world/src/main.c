@@ -142,11 +142,11 @@ static void rom_boot(void)
         /* Execute a batch of M68K instructions */
         m68k_execute(EMU_CYCLES_PER_TICK);
 
-        /* Timer C interrupt check */
+        /* Timer C interrupt: pulse IRQ 6 for one execute cycle */
         if (mfp_timer_tick(EMU_CYCLES_PER_TICK)) {
             m68k_set_irq(6);
-        } else {
-            m68k_set_irq(0);  /* deassert when no pending interrupt */
+            m68k_execute(1);  /* let Musashi acknowledge the interrupt */
+            m68k_set_irq(0);  /* deassert */
         }
 
         /* Refresh display based on active mode */

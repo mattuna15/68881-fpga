@@ -142,6 +142,13 @@ static void rom_boot(void)
         /* Execute a batch of M68K instructions */
         m68k_execute(EMU_CYCLES_PER_TICK);
 
+        /* Timer C interrupt check */
+        if (mfp_timer_tick(EMU_CYCLES_PER_TICK)) {
+            m68k_set_irq(6);
+        } else {
+            m68k_set_irq(0);  /* deassert when no pending interrupt */
+        }
+
         /* Refresh display based on active mode */
         if (gfx_get_mode()) {
             /* Graphics mode: flush pixel buffer directly */

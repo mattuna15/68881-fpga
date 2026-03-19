@@ -52,8 +52,10 @@ MFPSCR		EQU     MFPBAS+$27	SYNCHRONOUS CHARACTER REGISTER
 MFPUCR		EQU     MFPBAS+$29	USART CONTROL REGISTER		
 MFPRSR		EQU     MFPBAS+$2B	RECEIVER STATUS REGISTER	
 MFPTSR		EQU     MFPBAS+$2D	TRANSMITTER STATUS REGISTER	
-MFPUDR		EQU     MFPBAS+$2F	USART DATA REGISTER		
-	
+MFPUDR		EQU     MFPBAS+$2F	USART DATA REGISTER
+MFPRTC		EQU     MFPBAS+$34	RTC UNIX SECONDS (R/W, 32-BIT)
+MFPDATETIME	EQU     MFPBAS+$38	BCD DATETIME (R, 64-BIT: YYYYMMDD HHMMSSwd)
+
 ****************************************
 *   ASCII Equates		
 NOC      EQU     $80            (BIT 7 SET) NO OPERAND
@@ -153,6 +155,9 @@ BPCNT    DS.W    NUMBP           Pass counts (0=break every hit)
 BPTADD   DS.L    1               Temporary breakpoint address
 BPTDATA  DS.W    1               Temporary BP saved word
 
+         EVEN
+TIMER_TICK DS.L  1               Timer C tick counter (incremented by IPL 6 handler)
+
 *****************************************************************************************************
 *	Program section		
 *	The ROM in this BIOS is mapped to the variable
@@ -176,6 +181,7 @@ ROMSTART	EQU	*		BEGINNING OF PROGRAM SECTION
 		BSR.W	setTrap15	Initialize IO TRAP15 vector
 		BSR.W	setExcVectors	Initialize fault vectors 2-7
 		BSR.W	setDebugVectors	Install trace + illegal vectors
+		BSR.W	setTimerCVector	Install Timer C IPL 6 handler
 
 WARMSTART
 	IFEQ	EASY68K_SIM
@@ -200,7 +206,22 @@ WARMSTART
 		MOVE.B #1,D1
 		MOVE.B #16,D0
 		TRAP #15
-		
+
+* Print RTC status
+		MOVE.L	MFPRTC,D1
+		BEQ.S	.noRtc
+		LEA.L	msgRtcSet,A0
+		BSR.W	printString
+		BRA.S	.rtcDone
+.noRtc		LEA.L	msgRtcNotSet,A0
+		BSR.W	printString
+.rtcDone
+
+* Enable Timer C: prescaler /200 (bits 6-4 = 111), counter 192 -> ~38 Hz
+		MOVE.B	#$70,MFPTCDCR
+		MOVE.B	#192,MFPTCDR
+		ANDI.W	#$F8FF,SR	Enable interrupts (clear IPL mask)
+
 PROMPT		LEA.L	msgPrompt,A0	Print prompt************************
 		BSR.W	printString  **********************
 		BSR.W	readLine	Get User Input    ****		*****
@@ -1010,6 +1031,20 @@ setDebugVectors
 		RTS
 
 ****************************************
+*  setTimerCVector — install Timer C IPL 6 autovector handler
+*  Vector 70 = autovector level 6 at address $118
+*
+setTimerCVector
+		LEA	timerCHandler,A0
+		MOVE.L	A0,$118		Vector 70: autovector level 6
+		CLR.L	TIMER_TICK
+		RTS
+
+timerCHandler
+		ADDQ.L	#1,TIMER_TICK
+		RTE
+
+****************************************
 *  saveRegs — save all registers from exception context
 *  Called via BSR from handler, so stack is:
 *    (A7)+0: BSR return address (4 bytes)
@@ -1585,6 +1620,18 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 		CMP.B	#21,D0		D0= 21 Screen info -> D1.W=width, D2.W=height
 		BEQ	.io21
 
+		CMP.B	#22,D0		D0= 22 Get RTC (-> D1.L = Unix seconds)
+		BEQ	.io22
+
+		CMP.B	#23,D0		D0= 23 Get datetime (-> D1.L=YYYYMMDD, D2.L=HHMMSSwd BCD)
+		BEQ	.io23
+
+		CMP.B	#24,D0		D0= 24 Set RTC (D1.L = Unix seconds)
+		BEQ	.io24
+
+		CMP.B	#25,D0		D0= 25 Get tick counter (-> D1.L)
+		BEQ	.io25
+
 .ioExcEnd	RTE			Return from exception
 
 .io0		move.l	A0,-(A7)	Save A0
@@ -1842,7 +1889,36 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 	MOVE.W	#1280,D1
 	MOVE.W	#720,D2
 	BRA	.ioExcEnd
-	
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=22: Get RTC (Unix timestamp)
+*   Returns: D1.L = seconds since 1970-01-01
+*----------------------------------------------------------------------
+.io22	MOVE.L	MFPRTC,D1
+	BRA	.ioExcEnd
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=23: Get datetime (BCD)
+*   Returns: D1.L = YYYYMMDD (BCD), D2.L = HHMMSSwd (BCD)
+*----------------------------------------------------------------------
+.io23	MOVE.L	MFPDATETIME,D1
+	MOVE.L	MFPDATETIME+4,D2
+	BRA	.ioExcEnd
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=24: Set RTC
+*   D1.L = Unix timestamp to set
+*----------------------------------------------------------------------
+.io24	MOVE.L	D1,MFPRTC
+	BRA	.ioExcEnd
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=25: Get tick counter
+*   Returns: D1.L = Timer C tick count since boot
+*----------------------------------------------------------------------
+.io25	MOVE.L	TIMER_TICK,D1
+	BRA	.ioExcEnd
+
 cvtCase
 		LEA	LINEBUF,A0	Get start of line
 * Skip leading spaces
@@ -7074,7 +7150,9 @@ msgBanner	DC.B	'================================================================
 			DC.B	'================================================================================',CR,LF
 			DC.B	'ver 2.1 build 001  MATT PEARCE 2024-2026  |  MC68000 + MC68881 FPGA',CR,LF,0
 
-msgPrompt	DC.B	'>',0	
+msgPrompt	DC.B	'>',0
+msgRtcSet	DC.B	'RTC: set',CR,LF,0
+msgRtcNotSet	DC.B	'RTC: not set',CR,LF,0
 
 msgNoCMD	DC.B	'Invalid Command',CR,LF,0
 msgBadAddr	DC.B	'Invalid Address',CR,LF,0

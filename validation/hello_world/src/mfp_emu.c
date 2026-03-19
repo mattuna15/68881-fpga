@@ -91,12 +91,13 @@ static int rtc_write_count;
 
 /* Latched RTC snapshot — prevents torn reads across byte accesses.
  * Musashi builds longwords from 4 byte reads; re-sampling the hardware
- * RTC on each byte could mix values across a second rollover. */
+ * RTC on each byte could mix values across a second rollover.
+ * rtc_latch_valid is cleared on write to force re-read. */
 static uint32_t rtc_latch;
-static uint32_t rtc_latch_offset;  /* offset of first byte read (for latch invalidation) */
+static int rtc_latch_valid;
 static uint32_t datetime_date_latch;
 static uint32_t datetime_time_latch;
-static uint32_t datetime_latch_offset;
+static int datetime_latch_valid;
 
 /* Convert Unix epoch seconds to BCD date and time.
  * date_bcd = 0xYYYYMMDD, time_bcd = 0xHHMMSSwd (wd = weekday, 0=Sun) */
@@ -185,9 +186,11 @@ void mfp_init(void)
     tc_period_cycles = 0;
     tc_accumulator = 0;
 
-    /* RTC write accumulator */
+    /* RTC write accumulator and read latch state */
     rtc_write_accum = 0;
     rtc_write_count = 0;
+    rtc_latch_valid = 0;
+    datetime_latch_valid = 0;
 }
 
 int mfp_timer_tick(uint32_t cycles_elapsed)
@@ -262,12 +265,16 @@ uint8_t mfp_read(uint32_t offset)
     case MFP_OFF_RTC + 1:
     case MFP_OFF_RTC + 2:
     case MFP_OFF_RTC + 3: {
-        /* Latch on first byte read to prevent torn values across
-         * the 4 byte reads that Musashi uses for a MOVE.L */
+        /* Latch on first byte read (or after invalidation by write) */
         int byte_idx = (int)(offset - MFP_OFF_RTC);
-        if (byte_idx == 0)
+        if (byte_idx == 0 || !rtc_latch_valid) {
             rtc_latch = rtc_read_seconds();
+            rtc_latch_valid = 1;
+        }
         int shift = (3 - byte_idx) * 8;
+        /* Invalidate after last byte so next MOVE.L gets fresh value */
+        if (byte_idx == 3)
+            rtc_latch_valid = 0;
         return (rtc_latch >> shift) & 0xFF;
     }
 
@@ -279,10 +286,14 @@ uint8_t mfp_read(uint32_t offset)
     case MFP_OFF_DATETIME + 5:
     case MFP_OFF_DATETIME + 6:
     case MFP_OFF_DATETIME + 7: {
-        /* Latch on first byte read to prevent torn date/time */
         int byte_idx = (int)(offset - MFP_OFF_DATETIME);
-        if (byte_idx == 0)
+        if (byte_idx == 0 || !datetime_latch_valid) {
             epoch_to_bcd(rtc_read_seconds(), &datetime_date_latch, &datetime_time_latch);
+            datetime_latch_valid = 1;
+        }
+        /* Invalidate after last byte */
+        if (byte_idx == 7)
+            datetime_latch_valid = 0;
         if (byte_idx < 4) {
             int shift = (3 - byte_idx) * 8;
             return (datetime_date_latch >> shift) & 0xFF;
@@ -336,6 +347,9 @@ void mfp_write(uint32_t offset, uint8_t value)
         if (rtc_write_count >= 4 || byte_idx == 3) {
             rtc_write_seconds(rtc_write_accum);
             rtc_write_count = 0;
+            /* Invalidate read latches so next read gets the new value */
+            rtc_latch_valid = 0;
+            datetime_latch_valid = 0;
         }
         break;
     }

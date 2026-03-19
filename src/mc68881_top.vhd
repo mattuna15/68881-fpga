@@ -4120,6 +4120,7 @@ begin
             if cir_restore_fw_reg = CIR_FRAME_NULL_FW then
               -- Null frame: reset FPU to power-on state, no data follows.
               cir_restore_null_req <= '1';
+              pending_valid_reg <= '0';  -- Clear 68882 pending queue on null restore.
               cir_state_reg <= CIR_IDLE;
             elsif is_valid_idle_fw(cir_restore_fw_reg) then
               -- Idle frame: expect 6 (68881) or 14 (68882) data words.

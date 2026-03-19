@@ -57,15 +57,16 @@ set_multicycle_path -hold 6 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 # ST_FP_DIV now uses sequential mc68881_divrem_unit in trig_inst,
 # so no direct div_*_reg -> tmp_reg MCP is required here.
 
-# --- Lightweight simple ALU ops -> result (2-cycle MCP = 200ns) ---
+# --- Lightweight simple ALU ops -> result (3-cycle MCP = 60ns @ 50 MHz) ---
 # ADD/SUB/MUL now use sequential mc68881_fp80_mul_unit / mc68881_fp80_addsub_unit.
-# Remaining lightweight ops (FINT, CMP, ABS, NEG, etc.) need 2-cycle MCP.
-set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
-set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
-set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_op_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_op_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+# Remaining lightweight ops (FINT, CMP, ABS, NEG, etc.) need 3-cycle MCP for 50 MHz.
+# (Was 2-cycle at 33 MHz; 45ns data path needs >40ns budget.)
+set_multicycle_path -setup 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+set_multicycle_path -hold 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+set_multicycle_path -setup 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+set_multicycle_path -hold 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_b_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+set_multicycle_path -setup 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_op_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
+set_multicycle_path -hold 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *simple_op_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]
 
 # --- Packed decimal fp80_to_int_trunc (4-cycle MCP = 121ns) ---
 # MUL/ADD paths now use sequential units; only int_trunc remains combinational.
@@ -99,7 +100,13 @@ set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_hi_reg_reg*/D}]
 set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_hi_reg_reg*/D}]
 
-# --- fp_reg_file_reg -> MOVE REG_TO_MEM destinations (2-cycle MCP = 60.6ns) ---
+# --- CIR state -> MOVE exception destinations (2-cycle MCP) ---
+# CIR FSM state decode feeds into MOVE dispatch and format conversion
+# (fp80_to_single/double rounding). State is stable through MOVE execution.
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_force_*_reg}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_force_*_reg}]
+
+# --- fp_reg_file_reg -> MOVE REG_TO_MEM destinations (2-cycle MCP) ---
 # MOVE REG_TO_MEM reads fp_reg_file_reg(src_idx), does format conversion
 # (fp80_to_single/double rounding + inexact comparison), writes exc_event_force_*.
 # fp_reg_file_reg is written by prior ALU/MOVE completion, >=3 CIR pipeline

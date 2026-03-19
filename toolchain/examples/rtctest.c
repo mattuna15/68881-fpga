@@ -101,6 +101,7 @@ int main(void)
     printf("Unix timestamp: %lu\n\n", (unsigned long)rtc_get_time());
 
     printf("Set date/time? (y/n): ");
+    fflush(stdout);
     int ch = bios_getchar();
     printf("\n");
 
@@ -109,11 +110,13 @@ int main(void)
         char *line;
 
         printf("Date (YYYY-MM-DD): ");
+        fflush(stdout);
         line = bios_readline();
         parse_date(line, &year, &month, &day);
         printf("\n");
 
         printf("Time (HH:MM:SS): ");
+        fflush(stdout);
         line = bios_readline();
         parse_time(line, &hour, &min, &sec);
         printf("\n");

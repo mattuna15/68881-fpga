@@ -1,12 +1,12 @@
 # MC68881 FPGA Core
 
 ## Overview
-A VHDL implementation of a Motorola MC68881-compatible floating-point
+A VHDL implementation of a Motorola MC68881/MC68882-compatible floating-point
 coprocessor targeting Xilinx 7-series and UltraScale+ FPGAs. The design implements
 the full MC68881 instruction set including all arithmetic, transcendental,
 program-control, system-control, and packed-decimal operations. It uses
 DSP-pipelined sequential FP units for the core arithmetic datapath with
-multi-cycle path constraints for timing closure at 33 MHz.
+multi-cycle path constraints for timing closure at 50 MHz.
 
 Hardware-verified on an Alinx AXU3EG board (Zynq UltraScale+ ZU3EG) via the
 AXI4-Lite wrapper at 100 MHz bus / 33 MHz FPU, with end-to-end tests covering
@@ -28,8 +28,14 @@ arithmetic, transcendental, exponential, and logarithmic operations.
 - **Data movement**: FMOVE (all formats including packed decimal `.P`),
   FMOVEM (register lists and control registers), FMOVECR (ROM constants).
 - **Program control**: FScc, FBcc, FDBcc, FTRAPcc, FNOP with BSUN trap gating.
+- **MC68882 mode** (`fpu_version_g => FPU_68882`): Pin-compatible 68882 variant
+  with larger FSAVE frames (idle $0038/14W, busy $00D4/53W), pending instruction
+  pipeline (accepts a second cpGEN while the first is executing; auto-launches on
+  completion), and NULL response during CIR_EXECUTE for reduced CPU stalls.
+  FRESTORE accepts both 68881 and 68882 format words for migration compatibility.
+  Default is FPU_68881 for backward compatibility.
 - **System control**: FSAVE/FRESTORE with Null/Idle/Busy frame support (45-word
-  Busy frame with full sub-unit save/restore hierarchy).
+  68881 / 53-word 68882 Busy frame with full sub-unit save/restore hierarchy).
 - **IEEE 754 compliance**: NaN propagation (SNaN/QNaN discrimination, payload
   preservation), infinity handling, signed zero, gradual underflow, all four
   rounding modes (nearest, zero, +inf, -inf), single/double/extended precision.
@@ -62,13 +68,14 @@ CIR coprocessor interface, full exception dialog paths, undocumented FMOVECR ROM
 and graphics framebuffer support.*
 
 ### Timing
-- Target clock: **33 MHz** (30.303 ns period) — 3.3× faster than original MC68881.
+- Target clock: **50 MHz** (20.0 ns period) — 2× the original MC68881 max (25 MHz).
 - Multi-cycle path constraints on sequential FP units, trig engine hold states,
   format conversion paths (operand staging, MOVE dispatch, LOG exponent conversion,
   FP register file to exception destinations).
 - Packed decimal encode pipeline: 3-stage split (exponent extraction → DSP multiply
   → scale computation) with pipelined DSP48E1 input.
-- Post-route WNS: **+0.045 ns** full / **+0.160 ns** lite (timing met). No hold violations.
+- Post-route WNS at 33 MHz: **+0.045 ns** full / **+0.160 ns** lite (timing met). No hold violations.
+  50 MHz constraint applied; timing closure pending synthesis verification.
 
 ### Target device compatibility
 The design fits on several FPGA families. With `fpu_lite_g => true` (MC68040
@@ -199,7 +206,7 @@ report_utilization -hierarchical -hierarchical_depth 10 -file mc68881_top_util_h
 
 ### Transcendental accuracy
 The transcendental engine achieves 30–55 bits of accuracy across operations,
-verified by the torture testbench (349 self-checking tests):
+verified by the torture testbench (357 self-checking tests):
 
 | Operation | Typical accuracy | Method |
 |-----------|-----------------|--------|

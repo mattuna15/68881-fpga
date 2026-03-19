@@ -74,10 +74,14 @@ _start:
 	link	%a6, #-8
 
 	/*
-	 * Zero out the BSS section.
+	 * Zero out the BSS section + 16K of heap above _end.
+	 * The heap must be cleared for re-run (G 2004 without reload):
+	 * malloc's free-list metadata from the previous run survives
+	 * in the heap area and causes hangs if not zeroed.
 	 */
 	move.l	#__bss_start, %d1
 	move.l	#_end, %d0
+	add.l	#16384, %d0	/* clear 16K beyond BSS for heap arena */
 	cmp.l	%d0, %d1
 	beq.s	3f
 	move.l	%d1, %a0

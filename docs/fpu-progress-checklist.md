@@ -505,6 +505,54 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 - **Subnormal reference flush**: `fp80_hex_safe` flushes subnormal results to zero.
   DIV TINY/TWO and MUL TINY*HALF comments should note the reference is flushed to zero.
 
+G) MC68882 Upgrade
+------------------
+Target: Add MC68882 mode via `fpu_version_g` generic (FPU_68881 default, FPU_68882 optional).
+
+[x] G1. Package: add `fpu_version_t` type, 68882 frame constants, helper functions, new CIR states.
+    - `fpu_version_t` enum (FPU_68881, FPU_68882) in mc68881_pkg.
+    - Frame constants: IDLE_FW_82=$0038/14W, BUSY_FW_82=$00D4/53W.
+    - 8 helper functions: frame_idle_fw/busy_fw/idle_words/busy_words(ver),
+      is_valid_idle_fw/busy_fw(fw), idle_words_for_fw/busy_words_for_fw(fw).
+    - 4 new CIR states: CIR_PENDING_DECODE, CIR_PENDING_XFER_SRC, _WAIT, _WAIT2.
+
+[x] G2. Top-level: add `fpu_version_g` generic, version-resolved local constants.
+    - Entity generic `fpu_version_g : fpu_version_t := FPU_68881`.
+    - Architecture constants VER_FRAME_IDLE_FW/BUSY_FW/IDLE_WORDS/BUSY_WORDS.
+    - Widened signal ranges: cir_xfer_word_idx 0..52, cir_xfer_word_count 0..53.
+    - 15 pending instruction pipeline signals (pending_valid/opword/command/operand_staging/...).
+
+[x] G3. FSAVE: version-aware frame format output.
+    - CIR_SAVE_WAIT uses VER_FRAME_* constants.
+    - SAVE_FRAME data mux: 8 extra words (idle 6-13, busy 45-52) for pending pipeline state.
+    - Idle words 6-13 multiplex between pending state (68882 idle) and operand data (busy).
+
+[x] G4. FRESTORE: cross-compatible format acceptance.
+    - Accepts both 68881 ($0018/$00B4) and 68882 ($0038/$00D4) format words via is_valid_*_fw().
+    - Restore commit check widened to accept both busy word counts.
+    - Extra 68882 words (idle 6-13, busy 45-52) restore pending pipeline state.
+    - Null restore clears pending_valid_reg.
+
+[x] G5. Pending instruction pipeline (68882 mode only).
+    - CIR_EXECUTE: accept new cpGEN while ALU busy (gated on fpu_version_g = FPU_68882).
+    - CIR_PENDING_DECODE/XFER_SRC/WAIT/WAIT2: mirror normal CIR flow for pending operands.
+    - CIR_EXECUTE_DONE: auto-launch pending instruction via pending_launch_reg pulse.
+    - bus_frame_proc: pending_launch_reg handler mirrors cir_launch_alu operand loading.
+    - alu_control_proc: pending_launch_reg dispatch, FPIAR capture, cycle counting.
+    - Response primitive: CIR_EXECUTE returns NULL (not BUSY) when pending slot empty in 68882.
+    - was_pending_launch_reg + launch_dst_reg_idx_reg for correct writeback routing.
+
+[ ] G6. New testbench: tb_mc68882_fsave.vhd.
+    - 9 frame format tests (null/idle/busy save, idle/busy round-trip, cross-compat, invalid).
+    - 10 pending pipeline tests (back-to-back, handoff, full queue, exception, FSAVE preempt).
+
+[ ] G7. Update test runner: add tb_mc68882_fsave.vhd to scripts/run_tests.ps1.
+
+[ ] G8. (Nice-to-have) Clock speed target 50 MHz.
+    - Change XDC constraint from 30.303ns to 20.0ns.
+    - Pipeline critical format conversion / packed decimal paths.
+    - May require increased alu_latency for affected operations.
+
 ## Implementation Snapshot (2026-03-18, Graphics + Toolchain + FMOVECR)
 - Milestone:
   - **GCC cross-compiler toolchain** — m68k-elf-gcc 14.2.0 with `--with-cpu=68000`

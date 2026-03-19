@@ -6,8 +6,8 @@ set_property CFGBVS VCCO [current_design]
 set_property CONFIG_VOLTAGE 3.3 [current_design]
 set_property BITSTREAM.CONFIG.SPI_BUSWIDTH 4 [current_design]
 
-# Clock: 33 MHz target (30.303ns period)
-create_clock -period 30.303 -name sys_clk [get_ports clk]
+# Clock: 50 MHz target (20.0ns period)
+create_clock -period 20.0 -name sys_clk [get_ports clk]
 set_property IOSTANDARD LVCMOS33 [get_ports clk]
 set_property PACKAGE_PIN U22 [get_ports clk]
 

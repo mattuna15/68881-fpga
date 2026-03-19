@@ -301,6 +301,9 @@ package mc68881_pkg is
   constant CIR_ADDR_INSTADDR     : unsigned(4 downto 0) := "01100";  -- $18
   constant CIR_ADDR_OPADDR       : unsigned(4 downto 0) := "01110";  -- $1C
 
+  -- FPU version selector (68881 vs 68882).
+  type fpu_version_t is (FPU_68881, FPU_68882);
+
   -- Dialog FSM states.
   type cir_dialog_state_t is (
     CIR_IDLE,
@@ -322,7 +325,12 @@ package mc68881_pkg is
     CIR_SAVE_FORMAT,
     CIR_SAVE_FRAME,
     CIR_RESTORE_FORMAT,
-    CIR_RESTORE_FRAME
+    CIR_RESTORE_FRAME,
+    -- MC68882 pending instruction pipeline states.
+    CIR_PENDING_DECODE,
+    CIR_PENDING_XFER_SRC,
+    CIR_PENDING_XFER_SRC_WAIT,
+    CIR_PENDING_XFER_SRC_WAIT2
   );
 
   -- Response primitive categories (bits 15:13 of Response CIR).
@@ -357,13 +365,30 @@ package mc68881_pkg is
   constant CIR_SRC_BYTE          : std_logic_vector(2 downto 0) := "110";
   constant CIR_SRC_FPN           : std_logic_vector(2 downto 0) := "111";
 
-  -- FSAVE frame format words.
+  -- FSAVE frame format words (MC68881).
   constant CIR_FRAME_NULL_FW     : std_logic_vector(15 downto 0) := x"0000";
   constant CIR_FRAME_IDLE_FW     : std_logic_vector(15 downto 0) := x"0018";
   constant CIR_FRAME_BUSY_FW     : std_logic_vector(15 downto 0) := x"00B4";
   constant CIR_FRAME_IDLE_WORDS  : natural := 6;   -- 24 bytes / 4
   constant CIR_FRAME_BUSY_WORDS  : natural := 45;  -- 180 bytes / 4
   constant CIR_FRAME_BUSY_HDR    : natural := 12;  -- Header words 0-11 (operands + metadata)
+
+  -- FSAVE frame format words (MC68882).
+  constant CIR_FRAME_IDLE_FW_82     : std_logic_vector(15 downto 0) := x"0038";
+  constant CIR_FRAME_BUSY_FW_82     : std_logic_vector(15 downto 0) := x"00D4";
+  constant CIR_FRAME_IDLE_WORDS_82  : natural := 14;  -- 56 bytes / 4
+  constant CIR_FRAME_BUSY_WORDS_82  : natural := 53;  -- 212 bytes / 4
+
+  -- Version-aware frame format helpers.
+  function frame_idle_fw(ver : fpu_version_t) return std_logic_vector;
+  function frame_busy_fw(ver : fpu_version_t) return std_logic_vector;
+  function frame_idle_words(ver : fpu_version_t) return natural;
+  function frame_busy_words(ver : fpu_version_t) return natural;
+  -- Cross-compatible helpers: accept both 68881 and 68882 format words.
+  function is_valid_idle_fw(fw : std_logic_vector) return boolean;
+  function is_valid_busy_fw(fw : std_logic_vector) return boolean;
+  function idle_words_for_fw(fw : std_logic_vector) return natural;
+  function busy_words_for_fw(fw : std_logic_vector) return natural;
 
   -- Exception vector numbers for Response CIR (10-bit field).
   -- MC68881 vectors at offsets $C0-$D8 (vectors 48-54); format error is vector 14.
@@ -2785,4 +2810,52 @@ package body mc68881_pkg is
   begin
     return mul_fp80(a, b, round_mode, FP_PREC_SINGLE);
   end function;
+
+  -- Version-aware frame format helpers.
+  function frame_idle_fw(ver : fpu_version_t) return std_logic_vector is
+  begin
+    if ver = FPU_68882 then return CIR_FRAME_IDLE_FW_82;
+    else return CIR_FRAME_IDLE_FW; end if;
+  end function;
+
+  function frame_busy_fw(ver : fpu_version_t) return std_logic_vector is
+  begin
+    if ver = FPU_68882 then return CIR_FRAME_BUSY_FW_82;
+    else return CIR_FRAME_BUSY_FW; end if;
+  end function;
+
+  function frame_idle_words(ver : fpu_version_t) return natural is
+  begin
+    if ver = FPU_68882 then return CIR_FRAME_IDLE_WORDS_82;
+    else return CIR_FRAME_IDLE_WORDS; end if;
+  end function;
+
+  function frame_busy_words(ver : fpu_version_t) return natural is
+  begin
+    if ver = FPU_68882 then return CIR_FRAME_BUSY_WORDS_82;
+    else return CIR_FRAME_BUSY_WORDS; end if;
+  end function;
+
+  function is_valid_idle_fw(fw : std_logic_vector) return boolean is
+  begin
+    return fw = CIR_FRAME_IDLE_FW or fw = CIR_FRAME_IDLE_FW_82;
+  end function;
+
+  function is_valid_busy_fw(fw : std_logic_vector) return boolean is
+  begin
+    return fw = CIR_FRAME_BUSY_FW or fw = CIR_FRAME_BUSY_FW_82;
+  end function;
+
+  function idle_words_for_fw(fw : std_logic_vector) return natural is
+  begin
+    if fw = CIR_FRAME_IDLE_FW_82 then return CIR_FRAME_IDLE_WORDS_82;
+    else return CIR_FRAME_IDLE_WORDS; end if;
+  end function;
+
+  function busy_words_for_fw(fw : std_logic_vector) return natural is
+  begin
+    if fw = CIR_FRAME_BUSY_FW_82 then return CIR_FRAME_BUSY_WORDS_82;
+    else return CIR_FRAME_BUSY_WORDS; end if;
+  end function;
+
 end package body mc68881_pkg;

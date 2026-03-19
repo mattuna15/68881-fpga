@@ -98,15 +98,6 @@ int main(void)
      * and ensure clean state on re-run without reload */
     setvbuf(stdout, NULL, _IONBF, 0);
 
-    /* Brief delay then drain any pending characters from previous run
-     * or from the BIOS "G 2004\r\n" command that launched us */
-    {
-        volatile int i;
-        for (i = 0; i < 100000; i++) ;  /* let UART settle */
-        while (gfx_char_ready())
-            bios_getchar();
-    }
-
     printf("RTC test\n\n");
 
     printf("Current RTC: ");

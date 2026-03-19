@@ -39,18 +39,32 @@ static uint32_t datetime_to_epoch(int year, int month, int day,
             days++;
     }
     days += (uint32_t)(day - 1);
-    return days * 86400 + (uint32_t)hour * 3600 + (uint32_t)min * 60 + (uint32_t)sec;
+    return days * 86400u + (uint32_t)hour * 3600u + (uint32_t)min * 60u + (uint32_t)sec;
 }
 
-/* Read a decimal number from serial input, terminated by the delimiter char.
- * Echoes all input characters. */
+/* Disable/enable BIOS echo via TRAP #15 D0=12 */
+static void set_echo(int on)
+{
+    register long d0 __asm__("d0") = 12;
+    register long d1 __asm__("d1") = on;
+    __asm__ volatile("trap #15" : "+d"(d0), "+d"(d1) : : "a0", "a1", "memory", "cc");
+}
+
+/* Read a single character, echo it ourselves */
+static int readch(void)
+{
+    int ch = getchar();
+    putchar(ch);
+    return ch;
+}
+
+/* Read a decimal number terminated by delimiter char. */
 static int read_num(char term)
 {
     int val = 0;
     int ch;
     while (1) {
-        ch = getchar();
-        putchar(ch);
+        ch = readch();
         if (ch == term || ch == '\r' || ch == '\n')
             break;
         if (ch >= '0' && ch <= '9')
@@ -70,8 +84,11 @@ int main(void)
 
     /* Prompt to set time */
     printf("Set date/time? (y/n): ");
-    int ch = getchar();
-    putchar(ch);
+
+    /* Disable BIOS echo so we control it ourselves */
+    set_echo(0);
+
+    int ch = readch();
     printf("\n");
 
     if (ch == 'y' || ch == 'Y') {
@@ -91,13 +108,18 @@ int main(void)
         printf("\n");
 
         uint32_t epoch = datetime_to_epoch(year, month, day, hour, min, sec);
+        printf("Parsed: %04d-%02d-%02d %02d:%02d:%02d\n",
+               year, month, day, hour, min, sec);
         printf("Setting RTC to %lu...\n", (unsigned long)epoch);
         rtc_set_time(epoch);
 
-        printf("RTC set: ");
+        printf("RTC now: ");
         print_datetime();
         printf("\n");
     }
+
+    /* Re-enable BIOS echo */
+    set_echo(1);
 
     /* Show tick counter */
     printf("Timer C ticks (press any key to stop):\n");

@@ -12,6 +12,7 @@ LDFLAGS  = -Tmerlin2.ld
 
 # Library sources
 LIB_DIR  = ../lib
+LIB_SBRK = $(LIB_DIR)/merlin2_sbrk.c
 LIB_GFX  = $(LIB_DIR)/merlin2_gfx.c $(LIB_DIR)/merlin2_rand.c
 LIB_RTC  = $(LIB_DIR)/merlin2_gfx.c $(LIB_DIR)/merlin2_rtc.c
 
@@ -24,29 +25,29 @@ CFLAGS_LIB = $(CFLAGS) -I$(LIB_DIR)
 all: hello.srec hello.lst fputest.srec fputest.lst fireworks.srec fireworks.lst rtctest.srec
 
 # Non-FPU targets
-hello.srec: hello.c
-	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $<
+hello.srec: hello.c $(LIB_SBRK)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LIB_SBRK)
 
 hello.lst: hello.c
 	$(CC) $(CFLAGS) -S -fverbose-asm -o $@ $<
 
 # FPU targets
-fputest.srec: fputest.c
-	$(CC) $(FPU_CFLAGS) $(LDFLAGS) -o $@ $< -lm
+fputest.srec: fputest.c $(LIB_SBRK)
+	$(CC) $(FPU_CFLAGS) $(LDFLAGS) -o $@ $< $(LIB_SBRK) -lm
 
 fputest.lst: fputest.c
 	$(CC) $(FPU_CFLAGS) -S -fverbose-asm -o $@ $<
 
 # Fireworks (FPU + graphics library)
-fireworks.srec: fireworks.c $(LIB_GFX)
-	$(CC) $(FPU_CFLAGS) $(LDFLAGS) -o $@ $< $(LIB_GFX) -lm
+fireworks.srec: fireworks.c $(LIB_GFX) $(LIB_SBRK)
+	$(CC) $(FPU_CFLAGS) $(LDFLAGS) -o $@ $< $(LIB_GFX) $(LIB_SBRK) -lm
 
 fireworks.lst: fireworks.c
 	$(CC) $(FPU_CFLAGS) -S -fverbose-asm -o $@ $<
 
 # RTC test (no FPU needed, uses gfx lib for char_ready + rtc lib)
-rtctest.srec: rtctest.c $(LIB_RTC)
-	$(CC) $(CFLAGS_LIB) $(LDFLAGS) -o $@ $< $(LIB_RTC)
+rtctest.srec: rtctest.c $(LIB_RTC) $(LIB_SBRK)
+	$(CC) $(CFLAGS_LIB) $(LDFLAGS) -o $@ $< $(LIB_RTC) $(LIB_SBRK)
 
 clean:
 	rm -f *.srec *.lst *.o

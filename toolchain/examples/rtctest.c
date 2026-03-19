@@ -43,19 +43,18 @@ static uint32_t datetime_to_epoch(int year, int month, int day,
 }
 
 /* Read a decimal number from serial input, terminated by the delimiter char.
- * Returns the number, stores the terminating char in *term. */
+ * Echoes all input characters. */
 static int read_num(char term)
 {
     int val = 0;
     int ch;
     while (1) {
         ch = getchar();
+        putchar(ch);
         if (ch == term || ch == '\r' || ch == '\n')
             break;
-        if (ch >= '0' && ch <= '9') {
+        if (ch >= '0' && ch <= '9')
             val = val * 10 + (ch - '0');
-            putchar(ch);
-        }
     }
     return val;
 }
@@ -80,14 +79,16 @@ int main(void)
 
         printf("Enter date/time as: YYYY-MM-DD HH:MM:SS\n");
         printf("Date (YYYY-MM-DD): ");
-        year  = read_num('-'); putchar('-');
-        month = read_num('-'); putchar('-');
-        day   = read_num('\r'); printf("\n");
+        year  = read_num('-');
+        month = read_num('-');
+        day   = read_num('\r');
+        printf("\n");
 
         printf("Time (HH:MM:SS): ");
-        hour = read_num(':'); putchar(':');
-        min  = read_num(':'); putchar(':');
-        sec  = read_num('\r'); printf("\n");
+        hour = read_num(':');
+        min  = read_num(':');
+        sec  = read_num('\r');
+        printf("\n");
 
         uint32_t epoch = datetime_to_epoch(year, month, day, hour, min, sec);
         printf("Setting RTC to %lu...\n", (unsigned long)epoch);

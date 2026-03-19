@@ -78,6 +78,15 @@ static void rtc_write_seconds(uint32_t secs)
 static uint32_t rtc_write_accum;
 static int rtc_write_count;
 
+/* Latched RTC snapshot — prevents torn reads across byte accesses.
+ * Musashi builds longwords from 4 byte reads; re-sampling the hardware
+ * RTC on each byte could mix values across a second rollover. */
+static uint32_t rtc_latch;
+static uint32_t rtc_latch_offset;  /* offset of first byte read (for latch invalidation) */
+static uint32_t datetime_date_latch;
+static uint32_t datetime_time_latch;
+static uint32_t datetime_latch_offset;
+
 /* Convert Unix epoch seconds to BCD date and time.
  * date_bcd = 0xYYYYMMDD, time_bcd = 0xHHMMSSwd (wd = weekday, 0=Sun) */
 static void epoch_to_bcd(uint32_t epoch, uint32_t *date_bcd, uint32_t *time_bcd)
@@ -176,8 +185,12 @@ int mfp_timer_tick(uint32_t cycles_elapsed)
         return 0;  /* timer stopped */
     tc_accumulator -= (int32_t)cycles_elapsed;
     if (tc_accumulator <= 0) {
-        tc_accumulator += (int32_t)tc_period_cycles;
-        return 1;  /* fire interrupt */
+        /* Re-align accumulator to handle multiple expirations in one batch.
+         * Without this, small period values cause accumulator to stay negative
+         * and fire every iteration instead of at the programmed rate. */
+        while (tc_accumulator <= 0)
+            tc_accumulator += (int32_t)tc_period_cycles;
+        return 1;  /* fire interrupt (once per batch, regardless of how many expired) */
     }
     return 0;
 }
@@ -238,9 +251,13 @@ uint8_t mfp_read(uint32_t offset)
     case MFP_OFF_RTC + 1:
     case MFP_OFF_RTC + 2:
     case MFP_OFF_RTC + 3: {
-        uint32_t secs = rtc_read_seconds();
-        int shift = (3 - (offset - MFP_OFF_RTC)) * 8;
-        return (secs >> shift) & 0xFF;
+        /* Latch on first byte read to prevent torn values across
+         * the 4 byte reads that Musashi uses for a MOVE.L */
+        int byte_idx = (int)(offset - MFP_OFF_RTC);
+        if (byte_idx == 0)
+            rtc_latch = rtc_read_seconds();
+        int shift = (3 - byte_idx) * 8;
+        return (rtc_latch >> shift) & 0xFF;
     }
 
     case MFP_OFF_DATETIME:
@@ -251,15 +268,16 @@ uint8_t mfp_read(uint32_t offset)
     case MFP_OFF_DATETIME + 5:
     case MFP_OFF_DATETIME + 6:
     case MFP_OFF_DATETIME + 7: {
-        uint32_t date_bcd, time_bcd;
-        epoch_to_bcd(rtc_read_seconds(), &date_bcd, &time_bcd);
+        /* Latch on first byte read to prevent torn date/time */
         int byte_idx = (int)(offset - MFP_OFF_DATETIME);
+        if (byte_idx == 0)
+            epoch_to_bcd(rtc_read_seconds(), &datetime_date_latch, &datetime_time_latch);
         if (byte_idx < 4) {
             int shift = (3 - byte_idx) * 8;
-            return (date_bcd >> shift) & 0xFF;
+            return (datetime_date_latch >> shift) & 0xFF;
         } else {
             int shift = (7 - byte_idx) * 8;
-            return (time_bcd >> shift) & 0xFF;
+            return (datetime_time_latch >> shift) & 0xFF;
         }
     }
 

@@ -60,9 +60,16 @@ _monitor_sp:
 	.weak start
 	.set start,_start
 
+/*
+ * Magic cookie address: 4 bytes below __stack.
+ * If it contains $4D524E32 ("MRN2"), .data has been backed up.
+ */
+DATA_MAGIC = 0x4D524E32
+
 _start:
-	/* Save monitor return address and stack pointer for _exit */
-	move.l	%sp, _monitor_sp
+	/* Save monitor SP in a register (can't use _monitor_sp yet —
+	 * it's in .data which may be overwritten by restore below) */
+	move.l	%sp, %d7
 
 	/* Set stack pointer if __stack is non-zero */
 	move.l	#__stack, %a0
@@ -72,6 +79,59 @@ _start:
 1:
 	/* Set up initial stack frame */
 	link	%a6, #-8
+
+	/*
+	 * .data backup/restore for re-run support.
+	 *
+	 * On first run (after S-record load), .data is pristine. We save a
+	 * copy to a backup area below the stack. On subsequent runs (G 2004),
+	 * we detect the magic cookie and restore .data from the backup,
+	 * giving newlib/printf a clean initial state.
+	 *
+	 * Backup area: __stack - 4 (magic) - data_size (backup copy)
+	 */
+	move.l	#__stack, %a0
+	subq.l	#4, %a0
+	cmp.l	#DATA_MAGIC, (%a0)
+	bne.s	.Ldata_save
+
+	/* --- Re-run: restore .data from backup --- */
+	move.l	#__data_start, %a1	/* destination: .data in RAM */
+	move.l	#_edata, %d0
+	sub.l	%a1, %d0		/* d0 = data size in bytes */
+	beq.s	.Ldata_done
+	move.l	%a0, %a2
+	sub.l	%d0, %a2		/* a2 = backup start (below magic) */
+	subq.l	#1, %d0
+.Ldata_restore_loop:
+	move.b	(%a2)+, (%a1)+
+	dbf	%d0, .Ldata_restore_loop
+	clr.w	%d0
+	subq.l	#1, %d0
+	bcc.s	.Ldata_restore_loop
+	bra.s	.Ldata_done
+
+.Ldata_save:
+	/* --- First run: save .data to backup area --- */
+	move.l	#__data_start, %a1	/* source: .data in RAM */
+	move.l	#_edata, %d0
+	sub.l	%a1, %d0		/* d0 = data size in bytes */
+	beq.s	.Ldata_mark
+	move.l	%a0, %a2
+	sub.l	%d0, %a2		/* a2 = backup start (below magic) */
+	move.l	%a1, %a3		/* a3 = source */
+	subq.l	#1, %d0
+.Ldata_save_loop:
+	move.b	(%a3)+, (%a2)+
+	dbf	%d0, .Ldata_save_loop
+	clr.w	%d0
+	subq.l	#1, %d0
+	bcc.s	.Ldata_save_loop
+.Ldata_mark:
+	move.l	#DATA_MAGIC, (%a0)	/* set cookie */
+.Ldata_done:
+	/* Now safe to write _monitor_sp (after .data restore) */
+	move.l	%d7, _monitor_sp
 
 	/*
 	 * Zero out the BSS section.

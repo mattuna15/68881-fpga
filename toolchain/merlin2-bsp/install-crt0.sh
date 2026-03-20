@@ -16,5 +16,7 @@ echo "=== Building libmerlin2.a ==="
 m68k-elf-ar rcs ${LIB_DIR}/libmerlin2.a /tmp/merlin2.o
 rm /tmp/merlin2.o
 
+echo "=== Installing merlin2.ld ==="
+cp ${BSP_SRC}/merlin2.ld ${LIB_DIR}/merlin2.ld
+
 echo "=== Installed to ${LIB_DIR}/ ==="
-m68k-elf-objdump -d ${LIB_DIR}/merlin2-crt0.o | grep '_monitor_sp' || echo "WARNING: _monitor_sp not found"

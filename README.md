@@ -145,7 +145,7 @@ instances per consumer.
   - `mc68881_smoke_test.c` — Register read/write connectivity test (FPCR, FPIAR)
   - `mc68881_fsin_test.c` — FSIN computation test (sin(1.0), sin(0.0))
   - `mc68881_e2e_test.c` — End-to-end test with 15 vectors from GHDL testbench
-- `validation/hello_world/` — M68K emulator + hardware FPU validation (Musashi, F-line trapping, ROM boot)
+- `validation/hello_world/` — M68K emulator + hardware FPU validation (Musashi, F-line trapping, ROM boot, USB keyboard)
 - `src/vitis/roms/` — 68000 BIOS ROM source (assembler, disassembler, monitor with FPU support)
 - `tb/` — VHDL-2008 self-checking testbenches (14 files, ~8.5K lines)
 - `docs/` — Implementation plan, timing notes, reference documentation
@@ -322,7 +322,9 @@ for the full address map, protocol details, and code examples.
 The default build boots a 68000 BIOS ROM with an interactive monitor, built-in
 assembler (CODE68K), and disassembler (DCODE68K). Character I/O is routed through
 MC68901 MFP emulation (ARM UART ↔ emulated MFP USART) and rendered to a text
-framebuffer displayed on the PS DisplayPort output (1280×720@60Hz).
+framebuffer displayed on the PS DisplayPort output (1280×720@60Hz). USB keyboards
+are supported via the ZynqMP DWC3 xHCI host controller, with automatic hub
+traversal and Caps Lock/Num Lock LED control.
 
 The assembler and disassembler support all MC68881 FPU instructions:
 - **39 FPU mnemonics**: FMOVE through FMOVECR (all arithmetic, transcendental,

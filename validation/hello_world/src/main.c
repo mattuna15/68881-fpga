@@ -24,6 +24,7 @@
 #include "gfx_fb.h"
 #include "dp_video.h"
 #include "rom_image.h"
+#include "usb_hid.h"
 
 #ifdef TEST_MODE
 #include "fpu_periph.h"
@@ -142,6 +143,12 @@ static void rom_boot(void)
     m68k_init();
     m68k_pulse_reset();
 
+    /* Initialise USB HID keyboard (non-fatal if no device present) */
+    if (usb_hid_init() == 0)
+        xil_printf("[ROM] USB keyboard ready\r\n");
+    else
+        xil_printf("[ROM] No USB keyboard (UART-only input)\r\n");
+
     xil_printf("[ROM] M68000 reset — PC=$%06X SSP=$%06X\r\n",
                BIOS_ROMBAS, BIOS_STACK);
     xil_printf("[ROM] Entering emulation loop...\r\n");
@@ -182,6 +189,9 @@ static void rom_boot(void)
 
         /* Feed ARM UART RX into MFP RX buffer for keyboard input */
         poll_uart_rx();
+
+        /* Poll USB HID keyboard for keypresses */
+        usb_hid_poll();
     }
 }
 

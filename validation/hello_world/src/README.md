@@ -247,6 +247,12 @@ ARM Cortex-A53 (bare-metal Vitis BSP)
 |   +-- Transfers operand words via CIR Operand register
 |   +-- Uses FPU's internal FP register file (FP0-FP7)
 |
++-- USB HID keyboard driver (usb_hid.c)
+|   +-- DWC3 @ 0xFE200000 -> xHCI host mode
+|   +-- Hub enumeration (up to 3 levels)
+|   +-- HID boot protocol -> ASCII -> mfp_rx_push()
+|   +-- Caps Lock / Num Lock LED control
+|
 +-- AXI-Lite @ 0x80000000
          |
     mc68881_axilite_wrapper -> FPU core
@@ -339,6 +345,11 @@ provides an interactive monitor with a built-in assembler (CODE68K) and disassem
   BIOS character I/O, enabling keyboard input and serial output. Includes
   millisecond tick counter, RTC (Unix seconds + BCD datetime via ZynqMP PS
   RTC), and Timer C periodic interrupt (~133 Hz, IPL 6 autovectored)
+- **USB keyboard** -- ZynqMP DWC3 xHCI host-mode driver enumerates USB HID
+  keyboards (including devices behind up to 3 levels of USB hubs), translates
+  boot-protocol key reports to ASCII, and feeds characters into the MFP RX
+  buffer. Caps Lock and Num Lock toggle with LED feedback via HID SET_REPORT.
+  Initialises at boot; falls back to UART-only input if no keyboard is present
 - **Real-time clock** -- TRAP #15 D0=22 (GET_RTC), D0=23 (GET_DATETIME),
   D0=24 (SET_RTC). Backed by ZynqMP PS hardware RTC with battery retention.
   BCD datetime returns packed YYYYMMDD + HHMMSSwd
@@ -453,6 +464,7 @@ The project is a standard Vitis embedded application targeting the ZU3EG platfor
 | `dp_video.c` | PS DisplayPort TX + DPDMA output driver |
 | `text_fb.c` | 80x30 text framebuffer (8x16 font, ARGB8888) |
 | `mfp_emu.c` | MC68901 MFP USART emulation |
+| `usb_hid.c` | USB HID keyboard driver (DWC3 xHCI host, hub traversal) |
 
 **Do NOT compile:** `m68kfpu.c` (Musashi's software FPU -- `#include`d by
 m68kcpu.c but its functions are dead code with all higher CPUs disabled),

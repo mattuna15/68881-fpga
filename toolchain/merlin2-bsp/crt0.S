@@ -61,8 +61,15 @@ _monitor_sp:
 	.set start,_start
 
 /*
- * Magic cookie address: 4 bytes below __stack.
- * If it contains $4D524E32 ("MRN2"), .data has been backed up.
+ * .data backup area: placed at _end (just after BSS, before heap).
+ * Layout: [backup copy of .data] [4-byte magic cookie]
+ * The magic sits at _end + data_size. The heap starts above that.
+ *
+ * This is safe because:
+ * - crt0 runs before any heap allocation (sbrk starts at _end + backup_size)
+ * - The stack is at __stack (top of RAM) and grows down — far away
+ * - On re-run, BSS is zeroed (up to _end) but the backup area above
+ *   _end is NOT zeroed, so it survives
  */
 DATA_MAGIC = 0x4D524E32
 
@@ -83,52 +90,49 @@ _start:
 	/*
 	 * .data backup/restore for re-run support.
 	 *
-	 * On first run (after S-record load), .data is pristine. We save a
-	 * copy to a backup area below the stack. On subsequent runs (G 2004),
-	 * we detect the magic cookie and restore .data from the backup,
-	 * giving newlib/printf a clean initial state.
-	 *
-	 * Backup area: __stack - 4 (magic) - data_size (backup copy)
+	 * Backup area at _end: [data copy][magic cookie]
+	 * Magic cookie address = _end + data_size
+	 * This is above BSS (not zeroed on re-run) and below the heap.
 	 */
-	move.l	#__stack, %a0
-	subq.l	#4, %a0
-	cmp.l	#DATA_MAGIC, (%a0)
+	move.l	#_edata, %d0
+	sub.l	#__data_start, %d0	/* d0 = data_size */
+	move.l	#_end, %a0		/* a0 = backup base */
+	lea	(%a0,%d0.l), %a2	/* a2 = magic cookie address */
+	cmp.l	#DATA_MAGIC, (%a2)
 	bne.s	.Ldata_save
 
 	/* --- Re-run: restore .data from backup --- */
-	move.l	#__data_start, %a1	/* destination: .data in RAM */
-	move.l	#_edata, %d0
-	sub.l	%a1, %d0		/* d0 = data size in bytes */
+	move.l	#__data_start, %a1	/* destination */
+	tst.l	%d0
 	beq.s	.Ldata_done
-	move.l	%a0, %a2
-	sub.l	%d0, %a2		/* a2 = backup start (below magic) */
-	subq.l	#1, %d0
+	move.l	%d0, %d1
+	move.l	%a0, %a3		/* source = backup at _end */
+	subq.l	#1, %d1
 .Ldata_restore_loop:
-	move.b	(%a2)+, (%a1)+
-	dbf	%d0, .Ldata_restore_loop
-	clr.w	%d0
-	subq.l	#1, %d0
+	move.b	(%a3)+, (%a1)+
+	dbf	%d1, .Ldata_restore_loop
+	clr.w	%d1
+	subq.l	#1, %d1
 	bcc.s	.Ldata_restore_loop
 	bra.s	.Ldata_done
 
 .Ldata_save:
-	/* --- First run: save .data to backup area --- */
-	move.l	#__data_start, %a1	/* source: .data in RAM */
-	move.l	#_edata, %d0
-	sub.l	%a1, %d0		/* d0 = data size in bytes */
+	/* --- First run: save .data to backup area at _end --- */
+	move.l	#__data_start, %a1	/* source */
+	tst.l	%d0
 	beq.s	.Ldata_mark
-	move.l	%a0, %a2
-	sub.l	%d0, %a2		/* a2 = backup start (below magic) */
-	move.l	%a1, %a3		/* a3 = source */
-	subq.l	#1, %d0
+	move.l	%d0, %d1
+	move.l	%a1, %a3		/* source = .data start */
+	move.l	%a0, %a1		/* dest = backup at _end */
+	subq.l	#1, %d1
 .Ldata_save_loop:
-	move.b	(%a3)+, (%a2)+
-	dbf	%d0, .Ldata_save_loop
-	clr.w	%d0
-	subq.l	#1, %d0
+	move.b	(%a3)+, (%a1)+
+	dbf	%d1, .Ldata_save_loop
+	clr.w	%d1
+	subq.l	#1, %d1
 	bcc.s	.Ldata_save_loop
 .Ldata_mark:
-	move.l	#DATA_MAGIC, (%a0)	/* set cookie */
+	move.l	#DATA_MAGIC, (%a2)	/* set cookie */
 .Ldata_done:
 	/* Now safe to write _monitor_sp (after .data restore) */
 	move.l	%d7, _monitor_sp

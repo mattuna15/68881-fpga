@@ -13,8 +13,10 @@
 #include <stdint.h>
 #include <errno.h>
 
-extern char _end[];     /* linker symbol: end of BSS, start of heap */
-extern char __stack[];  /* linker symbol: top of stack (heap limit) */
+extern char _end[];          /* linker symbol: end of BSS */
+extern char __data_start[];  /* linker symbol: start of .data */
+extern char _edata[];        /* linker symbol: end of .data */
+extern char __stack[];       /* linker symbol: top of stack (heap limit) */
 
 static char *heap_ptr;
 
@@ -22,8 +24,14 @@ void *sbrk(int incr)
 {
     char *prev;
 
-    if (heap_ptr == 0)
-        heap_ptr = _end;
+    if (heap_ptr == 0) {
+        /* Heap starts after the .data backup area placed by crt0 at _end.
+         * Backup layout: [data copy (data_size bytes)] [4-byte magic cookie]
+         * So heap begins at _end + data_size + 4, aligned to 8 bytes. */
+        unsigned long data_size = (unsigned long)(_edata - __data_start);
+        unsigned long backup_end = (unsigned long)_end + data_size + 4;
+        heap_ptr = (char *)((backup_end + 7) & ~7UL);  /* align to 8 */
+    }
 
     prev = heap_ptr;
 

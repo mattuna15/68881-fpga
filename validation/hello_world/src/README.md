@@ -350,6 +350,12 @@ provides an interactive monitor with a built-in assembler (CODE68K) and disassem
   boot-protocol key reports to ASCII, and feeds characters into the MFP RX
   buffer. Caps Lock and Num Lock toggle with LED feedback via HID SET_REPORT.
   Initialises at boot; falls back to UART-only input if no keyboard is present
+- **USB mouse** -- HID boot-protocol mouse enumerated alongside the keyboard
+  (separate xHCI slot and transfer ring). Button state, signed deltas, and
+  absolute position (clamped to 1280x720) tracked by the ARM USB driver and
+  exposed at `$FD0050` via memory-mapped I/O. TRAP #15 D0=26/27/28 provide
+  get-mouse, get-position, and set-position functions. The `mousetest` GCC
+  example demonstrates graphical cursor tracking with click detection
 - **Real-time clock** -- TRAP #15 D0=22 (GET_RTC), D0=23 (GET_DATETIME),
   D0=24 (SET_RTC). Backed by ZynqMP PS hardware RTC with battery retention.
   BCD datetime returns packed YYYYMMDD + HHMMSSwd
@@ -491,3 +497,33 @@ the functions are never executed).
 - **Branch:** FBcc (16-bit and 32-bit displacement, all 32 condition codes)
 
 **Source formats:** Byte, Word, Long, Single, Double, Extended (12-byte).
+
+## GCC Example Programs
+
+The `toolchain/examples/` directory contains C programs that run on the M68K emulator.
+Programs are cross-compiled with m68k-elf-gcc, loaded via S-record (`L` command), and
+executed with `G 2000`. Build with `.\build.ps1` from the examples directory (requires
+Cygwin with m68k-elf-gcc).
+
+| Program | Description | Input |
+|---------|-------------|-------|
+| `hello.c` | Hello world — printf, TRAP I/O | — |
+| `fputest.c` | FPU arithmetic (sin, cos, sqrt via hardware MC68881) | — |
+| `fireworks.c` | Animated fireworks with physics (gravity, particles) | Key to exit |
+| `rtctest.c` | RTC date/time read/set, Timer C tick monitor | UART input |
+| `mousetest.c` | USB mouse cursor demo with click markers | Mouse + key to exit |
+
+### Mouse Demo (`mousetest.c`)
+
+Graphical demo showing USB mouse integration:
+
+1. Switches to 1280x720 graphics mode
+2. Draws a green crosshair cursor tracking the mouse position
+3. Left/right/middle clicks leave coloured dot markers (red/blue/yellow)
+4. Top banner shows live X/Y coordinates and active buttons
+5. Press any keyboard key to exit back to text mode
+
+The demo reads mouse state directly from memory-mapped I/O at `$FD0050`,
+bypassing the TRAP layer (works without rebuilding the BIOS ROM). It uses
+the `merlin2_gfx.h` library for graphics and a built-in 5x7 bitmap font
+for on-screen text rendering.

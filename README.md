@@ -322,9 +322,15 @@ for the full address map, protocol details, and code examples.
 The default build boots a 68000 BIOS ROM with an interactive monitor, built-in
 assembler (CODE68K), and disassembler (DCODE68K). Character I/O is routed through
 MC68901 MFP emulation (ARM UART ↔ emulated MFP USART) and rendered to a text
-framebuffer displayed on the PS DisplayPort output (1280×720@60Hz). USB keyboards
-are supported via the ZynqMP DWC3 xHCI host controller, with automatic hub
-traversal and Caps Lock/Num Lock LED control.
+framebuffer displayed on the PS DisplayPort output (1280×720@60Hz).
+
+USB keyboards and mice are supported via the ZynqMP DWC3 xHCI host controller:
+- **Keyboard**: HID boot-protocol, Caps Lock/Num Lock with LED feedback, feeds
+  ASCII into the MFP RX buffer alongside ARM UART input
+- **Mouse**: HID boot-protocol, buttons + relative/absolute position tracking,
+  accessible via memory-mapped I/O at `$FD0050` and TRAP #15 (D0=26/27/28)
+- Automatic hub traversal (up to 3 levels) — works with keyboards and mice
+  behind USB hubs, including combo devices with built-in hubs
 
 The assembler and disassembler support all MC68881 FPU instructions:
 - **39 FPU mnemonics**: FMOVE through FMOVECR (all arithmetic, transcendental,
@@ -421,6 +427,26 @@ over 2500 iterations of 6 chained transcendental operations — reasonable for
 64-bit extended precision.
 
 Benchmark sources are in `validation/hello_world/src/roms/` (`savage.s`, `whetstone.s`).
+
+### GCC example programs
+
+The `toolchain/examples/` directory contains C programs compiled with the m68k-elf-gcc
+cross-compiler and loaded via S-record transfer. Build with `.\build.ps1` (requires
+Cygwin with m68k-elf-gcc).
+
+| Program | Description | FPU? |
+|---------|-------------|------|
+| `hello.c` | Hello world (printf, TRAP I/O) | No |
+| `fputest.c` | FPU arithmetic test (sin, cos, sqrt) | Yes |
+| `fireworks.c` | Animated fireworks demo (physics + graphics) | Yes |
+| `rtctest.c` | RTC date/time read/set, Timer C tick monitor | No |
+| `mousetest.c` | USB mouse demo (crosshair cursor, click markers) | No |
+
+**Mouse demo** (`mousetest.c`): Switches to 1280×720 graphics mode and renders a
+green crosshair cursor that tracks the USB mouse. Left/right/middle clicks leave
+coloured dot markers on the screen. A banner at the top displays the current X/Y
+position and active buttons. Press any keyboard key to exit. Reads mouse state
+directly from memory-mapped I/O at `$FD0050` (buttons, delta, absolute position).
 
 ## Status
 All checklist items complete. See `docs/fpu-progress-checklist.md` for history.

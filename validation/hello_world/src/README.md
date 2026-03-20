@@ -387,6 +387,9 @@ provides an interactive monitor with a built-in assembler (CODE68K) and disassem
 | 23 | Get datetime | — | D1.L=YYYYMMDD, D2.L=HHMMSSwd (BCD) |
 | 24 | Set RTC | D1.L=Unix seconds | — |
 | 25 | Get ticks | — | D1.L=Timer C tick count |
+| 26 | Get mouse | — | D1.B=buttons, D2.W=deltaX, D3.W=deltaY |
+| 27 | Get mouse pos | — | D1.W=absX, D2.W=absY |
+| 28 | Set mouse pos | D1.W=absX, D2.W=absY | — |
 
 ### Memory Map
 
@@ -398,6 +401,7 @@ provides an interactive monitor with a built-in assembler (CODE68K) and disassem
 | `$800000-$B84FFF` | 3.6 MB | Graphics framebuffer (1280x720 ARGB8888) |
 | `$FD0000-$FD003F` | 64 bytes | MC68901 MFP (emulated, incl. RTC + timers) |
 | `$FD0040-$FD004F` | 16 bytes | Graphics control registers |
+| `$FD0050-$FD005B` | 12 bytes | Mouse state (buttons, delta, abs position) |
 | `$FE0000-$FFFFFF` | 128K | ROM (BIOS image) |
 
 ### Building the ROM

@@ -548,10 +548,22 @@ Target: Add MC68882 mode via `fpu_version_g` generic (FPU_68881 default, FPU_688
 
 [ ] G7. Update test runner: add tb_mc68882_fsave.vhd to scripts/run_tests.ps1.
 
-[ ] G8. (Nice-to-have) Clock speed target 50 MHz.
-    - Change XDC constraint from 30.303ns to 20.0ns.
-    - Pipeline critical format conversion / packed decimal paths.
-    - May require increased alu_latency for affected operations.
+[x] G8. (Nice-to-have) Clock speed target 50 MHz.
+    - XDC constraint set to 20.0ns (50 MHz). Timing met post-route physopt (WNS=+0.000ns).
+    - Multi-cycle path constraints added for format conversion paths (operand→result MCP=14,
+      fp_reg_file→result_hi/lo MCP=2, operand→fp_reg_file MCP=3, operand→exc_event_result MCP=3,
+      simple_*→result MCP=3, cir_dst_reg_idx→result MCP=2, fpcr→exc_event_force MCP=2,
+      fp_reg_file→cir_operand_staging MCP=2).
+    - Sequential FP units (mul/add/div) in trig and ALU eliminate combinational FP MCPs.
+    - No alu_latency changes required — existing values absorb extra hold cycles.
+
+[ ] G9. 50 MHz timing margin: pipeline log_unbiased_exp → mul_a_reg path.
+    - Tightest path at 50 MHz: log_unbiased_exp_reg → mul_a_reg (39.9ns, MCP=2, 0.000ns slack).
+    - 50 logic levels, 60% route-dominated. fp80_from_int(log_unbiased_exp_reg) conversion.
+    - Options: (a) register the fp80_from_int output in an intermediate pipeline stage,
+      (b) Vivado placement constraints (pblock) to keep trig_inst compact,
+      (c) bump MCP to 3 if RTL can guarantee 3-cycle separation (currently 2-cycle via
+      ST_LOG_GETEXP_HOLD).
 
 ## Implementation Snapshot (2026-03-18, Graphics + Toolchain + FMOVECR)
 - Milestone:

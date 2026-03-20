@@ -55,6 +55,12 @@ MFPTSR		EQU     MFPBAS+$2D	TRANSMITTER STATUS REGISTER
 MFPUDR		EQU     MFPBAS+$2F	USART DATA REGISTER
 MFPRTC		EQU     MFPBAS+$34	RTC UNIX SECONDS (R/W, 32-BIT)
 MFPDATETIME	EQU     MFPBAS+$38	BCD DATETIME (R, 64-BIT: YYYYMMDD HHMMSSwd)
+* Mouse I/O (memory-mapped, read-only via emu_memory.c)
+MOUSEBTN	EQU	MFPBAS+$50	MOUSE BUTTONS (BYTE: BIT0=L, BIT1=R, BIT2=M)
+MOUSEDX		EQU	MFPBAS+$52	MOUSE DELTA X (WORD, SIGNED, CLEARED ON READ)
+MOUSEDY		EQU	MFPBAS+$54	MOUSE DELTA Y (WORD, SIGNED)
+MOUSEABSX	EQU	MFPBAS+$56	MOUSE ABSOLUTE X (WORD, 0..1279)
+MOUSEABSY	EQU	MFPBAS+$58	MOUSE ABSOLUTE Y (WORD, 0..719)
 
 ****************************************
 *   ASCII Equates		
@@ -1635,6 +1641,15 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 		CMP.B	#25,D0		D0= 25 Get tick counter (-> D1.L)
 		BEQ	.io25
 
+		CMP.B	#26,D0		D0= 26 Get mouse (buttons+delta)
+		BEQ	.io26
+
+		CMP.B	#27,D0		D0= 27 Get mouse position (absolute)
+		BEQ	.io27
+
+		CMP.B	#28,D0		D0= 28 Set mouse position
+		BEQ	.io28
+
 .ioExcEnd	RTE			Return from exception
 
 .io0		move.l	A0,-(A7)	Save A0
@@ -1920,6 +1935,34 @@ trap15		CMP.B	#0,D0		D0= 0 Display string at (A1),D1.W bytes long w/CR+LF	*****
 *   Returns: D1.L = Timer C tick count since boot
 *----------------------------------------------------------------------
 .io25	MOVE.L	TIMER_TICK,D1
+	BRA	.ioExcEnd
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=26: Get mouse (buttons + delta)
+*   Returns: D1.B = buttons, D2.W = deltaX, D3.W = deltaY
+*   Reading MOUSEDX clears both deltas.
+*----------------------------------------------------------------------
+.io26	CLR.L	D1
+	MOVE.B	MOUSEBTN,D1
+	MOVE.W	MOUSEDX,D2		reading clears deltas (ARM side)
+	MOVE.W	MOUSEDY,D3
+	BRA	.ioExcEnd
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=27: Get mouse absolute position
+*   Returns: D1.W = absX, D2.W = absY
+*----------------------------------------------------------------------
+.io27	MOVE.W	MOUSEABSX,D1
+	MOVE.W	MOUSEABSY,D2
+	BRA	.ioExcEnd
+
+*----------------------------------------------------------------------
+* TRAP #15 D0=28: Set mouse absolute position
+*   Parameters: D1.W = absX, D2.W = absY
+*   (writes via memory-mapped I/O)
+*----------------------------------------------------------------------
+.io28	MOVE.W	D1,MOUSEABSX
+	MOVE.W	D2,MOUSEABSY
 	BRA	.ioExcEnd
 
 cvtCase

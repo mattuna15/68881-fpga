@@ -88,8 +88,11 @@ set_multicycle_path -hold 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_opa_reg_reg*/D}]
 set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_opa_reg_reg*/D}]
 
-set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_result_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_result_reg_reg*/D}]
+# Bumped to MCP=3: operand format conversion path to exc_event_result has 69
+# logic levels (41.5ns at -1 speed grade).  Operand is loaded during CIR transfer,
+# 3+ cycles before MOVE completion evaluates exception events.
+set_multicycle_path -setup 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_result_reg_reg*/D}]
+set_multicycle_path -hold 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_result_reg_reg*/D}]
 
 set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_ex_reg_reg*/D}]
 set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_ex_reg_reg*/D}]
@@ -155,6 +158,15 @@ set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_opa_reg_reg*/D}]
 set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *exc_event_opa_reg_reg*/D}]
 
+# fp_reg_file_reg -> result_hi_reg / result_lo_reg (2-cycle MCP)
+# MOVE REG_TO_MEM reads fp_reg_file(src), does fp80_to_single/double rounding,
+# writes result_hi/lo.  Same timing guarantee as exc_event paths above.
+set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_hi_reg_reg*/D}]
+set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_hi_reg_reg*/D}]
+
+set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_lo_reg_reg*/D}]
+set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_lo_reg_reg*/D}]
+
 # --- move_cfg_decoded_reg -> MOVE handler destinations (2-cycle MCP = 60.6ns) ---
 # move_cfg_decoded_reg loaded via ADDR_MOVE_CFG bus write, at least 4+ bus
 # cycles before MOVE dispatch fires via cir_launch_alu.
@@ -180,6 +192,28 @@ set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 # Same reasoning: move_cfg_decoded_reg is loaded well before MOVE dispatch.
 set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *move_cfg_decoded_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_force_*_reg}]
 set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *move_cfg_decoded_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_force_*_reg}]
+
+# --- cir_dst_reg_idx -> result_hi/lo_reg (2-cycle MCP) ---
+# Destination register index is decoded during CIR cpGEN dispatch, stable
+# through the entire MOVE/ALU execution pipeline.
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *result_lo_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *result_lo_reg_reg*}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *result_hi_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *result_hi_reg_reg*}]
+
+# --- fp_reg_file_reg -> cir_operand_staging (2-cycle MCP) ---
+# FMOVE REG_TO_MEM reads fp_reg_file(src), does format conversion,
+# writes to cir_operand_staging for transfer back to host.
+# Register file is stable (written by prior op), MOVE dispatch takes 2+ CIR cycles.
+set_multicycle_path -setup 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *cir_operand_staging_reg*/D}]
+set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *fp_reg_file_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *cir_operand_staging_reg*/D}]
+
+# --- fpcr_reg -> exc_event_force_* (2-cycle MCP) ---
+# FPCR is written by host bus write, well before MOVE dispatch evaluates
+# exception conditions.  Rounding mode and precision are stable during MOVE.
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *fpcr_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_force_*_reg}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *fpcr_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *exc_event_force_*_reg}]
 
 # --- Trig log_unbiased_exp_reg -> mul_a_reg / log_exp_term_reg (2-cycle MCP = 60.6ns) ---
 # fp80_from_int(log_unbiased_exp_reg) conversion path.  ST_LOG_GETEXP_HOLD

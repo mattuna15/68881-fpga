@@ -15,6 +15,7 @@ LIB_DIR  = ../lib
 LIB_SBRK = $(LIB_DIR)/merlin2_sbrk.c
 LIB_GFX  = $(LIB_DIR)/merlin2_gfx.c $(LIB_DIR)/merlin2_rand.c
 LIB_RTC  = $(LIB_DIR)/merlin2_gfx.c $(LIB_DIR)/merlin2_rtc.c
+LIB_MOUSE = $(LIB_DIR)/merlin2_gfx.c $(LIB_DIR)/merlin2_mouse.c
 
 # FPU examples need -m68881
 FPU_CFLAGS = $(CFLAGS) -m68881 -Wa,-mcpu=68020 -ffast-math -I$(LIB_DIR)
@@ -22,7 +23,7 @@ FPU_CFLAGS = $(CFLAGS) -m68881 -Wa,-mcpu=68020 -ffast-math -I$(LIB_DIR)
 # Non-FPU C flags with lib include path
 CFLAGS_LIB = $(CFLAGS) -I$(LIB_DIR)
 
-all: hello.srec hello.lst fputest.srec fputest.lst fireworks.srec fireworks.lst rtctest.srec
+all: hello.srec hello.lst fputest.srec fputest.lst fireworks.srec fireworks.lst rtctest.srec mousetest.srec
 
 # Non-FPU targets
 hello.srec: hello.c $(LIB_SBRK)
@@ -48,6 +49,10 @@ fireworks.lst: fireworks.c
 # RTC test (no FPU needed, uses gfx lib for char_ready + rtc lib)
 rtctest.srec: rtctest.c $(LIB_RTC) $(LIB_SBRK)
 	$(CC) $(CFLAGS_LIB) $(LDFLAGS) -o $@ $< $(LIB_RTC) $(LIB_SBRK)
+
+# Mouse test (no FPU, uses gfx lib + mouse lib)
+mousetest.srec: mousetest.c $(LIB_MOUSE) $(LIB_SBRK)
+	$(CC) $(CFLAGS_LIB) $(LDFLAGS) -o $@ $< $(LIB_MOUSE) $(LIB_SBRK)
 
 clean:
 	rm -f *.srec *.lst *.o

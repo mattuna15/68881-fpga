@@ -10,7 +10,60 @@
 #include "emu_memory.h"
 #include "mfp_emu.h"
 #include "gfx_fb.h"
+#include "usb_hid.h"
 #include "xil_printf.h"
+
+/* Mouse I/O region: 0xFD0050-0xFD005B (12 bytes, read-only)
+ * Layout (big-endian):
+ *   0x50: buttons (1 byte)
+ *   0x51: (reserved)
+ *   0x52-0x53: delta X (int16, big-endian)
+ *   0x54-0x55: delta Y (int16, big-endian)
+ *   0x56-0x57: abs X (uint16, big-endian)
+ *   0x58-0x59: abs Y (uint16, big-endian)
+ *   0x5A-0x5B: (reserved)
+ * Reading 0x52 clears accumulated deltas. */
+#define MOUSE_IO_BASE   0xFD0050
+#define MOUSE_IO_SIZE   0x0C
+
+static inline int is_mouse_io(unsigned int addr)
+{
+    return (addr >= MOUSE_IO_BASE) && (addr < MOUSE_IO_BASE + MOUSE_IO_SIZE);
+}
+
+/* Snapshot deltas for atomic word reads (high byte snapshots, low byte returns
+ * from snapshot, reading dy low byte clears the live deltas) */
+static int16_t mouse_snap_dx, mouse_snap_dy;
+
+static unsigned int mouse_io_read(unsigned int addr)
+{
+    const usb_mouse_state_t *ms = usb_mouse_state();
+    uint32_t off = addr - MOUSE_IO_BASE;
+    switch (off) {
+    case 0x00: return ms->buttons;
+    case 0x01: return 0;
+    case 0x02: /* DX high byte: snapshot both deltas */
+        mouse_snap_dx = ms->dx;
+        mouse_snap_dy = ms->dy;
+        return (mouse_snap_dx >> 8) & 0xFF;
+    case 0x03: return mouse_snap_dx & 0xFF;
+    case 0x04: return (mouse_snap_dy >> 8) & 0xFF;
+    case 0x05: /* DY low byte: clear live deltas after full read */
+        usb_mouse_clear_deltas();
+        return mouse_snap_dy & 0xFF;
+    case 0x06: return (ms->abs_x >> 8) & 0xFF;
+    case 0x07: return ms->abs_x & 0xFF;
+    case 0x08: return (ms->abs_y >> 8) & 0xFF;
+    case 0x09: return ms->abs_y & 0xFF;
+    default:   return 0;
+    }
+}
+
+static void mouse_io_write(unsigned int addr, unsigned int value)
+{
+    /* Only abs_x (0x06-0x07) and abs_y (0x08-0x09) are writable (for SET_MOUSE_POS) */
+    usb_mouse_set_pos(addr - MOUSE_IO_BASE, value);
+}
 
 /* Static allocation — lives in DDR on the ZU3EG */
 unsigned char emu_ram[EMU_RAM_SIZE];
@@ -63,6 +116,8 @@ unsigned int m68k_read_memory_8(unsigned int address)
         return mfp_read(address - EMU_MFP_BASE);
     if (gfx_is_io(address))
         return gfx_io_read(address - GFX_IO_BASE);
+    if (is_mouse_io(address))
+        return mouse_io_read(address);
     if (gfx_is_fb(address))
         return gfx_read_8(address);
     return emu_ram[address & EMU_RAM_MASK];
@@ -77,6 +132,10 @@ unsigned int m68k_read_memory_16(unsigned int address)
                 (unsigned int)m68k_read_memory_8(address + 1);
     }
     if (gfx_is_io(address) || gfx_is_io(address + 1)) {
+        return ((unsigned int)m68k_read_memory_8(address) << 8) |
+                (unsigned int)m68k_read_memory_8(address + 1);
+    }
+    if (is_mouse_io(address) || is_mouse_io(address + 1)) {
         return ((unsigned int)m68k_read_memory_8(address) << 8) |
                 (unsigned int)m68k_read_memory_8(address + 1);
     }
@@ -105,6 +164,12 @@ unsigned int m68k_read_memory_32(unsigned int address)
                ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
                 (unsigned int)m68k_read_memory_8(address + 3);
     }
+    if (is_mouse_io(address) || is_mouse_io(address + 3)) {
+        return ((unsigned int)m68k_read_memory_8(address)     << 24) |
+               ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
+               ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
+                (unsigned int)m68k_read_memory_8(address + 3);
+    }
     if (gfx_is_fb(address) || gfx_is_fb(address + 3)) {
         return ((unsigned int)m68k_read_memory_8(address)     << 24) |
                ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
@@ -125,6 +190,10 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
     }
     if (gfx_is_io(address)) {
         gfx_io_write(address - GFX_IO_BASE, value);
+        return;
+    }
+    if (is_mouse_io(address)) {
+        mouse_io_write(address, value);
         return;
     }
     if (gfx_is_fb(address)) {
@@ -149,6 +218,11 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
         return;
     }
     if (gfx_is_io(address) || gfx_is_io(address + 1)) {
+        m68k_write_memory_8(address,     (value >> 8) & 0xFF);
+        m68k_write_memory_8(address + 1,  value       & 0xFF);
+        return;
+    }
+    if (is_mouse_io(address) || is_mouse_io(address + 1)) {
         m68k_write_memory_8(address,     (value >> 8) & 0xFF);
         m68k_write_memory_8(address + 1,  value       & 0xFF);
         return;
@@ -178,6 +252,13 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
         return;
     }
     if (gfx_is_io(address) || gfx_is_io(address + 3)) {
+        m68k_write_memory_8(address,     (value >> 24) & 0xFF);
+        m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
+        m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);
+        m68k_write_memory_8(address + 3,  value        & 0xFF);
+        return;
+    }
+    if (is_mouse_io(address) || is_mouse_io(address + 3)) {
         m68k_write_memory_8(address,     (value >> 24) & 0xFF);
         m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
         m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);

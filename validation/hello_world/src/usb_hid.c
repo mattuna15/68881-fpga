@@ -164,6 +164,7 @@
 #define USB_CLASS_HID       3
 #define USB_SUBCLASS_BOOT   1
 #define USB_PROTOCOL_KBD    1
+#define USB_PROTOCOL_MOUSE  2
 
 #define USB_DIR_IN          0x80
 #define USB_DIR_OUT         0x00
@@ -246,6 +247,10 @@ static xhci_erst_entry_t erst[1] __attribute__((aligned(64)));
 static uint8_t data_buf[512] __attribute__((aligned(64)));
 static uint8_t hid_report[64] __attribute__((aligned(64)));
 
+/* Mouse interrupt endpoint transfer ring and report buffer */
+static xhci_trb_t mouse_xfer_ring[XFER_RING_SIZE] __attribute__((aligned(64)));
+static uint8_t mouse_hid_report[64] __attribute__((aligned(64)));
+
 /* ------------------------------------------------------------------ */
 /* Per-slot state                                                     */
 /* ------------------------------------------------------------------ */
@@ -294,6 +299,14 @@ static struct {
     uint8_t     num_lock;
     uint8_t     leds;           /* current LED state sent to keyboard */
     uint8_t     leds_dirty;     /* need to send SET_REPORT for LEDs */
+
+    /* Mouse state */
+    uint32_t    mouse_slot;
+    uint8_t     mouse_ep_dci;
+    uint16_t    mouse_ep_maxpkt;
+    uint8_t     mouse_ep_interval;
+    uint32_t    mouse_xfer_enq;
+    uint32_t    mouse_xfer_cycle;
 
     int         initialized;
 } usb;
@@ -625,6 +638,7 @@ static int xhci_init(void)
     memset(cmd_ring, 0, sizeof(cmd_ring));
     memset(evt_ring, 0, sizeof(evt_ring));
     memset(xfer_ring, 0, sizeof(xfer_ring));
+    memset(mouse_xfer_ring, 0, sizeof(mouse_xfer_ring));
     memset(ep0_rings, 0, sizeof(ep0_rings));
     memset(erst, 0, sizeof(erst));
 
@@ -669,11 +683,17 @@ static int xhci_init(void)
         usb.slots[i + 1].ep0_cycle = 1;
     }
 
-    /* Interrupt endpoint transfer ring */
+    /* Keyboard interrupt endpoint transfer ring */
     usb.xfer_enq = 0;
     usb.xfer_cycle = 1;
     init_ring_with_link(xfer_ring, XFER_RING_SIZE);
     flush_cache(xfer_ring, sizeof(xfer_ring));
+
+    /* Mouse interrupt endpoint transfer ring */
+    usb.mouse_xfer_enq = 0;
+    usb.mouse_xfer_cycle = 1;
+    init_ring_with_link(mouse_xfer_ring, XFER_RING_SIZE);
+    flush_cache(mouse_xfer_ring, sizeof(mouse_xfer_ring));
 
     /* Start controller */
     reg = reg_read32(usb.op_base + XHCI_OP_USBCMD);
@@ -1050,35 +1070,37 @@ static int hub_init(uint32_t slot_id, uint8_t *config_desc,
 }
 
 /* ------------------------------------------------------------------ */
-/* Configure interrupt endpoint (for keyboard slot)                   */
+/* Configure interrupt endpoint                                       */
 /* ------------------------------------------------------------------ */
 
-static int configure_endpoint(uint32_t slot_id)
+static int configure_endpoint(uint32_t slot_id,
+                              uint8_t ep_dci, uint16_t maxpkt,
+                              uint8_t ep_interval, xhci_trb_t *ring)
 {
     uint32_t csz = usb.ctx_size;
     memset(input_ctx, 0, sizeof(input_ctx));
 
     xhci_input_ctrl_ctx_t *ctrl = (xhci_input_ctrl_ctx_t *)input_ctx;
-    ctrl->add_flags = (1U << 0) | (1U << usb.ep_in_dci);
+    ctrl->add_flags = (1U << 0) | (1U << ep_dci);
 
     /* Copy current slot context from output context */
     uint32_t *slot = (uint32_t *)(input_ctx + csz);
     invalidate_cache(dev_out_ctxs[slot_id - 1], sizeof(dev_out_ctxs[0]));
     memcpy(slot, dev_out_ctxs[slot_id - 1], csz);
     slot[0] &= ~(0x1FU << 27);
-    slot[0] |= (usb.ep_in_dci << 27);
+    slot[0] |= (ep_dci << 27);
 
     /* Endpoint context */
-    uint32_t *ep = (uint32_t *)(input_ctx + csz + usb.ep_in_dci * csz);
+    uint32_t *ep = (uint32_t *)(input_ctx + csz + ep_dci * csz);
 
     uint32_t interval = 0;
     uint32_t speed = usb.slots[slot_id].speed;
     if (speed >= PORT_SPEED_HS) {
-        interval = usb.ep_in_interval;
+        interval = ep_interval;
         if (interval > 0) interval--;
         if (interval > 15) interval = 15;
     } else {
-        uint32_t ms = usb.ep_in_interval;
+        uint32_t ms = ep_interval;
         if (ms == 0) ms = 1;
         uint32_t frames = ms * 8;
         interval = 0;
@@ -1086,10 +1108,10 @@ static int configure_endpoint(uint32_t slot_id)
     }
 
     ep[0] = (interval << 16);
-    ep[1] = (3U << 1) | (7U << 3) | (usb.ep_in_maxpkt << 16); /* CErr=3, EPType=InterruptIN */
-    ep[2] = (uint32_t)(uintptr_t)xfer_ring | 1U;
+    ep[1] = (3U << 1) | (7U << 3) | (maxpkt << 16); /* CErr=3, EPType=InterruptIN */
+    ep[2] = (uint32_t)(uintptr_t)ring | 1U;
     ep[3] = 0;
-    ep[4] = usb.ep_in_maxpkt | (usb.ep_in_maxpkt << 16);
+    ep[4] = maxpkt | (maxpkt << 16);
 
     flush_cache(input_ctx, sizeof(input_ctx));
 
@@ -1102,7 +1124,7 @@ static int configure_endpoint(uint32_t slot_id)
         xil_printf("[USB] Configure Endpoint failed (%d)\r\n", ret);
         return ret;
     }
-    xil_printf("[USB] Interrupt endpoint configured (DCI=%u)\r\n", usb.ep_in_dci);
+    xil_printf("[USB] Interrupt endpoint configured (DCI=%u)\r\n", ep_dci);
     return 0;
 }
 
@@ -1140,6 +1162,44 @@ static int find_hid_keyboard(uint8_t *config_desc, uint16_t total_len)
                 usb.ep_in_dci = ((ep_addr & 0x0F) * 2) + 1;
                 xil_printf("[USB] Interrupt IN EP 0x%02X maxpkt=%u interval=%u DCI=%u\r\n",
                            ep_addr, usb.ep_in_maxpkt, usb.ep_in_interval, usb.ep_in_dci);
+                return 0;
+            }
+        }
+        p += bLength;
+    }
+    return -1;
+}
+
+static int find_hid_mouse(uint8_t *config_desc, uint16_t total_len)
+{
+    uint8_t *p = config_desc;
+    uint8_t *end = config_desc + total_len;
+    int found = 0;
+
+    while (p < end && p[0] >= 2) {
+        uint8_t bLength = p[0];
+        uint8_t bDescType = p[1];
+
+        if (bDescType == USB_DT_INTERFACE && bLength >= 9) {
+            if (p[5] == USB_CLASS_HID &&
+                p[6] == USB_SUBCLASS_BOOT &&
+                p[7] == USB_PROTOCOL_MOUSE) {
+                xil_printf("[USB] Found HID mouse (iface %u)\r\n", p[2]);
+                found = 1;
+            } else {
+                found = 0;
+            }
+        }
+
+        if (bDescType == USB_DT_ENDPOINT && bLength >= 7 && found) {
+            uint8_t ep_addr = p[2];
+            uint8_t ep_attr = p[3];
+            if ((ep_attr & 0x03) == 0x03 && (ep_addr & 0x80)) {
+                usb.mouse_ep_maxpkt = p[4] | (p[5] << 8);
+                usb.mouse_ep_interval = p[6];
+                usb.mouse_ep_dci = ((ep_addr & 0x0F) * 2) + 1;
+                xil_printf("[USB] Mouse IN EP 0x%02X maxpkt=%u DCI=%u\r\n",
+                           ep_addr, usb.mouse_ep_maxpkt, usb.mouse_ep_dci);
                 return 0;
             }
         }
@@ -1290,9 +1350,53 @@ static void update_leds(void)
 }
 
 /* ------------------------------------------------------------------ */
-/* Enumerate a single device. If it's a hub, set up the hub and       */
-/* enumerate downstream. If it's an HID keyboard, configure it.       */
-/* Returns 0 if a keyboard was found and configured.                  */
+/* Mouse support                                                      */
+/* ------------------------------------------------------------------ */
+
+/* Mouse state — visible to mfp_emu.c via usb_mouse_state() */
+static usb_mouse_state_t mouse_state;
+
+static void process_mouse_report(const uint8_t *report)
+{
+    /* Boot protocol mouse report:
+     *   Byte 0: buttons (bit 0=left, bit 1=right, bit 2=middle)
+     *   Byte 1: X displacement (signed int8)
+     *   Byte 2: Y displacement (signed int8)
+     *   Byte 3: wheel (signed int8, optional) */
+    mouse_state.buttons = report[0] & 0x07;
+    int8_t dx = (int8_t)report[1];
+    int8_t dy = (int8_t)report[2];
+
+    mouse_state.dx += dx;
+    mouse_state.dy += dy;
+
+    /* Update absolute position (clamped to screen bounds) */
+    int32_t ax = (int32_t)mouse_state.abs_x + dx;
+    int32_t ay = (int32_t)mouse_state.abs_y + dy;
+    if (ax < 0) ax = 0;
+    if (ax >= 1280) ax = 1279;
+    if (ay < 0) ay = 0;
+    if (ay >= 720) ay = 719;
+    mouse_state.abs_x = (uint16_t)ax;
+    mouse_state.abs_y = (uint16_t)ay;
+}
+
+static void queue_mouse_interrupt_transfer(void)
+{
+    memset(mouse_hid_report, 0, 64);
+    flush_cache(mouse_hid_report, 64);
+
+    ring_enqueue(mouse_xfer_ring, XFER_RING_SIZE,
+                 &usb.mouse_xfer_enq, &usb.mouse_xfer_cycle,
+                 (uint32_t)(uintptr_t)mouse_hid_report, 0,
+                 usb.mouse_ep_maxpkt ? usb.mouse_ep_maxpkt : 8,
+                 TRB_TYPE(TRB_NORMAL) | TRB_IOC | TRB_ISP);
+
+    ring_doorbell(usb.mouse_slot, usb.mouse_ep_dci);
+}
+
+/* ------------------------------------------------------------------ */
+/* Enumerate devices: find keyboard and/or mouse behind hubs          */
 /* ------------------------------------------------------------------ */
 
 static int get_config_and_parse(uint32_t slot_id, uint8_t *config_desc, uint16_t buf_size,
@@ -1356,7 +1460,8 @@ static int setup_keyboard(uint32_t slot_id, uint8_t *config_desc, uint16_t total
 
     usb.kbd_slot = slot_id;
 
-    ret = configure_endpoint(slot_id);
+    ret = configure_endpoint(slot_id, usb.ep_in_dci, usb.ep_in_maxpkt,
+                             usb.ep_in_interval, xfer_ring);
     if (ret < 0) return ret;
 
     queue_interrupt_transfer();
@@ -1364,9 +1469,39 @@ static int setup_keyboard(uint32_t slot_id, uint8_t *config_desc, uint16_t total
     return 0;
 }
 
+static int setup_mouse(uint32_t slot_id, uint8_t *config_desc, uint16_t total_len)
+{
+    int ret;
+
+    ret = find_hid_mouse(config_desc, total_len);
+    if (ret < 0) return ret;
+
+    /* SET_CONFIGURATION (may already be set if keyboard was on same device) */
+    uint8_t config_val = config_desc[5];
+    usb_control_transfer(slot_id,
+        USB_DIR_OUT | USB_TYPE_STANDARD | USB_RECIP_DEVICE,
+        USB_REQ_SET_CONFIG, config_val, 0, 0, NULL);
+
+    /* SET_PROTOCOL boot */
+    usb_control_transfer(slot_id,
+        USB_DIR_OUT | USB_TYPE_CLASS | USB_RECIP_IFACE,
+        USB_REQ_SET_PROTO, HID_PROTO_BOOT, 0, 0, NULL);
+
+    usb.mouse_slot = slot_id;
+
+    ret = configure_endpoint(slot_id, usb.mouse_ep_dci, usb.mouse_ep_maxpkt,
+                             usb.mouse_ep_interval, mouse_xfer_ring);
+    if (ret < 0) return ret;
+
+    queue_mouse_interrupt_transfer();
+    xil_printf("[USB] HID mouse ready (slot %u)\r\n", slot_id);
+    return 0;
+}
+
 /*
  * Recursively enumerate a device.  If it's a hub, configure it and
- * enumerate all downstream ports.  If it's an HID keyboard, set it up.
+ * enumerate all downstream ports.  If it finds an HID keyboard or mouse,
+ * set it up.
  *
  * parent_slot  = 0 for root-hub-connected device
  * parent_port  = hub port number (0 for root)
@@ -1393,9 +1528,14 @@ static int enumerate_one(uint32_t slot_id, uint32_t speed,
                                &total_len, &dev_class);
     if (ret < 0) return ret;
 
-    /* Not a hub — try to set up as keyboard */
+    /* Not a hub — try keyboard first, then mouse */
     if (dev_class != USB_CLASS_HUB) {
-        return setup_keyboard(slot_id, config_desc, total_len);
+        int found = -1;
+        if (!usb.kbd_slot && setup_keyboard(slot_id, config_desc, total_len) == 0)
+            found = 0;
+        if (!usb.mouse_slot && setup_mouse(slot_id, config_desc, total_len) == 0)
+            found = 0;
+        return found;
     }
 
     /* It's a hub */
@@ -1457,16 +1597,16 @@ static int enumerate_one(uint32_t slot_id, uint32_t speed,
         ret = enable_slot(&child_slot);
         if (ret < 0) continue;
 
-        ret = enumerate_one(child_slot, child_speed,
-                            slot_id, p, child_route, depth + 1);
-        if (ret == 0)
-            return 0;  /* found a keyboard */
+        enumerate_one(child_slot, child_speed,
+                      slot_id, p, child_route, depth + 1);
 
-        /* Not a keyboard on this port, try next */
+        /* Stop scanning if we have both devices */
+        if (usb.kbd_slot && usb.mouse_slot)
+            return 0;
     }
 
-    xil_printf("[USB] No HID keyboard found downstream of hub slot %u\r\n", slot_id);
-    return -1;
+    /* Return success if we found at least a keyboard */
+    return usb.kbd_slot ? 0 : -1;
 }
 
 static int enumerate_device(void)
@@ -1499,7 +1639,9 @@ int usb_hid_init(void)
     if (ret < 0) return ret;
 
     usb.initialized = 1;
-    xil_printf("[USB] USB HID keyboard initialized\r\n");
+    xil_printf("[USB] USB HID: kbd=%s mouse=%s\r\n",
+               usb.kbd_slot ? "yes" : "no",
+               usb.mouse_slot ? "yes" : "no");
     return 0;
 }
 
@@ -1532,18 +1674,48 @@ void usb_hid_poll(void)
 
     uint32_t trb_type = (evt.field[3] >> TRB_TYPE_SHIFT) & 0x3FU;
     uint32_t comp_code = (evt.field[2] >> 24) & 0xFFU;
+    uint32_t evt_slot = (evt.field[3] >> 24) & 0xFFU;
 
     if (trb_type == TRB_TRANSFER_EVT) {
-        if (comp_code == TRB_COMP_SUCCESS || comp_code == TRB_COMP_SHORT_PKT) {
-            invalidate_cache(hid_report, 64);
-            process_hid_report(hid_report);
+        if (evt_slot == usb.kbd_slot) {
+            if (comp_code == TRB_COMP_SUCCESS || comp_code == TRB_COMP_SHORT_PKT) {
+                invalidate_cache(hid_report, 64);
+                process_hid_report(hid_report);
+            }
+            queue_interrupt_transfer();
+            if (usb.leds_dirty) {
+                usb.leds_dirty = 0;
+                update_leds();
+            }
+        } else if (evt_slot == usb.mouse_slot) {
+            if (comp_code == TRB_COMP_SUCCESS || comp_code == TRB_COMP_SHORT_PKT) {
+                invalidate_cache(mouse_hid_report, 64);
+                process_mouse_report(mouse_hid_report);
+            }
+            queue_mouse_interrupt_transfer();
         }
-        queue_interrupt_transfer();
+    }
+}
 
-        /* Update keyboard LEDs if caps/num lock changed */
-        if (usb.leds_dirty) {
-            usb.leds_dirty = 0;
-            update_leds();
-        }
+const usb_mouse_state_t *usb_mouse_state(void)
+{
+    return &mouse_state;
+}
+
+void usb_mouse_clear_deltas(void)
+{
+    mouse_state.dx = 0;
+    mouse_state.dy = 0;
+}
+
+void usb_mouse_set_pos(uint32_t offset, uint8_t value)
+{
+    /* Handle byte writes to abs_x (0x06-0x07) and abs_y (0x08-0x09) */
+    switch (offset) {
+    case 0x06: mouse_state.abs_x = (mouse_state.abs_x & 0x00FF) | (value << 8); break;
+    case 0x07: mouse_state.abs_x = (mouse_state.abs_x & 0xFF00) | value; break;
+    case 0x08: mouse_state.abs_y = (mouse_state.abs_y & 0x00FF) | (value << 8); break;
+    case 0x09: mouse_state.abs_y = (mouse_state.abs_y & 0xFF00) | value; break;
+    default: break;
     }
 }

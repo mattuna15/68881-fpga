@@ -338,13 +338,14 @@ provides an interactive monitor with a built-in assembler (CODE68K) and disassem
 - **MFP emulation** -- MC68901 USART emulation maps ARM UART RX/TX to the
   BIOS character I/O, enabling keyboard input and serial output. Includes
   millisecond tick counter, RTC (Unix seconds + BCD datetime via ZynqMP PS
-  RTC), and Timer C periodic interrupt (~38 Hz, IPL 6 autovectored)
+  RTC), and Timer C periodic interrupt (~133 Hz, IPL 6 autovectored)
 - **Real-time clock** -- TRAP #15 D0=22 (GET_RTC), D0=23 (GET_DATETIME),
   D0=24 (SET_RTC). Backed by ZynqMP PS hardware RTC with battery retention.
   BCD datetime returns packed YYYYMMDD + HHMMSSwd
 - **Timer C interrupt** -- MC68901-compatible Timer C with configurable
-  prescaler (TCDCR bits 6-4) and counter (TCDR). Default ~38 Hz. Fires
-  IPL 6 autovector (vector 70). BIOS tick counter via TRAP #15 D0=25
+  prescaler (TCDCR bits 6-4) and counter (TCDR). Default ~133 Hz
+  (prescaler /200, counter 92). Fires IPL 6 autovector (vector 30).
+  BIOS tick counter via TRAP #15 D0=25
 - **Graphics mode** -- 1280x720 ARGB8888 pixel-addressable framebuffer at
   `$800000`. TRAP #15 D0=17-21 for mode switching, clear, set/get pixel,
   screen info. Direct framebuffer writes for high-speed rendering

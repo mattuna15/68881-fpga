@@ -122,6 +122,11 @@ On exit, the program returns cleanly to the BIOS monitor prompt. The BSP's
 `_exit()` restores the monitor stack pointer saved at startup by `crt0.S`,
 then uses `RTS` to return to the BIOS after its `JSR` dispatch.
 
+Programs are **re-runnable** — `G 2004` works repeatedly without reloading
+the S-record. The crt0 startup code backs up the `.data` section on first
+run and restores it on subsequent runs, giving newlib's `printf` and
+`malloc` a clean initial state each time.
+
 ## Examples
 
 Build the example programs:
@@ -134,10 +139,14 @@ make examples
 |---------|-------------|------|
 | `hello.c` | Serial "Hello" message | No |
 | `fputest.c` | `sin(1.0)` via hardware `FSIN` | Yes |
+| `fireworks.c` | Particle fireworks with gravity and trails | Yes |
+| `rtctest.c` | RTC date/time display, set, and tick counter | No |
 
-Verified output:
+Verified output (all re-runnable without reload):
 
 ```
+>G 2004
+Hello from Merlin 2 GCC!
 >G 2004
 Hello from Merlin 2 GCC!
 >G 2004
@@ -185,7 +194,8 @@ An empty result confirms 68000 ISA purity.
 | Program RAM | `0x002000`-`0x7FDFFF` | ~8 MB | Code + data + BSS + heap |
 | Stack | `0x7FDFFC` (grows down) | | Set by linker script |
 | Framebuffer | `0x800000`-`0xB84FFF` | 3.6 MB | 1280x720 ARGB8888 |
-| I/O registers | `0xFD0000` | | MFP, video control |
+| I/O registers | `0xFD0000`-`0xFD003F` | 64 bytes | MFP (USART, timers, RTC, datetime) |
+| Graphics I/O | `0xFD0040`-`0xFD004F` | 16 bytes | Video mode, clear, screen info |
 | BIOS ROM | `0xFE0000` | | Monitor firmware |
 
 ## Merlin 2 BSP
@@ -199,7 +209,20 @@ The BSP provides newlib syscall stubs via TRAP #15 BIOS calls:
 | `inbyte()` | 5 | Read char -> D0 |
 | `havebyte()` | 7 | Check RX ready -> D0 (0/1) |
 
-Additional TRAP #15 functions are available for graphics and timer access.
+Additional TRAP #15 functions:
+
+| Function | TRAP D0 | Description |
+|----------|---------|-------------|
+| `gfx_set_mode()` | 17 | Switch text/graphics mode |
+| `gfx_clear()` | 18 | Clear framebuffer with ARGB colour |
+| `gfx_set_pixel()` | 19 | Set pixel (bounds-checked) |
+| `gfx_get_pixel()` | 20 | Read pixel |
+| `gfx_screen_info()` | 21 | Query screen dimensions |
+| `rtc_get_time()` | 22 | Get Unix timestamp (seconds) |
+| `rtc_get_datetime()` | 23 | Get BCD datetime (YYYYMMDD + HHMMSSwd) |
+| `rtc_set_time()` | 24 | Set Unix timestamp |
+| `rtc_get_ticks()` | 25 | Get Timer C tick counter (~133 Hz) |
+
 See `merlin2-bsp/merlin2.h` for the complete function list.
 
 ### BSP quick rebuild
@@ -211,8 +234,8 @@ or `merlin2.S`):
 bash merlin2-bsp/install-crt0.sh
 ```
 
-This rebuilds `merlin2-crt0.o` and `libmerlin2.a` and installs them to
-`~/.local/m68k-elf/lib/`.
+This rebuilds `merlin2-crt0.o`, `libmerlin2.a`, and installs the linker
+script to `~/.local/m68k-elf/lib/`.
 
 ## Directory structure
 
@@ -223,11 +246,18 @@ toolchain/
     merlin2.S              # Syscall implementations
     merlin2.ld             # Linker script
     merlin2.h              # TRAP #15 function constants
-    crt0.S                 # 68000-compatible startup (saves monitor SP)
-    install-crt0.sh        # Quick BSP rebuild script
+    crt0.S                 # 68000-compatible startup (.data backup/restore, monitor SP)
+    install-crt0.sh        # Quick BSP rebuild script (crt0 + libmerlin2 + linker script)
+  lib/                     # Reusable C libraries
+    merlin2_gfx.h/c        # Graphics TRAP wrappers + direct FB access
+    merlin2_rand.h/c       # LCG random number generator
+    merlin2_rtc.h/c        # RTC and Timer C tick wrappers
+    merlin2_sbrk.c         # Custom sbrk (zeroes heap, starts above .data backup)
   examples/                # Example programs
     hello.c                # Serial hello world
     fputest.c              # Hardware FPU sin() test
+    fireworks.c            # Particle fireworks demo (FPU + graphics)
+    rtctest.c              # RTC display, set, and tick counter
     Makefile
   Makefile                 # Top-level build wrapper
   README.md                # This file

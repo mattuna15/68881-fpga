@@ -15,6 +15,7 @@
  */
 
 #include "mfp_emu.h"
+#include "acia_emu.h"
 #include "text_fb.h"
 #include "xil_printf.h"
 #include "xil_io.h"
@@ -380,4 +381,180 @@ void mfp_write(uint32_t offset, uint8_t value)
         mfp_regs[offset] = value;
         break;
     }
+}
+
+/* ================================================================== */
+/* Atari ST MFP at $FFFA00 — interrupt controller for ACIA/Timer C    */
+/* ================================================================== */
+
+/* Atari MFP register offsets (odd-byte addressed like real MC68901) */
+#define AMFP_GPIP   0x01
+#define AMFP_AER    0x03
+#define AMFP_DDR    0x05
+#define AMFP_IERA   0x07
+#define AMFP_IERB   0x09
+#define AMFP_IPRA   0x0B
+#define AMFP_IPRB   0x0D
+#define AMFP_ISRA   0x0F
+#define AMFP_ISRB   0x11
+#define AMFP_IMRA   0x13
+#define AMFP_IMRB   0x15
+#define AMFP_VR     0x17
+#define AMFP_TACR   0x19
+#define AMFP_TBCR   0x1B
+#define AMFP_TCDCR  0x1D
+#define AMFP_TADR   0x1F
+#define AMFP_TBDR   0x21
+#define AMFP_TCDR   0x23
+#define AMFP_TDDR   0x25
+#define AMFP_SCR    0x27
+#define AMFP_UCR    0x29
+#define AMFP_RSR    0x2B
+#define AMFP_TSR    0x2D
+#define AMFP_UDR    0x2F
+
+static uint8_t amfp_regs[ATARI_MFP_SIZE];
+
+void atari_mfp_init(void)
+{
+    int i;
+    for (i = 0; i < ATARI_MFP_SIZE; i++)
+        amfp_regs[i] = 0;
+
+    /* Default vector register: $40 (vectors at $100+) — EmuTOS writes $48 */
+    amfp_regs[AMFP_VR] = 0x40;
+
+    /* GPIP bit 4 = 1 (ACIA interrupt inactive = high) */
+    amfp_regs[AMFP_GPIP] = 0x10;
+
+    xil_printf("[AMFP] Atari MFP initialised at $FFFA00\r\n");
+}
+
+uint8_t atari_mfp_read(uint32_t offset)
+{
+    if (offset >= ATARI_MFP_SIZE)
+        return 0;
+
+    switch (offset) {
+    case AMFP_GPIP:
+        /* Bit 4: ACIA interrupt (active low) */
+        if (acia_has_irq())
+            return amfp_regs[AMFP_GPIP] & ~0x10;  /* clear bit 4 = active */
+        else
+            return amfp_regs[AMFP_GPIP] | 0x10;   /* set bit 4 = inactive */
+
+    case AMFP_TCDCR:
+        /* Forward to existing Timer C: return stored value */
+        return amfp_regs[offset];
+
+    case AMFP_TCDR:
+        return amfp_regs[offset];
+
+    default:
+        return amfp_regs[offset];
+    }
+}
+
+void atari_mfp_write(uint32_t offset, uint8_t value)
+{
+    if (offset >= ATARI_MFP_SIZE)
+        return;
+
+    switch (offset) {
+    case AMFP_IERA:
+    case AMFP_IERB:
+    case AMFP_IMRA:
+    case AMFP_IMRB:
+    case AMFP_VR:
+        amfp_regs[offset] = value;
+        break;
+
+    case AMFP_IPRA:
+        /* Writing clears bits (write-1-to-clear would be weird; Atari software
+         * typically writes a mask to clear specific bits) */
+        amfp_regs[offset] &= value;
+        break;
+
+    case AMFP_IPRB:
+        amfp_regs[offset] &= value;
+        break;
+
+    case AMFP_ISRA:
+        /* Software clears ISR bits by writing a mask (e.g., &= 0xBF to clear ACIA) */
+        amfp_regs[offset] &= value;
+        break;
+
+    case AMFP_ISRB:
+        amfp_regs[offset] &= value;
+        break;
+
+    case AMFP_TCDCR:
+        amfp_regs[offset] = value;
+        /* Forward Timer C prescaler bits (6:4) to the existing Timer C engine */
+        mfp_write(MFP_OFF_TCDCR, value);
+        break;
+
+    case AMFP_TCDR:
+        amfp_regs[offset] = value;
+        /* Forward reload value to existing Timer C */
+        mfp_write(MFP_OFF_TCDR, value);
+        break;
+
+    default:
+        amfp_regs[offset] = value;
+        break;
+    }
+}
+
+void atari_mfp_set_timer_c_pending(void)
+{
+    /* IPRB bit 5 = Timer C */
+    if (amfp_regs[AMFP_IERB] & 0x20)
+        amfp_regs[AMFP_IPRB] |= 0x20;
+}
+
+void atari_mfp_update_acia_irq(void)
+{
+    if (acia_has_irq()) {
+        /* ACIA interrupt: IPRA bit 6 */
+        if (amfp_regs[AMFP_IERA] & 0x40)
+            amfp_regs[AMFP_IPRA] |= 0x40;
+        /* GPIP bit 4 low (active) */
+        amfp_regs[AMFP_GPIP] &= ~0x10;
+    } else {
+        /* Clear IPRA bit 6 and restore GPIP bit 4 */
+        amfp_regs[AMFP_IPRA] &= ~0x40;
+        amfp_regs[AMFP_GPIP] |= 0x10;
+    }
+}
+
+int atari_mfp_acknowledge(void)
+{
+    uint8_t vr_base = amfp_regs[AMFP_VR] & 0xF0;
+
+    /* Scan IPRA (bits 7..0) — these are interrupt channels 15..8 */
+    for (int bit = 7; bit >= 0; bit--) {
+        uint8_t mask = (uint8_t)(1 << bit);
+        if ((amfp_regs[AMFP_IPRA] & mask) &&
+            (amfp_regs[AMFP_IERA] & mask) &&
+            (amfp_regs[AMFP_IMRA] & mask)) {
+            amfp_regs[AMFP_ISRA] |= mask;
+            amfp_regs[AMFP_IPRA] &= ~mask;
+            return vr_base + 8 + bit;  /* A channels: vector base + 8..15 */
+        }
+    }
+
+    /* Scan IPRB (bits 7..0) — these are interrupt channels 7..0 */
+    for (int bit = 7; bit >= 0; bit--) {
+        uint8_t mask = (uint8_t)(1 << bit);
+        if ((amfp_regs[AMFP_IPRB] & mask) &&
+            (amfp_regs[AMFP_IERB] & mask) &&
+            (amfp_regs[AMFP_IMRB] & mask)) {
+            amfp_regs[AMFP_ISRB] |= mask;
+            amfp_regs[AMFP_IPRB] &= ~mask;
+            return vr_base + bit;      /* B channels: vector base + 0..7 */
+        }
+    }
+
+    return -1;  /* no pending interrupt */
 }

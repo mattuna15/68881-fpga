@@ -33,7 +33,9 @@
 /* ------------------------------------------------------------------ */
 /* Interrupts                                                          */
 /* ------------------------------------------------------------------ */
-#define M68K_EMULATE_INT_ACK        M68K_OPT_OFF
+#define M68K_EMULATE_INT_ACK        M68K_OPT_SPECIFY_HANDLER
+extern int emu_int_ack_callback(int int_level);
+#define M68K_INT_ACK_CALLBACK(level) emu_int_ack_callback(level)
 
 /* ------------------------------------------------------------------ */
 /* F-line trap: wire to our handler so we intercept FPU instructions    */

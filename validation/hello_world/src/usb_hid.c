@@ -16,6 +16,7 @@
 
 #include "usb_hid.h"
 #include "mfp_emu.h"
+#include "acia_emu.h"
 #include "xil_printf.h"
 #include "xil_cache.h"
 #include <string.h>
@@ -309,6 +310,9 @@ static struct {
     uint32_t    mouse_xfer_cycle;
 
     int         initialized;
+
+    /* IKBD mode: generate Atari scancodes + mouse packets */
+    int         ikbd_mode;
 } usb;
 
 /* ------------------------------------------------------------------ */
@@ -1259,11 +1263,91 @@ static const char hid_to_ascii_shift[128] = {
 #define USB_REQ_SET_REPORT  0x09
 #define HID_REPORT_OUTPUT   2
 
+/* ------------------------------------------------------------------ */
+/* HID keycode to Atari ST scancode table (IKBD mode)                 */
+/* ------------------------------------------------------------------ */
+
+static const uint8_t hid_to_atari[128] = {
+    [0x04] = 0x1E, /* A */  [0x05] = 0x30, /* B */  [0x06] = 0x2E, /* C */
+    [0x07] = 0x20, /* D */  [0x08] = 0x12, /* E */  [0x09] = 0x21, /* F */
+    [0x0A] = 0x22, /* G */  [0x0B] = 0x23, /* H */  [0x0C] = 0x17, /* I */
+    [0x0D] = 0x24, /* J */  [0x0E] = 0x25, /* K */  [0x0F] = 0x26, /* L */
+    [0x10] = 0x32, /* M */  [0x11] = 0x31, /* N */  [0x12] = 0x18, /* O */
+    [0x13] = 0x19, /* P */  [0x14] = 0x10, /* Q */  [0x15] = 0x13, /* R */
+    [0x16] = 0x1F, /* S */  [0x17] = 0x14, /* T */  [0x18] = 0x16, /* U */
+    [0x19] = 0x2F, /* V */  [0x1A] = 0x11, /* W */  [0x1B] = 0x2D, /* X */
+    [0x1C] = 0x15, /* Y */  [0x1D] = 0x2C, /* Z */
+    [0x1E] = 0x02, /* 1 */  [0x1F] = 0x03, /* 2 */  [0x20] = 0x04, /* 3 */
+    [0x21] = 0x05, /* 4 */  [0x22] = 0x06, /* 5 */  [0x23] = 0x07, /* 6 */
+    [0x24] = 0x08, /* 7 */  [0x25] = 0x09, /* 8 */  [0x26] = 0x0A, /* 9 */
+    [0x27] = 0x0B, /* 0 */
+    [0x28] = 0x1C, /* Enter */
+    [0x29] = 0x01, /* Escape */
+    [0x2A] = 0x0E, /* Backspace */
+    [0x2B] = 0x0F, /* Tab */
+    [0x2C] = 0x39, /* Space */
+    [0x2D] = 0x0C, /* - */  [0x2E] = 0x0D, /* = */
+    [0x2F] = 0x1A, /* [ */  [0x30] = 0x1B, /* ] */
+    [0x31] = 0x2B, /* \ */  [0x32] = 0x2B, /* # (non-US) */
+    [0x33] = 0x27, /* ; */  [0x34] = 0x28, /* ' */
+    [0x35] = 0x29, /* ` */  [0x36] = 0x33, /* , */
+    [0x37] = 0x34, /* . */  [0x38] = 0x35, /* / */
+    [0x39] = 0x3A, /* Caps Lock */
+    [0x3A] = 0x3B, /* F1 */  [0x3B] = 0x3C, /* F2 */
+    [0x3C] = 0x3D, /* F3 */  [0x3D] = 0x3E, /* F4 */
+    [0x3E] = 0x3F, /* F5 */  [0x3F] = 0x40, /* F6 */
+    [0x40] = 0x41, /* F7 */  [0x41] = 0x42, /* F8 */
+    [0x42] = 0x43, /* F9 */  [0x43] = 0x44, /* F10 */
+    [0x46] = 0x62, /* Print Screen (= Help on Atari) */
+    [0x49] = 0x52, /* Insert */
+    [0x4A] = 0x47, /* Home */
+    [0x4C] = 0x53, /* Delete */
+    [0x4F] = 0x4D, /* Right */
+    [0x50] = 0x4B, /* Left */
+    [0x51] = 0x50, /* Down */
+    [0x52] = 0x48, /* Up */
+    [0x54] = 0x65, /* Keypad / (= ( on Atari) */
+    [0x55] = 0x66, /* Keypad * (= ) on Atari) */
+    [0x56] = 0x4A, /* Keypad - */
+    [0x57] = 0x4E, /* Keypad + */
+    [0x58] = 0x72, /* Keypad Enter */
+    [0x59] = 0x6D, /* Keypad 1 */  [0x5A] = 0x6E, /* Keypad 2 */
+    [0x5B] = 0x6F, /* Keypad 3 */  [0x5C] = 0x6A, /* Keypad 4 */
+    [0x5D] = 0x6B, /* Keypad 5 */  [0x5E] = 0x6C, /* Keypad 6 */
+    [0x5F] = 0x67, /* Keypad 7 */  [0x60] = 0x68, /* Keypad 8 */
+    [0x61] = 0x69, /* Keypad 9 */  [0x62] = 0x70, /* Keypad 0 */
+    [0x63] = 0x71, /* Keypad . */
+};
+
+/* Modifier bit -> Atari scancode mapping.
+ * HID modifiers: bit0=LCtrl, 1=LShift, 2=LAlt, 3=LGui, 4=RCtrl, 5=RShift, 6=RAlt, 7=RGui */
+static const uint8_t mod_scancodes[8] = {
+    0x1D, /* bit 0: Left Ctrl */
+    0x2A, /* bit 1: Left Shift */
+    0x38, /* bit 2: Left Alt */
+    0,    /* bit 3: Left GUI (no Atari equivalent) */
+    0x1D, /* bit 4: Right Ctrl */
+    0x36, /* bit 5: Right Shift */
+    0x38, /* bit 6: Right Alt */
+    0,    /* bit 7: Right GUI */
+};
+
 static void process_hid_report(const uint8_t *report)
 {
     uint8_t modifiers = report[0];
     int shift = (modifiers & (MOD_LSHIFT | MOD_RSHIFT)) != 0;
     int ctrl = (modifiers & (MOD_LCTRL | MOD_RCTRL)) != 0;
+
+    /* IKBD mode: generate modifier make/break scancodes */
+    if (usb.ikbd_mode) {
+        uint8_t changed = modifiers ^ usb.prev_modifiers;
+        for (int b = 0; b < 8; b++) {
+            if (!(changed & (1 << b))) continue;
+            uint8_t sc = mod_scancodes[b];
+            if (!sc) continue;
+            acia_rx_push((modifiers & (1 << b)) ? sc : (sc | 0x80));
+        }
+    }
 
     for (int i = 2; i < 8; i++) {
         uint8_t key = report[i];
@@ -1279,12 +1363,23 @@ static void process_hid_report(const uint8_t *report)
         if (key == KEY_CAPS_LOCK) {
             usb.caps_lock ^= 1;
             usb.leds_dirty = 1;
+            /* IKBD: send caps lock scancode (make) */
+            if (usb.ikbd_mode) {
+                uint8_t sc = hid_to_atari[key];
+                if (sc) acia_rx_push(sc);
+            }
             continue;
         }
         if (key == KEY_NUM_LOCK) {
             usb.num_lock ^= 1;
             usb.leds_dirty = 1;
             continue;
+        }
+
+        /* IKBD mode: make scancode for newly pressed key */
+        if (usb.ikbd_mode && key < 128) {
+            uint8_t sc = hid_to_atari[key];
+            if (sc) acia_rx_push(sc);
         }
 
         /* Determine effective shift: XOR physical shift with caps lock for letters */
@@ -1299,6 +1394,22 @@ static void process_hid_report(const uint8_t *report)
             ch = (char)(key - 0x04 + 1);
         if (ch != 0)
             mfp_rx_push((uint8_t)ch);
+    }
+
+    /* IKBD mode: break scancodes for released keys */
+    if (usb.ikbd_mode) {
+        for (int j = 0; j < 6; j++) {
+            uint8_t old_key = usb.prev_keys[j];
+            if (old_key < 4) continue;
+            int still_pressed = 0;
+            for (int i = 2; i < 8; i++) {
+                if (report[i] == old_key) { still_pressed = 1; break; }
+            }
+            if (!still_pressed && old_key < 128) {
+                uint8_t sc = hid_to_atari[old_key];
+                if (sc) acia_rx_push(sc | 0x80);  /* bit 7 = break */
+            }
+        }
     }
 
     usb.prev_modifiers = modifiers;
@@ -1363,7 +1474,8 @@ static void process_mouse_report(const uint8_t *report)
      *   Byte 1: X displacement (signed int8)
      *   Byte 2: Y displacement (signed int8)
      *   Byte 3: wheel (signed int8, optional) */
-    mouse_state.buttons = report[0] & 0x07;
+    uint8_t buttons = report[0] & 0x07;
+    mouse_state.buttons = buttons;
     int8_t dx = (int8_t)report[1];
     int8_t dy = (int8_t)report[2];
 
@@ -1379,6 +1491,16 @@ static void process_mouse_report(const uint8_t *report)
     if (ay >= 720) ay = 719;
     mouse_state.abs_x = (uint16_t)ax;
     mouse_state.abs_y = (uint16_t)ay;
+
+    /* IKBD mode: generate 3-byte relative mouse packet */
+    if (usb.ikbd_mode && ikbd_mouse_enabled()) {
+        uint8_t header = 0xF8;
+        if (buttons & 0x02) header |= 0x01;  /* USB right → IKBD bit 0 */
+        if (buttons & 0x01) header |= 0x02;  /* USB left  → IKBD bit 1 */
+        acia_rx_push(header);
+        acia_rx_push((uint8_t)dx);
+        acia_rx_push((uint8_t)dy);
+    }
 }
 
 static void queue_mouse_interrupt_transfer(void)
@@ -1718,4 +1840,16 @@ void usb_mouse_set_pos(uint32_t offset, uint8_t value)
     case 0x09: mouse_state.abs_y = (mouse_state.abs_y & 0xFF00) | value; break;
     default: break;
     }
+}
+
+void usb_hid_set_ikbd_mode(int enable)
+{
+    usb.ikbd_mode = enable;
+    if (enable)
+        xil_printf("[USB] IKBD mode enabled (Atari scancodes + mouse packets)\r\n");
+}
+
+int usb_hid_ikbd_mode(void)
+{
+    return usb.ikbd_mode;
 }

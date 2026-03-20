@@ -19,7 +19,7 @@ entity mc68881_top is
     fpu_lite_g : boolean := false;
     -- FPU version: FPU_68881 (default) or FPU_68882.
     -- Selects FSAVE frame format and enables pending instruction pipeline.
-    fpu_version_g : fpu_version_t := FPU_68881
+    fpu_version_g : fpu_version_t := FPU_68882
   );
   port (
     -- Bus interface
@@ -4262,15 +4262,17 @@ begin
           end if;
 
         when CIR_PENDING_XFER_SRC_WAIT =>
-          -- Hold cycle (mirrors CIR_XFER_SRC_WAIT).
-          if valid = '1' then
-            cir_state_reg <= CIR_EXECUTE_DONE;
-          else
-            cir_state_reg <= CIR_PENDING_XFER_SRC_WAIT2;
-          end if;
+          -- Hold cycle 1 (mirrors CIR_XFER_SRC_WAIT).
+          -- Do NOT shortcut to CIR_EXECUTE_DONE on valid here — must
+          -- always pass through WAIT2 to guarantee 4-cycle MCP from
+          -- pending_operand_staging write to operand_reg load.
+          cir_state_reg <= CIR_PENDING_XFER_SRC_WAIT2;
 
         when CIR_PENDING_XFER_SRC_WAIT2 =>
-          -- Format conversion settled. Pending instruction fully staged.
+          -- Hold cycle 2.  Format conversion path has now had 3 cycles
+          -- to settle (write @ T0, WAIT @ T1, WAIT2 @ T2).
+          -- pending_launch_reg fires earliest at CIR_EXECUTE_DONE (T3+),
+          -- bus_frame_proc samples one cycle later (T4+) = 4-cycle MCP.
           pending_valid_reg <= '1';
           if valid = '1' then
             cir_state_reg <= CIR_EXECUTE_DONE;

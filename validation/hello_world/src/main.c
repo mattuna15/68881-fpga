@@ -25,6 +25,8 @@
 #include "dp_video.h"
 #include "rom_image.h"
 #include "usb_hid.h"
+#include "acia_emu.h"
+#include "atari_video.h"
 
 #ifdef TEST_MODE
 #include "fpu_periph.h"
@@ -73,6 +75,20 @@ int main(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Musashi interrupt acknowledge callback                              */
+/* ------------------------------------------------------------------ */
+
+int emu_int_ack_callback(int int_level)
+{
+    if (int_level == 6 && acia_mode_active()) {
+        int vec = atari_mfp_acknowledge();
+        if (vec >= 0)
+            return vec;
+    }
+    return M68K_INT_ACK_AUTOVECTOR;
+}
+
+/* ------------------------------------------------------------------ */
 /* ROM boot: load BIOS, init peripherals, run emulation loop          */
 /* ------------------------------------------------------------------ */
 
@@ -118,6 +134,9 @@ static void rom_boot(void)
     /* Initialise graphics framebuffer (shares pixel buffer with text) */
     gfx_init(pixel_buf);
 
+    /* Initialise Atari ST video shifter emulation */
+    atari_vid_init(pixel_buf);
+
     /* Initial render — black screen with no text */
     text_fb_render();
     Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
@@ -143,11 +162,17 @@ static void rom_boot(void)
     m68k_init();
     m68k_pulse_reset();
 
+    /* Initialise ACIA + Atari MFP for IKBD emulation */
+    acia_init();
+    atari_mfp_init();
+
     /* Initialise USB HID keyboard (non-fatal if no device present) */
-    if (usb_hid_init() == 0)
+    if (usb_hid_init() == 0) {
         xil_printf("[ROM] USB keyboard ready\r\n");
-    else
+        usb_hid_set_ikbd_mode(1);
+    } else {
         xil_printf("[ROM] No USB keyboard (UART-only input)\r\n");
+    }
 
     xil_printf("[ROM] M68000 reset — PC=$%06X SSP=$%06X\r\n",
                BIOS_ROMBAS, BIOS_STACK);
@@ -158,17 +183,35 @@ static void rom_boot(void)
         /* Execute a batch of M68K instructions */
         m68k_execute(EMU_CYCLES_PER_TICK);
 
-        /* Timer C interrupt: assert IRQ 6 on expiry.
-         * Musashi checks pending interrupts at the start of m68k_execute(),
-         * so the assertion persists across batches until serviced.
-         * Deassert after the next batch where no new timer expired. */
-        if (mfp_timer_tick(EMU_CYCLES_PER_TICK))
-            m68k_set_irq(6);
-        else
-            m68k_set_irq(0);
+        /* Timer C + ACIA interrupt logic.
+         * Both share IPL 6 through the Atari MFP interrupt controller.
+         * Musashi checks pending interrupts at the start of m68k_execute(). */
+        {
+            int irq = 0;
+            if (mfp_timer_tick(EMU_CYCLES_PER_TICK)) {
+                if (acia_mode_active())
+                    atari_mfp_set_timer_c_pending();
+                irq = 6;
+            }
+            if (acia_has_irq()) {
+                atari_mfp_update_acia_irq();
+                irq = 6;
+            }
+            m68k_set_irq(irq);
+        }
 
-        /* Refresh display based on active mode */
-        if (gfx_get_mode()) {
+        /* Refresh display based on active mode.
+         * Atari video takes priority when its resolution register has been written. */
+        if (atari_vid_active()) {
+            static int vid_skip = 0;
+            if (++vid_skip >= 8) {
+                vid_skip = 0;
+                atari_vid_render();
+                Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);
+                if (dp_ok)
+                    dp_video_refresh();
+            }
+        } else if (gfx_get_mode()) {
             /* Graphics mode: flush pixel buffer directly */
             if (gfx_is_dirty()) {
                 Xil_DCacheFlushRange((UINTPTR)pixel_buf, PIXEL_BUF_SIZE);

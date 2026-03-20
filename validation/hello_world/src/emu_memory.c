@@ -9,6 +9,8 @@
 #include <string.h>
 #include "emu_memory.h"
 #include "mfp_emu.h"
+#include "acia_emu.h"
+#include "atari_video.h"
 #include "gfx_fb.h"
 #include "usb_hid.h"
 #include "xil_printf.h"
@@ -98,12 +100,22 @@ void emu_mem_set_vectors(unsigned int ssp, unsigned int pc)
 }
 
 /* ------------------------------------------------------------------ */
-/* MFP address range check                                             */
+/* I/O address range checks                                            */
 /* ------------------------------------------------------------------ */
 
 static inline int is_mfp(unsigned int addr)
 {
     return (addr >= EMU_MFP_BASE) && (addr < EMU_MFP_BASE + EMU_MFP_SIZE);
+}
+
+static inline int is_atari_mfp(unsigned int addr)
+{
+    return (addr >= ATARI_MFP_BASE) && (addr < ATARI_MFP_BASE + ATARI_MFP_SIZE);
+}
+
+static inline int is_acia(unsigned int addr)
+{
+    return (addr >= ACIA_BASE) && (addr < ACIA_BASE + ACIA_SIZE);
 }
 
 /* ------------------------------------------------------------------ */
@@ -112,6 +124,12 @@ static inline int is_mfp(unsigned int addr)
 
 unsigned int m68k_read_memory_8(unsigned int address)
 {
+    if (is_atari_mfp(address))
+        return atari_mfp_read(address - ATARI_MFP_BASE);
+    if (is_acia(address))
+        return acia_read(address);
+    if (atari_vid_is_reg(address))
+        return atari_vid_read(address - ATARI_VID_BASE);
     if (is_mfp(address))
         return mfp_read(address - EMU_MFP_BASE);
     if (gfx_is_io(address))
@@ -125,6 +143,16 @@ unsigned int m68k_read_memory_8(unsigned int address)
 
 unsigned int m68k_read_memory_16(unsigned int address)
 {
+    /* Atari MFP / ACIA: byte-wide I/O, decompose word reads */
+    if (is_atari_mfp(address) || is_atari_mfp(address + 1) ||
+        is_acia(address) || is_acia(address + 1)) {
+        return ((unsigned int)m68k_read_memory_8(address) << 8) |
+                (unsigned int)m68k_read_memory_8(address + 1);
+    }
+    if (atari_vid_is_reg(address) || atari_vid_is_reg(address + 1)) {
+        return ((unsigned int)m68k_read_memory_8(address) << 8) |
+                (unsigned int)m68k_read_memory_8(address + 1);
+    }
     /* MFP registers are byte-wide; decompose word reads into byte
      * reads when any byte falls in the MFP range */
     if (is_mfp(address) || is_mfp(address + 1)) {
@@ -149,6 +177,19 @@ unsigned int m68k_read_memory_16(unsigned int address)
 
 unsigned int m68k_read_memory_32(unsigned int address)
 {
+    if (is_atari_mfp(address) || is_atari_mfp(address + 3) ||
+        is_acia(address) || is_acia(address + 3)) {
+        return ((unsigned int)m68k_read_memory_8(address)     << 24) |
+               ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
+               ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
+                (unsigned int)m68k_read_memory_8(address + 3);
+    }
+    if (atari_vid_is_reg(address) || atari_vid_is_reg(address + 3)) {
+        return ((unsigned int)m68k_read_memory_8(address)     << 24) |
+               ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
+               ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
+                (unsigned int)m68k_read_memory_8(address + 3);
+    }
     /* Check first and last byte; middle bytes are covered because the
      * MFP region is wider than 4 bytes (0x30) so any straddling access
      * will have either byte 0 or byte 3 inside the range */
@@ -184,6 +225,18 @@ unsigned int m68k_read_memory_32(unsigned int address)
 
 void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
+    if (is_atari_mfp(address)) {
+        atari_mfp_write(address - ATARI_MFP_BASE, value & 0xFF);
+        return;
+    }
+    if (is_acia(address)) {
+        acia_write(address, value & 0xFF);
+        return;
+    }
+    if (atari_vid_is_reg(address)) {
+        atari_vid_write(address - ATARI_VID_BASE, value & 0xFF);
+        return;
+    }
     if (is_mfp(address)) {
         mfp_write(address - EMU_MFP_BASE, value & 0xFF);
         return;
@@ -212,6 +265,17 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
+    if (is_atari_mfp(address) || is_atari_mfp(address + 1) ||
+        is_acia(address) || is_acia(address + 1)) {
+        m68k_write_memory_8(address,     (value >> 8) & 0xFF);
+        m68k_write_memory_8(address + 1,  value       & 0xFF);
+        return;
+    }
+    if (atari_vid_is_reg(address) || atari_vid_is_reg(address + 1)) {
+        m68k_write_memory_8(address,     (value >> 8) & 0xFF);
+        m68k_write_memory_8(address + 1,  value       & 0xFF);
+        return;
+    }
     if (is_mfp(address) || is_mfp(address + 1)) {
         m68k_write_memory_8(address,     (value >> 8) & 0xFF);
         m68k_write_memory_8(address + 1,  value       & 0xFF);
@@ -244,6 +308,21 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
+    if (is_atari_mfp(address) || is_atari_mfp(address + 3) ||
+        is_acia(address) || is_acia(address + 3)) {
+        m68k_write_memory_8(address,     (value >> 24) & 0xFF);
+        m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
+        m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);
+        m68k_write_memory_8(address + 3,  value        & 0xFF);
+        return;
+    }
+    if (atari_vid_is_reg(address) || atari_vid_is_reg(address + 3)) {
+        m68k_write_memory_8(address,     (value >> 24) & 0xFF);
+        m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
+        m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);
+        m68k_write_memory_8(address + 3,  value        & 0xFF);
+        return;
+    }
     if (is_mfp(address) || is_mfp(address + 3)) {
         m68k_write_memory_8(address,     (value >> 24) & 0xFF);
         m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);

@@ -54,4 +54,13 @@ void usb_mouse_clear_deltas(void);
  */
 void usb_mouse_set_pos(uint32_t offset, uint8_t value);
 
+/*
+ * IKBD mode: enable Atari ST scancode + mouse packet generation.
+ * When enabled, process_hid_report() generates both ASCII (MFP) and
+ * Atari scancodes (ACIA). process_mouse_report() generates both
+ * memory-mapped state and IKBD mouse packets.
+ */
+void usb_hid_set_ikbd_mode(int enable);
+int usb_hid_ikbd_mode(void);
+
 #endif /* USB_HID_H */

@@ -78,4 +78,29 @@ int mfp_rx_push(uint8_t ch);
 /* Check if RX buffer has data */
 int mfp_rx_has_data(void);
 
+/* ------------------------------------------------------------------ */
+/* Atari ST MFP at $FFFA00 — interrupt controller for ACIA/Timer C    */
+/* ------------------------------------------------------------------ */
+
+#define ATARI_MFP_BASE  0xFFFA00
+#define ATARI_MFP_SIZE  0x30
+
+/* Initialise Atari MFP registers (call after mfp_init) */
+void atari_mfp_init(void);
+
+/* Read/write a byte at offset within the Atari MFP register space.
+ * offset = address - ATARI_MFP_BASE (0x00..0x2F) */
+uint8_t atari_mfp_read(uint32_t offset);
+void atari_mfp_write(uint32_t offset, uint8_t value);
+
+/* Set Timer C pending bit in IPRB (called when Timer C fires) */
+void atari_mfp_set_timer_c_pending(void);
+
+/* Update GPIP/IPRA based on ACIA FIFO state (call after push/pop) */
+void atari_mfp_update_acia_irq(void);
+
+/* Acknowledge highest-priority pending interrupt.
+ * Returns vector number (>= 0) or -1 if none pending. */
+int atari_mfp_acknowledge(void);
+
 #endif /* MFP_EMU_H */

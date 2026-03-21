@@ -17,6 +17,10 @@
 set_multicycle_path -setup 4 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/cir_operand_staging_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/operand_reg_reg*/D}]
 set_multicycle_path -hold 3 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/cir_operand_staging_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/operand_reg_reg*/D}]
 
+# --- MC68882 pending operand staging -> operand_reg (5-cycle MCP) ---
+set_multicycle_path -setup 5 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/pending_operand_staging_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/operand_reg_reg*}]
+set_multicycle_path -hold 4 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/pending_operand_staging_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/operand_reg_reg*}]
+
 # --- Trig a_reg -> log_exp_term / log_unbiased_exp / log_exp_term_zero (7-cycle MCP) ---
 set_multicycle_path -setup 7 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/alu_inst/trig_inst/a_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/alu_inst/trig_inst/log_exp_term_reg_reg*/D}]
 set_multicycle_path -hold 6 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/alu_inst/trig_inst/a_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/alu_inst/trig_inst/log_exp_term_reg_reg*/D}]
@@ -96,29 +100,55 @@ set_multicycle_path -hold 1 -from [get_pins -quiet -hier -filter {REF_PIN_NAME =
 set_multicycle_path -setup 2 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/fp_reg_file_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/result_lo_reg_reg*/D}]
 set_multicycle_path -hold 1 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/fp_reg_file_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/result_lo_reg_reg*/D}]
 
-# --- move_cfg_reg -> MOVE handler destinations (2-cycle MCP) ---
-# The VHDL signal move_cfg_decoded_reg (record type move_cfg_t) was optimized away
-# by synthesis; the decode logic was absorbed into combinational paths from
-# move_cfg_reg (std_logic_vector(31 downto 0)) which synthesizes as move_cfg_reg_reg[31:0].
-# The MCP rationale is the same: move_cfg_reg is written via bus write, and the MOVE
-# handler only reads it several bus cycles later when cir_launch_alu fires.
-set_multicycle_path -setup 2 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/fp_reg_file_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/fp_reg_file_reg_reg*/D}]
+# --- CIR state -> MOVE exception + result destinations (2-cycle MCP) ---
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_force_*_reg}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_force_*_reg}]
 
-set_multicycle_path -setup 2 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/exc_event_opa_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/exc_event_opa_reg_reg*/D}]
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_result_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_result_reg_reg*}]
 
-set_multicycle_path -setup 2 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/exc_event_result_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/exc_event_result_reg_reg*/D}]
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_lo_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_lo_reg_reg*}]
 
-set_multicycle_path -setup 2 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/result_ex_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/result_ex_reg_reg*/D}]
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_hi_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_hi_reg_reg*}]
 
-set_multicycle_path -setup 2 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/result_lo_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/result_lo_reg_reg*/D}]
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_ex_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_ex_reg_reg*}]
 
-set_multicycle_path -setup 2 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/result_hi_reg_reg*/D}]
-set_multicycle_path -hold 1 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/move_cfg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/result_hi_reg_reg*/D}]
+# --- cir_dst_reg_idx -> MOVE result + exception destinations (2-cycle MCP) ---
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_force_*_reg}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_force_*_reg}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_result_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_result_reg_reg*}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/fp_reg_file_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/fp_reg_file_reg_reg*}]
+
+# --- move_cfg register -> MOVE handler destinations (2-cycle MCP) ---
+# Wildcard *move_cfg*reg_reg* covers both move_cfg_decoded_reg_reg and
+# move_cfg_reg_reg naming variants depending on synthesis optimization.
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/fp_reg_file_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/fp_reg_file_reg_reg*}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_opa_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_opa_reg_reg*}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_result_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_result_reg_reg*}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_ex_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_ex_reg_reg*}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_lo_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_lo_reg_reg*}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_hi_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/result_hi_reg_reg*}]
+
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_force_*_reg}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*move_cfg*reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/exc_event_force_*_reg}]
 
 # --- cir_dst_reg_idx -> result_hi/lo_reg (2-cycle MCP) ---
 # Destination register index decoded during CIR dispatch, stable through MOVE.
@@ -144,3 +174,11 @@ set_multicycle_path -hold 1 -from [get_pins -quiet -hier -filter {REF_PIN_NAME =
 
 set_multicycle_path -setup 2 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/alu_inst/trig_inst/log_unbiased_exp_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/alu_inst/trig_inst/log_exp_term_reg_reg*/D}]
 set_multicycle_path -hold 1 -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ */u_fpu/alu_inst/trig_inst/log_unbiased_exp_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ */u_fpu/alu_inst/trig_inst/log_exp_term_reg_reg*/D}]
+
+# --- Trig exp_k_reg -> result_reg (2-cycle MCP) ---
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*trig_inst/exp_k_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*trig_inst/result_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*trig_inst/exp_k_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*trig_inst/result_reg_reg*}]
+
+# --- Divrem sqrt_exp_out_reg -> result_reg (2-cycle MCP) ---
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*sqrt_exp_out_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*divrem_inst/result_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*sqrt_exp_out_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ */u_fpu/*divrem_inst/result_reg_reg*}]

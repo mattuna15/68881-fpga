@@ -1650,12 +1650,15 @@ static int enumerate_one(uint32_t slot_id, uint32_t speed,
                                &total_len, &dev_class);
     if (ret < 0) return ret;
 
-    /* Not a hub — try keyboard first, then mouse */
+    /* Not a hub — try keyboard first, then mouse.
+     * Don't claim mouse on the same slot as keyboard (Apple composite devices
+     * have a consumer-control interface that falsely matches as mouse). */
     if (dev_class != USB_CLASS_HUB) {
         int found = -1;
         if (!usb.kbd_slot && setup_keyboard(slot_id, config_desc, total_len) == 0)
             found = 0;
-        if (!usb.mouse_slot && setup_mouse(slot_id, config_desc, total_len) == 0)
+        if (!usb.mouse_slot && slot_id != usb.kbd_slot &&
+            setup_mouse(slot_id, config_desc, total_len) == 0)
             found = 0;
         return found;
     }

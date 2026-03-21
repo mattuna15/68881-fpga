@@ -5,10 +5,14 @@
 
 library ieee;
 use ieee.std_logic_1164.all;
+use work.mc68881_pkg.all;
 
 entity mc68881_axilite_wrapper is
   generic (
     packed_decimal_full_g : boolean := true;
+    -- MC68882 mode: enables pending instruction pipeline, larger FSAVE frames.
+    -- Uses boolean for Vivado block design compatibility (custom enums not supported).
+    fpu_68882_g          : boolean := false;
     -- DSACK timeout passed to bridge (fpu_clk cycles; 0 disables)
     dsack_timeout_g      : natural := 1024;
     -- AXI channel pairing timeout in bus_clk cycles (0 disables).
@@ -140,26 +144,35 @@ begin
   -- ========================================================================
   -- FPU Core
   -- ========================================================================
-  u_fpu : entity work.mc68881_top
-    generic map (
-      packed_decimal_full_g => packed_decimal_full_g
-    )
-    port map (
-      a_in         => fpu_a_in,
-      d_in         => fpu_d_in,
-      d_out        => fpu_d_out,
-      size_n       => fpu_size_n,
-      as_n         => fpu_as_n,
-      cs_n         => fpu_cs_n,
-      rw           => fpu_rw,
-      ds_n         => fpu_ds_n,
-      dsack0_n     => fpu_dsack0_n,
-      dsack1_n     => fpu_dsack1_n,
-      reset_n      => fpu_reset_n,
-      clk          => fpu_clk,
-      sense_n      => fpu_sense_n,
-      status_valid => fpu_status_valid
-    );
+  gen_68881 : if not fpu_68882_g generate
+    u_fpu : entity work.mc68881_top
+      generic map (
+        packed_decimal_full_g => packed_decimal_full_g,
+        fpu_version_g         => FPU_68881
+      )
+      port map (
+        a_in => fpu_a_in, d_in => fpu_d_in, d_out => fpu_d_out,
+        size_n => fpu_size_n, as_n => fpu_as_n, cs_n => fpu_cs_n,
+        rw => fpu_rw, ds_n => fpu_ds_n, dsack0_n => fpu_dsack0_n,
+        dsack1_n => fpu_dsack1_n, reset_n => fpu_reset_n,
+        clk => fpu_clk, sense_n => fpu_sense_n, status_valid => fpu_status_valid
+      );
+  end generate;
+
+  gen_68882 : if fpu_68882_g generate
+    u_fpu : entity work.mc68881_top
+      generic map (
+        packed_decimal_full_g => packed_decimal_full_g,
+        fpu_version_g         => FPU_68882
+      )
+      port map (
+        a_in => fpu_a_in, d_in => fpu_d_in, d_out => fpu_d_out,
+        size_n => fpu_size_n, as_n => fpu_as_n, cs_n => fpu_cs_n,
+        rw => fpu_rw, ds_n => fpu_ds_n, dsack0_n => fpu_dsack0_n,
+        dsack1_n => fpu_dsack1_n, reset_n => fpu_reset_n,
+        clk => fpu_clk, sense_n => fpu_sense_n, status_valid => fpu_status_valid
+      );
+  end generate;
 
   -- ========================================================================
   -- AXI4-Lite FSM

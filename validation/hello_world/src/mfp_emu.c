@@ -515,19 +515,18 @@ void atari_mfp_set_timer_c_pending(void)
 
 void atari_mfp_update_acia_irq(void)
 {
+    /* ACIA interrupt is on GPIP4 → MFP channel I6 (IPRB bit 6).
+     * On the Atari ST, GPIP4 directly connects to the ACIA IRQ output.
+     * Channel I6 is in the B register set (IPRB/IERB/IMRB/ISRB bit 6). */
     if (acia_has_irq()) {
-        /* GPIP bit 4 low (active) when ACIA has data */
         amfp_regs[AMFP_GPIP] &= ~0x10;
-        /* Only set IPRA pending if the ACIA interrupt is not already
-         * in-service. On a real MFP, while ISRA bit is set the same
-         * channel cannot re-trigger until the handler clears it. */
-        if (!(amfp_regs[AMFP_ISRA] & 0x40)) {
-            if (amfp_regs[AMFP_IERA] & 0x40)
-                amfp_regs[AMFP_IPRA] |= 0x40;
+        /* Only set IPRB pending if not already in-service */
+        if (!(amfp_regs[AMFP_ISRB] & 0x40)) {
+            if (amfp_regs[AMFP_IERB] & 0x40)
+                amfp_regs[AMFP_IPRB] |= 0x40;
         }
     } else {
-        /* Clear IPRA bit 6 and restore GPIP bit 4 */
-        amfp_regs[AMFP_IPRA] &= ~0x40;
+        amfp_regs[AMFP_IPRB] &= ~0x40;
         amfp_regs[AMFP_GPIP] |= 0x10;
     }
 }

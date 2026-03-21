@@ -44,7 +44,7 @@ static const uint32_t tc_prescaler_table[8] = {
 };
 
 #define MFP_XTAL_HZ    2457600u    /* MC68901 crystal frequency */
-#define CPU_CLOCK_HZ    33000000u  /* M68K emulated clock */
+#define CPU_CLOCK_HZ    8000000u   /* M68K emulated clock (68000 @ 8 MHz) */
 
 static uint32_t tc_prescaler;       /* current prescaler value (0=stopped) */
 static uint8_t  tc_reload;          /* TCDR reload value */

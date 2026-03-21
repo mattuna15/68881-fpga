@@ -27,6 +27,9 @@
 #include "usb_hid.h"
 #include "acia_emu.h"
 #include "atari_video.h"
+#include "psg_emu.h"
+#include "floppy_emu.h"
+#include "sd_floppy.h"
 
 #ifdef TEST_MODE
 #include "fpu_periph.h"
@@ -35,12 +38,14 @@
 #include "tests/cir_dialog.h"
 #endif
 
-/* ROM memory map constants (must match bios.s) */
-#define BIOS_ROMBAS  0xFE0000
-#define BIOS_STACK   0x001000
+/* ROM memory map constants */
+#define BIOS_ROMBAS  0xE00000       /* EmuTOS 256K ROM origin */
 
 /* Number of M68K instructions to execute per main-loop iteration */
 #define EMU_CYCLES_PER_TICK  10000
+
+/* Static buffer for .ST floppy image (max ~880 KB) */
+static uint8_t floppy_image[ST_IMAGE_MAX_SIZE];
 
 /* Forward declarations */
 static void rom_boot(void);
@@ -110,8 +115,22 @@ static void rom_boot(void)
         return;
     }
 
-    /* Set initial SSP and PC in vector table */
-    emu_mem_set_vectors(BIOS_STACK, BIOS_ROMBAS);
+    /* Set up M68K reset vectors from the TOS ROM header.
+     * TOS header layout: BRA.S(2) + version(2) + reseth(4) + ...
+     * Offset 4 = reseth: the reset handler entry point.
+     * The first longword is a BRA.S instruction (not a valid SSP),
+     * so we use a fixed initial SSP.  EmuTOS sets its own SSP
+     * immediately in startup.S before using the stack. */
+    {
+        uint32_t rom_pc  = ((uint32_t)rom_image_data[4] << 24) |
+                           ((uint32_t)rom_image_data[5] << 16) |
+                           ((uint32_t)rom_image_data[6] <<  8) |
+                            (uint32_t)rom_image_data[7];
+        uint32_t init_ssp = 0x800;  /* matches EmuTOS STKBOT */
+        emu_mem_set_vectors(init_ssp, rom_pc);
+        xil_printf("[ROM] TOS header: version=%d.%02d, reseth=$%06X\r\n",
+                   rom_image_data[2], rom_image_data[3], rom_pc);
+    }
 
     /* Initialise MFP emulation */
     mfp_init();
@@ -166,6 +185,14 @@ static void rom_boot(void)
     acia_init();
     atari_mfp_init();
 
+    /* Initialise PSG (drive/side select) and floppy emulation */
+    psg_init();
+    {
+        uint32_t floppy_size = sd_floppy_load("DISK_A.ST", floppy_image,
+                                               sizeof(floppy_image));
+        floppy_init(floppy_image, floppy_size);
+    }
+
     /* Initialise USB HID keyboard (non-fatal if no device present) */
     if (usb_hid_init() == 0) {
         xil_printf("[ROM] USB keyboard ready\r\n");
@@ -174,8 +201,7 @@ static void rom_boot(void)
         xil_printf("[ROM] No USB keyboard (UART-only input)\r\n");
     }
 
-    xil_printf("[ROM] M68000 reset — PC=$%06X SSP=$%06X\r\n",
-               BIOS_ROMBAS, BIOS_STACK);
+    xil_printf("[ROM] M68000 reset — ROM at $%06X\r\n", BIOS_ROMBAS);
     xil_printf("[ROM] Entering emulation loop...\r\n");
 
     /* Main emulation loop */

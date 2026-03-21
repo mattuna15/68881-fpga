@@ -25,6 +25,7 @@
 
 #include "fline_handler.h"
 #include "fpu_periph.h"
+#include "cir_periph.h"
 #include "fp_regfile.h"
 #include "emu_memory.h"
 #include "musashi/m68k.h"
@@ -966,6 +967,127 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
 }
 
 /* ------------------------------------------------------------------ */
+/* FSAVE / FRESTORE via CIR cpSAVE/cpRESTORE dialog                    */
+/*                                                                     */
+/* Switches to CIR mode, executes the save/restore dialog to transfer  */
+/* the FPU internal state frame, then returns to peripheral mode.      */
+/* EmuTOS uses FSAVE/FRESTORE for FPU detection (_detect_fpu) and      */
+/* context switching.                                                  */
+/* ------------------------------------------------------------------ */
+
+static void handle_fsave(unsigned int opword, unsigned int pc)
+{
+    int ea_mode = EA_MODE(opword);
+    int ea_reg  = EA_REG(opword);
+
+    /* --- CIR cpSAVE dialog --- */
+    fpu_wr(OFF_CIR_MODE, 1);
+
+    /* Write cpSAVE opword to start the dialog */
+    cir_wr(OFF_CIR_OPWORD, CIR_OPWORD_CPSAVE);
+
+    /* Read format word from Save CIR register.
+     * FPGA transitions CIR_SAVE_WAIT → CIR_SAVE_FORMAT in one clock;
+     * by the time our AXI read completes the format word is ready. */
+    u16 format_word = (u16)cir_rd(OFF_CIR_SAVE);
+
+    /* Read data words from Operand CIR.
+     * Lower byte of format word = frame data size in bytes. */
+    int n_words = (format_word & 0xFF) / 4;
+    u32 frame_data[56];  /* max 53 words for 68882 busy frame */
+    for (int i = 0; i < n_words; i++)
+        frame_data[i] = cir_rd(OFF_CIR_OPERAND);
+
+    /* Wait for CIR to return to idle */
+    for (int i = 0; i < 100; i++) {
+        if (cir_rd(OFF_CIR_RESPONSE) != CIR_BUSY)
+            break;
+    }
+
+    /* Switch back to peripheral mode */
+    fpu_wr(OFF_CIR_MODE, 0);
+
+    /* --- Write frame to 68K memory --- */
+    int total_frame_size = 4 + n_words * 4;  /* format longword + data */
+    unsigned int ea_addr;
+
+    if (ea_mode == 4) {
+        /* -(An) predecrement */
+        unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+        an -= total_frame_size;
+        m68k_set_reg(M68K_REG_A0 + ea_reg, an);
+        ea_addr = an;
+    } else {
+        ea_addr = eval_ea(ea_mode, ea_reg, &pc);
+    }
+
+    /* Format word in upper 16 bits of first longword */
+    m68k_write_memory_32(ea_addr, (u32)format_word << 16);
+
+    /* Data words follow */
+    for (int i = 0; i < n_words; i++)
+        m68k_write_memory_32(ea_addr + 4 + i * 4, frame_data[i]);
+
+    m68k_set_reg(M68K_REG_PC, pc);
+}
+
+static void handle_frestore(unsigned int opword, unsigned int pc)
+{
+    int ea_mode = EA_MODE(opword);
+    int ea_reg  = EA_REG(opword);
+
+    /* --- Read frame from 68K memory --- */
+    unsigned int ea_addr;
+
+    if (ea_mode == 3) {
+        /* (An)+ postincrement: use current An, advance after */
+        ea_addr = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+    } else {
+        ea_addr = eval_ea(ea_mode, ea_reg, &pc);
+    }
+
+    /* Format word is upper 16 bits of first longword */
+    u16 format_word = (u16)(m68k_read_memory_32(ea_addr) >> 16);
+
+    /* Read data words */
+    int n_words = (format_word & 0xFF) / 4;
+    u32 frame_data[56];
+    for (int i = 0; i < n_words; i++)
+        frame_data[i] = m68k_read_memory_32(ea_addr + 4 + i * 4);
+
+    /* Advance An for postincrement */
+    if (ea_mode == 3) {
+        int total_frame_size = 4 + n_words * 4;
+        unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+        m68k_set_reg(M68K_REG_A0 + ea_reg, an + total_frame_size);
+    }
+
+    /* --- CIR cpRESTORE dialog --- */
+    fpu_wr(OFF_CIR_MODE, 1);
+
+    /* Write cpRESTORE opword */
+    cir_wr(OFF_CIR_OPWORD, CIR_OPWORD_CPRESTORE);
+
+    /* Write format word to Restore CIR register */
+    cir_wr(OFF_CIR_RESTORE, (u32)format_word);
+
+    /* Write data words to Operand CIR (skip for null frame) */
+    for (int i = 0; i < n_words; i++)
+        cir_wr(OFF_CIR_OPERAND, frame_data[i]);
+
+    /* Wait for CIR to return to idle */
+    for (int i = 0; i < 100; i++) {
+        if (cir_rd(OFF_CIR_RESPONSE) != CIR_BUSY)
+            break;
+    }
+
+    /* Switch back to peripheral mode */
+    fpu_wr(OFF_CIR_MODE, 0);
+
+    m68k_set_reg(M68K_REG_PC, pc);
+}
+
+/* ------------------------------------------------------------------ */
 /* Top-level F-line handler                                            */
 /* ------------------------------------------------------------------ */
 int fline_illg_callback(int opcode)
@@ -1016,16 +1138,11 @@ int fline_illg_callback(int opcode)
         return handle_fbcc(opword, pc);
 
     case 4: /* FSAVE <ea> */
-        /* No preemptive context — write a 4-byte null (idle) frame.
-         * Format: opword is F327 xxxx etc.; EA in bits 5-0.
-         * For now, just advance past the 2-byte opword.  The destination
-         * gets a null frame (all zeros) which newlib/libgcc won't inspect. */
-        m68k_set_reg(M68K_REG_PC, pc);
+        handle_fsave(opword, pc);
         return 1;
 
     case 5: /* FRESTORE <ea> */
-        /* Restoring from a null frame is a no-op — FPU stays idle. */
-        m68k_set_reg(M68K_REG_PC, pc);
+        handle_frestore(opword, pc);
         return 1;
 
     default:

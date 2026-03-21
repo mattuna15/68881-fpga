@@ -330,7 +330,8 @@ package mc68881_pkg is
     CIR_PENDING_DECODE,
     CIR_PENDING_XFER_SRC,
     CIR_PENDING_XFER_SRC_WAIT,
-    CIR_PENDING_XFER_SRC_WAIT2
+    CIR_PENDING_XFER_SRC_WAIT2,
+    CIR_PENDING_XFER_SRC_WAIT3
   );
 
   -- Response primitive categories (bits 15:13 of Response CIR).
@@ -1663,13 +1664,13 @@ package body mc68881_pkg is
   end function;
 
   function fp80_from_int(value : integer) return fp80_t is
-    variable result : fp80_t := (others => '0');
+    variable result  : fp80_t := (others => '0');
     variable abs_val : natural := 0;
+    variable abs_uns : unsigned(30 downto 0) := (others => '0');
     variable sign    : std_logic := '0';
     variable exp     : unsigned(FP_EXP_WIDTH-1 downto 0) := (others => '0');
     variable mant    : unsigned(FP_MANT_WIDTH-1 downto 0) := (others => '0');
     variable msb_pos : integer := 0;
-    variable tmp     : natural := 0;
   begin
     if value = 0 then
       return result;
@@ -1682,13 +1683,14 @@ package body mc68881_pkg is
       abs_val := natural(value);
     end if;
 
-    tmp := abs_val;
+    -- Priority-encoder MSB find: synthesises as a LUT cascade (no CARRY4 feedback).
+    abs_uns := to_unsigned(abs_val, 31);
     msb_pos := 0;
-    -- Keep bounded iteration for synthesis: integer input magnitude is <= 31 bits.
-    for i in 0 to 30 loop
-      exit when tmp <= 1;
-      tmp := tmp / 2;
-      msb_pos := msb_pos + 1;
+    for idx in 30 downto 0 loop
+      if abs_uns(idx) = '1' then
+        msb_pos := idx;
+        exit;
+      end if;
     end loop;
 
     exp := to_unsigned(FP_EXP_BIAS + msb_pos, FP_EXP_WIDTH);
@@ -1944,8 +1946,9 @@ package body mc68881_pkg is
       end loop;
     end if;
 
+    -- Fold sticky bit (avoid self-reference — Vivado Synth 8-326).
     if low_or = '1' then
-      mant_ext(0) := mant_ext(0) or low_or;
+      mant_ext(0) := '1';
     end if;
 
     apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);
@@ -2085,8 +2088,9 @@ package body mc68881_pkg is
       low_or := '1';
     end if;
 
+    -- Fold sticky bit (avoid self-reference — Vivado Synth 8-326).
     if low_or = '1' then
-      mant_ext(0) := mant_ext(0) or low_or;
+      mant_ext(0) := '1';
     end if;
 
     apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);

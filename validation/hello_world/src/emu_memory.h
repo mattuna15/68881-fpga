@@ -13,9 +13,9 @@
 #define EMU_RAM_SIZE  (16 * 1024 * 1024)
 #define EMU_RAM_MASK  (EMU_RAM_SIZE - 1)
 
-/* Memory map regions (matching bios.s expectations) */
-#define EMU_ROM_BASE  0xFE0000      /* 128 KB ROM image */
-#define EMU_ROM_SIZE  0x020000
+/* Memory map regions */
+#define EMU_ROM_BASE  0xE00000      /* 256 KB EmuTOS ROM */
+#define EMU_ROM_SIZE  0x040000
 #define EMU_MFP_BASE  0xFD0000      /* MC68901 MFP I/O */
 #define EMU_MFP_SIZE  0x000040      /* 0x00-0x2F regs + 0x30 tick + 0x34 RTC + 0x38 datetime */
 

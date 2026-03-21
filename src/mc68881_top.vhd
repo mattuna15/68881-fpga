@@ -3728,6 +3728,10 @@ begin
               end case;
               cir_operand_word_arrived <= '1';
             end if;
+            -- 68882: store operand word during pending source transfer.
+            if cir_state_reg = CIR_PENDING_XFER_SRC and cir_operand_write_prev = '0' then
+              cir_operand_word_arrived <= '1';
+            end if;
             -- Store frame data word during FRESTORE frame transfer.
             if cir_state_reg = CIR_RESTORE_FRAME and cir_operand_write_prev = '0' then
               if cir_restore_word_idx < CIR_FRAME_BUSY_HDR then
@@ -4124,11 +4128,17 @@ begin
               cir_state_reg <= CIR_IDLE;
             elsif is_valid_idle_fw(cir_restore_fw_reg) then
               -- Idle frame: expect 6 (68881) or 14 (68882) data words.
+              -- Clear pending queue: 68881 frames lack pending state words,
+              -- so stale pending_valid_reg from a prior context must not survive.
+              pending_valid_reg <= '0';
               cir_restore_word_idx <= 0;
               cir_xfer_word_count <= idle_words_for_fw(cir_restore_fw_reg);
               cir_state_reg <= CIR_RESTORE_FRAME;
             elsif is_valid_busy_fw(cir_restore_fw_reg) then
               -- Busy frame: expect 45 (68881) or 53 (68882) data words.
+              -- Clear pending queue: 68881 frames lack pending state words.
+              -- 68882 frames will re-set pending_valid_reg from word 45/0.
+              pending_valid_reg <= '0';
               cir_restore_word_idx <= 0;
               cir_xfer_word_count <= busy_words_for_fw(cir_restore_fw_reg);
               alu_restore_req_reg <= '1';  -- Hold high for sub-unit restore gating
@@ -4264,15 +4274,19 @@ begin
         when CIR_PENDING_XFER_SRC_WAIT =>
           -- Hold cycle 1 (mirrors CIR_XFER_SRC_WAIT).
           -- Do NOT shortcut to CIR_EXECUTE_DONE on valid here — must
-          -- always pass through WAIT2 to guarantee 4-cycle MCP from
+          -- always pass through WAIT2/WAIT3 to guarantee 5-cycle MCP from
           -- pending_operand_staging write to operand_reg load.
           cir_state_reg <= CIR_PENDING_XFER_SRC_WAIT2;
 
         when CIR_PENDING_XFER_SRC_WAIT2 =>
-          -- Hold cycle 2.  Format conversion path has now had 3 cycles
-          -- to settle (write @ T0, WAIT @ T1, WAIT2 @ T2).
-          -- pending_launch_reg fires earliest at CIR_EXECUTE_DONE (T3+),
-          -- bus_frame_proc samples one cycle later (T4+) = 4-cycle MCP.
+          -- Hold cycle 2.
+          cir_state_reg <= CIR_PENDING_XFER_SRC_WAIT3;
+
+        when CIR_PENDING_XFER_SRC_WAIT3 =>
+          -- Hold cycle 3.  Format conversion path has now had 4 cycles
+          -- to settle (write @ T0, WAIT @ T1, WAIT2 @ T2, WAIT3 @ T3).
+          -- pending_launch_reg fires earliest at CIR_EXECUTE_DONE (T4+),
+          -- bus_frame_proc samples one cycle later (T5+) = 5-cycle MCP.
           pending_valid_reg <= '1';
           if valid = '1' then
             cir_state_reg <= CIR_EXECUTE_DONE;
@@ -4339,7 +4353,8 @@ begin
         -- Transfer Operand to-CP for pending instruction (same encoding as CIR_XFER_SRC).
         cir_response_prim <= "0111" & "0000" &
           std_logic_vector(to_unsigned(pending_xfer_word_count * 4, 8));
-      when CIR_PENDING_XFER_SRC_WAIT | CIR_PENDING_XFER_SRC_WAIT2 =>
+      when CIR_PENDING_XFER_SRC_WAIT | CIR_PENDING_XFER_SRC_WAIT2
+         | CIR_PENDING_XFER_SRC_WAIT3 =>
         cir_response_prim <= CIR_PRIM_BUSY;
     end case;
   end process;

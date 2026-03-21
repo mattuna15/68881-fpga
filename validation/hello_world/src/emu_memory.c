@@ -13,6 +13,8 @@
 #include "atari_video.h"
 #include "gfx_fb.h"
 #include "usb_hid.h"
+#include "floppy_emu.h"
+#include "psg_emu.h"
 #include "xil_printf.h"
 
 /* Mouse I/O region: 0xFD0050-0xFD005B (12 bytes, read-only)
@@ -136,6 +138,10 @@ unsigned int m68k_read_memory_8(unsigned int address)
         return gfx_io_read(address - GFX_IO_BASE);
     if (is_mouse_io(address))
         return mouse_io_read(address);
+    if (is_floppy_dma(address))
+        return floppy_read(address - FLOPPY_DMA_BASE);
+    if (is_psg(address))
+        return psg_read(address - PSG_BASE);
     if (gfx_is_fb(address))
         return gfx_read_8(address);
     return emu_ram[address & EMU_RAM_MASK];
@@ -164,6 +170,14 @@ unsigned int m68k_read_memory_16(unsigned int address)
                 (unsigned int)m68k_read_memory_8(address + 1);
     }
     if (is_mouse_io(address) || is_mouse_io(address + 1)) {
+        return ((unsigned int)m68k_read_memory_8(address) << 8) |
+                (unsigned int)m68k_read_memory_8(address + 1);
+    }
+    if (is_floppy_dma(address) || is_floppy_dma(address + 1)) {
+        return ((unsigned int)m68k_read_memory_8(address) << 8) |
+                (unsigned int)m68k_read_memory_8(address + 1);
+    }
+    if (is_psg(address) || is_psg(address + 1)) {
         return ((unsigned int)m68k_read_memory_8(address) << 8) |
                 (unsigned int)m68k_read_memory_8(address + 1);
     }
@@ -211,6 +225,18 @@ unsigned int m68k_read_memory_32(unsigned int address)
                ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
                 (unsigned int)m68k_read_memory_8(address + 3);
     }
+    if (is_floppy_dma(address) || is_floppy_dma(address + 3)) {
+        return ((unsigned int)m68k_read_memory_8(address)     << 24) |
+               ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
+               ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
+                (unsigned int)m68k_read_memory_8(address + 3);
+    }
+    if (is_psg(address) || is_psg(address + 3)) {
+        return ((unsigned int)m68k_read_memory_8(address)     << 24) |
+               ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
+               ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
+                (unsigned int)m68k_read_memory_8(address + 3);
+    }
     if (gfx_is_fb(address) || gfx_is_fb(address + 3)) {
         return ((unsigned int)m68k_read_memory_8(address)     << 24) |
                ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
@@ -247,6 +273,14 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
     }
     if (is_mouse_io(address)) {
         mouse_io_write(address, value);
+        return;
+    }
+    if (is_floppy_dma(address)) {
+        floppy_write(address - FLOPPY_DMA_BASE, value & 0xFF);
+        return;
+    }
+    if (is_psg(address)) {
+        psg_write(address - PSG_BASE, value & 0xFF);
         return;
     }
     if (gfx_is_fb(address)) {
@@ -287,6 +321,16 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
         return;
     }
     if (is_mouse_io(address) || is_mouse_io(address + 1)) {
+        m68k_write_memory_8(address,     (value >> 8) & 0xFF);
+        m68k_write_memory_8(address + 1,  value       & 0xFF);
+        return;
+    }
+    if (is_floppy_dma(address) || is_floppy_dma(address + 1)) {
+        m68k_write_memory_8(address,     (value >> 8) & 0xFF);
+        m68k_write_memory_8(address + 1,  value       & 0xFF);
+        return;
+    }
+    if (is_psg(address) || is_psg(address + 1)) {
         m68k_write_memory_8(address,     (value >> 8) & 0xFF);
         m68k_write_memory_8(address + 1,  value       & 0xFF);
         return;
@@ -338,6 +382,20 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
         return;
     }
     if (is_mouse_io(address) || is_mouse_io(address + 3)) {
+        m68k_write_memory_8(address,     (value >> 24) & 0xFF);
+        m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
+        m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);
+        m68k_write_memory_8(address + 3,  value        & 0xFF);
+        return;
+    }
+    if (is_floppy_dma(address) || is_floppy_dma(address + 3)) {
+        m68k_write_memory_8(address,     (value >> 24) & 0xFF);
+        m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
+        m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);
+        m68k_write_memory_8(address + 3,  value        & 0xFF);
+        return;
+    }
+    if (is_psg(address) || is_psg(address + 3)) {
         m68k_write_memory_8(address,     (value >> 24) & 0xFF);
         m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
         m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);

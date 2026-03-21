@@ -38,11 +38,11 @@ set_property IOSTANDARD LVCMOS33 [get_ports sense_n]
 set_multicycle_path -setup 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ cir_operand_staging_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ operand_reg_reg*/D}]
 set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ cir_operand_staging_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ operand_reg_reg*/D}]
 
-# --- MC68882 pending operand staging -> operand_reg (4-cycle MCP = 80ns @ 50MHz) ---
+# --- MC68882 pending operand staging -> operand_reg (5-cycle MCP = 100ns @ 50MHz) ---
 # Same format conversion path as above, but for 68882 concurrent instruction launch.
-# pending_launch_reg fires after operand transfer completes, same timing as CIR path.
-set_multicycle_path -setup 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ pending_operand_staging_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ operand_reg_reg*/D}]
-set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ pending_operand_staging_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ operand_reg_reg*/D}]
+# RTL ensures 5-cycle separation via CIR_PENDING_XFER_SRC_WAIT/WAIT2/WAIT3.
+set_multicycle_path -setup 5 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ pending_operand_staging_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ operand_reg_reg*/D}]
+set_multicycle_path -hold 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ pending_operand_staging_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ operand_reg_reg*/D}]
 
 # --- Trig a_reg -> log_exp_term / log_unbiased_exp / log_exp_term_zero (7-cycle MCP = 212ns) ---
 set_multicycle_path -setup 7 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *trig_inst/a_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *trig_inst/log_exp_term_reg_reg*/D}]

@@ -516,11 +516,15 @@ void atari_mfp_set_timer_c_pending(void)
 void atari_mfp_update_acia_irq(void)
 {
     if (acia_has_irq()) {
-        /* ACIA interrupt: IPRA bit 6 */
-        if (amfp_regs[AMFP_IERA] & 0x40)
-            amfp_regs[AMFP_IPRA] |= 0x40;
-        /* GPIP bit 4 low (active) */
+        /* GPIP bit 4 low (active) when ACIA has data */
         amfp_regs[AMFP_GPIP] &= ~0x10;
+        /* Only set IPRA pending if the ACIA interrupt is not already
+         * in-service. On a real MFP, while ISRA bit is set the same
+         * channel cannot re-trigger until the handler clears it. */
+        if (!(amfp_regs[AMFP_ISRA] & 0x40)) {
+            if (amfp_regs[AMFP_IERA] & 0x40)
+                amfp_regs[AMFP_IPRA] |= 0x40;
+        }
     } else {
         /* Clear IPRA bit 6 and restore GPIP bit 4 */
         amfp_regs[AMFP_IPRA] &= ~0x40;
@@ -528,9 +532,23 @@ void atari_mfp_update_acia_irq(void)
     }
 }
 
+int atari_mfp_has_pending_irq(void)
+{
+    /* Check if any MFP interrupt is pending + enabled + masked and
+     * not blocked by a higher-priority in-service interrupt. */
+    uint8_t pend_a = amfp_regs[AMFP_IPRA] & amfp_regs[AMFP_IERA] & amfp_regs[AMFP_IMRA];
+    uint8_t pend_b = amfp_regs[AMFP_IPRB] & amfp_regs[AMFP_IERB] & amfp_regs[AMFP_IMRB];
+    return (pend_a || pend_b) ? 1 : 0;
+}
+
 int atari_mfp_acknowledge(void)
 {
     uint8_t vr_base = amfp_regs[AMFP_VR] & 0xF0;
+    /* VR bit 3: 0 = Automatic End-of-Interrupt (AEI), 1 = Software EOI (SEI).
+     * In AEI mode the ISR bit is NOT set at acknowledge — the interrupt is
+     * fully cleared by the IPR clear alone.  In SEI mode the ISR bit is set
+     * and must be cleared by software writing to ISRA/ISRB. */
+    int sei_mode = (amfp_regs[AMFP_VR] & 0x08) ? 1 : 0;
 
     /* Scan IPRA (bits 7..0) — these are interrupt channels 15..8 */
     for (int bit = 7; bit >= 0; bit--) {
@@ -538,7 +556,8 @@ int atari_mfp_acknowledge(void)
         if ((amfp_regs[AMFP_IPRA] & mask) &&
             (amfp_regs[AMFP_IERA] & mask) &&
             (amfp_regs[AMFP_IMRA] & mask)) {
-            amfp_regs[AMFP_ISRA] |= mask;
+            if (sei_mode)
+                amfp_regs[AMFP_ISRA] |= mask;
             amfp_regs[AMFP_IPRA] &= ~mask;
             return vr_base + 8 + bit;  /* A channels: vector base + 8..15 */
         }
@@ -550,7 +569,8 @@ int atari_mfp_acknowledge(void)
         if ((amfp_regs[AMFP_IPRB] & mask) &&
             (amfp_regs[AMFP_IERB] & mask) &&
             (amfp_regs[AMFP_IMRB] & mask)) {
-            amfp_regs[AMFP_ISRB] |= mask;
+            if (sei_mode)
+                amfp_regs[AMFP_ISRB] |= mask;
             amfp_regs[AMFP_IPRB] &= ~mask;
             return vr_base + bit;      /* B channels: vector base + 0..7 */
         }

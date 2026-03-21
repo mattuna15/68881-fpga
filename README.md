@@ -56,15 +56,16 @@ arithmetic, transcendental, exponential, and logarithmic operations.
 
 | Resource | Full | Lite (`fpu_lite_g`) | Available | Full % | Lite % |
 |----------|------|---------------------|-----------|--------|--------|
-| Slice LUTs | 62,834 | 37,380 | 133,800 | 46.96% | 27.94% |
-| Registers | 13,661 | 7,030 | 267,600 | 5.11% | 2.63% |
+| Slice LUTs | 60,421 | 37,380 | 133,800 | 45.16% | 27.94% |
+| Registers | 13,853 | 7,030 | 267,600 | 5.18% | 2.63% |
 | Block RAM | 8 tiles | 0 | 365 | 2.19% | 0% |
 | DSP48E1 | 34 | 18 | 740 | 4.59% | 2.43% |
 
-*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-18.
-33 MHz target clock. Includes transcendental accuracy improvements (BRAM coefficient ROM,
-table-assisted ATAN/LOG, Cody-Waite trig/EXP), GHDL synth-compatible RTL,
-CIR coprocessor interface, full exception dialog paths, undocumented FMOVECR ROM constants,
+*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-21.
+50 MHz target clock. MC68882 mode enabled (`fpu_version_g => FPU_68882`). Includes
+transcendental accuracy improvements (BRAM coefficient ROM, table-assisted ATAN/LOG,
+Cody-Waite trig/EXP), GHDL synth-compatible RTL, CIR coprocessor interface, full
+exception dialog paths, undocumented FMOVECR ROM constants, pending instruction pipeline,
 and graphics framebuffer support.*
 
 ### Timing
@@ -74,8 +75,7 @@ and graphics framebuffer support.*
   FP register file to exception destinations).
 - Packed decimal encode pipeline: 3-stage split (exponent extraction → DSP multiply
   → scale computation) with pipelined DSP48E1 input.
-- Post-route WNS at 33 MHz: **+0.045 ns** full / **+0.160 ns** lite (timing met). No hold violations.
-  50 MHz constraint applied; timing closure pending synthesis verification.
+- Post-route WNS: **+0.272 ns** at 50 MHz (timing met). No hold violations.
 
 ### Target device compatibility
 The design fits on several FPGA families. With `fpu_lite_g => true` (MC68040

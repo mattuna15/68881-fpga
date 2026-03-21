@@ -9,8 +9,47 @@
 #include "sd_floppy.h"
 #include "fatfs/ff.h"
 #include "xil_printf.h"
+#include <string.h>
 
 static FATFS fatfs_instance;
+
+/* Try to open a .ST file: first the exact name, then scan root for any *.ST */
+static FRESULT try_open_st(const char *drive, const char *filename,
+                           FIL *fil, char *found_path, int pathlen)
+{
+    FRESULT res;
+    DIR dir;
+    FILINFO fno;
+
+    /* Try exact name first */
+    snprintf(found_path, pathlen, "%s%s", drive, filename);
+    res = f_open(fil, found_path, FA_READ);
+    if (res == FR_OK)
+        return FR_OK;
+
+    /* Scan root directory for any .ST file */
+    res = f_opendir(&dir, drive);
+    if (res != FR_OK)
+        return res;
+
+    xil_printf("[SD] Root directory listing:\r\n");
+    while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0] != '\0') {
+        xil_printf("[SD]   %s (%u bytes)%s\r\n", fno.fname, (unsigned)fno.fsize,
+                   (fno.fattrib & AM_DIR) ? " <DIR>" : "");
+        /* Check for .ST extension */
+        int len = strlen(fno.fname);
+        if (len >= 3 &&
+            (fno.fname[len-3] == '.' || fno.fname[len-3] == '.') &&
+            (fno.fname[len-2] == 'S' || fno.fname[len-2] == 's') &&
+            (fno.fname[len-1] == 'T' || fno.fname[len-1] == 't')) {
+            snprintf(found_path, pathlen, "%s%s", drive, fno.fname);
+            f_closedir(&dir);
+            return f_open(fil, found_path, FA_READ);
+        }
+    }
+    f_closedir(&dir);
+    return FR_NO_FILE;
+}
 
 uint32_t sd_floppy_load(const char *filename, uint8_t *buffer, uint32_t max_size)
 {
@@ -30,16 +69,14 @@ uint32_t sd_floppy_load(const char *filename, uint8_t *buffer, uint32_t max_size
             xil_printf("[SD] Mounted %s OK\r\n", drives[d]);
             mounted = 1;
 
-            /* Build full path */
-            snprintf(path, sizeof(path), "%s%s", drives[d], filename);
-
-            res = f_open(&fil, path, FA_READ);
+            res = try_open_st(drives[d], filename, &fil, path, sizeof(path));
             if (res != FR_OK) {
-                xil_printf("[SD] File %s not found (err=%d)\r\n", path, res);
+                xil_printf("[SD] No .ST file found on %s\r\n", drives[d]);
                 f_mount(NULL, drives[d], 0); /* unmount */
                 mounted = 0;
                 continue;
             }
+            xil_printf("[SD] Opened %s\r\n", path);
 
             /* Read entire file */
             uint32_t fsize = f_size(&fil);

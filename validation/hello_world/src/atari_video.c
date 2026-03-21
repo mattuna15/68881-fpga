@@ -139,6 +139,10 @@ void atari_vid_write(unsigned int offset, unsigned int value)
 
     if (offset == 0x60) {
         shifter_res = value & 3;
+        if (!active) {
+            xil_printf("[VID] Resolution set to %d, base=$%02X%02X%02X\r\n",
+                       shifter_res, vid_base_hi, vid_base_mid, vid_base_lo);
+        }
         active = 1;
         return;
     }
@@ -234,18 +238,22 @@ static void render_med(const uint8_t *ram, uint32_t base)
     }
 }
 
-/* High res: 640x400, 1 plane → 1280x400 (2x horiz, 1x vert), 160px top border */
+/* High res: 640x400, 1 plane → 1280x720 (2x horiz, 9/5 vert)
+ * Every 5 ST lines produce 9 output lines (1.8x scale, exact for 400→720).
+ * Pattern: 2,2,2,2,1 (lines doubled, 5th line single) per group of 5. */
 static void render_high(const uint8_t *ram, uint32_t base)
 {
-    const int top_border = 160;
+    /* 400 * 9/5 = 720 exactly */
+    static const int vscale[5] = { 2, 2, 2, 2, 1 };  /* repeat counts */
+    int out_y = 0;
 
     for (int st_y = 0; st_y < 400; st_y++) {
         const uint8_t *row = ram + base + st_y * 80;
-        int out_y = top_border + st_y;
+        int reps = vscale[st_y % 5];
 
+        /* Render first copy of this scanline */
         for (int chunk = 0; chunk < 40; chunk++) {
-            uint16_t w0 = (row[0] << 8) | row[1];
-            row += 2;
+            uint16_t w0 = ((uint16_t)row[chunk * 2] << 8) | row[chunk * 2 + 1];
 
             for (int bit = 15; bit >= 0; bit--) {
                 int idx = (w0 >> bit) & 1;
@@ -258,6 +266,15 @@ static void render_high(const uint8_t *ram, uint32_t base)
                 dst[1] = color;
             }
         }
+
+        /* Duplicate scanline if reps == 2 */
+        if (reps == 2 && out_y + 1 < SCREEN_H) {
+            memcpy(pbuf + (out_y + 1) * SCREEN_W,
+                   pbuf + out_y * SCREEN_W,
+                   SCREEN_W * sizeof(uint32_t));
+        }
+
+        out_y += reps;
     }
 }
 

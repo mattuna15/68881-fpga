@@ -99,6 +99,9 @@ void atari_mfp_set_timer_c_pending(void);
 /* Update GPIP/IPRA based on ACIA FIFO state (call after push/pop) */
 void atari_mfp_update_acia_irq(void);
 
+/* Check if MFP has any deliverable interrupt (pending + enabled + masked) */
+int atari_mfp_has_pending_irq(void);
+
 /* Acknowledge highest-priority pending interrupt.
  * Returns vector number (>= 0) or -1 if none pending. */
 int atari_mfp_acknowledge(void);

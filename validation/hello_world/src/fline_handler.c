@@ -1163,12 +1163,9 @@ int fline_init(void)
         return FPU_BUS_ERR;
     }
     /* Disable CIR mode — use peripheral register interface (OPSEL/OPA/OPB).
-     * CIR is enabled by default on the AXI peripheral. */
+     * CIR is enabled by default on the FPU. The mode register is write-only
+     * (reading ADDR_CIR_RESPONSE returns the dialog response, not the mode). */
     fpu_wr(OFF_CIR_MODE, 0);
-    if (fpu_rd(OFF_CIR_MODE) != 0) {
-        xil_printf("FATAL: fline_init: CIR mode disable failed\r\n");
-        return FPU_BUS_ERR;
-    }
     fpu_write_fpcr(0);
     return FPU_OK;
 }

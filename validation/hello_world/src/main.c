@@ -106,6 +106,12 @@ static void rom_boot(void)
     /* Initialise emulated memory (16 MB flat, zeroed) */
     emu_mem_init();
 
+    /* Pre-populate Atari ST hardware registers in emu_ram so EmuTOS
+     * memory detection and machine_detect() find sensible values.
+     * $FF8001: memory config — 0x0A = 4MB bank0 + 4MB bank1 (STe style)
+     * These are read-only from EmuTOS perspective. */
+    emu_ram[0xFF8001] = 0x0A;
+
     /* Load ROM image at ROMBAS */
     xil_printf("[ROM] Loading ROM image (%u bytes) at 0x%06X\r\n",
                ROM_IMAGE_SIZE, BIOS_ROMBAS);
@@ -209,20 +215,32 @@ static void rom_boot(void)
         /* Execute a batch of M68K instructions */
         m68k_execute(EMU_CYCLES_PER_TICK);
 
-        /* Timer C + ACIA interrupt logic.
-         * Both share IPL 6 through the Atari MFP interrupt controller.
-         * Musashi checks pending interrupts at the start of m68k_execute(). */
+        /* Interrupt logic: VBL (level 4) + MFP Timer C / ACIA (level 6).
+         * Musashi checks pending interrupts at the start of m68k_execute().
+         * Highest pending IPL wins (6 > 4). */
         {
             int irq = 0;
+
+            /* VBL interrupt (level 4, autovector).
+             * Real Atari ST: ~70 Hz (NTSC) / ~50 Hz (PAL).
+             * At 10000 cycles/tick and 8 MHz 68000, ~12 ticks ≈ 60 Hz. */
+            static int vbl_counter = 0;
+            if (++vbl_counter >= 12) {
+                vbl_counter = 0;
+                irq = 4;
+            }
+
             if (mfp_timer_tick(EMU_CYCLES_PER_TICK)) {
                 if (acia_mode_active())
                     atari_mfp_set_timer_c_pending();
-                irq = 6;
             }
             if (acia_has_irq()) {
                 atari_mfp_update_acia_irq();
-                irq = 6;
             }
+            /* Assert IRQ 6 only if the MFP has a deliverable interrupt
+             * (pending + enabled + masked, and not already in-service). */
+            if (atari_mfp_has_pending_irq())
+                irq = 6;
             m68k_set_irq(irq);
         }
 

@@ -146,6 +146,7 @@ instances per consumer.
   - `mc68881_fsin_test.c` — FSIN computation test (sin(1.0), sin(0.0))
   - `mc68881_e2e_test.c` — End-to-end test with 15 vectors from GHDL testbench
 - `validation/hello_world/` — M68K emulator + hardware FPU validation (Musashi, F-line trapping, ROM boot, USB keyboard)
+- `validation/kicad/` — Validation PCB: MC68SEC000 + QMTECH Artix-7 + original MC68881FN (KiCad 8, Gerbers in `output/`)
 - `src/vitis/roms/` — 68000 BIOS ROM source (assembler, disassembler, monitor with FPU support)
 - `tb/` — VHDL-2008 self-checking testbenches (14 files, ~8.5K lines)
 - `docs/` — Implementation plan, timing notes, reference documentation
@@ -447,6 +448,47 @@ green crosshair cursor that tracks the USB mouse. Left/right/middle clicks leave
 coloured dot markers on the screen. A banner at the top displays the current X/Y
 position and active buttons. Press any keyboard key to exit. Reads mouse state
 directly from memory-mapped I/O at `$FD0050` (buttons, delta, absolute position).
+
+## Validation PCB
+
+The `validation/kicad/` directory contains a KiCad 8 project ("NextCuboid") for a
+physical validation board that connects a real MC68SEC000 CPU to the QMTECH
+Artix-7 200T core board running the FPGA FPU core, alongside an original 5V
+MC68881FN for comparison testing. This is the first physical hardware validation
+of the coprocessor interface — exercising real bus timing, level shifting, and
+the CIR dialog protocol over actual copper.
+
+### Board architecture
+
+```
+MC68SEC000FU20 (3.3V, 20 MHz)
+    │
+    ├── Coprocessor bus ──► SN74LVC8T245 level shifters (3.3V ↔ 5V)
+    │                           │
+    │                           ├──► MC68881FN (original 5V DIP/PLCC)
+    │                           │
+    │                           └──► QMTECH Artix-7 200T (mc68881_top)
+    │
+    └── Active-low control ──► 74LVC1G125 single-gate buffers
+```
+
+### Key components
+
+| Component | Part | Role |
+|-----------|------|------|
+| CPU | MC68SEC000FU20 | 3.3V 68000-compatible bus master |
+| FPGA FPU | QMTECH XC7A200T core board | Runs `mc68881_top` with bus bridge |
+| Reference FPU | MC68881FN (original Motorola) | 5V DIP/PLCC, golden reference |
+| Level shifters | SN74LVC8T245 (×5) | Bidirectional 3.3V ↔ 5V translation |
+| Control buffers | 74LVC1G125 (×2) | Single-gate active-low signal translation |
+
+The board uses dual QMTECH connectors (active main + active secondary headers)
+and includes 4.7K pull-up resistors on open-drain/open-collector signals plus
+100nF decoupling capacitors on all ICs. Gerber outputs are in
+`validation/kicad/output/`.
+
+PCB production sponsored by [PCBWay](https://www.pcbway.com) — thanks to them
+for supporting this project.
 
 ## Status
 All checklist items complete. See `docs/fpu-progress-checklist.md` for history.

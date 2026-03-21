@@ -436,12 +436,18 @@ uint8_t atari_mfp_read(uint32_t offset)
         return 0;
 
     switch (offset) {
-    case AMFP_GPIP:
+    case AMFP_GPIP: {
+        uint8_t gpip = amfp_regs[AMFP_GPIP];
+        /* Bit 5: FDC interrupt (active low). Our FDC completes instantly,
+         * so the interrupt line is always asserted (bit 5 = 0). */
+        gpip &= ~0x20;
         /* Bit 4: ACIA interrupt (active low) */
         if (acia_has_irq())
-            return amfp_regs[AMFP_GPIP] & ~0x10;  /* clear bit 4 = active */
+            gpip &= ~0x10;
         else
-            return amfp_regs[AMFP_GPIP] | 0x10;   /* set bit 4 = inactive */
+            gpip |= 0x10;
+        return gpip;
+    }
 
     case AMFP_TCDCR:
         /* Forward to existing Timer C: return stored value */

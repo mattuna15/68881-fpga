@@ -69,6 +69,14 @@ static void mouse_io_write(unsigned int addr, unsigned int value)
     usb_mouse_set_pos(addr - MOUSE_IO_BASE, value);
 }
 
+/* Blitter status register: $FF8A3C-$FF8A3D.
+ * EmuTOS polls bit 15 (busy). Return 0 = not busy. */
+#define BLITTER_STATUS_ADDR  0xFF8A3C
+static inline int is_blitter_status(unsigned int addr)
+{
+    return (addr == BLITTER_STATUS_ADDR) || (addr == BLITTER_STATUS_ADDR + 1);
+}
+
 /* Static allocation — lives in DDR on the ZU3EG */
 unsigned char emu_ram[EMU_RAM_SIZE];
 
@@ -142,6 +150,8 @@ unsigned int m68k_read_memory_8(unsigned int address)
         return floppy_read(address - FLOPPY_DMA_BASE);
     if (is_psg(address))
         return psg_read(address - PSG_BASE);
+    if (is_blitter_status(address))
+        return 0;  /* Blitter not busy */
     if (gfx_is_fb(address))
         return gfx_read_8(address);
     return emu_ram[address & EMU_RAM_MASK];

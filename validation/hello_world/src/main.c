@@ -87,10 +87,8 @@ int emu_int_ack_callback(int int_level)
 {
     if (int_level == 6 && acia_mode_active()) {
         int vec = atari_mfp_acknowledge();
-        if (vec >= 0) {
-            (void)vec;
+        if (vec >= 0)
             return vec;
-        }
     }
     return M68K_INT_ACK_AUTOVECTOR;
 }
@@ -213,43 +211,9 @@ static void rom_boot(void)
     xil_printf("[ROM] Entering emulation loop...\r\n");
 
     /* Main emulation loop */
-    static int diag_tick = 0;
-    static uint32_t last_pc = 0xFFFFFFFF;
-    static int stuck_count = 0;
     while (1) {
         /* Execute a batch of M68K instructions */
         m68k_execute(EMU_CYCLES_PER_TICK);
-
-        /* Detect stuck PC */
-        if (++diag_tick > 5000) {  /* skip boot */
-            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
-            if (pc == last_pc) {
-                if (++stuck_count == 500)
-                    xil_printf("[STUCK] PC=$%06X SR=$%04X\r\n", pc,
-                               m68k_get_reg(NULL, M68K_REG_SR));
-            } else {
-                if (stuck_count >= 500)
-                    xil_printf("[FREE] PC=$%06X (was stuck %d ticks)\r\n", pc, stuck_count);
-                stuck_count = 0;
-            }
-            last_pc = pc;
-        }
-
-        /* One-shot diagnostic after ~10 seconds */
-        if (diag_tick == 10000) {
-            uint32_t hz200 = ((uint32_t)emu_ram[0x4BA] << 24) |
-                             ((uint32_t)emu_ram[0x4BB] << 16) |
-                             ((uint32_t)emu_ram[0x4BC] << 8) |
-                              (uint32_t)emu_ram[0x4BD];
-            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
-            uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
-            xil_printf("[DIAG] PC=$%06X SR=$%04X hz_200=%u\r\n", pc, sr, hz200);
-            /* Check if menu bar area has any non-zero pixels */
-            int menubar_bits = 0;
-            for (int i = 0; i < 80 * 16; i++)
-                if (emu_ram[0xF80000 + i]) menubar_bits++;
-            xil_printf("[DIAG] menubar bytes with pixels: %d/1280\r\n", menubar_bits);
-        }
 
         /* Interrupt logic: VBL (level 4) + MFP Timer C / ACIA (level 6).
          * Musashi checks pending interrupts at the start of m68k_execute().

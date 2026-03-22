@@ -58,6 +58,7 @@ set(USER_COMPILE_SOURCES
 "cir_periph.c"
 "platform.c"
 "floppy_emu.c"
+"blitter_emu.c"
 "psg_emu.c"
 "sd_floppy.c"
 "fatfs/ff.c"

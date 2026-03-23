@@ -339,6 +339,12 @@ unsigned int m68k_read_memory_32(unsigned int address)
 
 void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
+    /* Raw trace: catch ANY write near CIR region */
+    if ((address & 0xFFFFFF) >= 0xFFFA40 && (address & 0xFFFFFF) <= 0xFFFA60) {
+        static int cir_raw_w8 = 0;
+        if (cir_raw_w8++ < 20)
+            xil_printf("[CIR-RAW] W8 $%08X = $%02X\r\n", address, value & 0xFF);
+    }
     if (is_fpu_cir(address)) {
         /* CIR registers are word-sized; byte writes accumulate via word handler.
          * Most CIR accesses are word-sized; byte writes are uncommon. */
@@ -403,6 +409,12 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
+    /* Raw trace: catch ANY write near CIR region */
+    if ((address & 0xFFFFFF) >= 0xFFFA40 && (address & 0xFFFFFF) <= 0xFFFA60) {
+        static int cir_raw_w16 = 0;
+        if (cir_raw_w16++ < 20)
+            xil_printf("[CIR-RAW] W16 $%08X = $%04X\r\n", address, value & 0xFFFF);
+    }
     /* FPU CIR: native word access */
     if (is_fpu_cir(address)) {
         uint32_t off = ((address & 0xFFFFFF) - FPU_CIR_BASE) & ~1;

@@ -23,7 +23,7 @@ FPU_CFLAGS = $(CFLAGS) -m68881 -Wa,-mcpu=68020 -ffast-math -I$(LIB_DIR)
 # Non-FPU C flags with lib include path
 CFLAGS_LIB = $(CFLAGS) -I$(LIB_DIR)
 
-all: hello.srec hello.lst fputest.srec fputest.lst fireworks.srec fireworks.lst rtctest.srec mousetest.srec
+all: hello.srec hello.lst fputest.srec fputest.lst fireworks.srec fireworks.lst rtctest.srec mousetest.srec cirtest.srec
 
 # Non-FPU targets
 hello.srec: hello.c $(LIB_SBRK)
@@ -53,6 +53,10 @@ rtctest.srec: rtctest.c $(LIB_RTC) $(LIB_SBRK)
 # Mouse test (no FPU, uses gfx lib + mouse lib)
 mousetest.srec: mousetest.c $(LIB_MOUSE) $(LIB_SBRK)
 	$(CC) $(CFLAGS_LIB) $(LDFLAGS) -o $@ $< $(LIB_MOUSE) $(LIB_SBRK)
+
+# CIR diagnostic test (no FPU instructions — direct register access)
+cirtest.srec: cirtest.c $(LIB_SBRK)
+	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LIB_SBRK)
 
 clean:
 	rm -f *.srec *.lst *.o

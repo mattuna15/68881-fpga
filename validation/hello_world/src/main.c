@@ -289,17 +289,26 @@ static void rom_boot(void)
                 uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
                 xil_printf("[PC] $%06X SR=$%04X SP=$%06X\r\n", pc, sr, sp);
 
-                /* One-shot: dump instructions at stuck PC */
-                static int dump_done = 0;
-                if (!dump_done && pc == 0x023514) {
-                    dump_done = 1;
-                    xil_printf("[DUMP] Instructions at $%06X:\r\n", pc);
-                    for (int i = -8; i < 24; i += 2) {
-                        uint16_t w = (m68k_read_memory_8(pc+i) << 8) |
-                                      m68k_read_memory_8(pc+i+1);
-                        xil_printf("  $%06X: $%04X%s\r\n", pc+i, w,
-                                   (i == 0) ? " <<< PC" : "");
+                /* Auto-dump: when PC stays at same address for 5 consecutive samples */
+                {
+                    static uint32_t prev_pc = 0;
+                    static int stuck = 0;
+                    static int dumped_pc = 0;
+                    if (pc == prev_pc && pc != 0xE13AD4) { /* ignore idle STOP */
+                        if (++stuck == 5 && pc != dumped_pc) {
+                            dumped_pc = pc;
+                            xil_printf("[STUCK] PC=$%06X — dumping instructions:\r\n", pc);
+                            for (int i = -10; i < 30; i += 2) {
+                                uint16_t w = (m68k_read_memory_8(pc+i) << 8) |
+                                              m68k_read_memory_8(pc+i+1);
+                                xil_printf("  $%06X: $%04X%s\r\n", pc+i, w,
+                                           (i == 0) ? " <<< PC" : "");
+                            }
+                        }
+                    } else {
+                        stuck = 0;
                     }
+                    prev_pc = pc;
                 }
             }
         }

@@ -273,6 +273,10 @@ unsigned int m68k_read_memory_16(unsigned int address)
 
 unsigned int m68k_read_memory_32(unsigned int address)
 {
+    if (is_fpu_cir(address) || is_fpu_cir(address + 2)) {
+        return ((unsigned int)m68k_read_memory_16(address) << 16) |
+                (unsigned int)m68k_read_memory_16(address + 2);
+    }
     if (is_atari_mfp(address) || is_atari_mfp(address + 3) ||
         is_acia(address) || is_acia(address + 3)) {
         return ((unsigned int)m68k_read_memory_8(address)     << 24) |
@@ -479,6 +483,11 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
+    if (is_fpu_cir(address) || is_fpu_cir(address + 2)) {
+        m68k_write_memory_16(address,     (value >> 16) & 0xFFFF);
+        m68k_write_memory_16(address + 2,  value        & 0xFFFF);
+        return;
+    }
     if (is_atari_mfp(address) || is_atari_mfp(address + 3) ||
         is_acia(address) || is_acia(address + 3)) {
         m68k_write_memory_8(address,     (value >> 24) & 0xFF);

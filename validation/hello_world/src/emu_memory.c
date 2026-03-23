@@ -78,9 +78,20 @@ static void fpu_cir_write(uint32_t offset, uint16_t value)
     switch (offset) {
     case 0x00: cir_wr(OFF_CIR_RESPONSE, value); break;  /* Control/mode */
     case 0x06: cir_wr(OFF_CIR_RESTORE, value); break;   /* Restore */
-    case 0x08: cir_wr(OFF_CIR_COMMAND, value); break;   /* Command */
-    case 0x0A: cir_wr(OFF_CIR_OPERAND, value); break;   /* Operand */
-    case 0x0C: cir_wr(OFF_CIR_OPWORD, value); break;    /* OpWord */
+    case 0x08:
+        /* Ensure CIR mode is active before writing command */
+        cir_wr(OFF_CIR_RESPONSE, 1);
+        cir_wr(OFF_CIR_COMMAND, value);
+        break;
+    case 0x0A:
+        /* Ensure CIR mode is active before writing operand */
+        cir_wr(OFF_CIR_RESPONSE, 1);
+        cir_wr(OFF_CIR_OPERAND, value);
+        break;
+    case 0x0C:
+        cir_wr(OFF_CIR_RESPONSE, 1);
+        cir_wr(OFF_CIR_OPWORD, value);
+        break;
     default:   break;
     }
 }

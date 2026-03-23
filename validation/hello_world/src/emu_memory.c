@@ -193,7 +193,7 @@ unsigned int m68k_read_memory_8(unsigned int address)
 {
     if (is_fpu_cir(address)) {
         /* CIR registers are word-sized; byte read returns high/low byte */
-        uint32_t off = (address - FPU_CIR_BASE) & ~1;
+        uint32_t off = ((address & 0xFFFFFF) - FPU_CIR_BASE) & ~1;
         uint16_t val = fpu_cir_read(off);
         return (address & 1) ? (val & 0xFF) : ((val >> 8) & 0xFF);
     }
@@ -224,7 +224,7 @@ unsigned int m68k_read_memory_16(unsigned int address)
 {
     /* FPU CIR: native word access */
     if (is_fpu_cir(address)) {
-        uint32_t off = (address - FPU_CIR_BASE) & ~1;
+        uint32_t off = ((address & 0xFFFFFF) - FPU_CIR_BASE) & ~1;
         return fpu_cir_read(off);
     }
     /* Atari MFP / ACIA: byte-wide I/O, decompose word reads */
@@ -346,7 +346,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
         if (!(address & 1)) {
             cir_hi_latch = value & 0xFF;
         } else {
-            uint32_t off = (address - FPU_CIR_BASE) & ~1;
+            uint32_t off = ((address & 0xFFFFFF) - FPU_CIR_BASE) & ~1;
             fpu_cir_write(off, ((uint16_t)cir_hi_latch << 8) | (value & 0xFF));
         }
         return;
@@ -405,7 +405,7 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
     /* FPU CIR: native word access */
     if (is_fpu_cir(address)) {
-        uint32_t off = (address - FPU_CIR_BASE) & ~1;
+        uint32_t off = ((address & 0xFFFFFF) - FPU_CIR_BASE) & ~1;
         fpu_cir_write(off, value & 0xFFFF);
         return;
     }

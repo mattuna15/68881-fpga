@@ -26,6 +26,7 @@
 
 static inline int is_fpu_cir(unsigned int addr)
 {
+    addr &= 0xFFFFFF;  /* 68000: 24-bit address bus */
     return (addr >= FPU_CIR_BASE) && (addr < FPU_CIR_BASE + FPU_CIR_SIZE);
 }
 

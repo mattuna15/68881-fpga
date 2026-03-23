@@ -330,7 +330,30 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Open Defects
 
-(none)
+### DEF-BLT-001: Blitter icon corruption with NFSR + non-zero skew
+
+**Severity:** Medium (cosmetic — floppy and desktop are functional)
+
+**Symptom:** Desktop floppy icon (DISK A) draws correctly, but ghost/shifted
+copies appear to the right. Labels show repeated "A A A A A". Affects icon
+drawing only; menus and windows render correctly after NFSR zero-fill fix.
+
+**Blitter parameters triggering the bug:**
+- `hop=2 op=7 skew=$44` — source AND dest, NFSR=1, skew_amt=4
+- `hop=2 op=4 skew=$44` — source AND NOT dest, NFSR=1, skew_amt=4
+
+**Root cause:** The barrel shifter produces data that leaks past the endmask
+boundary when NFSR is active with a non-zero skew amount. The interaction
+between `src_prev` (used as last bus value for NFSR), the 4-bit skew shift,
+and the endmask clipping is not correctly matching Hatari's behavior.
+
+**Action:** Compare `blitter_emu.c` step-by-step against Hatari's
+`Blitter_SourceShift()` and `Blitter_Step()` for the NFSR + skew path.
+Key areas: NFSR evaluation timing (Hatari: at x_count==2), barrel shift
+buffer update order, and the "weird" NFSR+FXSR combined case with two
+extra SourceShift+SourceFetch(true) calls.
+
+**File:** `validation/hello_world/src/blitter_emu.c`
 
 ## Closed Defects
 

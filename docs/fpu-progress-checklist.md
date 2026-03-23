@@ -355,6 +355,43 @@ extra SourceShift+SourceFetch(true) calls.
 
 **File:** `validation/hello_world/src/blitter_emu.c`
 
+### DEF-CIR-001: Pending dialog dropped when EXECUTE ends mid-command (68882)
+
+**Severity:** High (affects 68882 pending instruction pipeline)
+
+**Symptom:** Back-to-back 68882 instructions can lose the second instruction
+if its OpWord arrives near the end of the first operation. The
+`pending_opword_seen_reg`/`pending_cmd_seen_reg` flags are cleared when
+leaving `CIR_EXECUTE`, but a partially received pending instruction (OpWord
+arrived, Command not yet) loses its OpWord flag.
+
+**Root cause:** `src/mc68881_top.vhd` clears pending seen flags on any
+`CIR_EXECUTE` exit, not just when consumed by `CIR_PENDING_DECODE`.
+
+**Action:** Only clear `pending_opword_seen_reg`/`pending_cmd_seen_reg` when
+transitioning to `CIR_PENDING_DECODE` (consumed), not on general state exit.
+Add testbench coverage for back-to-back instructions with tight timing.
+
+**Source:** PR #59 codex review
+
+### DEF-USB-001: HID interface number hardcoded to 0
+
+**Severity:** Medium (affects composite USB devices)
+
+**Symptom:** `SET_PROTOCOL` and `SET_REPORT` (LED update) use `wIndex=0`
+regardless of the actual HID interface number detected during enumeration.
+Composite keyboards/mice with HID on interface != 0 may fail to switch to
+boot protocol or update LEDs.
+
+**Root cause:** `validation/hello_world/src/usb_hid.c` — `find_hid_keyboard()`
+and `find_hid_mouse()` detect and print the interface number but the setup
+requests hardcode `wIndex=0`.
+
+**Action:** Store detected interface number and use it in `SET_PROTOCOL` and
+`SET_REPORT` class requests.
+
+**Source:** PR #59 codex review
+
 ## Closed Defects
 
 ### DEF-LUT-002: Further LUT Reduction via FP Unit Sharing

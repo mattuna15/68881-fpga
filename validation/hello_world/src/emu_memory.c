@@ -49,6 +49,10 @@ static uint16_t fpu_cir_read(uint32_t offset)
             xil_printf("[CIR] R response=$%04X\r\n", val);
             cir_dbg_count++;
         }
+        /* In peripheral/idle mode (response=$2001), return MC68882 ID
+         * instead. FPU_HARD.PRG polls this to detect FPU hardware. */
+        if (val == 0x2001)
+            return 0x0802;  /* MC68882 identification */
         return val;
     case 0x04: return (uint16_t)cir_rd(OFF_CIR_SAVE);       /* Save */
     case 0x08: return (uint16_t)cir_rd(OFF_CIR_COMMAND);    /* Command */

@@ -54,16 +54,12 @@
  */
 static uint16_t fpu_cir_read(uint32_t offset)
 {
-    static int cir_dbg_count = 0;
     uint16_t val;
     switch (offset) {
     case 0x00:
         val = (uint16_t)cir_rd(OFF_CIR_RESPONSE);
-        if (cir_dbg_count < 50) {
-            xil_printf("[CIR] R resp=$%04X\r\n", val);
-            cir_dbg_count++;
-        }
-        /* In peripheral/idle mode ($2001), return MC68882 ID instead. */
+        /* In peripheral/idle mode ($2001), return MC68882 ID instead.
+         * FPU_HARD.PRG polls this to detect FPU hardware. */
         if (val == 0x2001)
             return 0x0802;
         return val;
@@ -78,18 +74,8 @@ static uint16_t fpu_cir_read(uint32_t offset)
     }
 }
 
-static int cir_write_dbg_count = 0;
-
 static void fpu_cir_write(uint32_t offset, uint16_t value)
 {
-    if (cir_write_dbg_count < 30) {
-        static const char *names[] = {"Resp/Ctrl","?","Save","Restore",
-                                       "Command","Operand","OpWord","?","Condition"};
-        int idx = offset / 2;
-        xil_printf("[CIR] W $FFFA%02X (%s) = $%04X\r\n",
-                   0x40 + offset, (idx < 9) ? names[idx] : "?", value);
-        cir_write_dbg_count++;
-    }
     switch (offset) {
     case 0x00: /* Control/mode */
     case 0x02:
@@ -100,21 +86,12 @@ static void fpu_cir_write(uint32_t offset, uint16_t value)
         cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
         cir_wr(OFF_CIR_OPWORD, value);
         break;
-    case 0x0A: { /* Command — write cmd then cpGEN OpWord to trigger dialog */
-        /* Read mode before and after to verify CIR mode switch */
-        uint32_t status_before = cir_rd(OFF_CIR_RESPONSE);
+    case 0x0A: /* Command — pass through to CIR */
         cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
-        uint32_t status_after_mode = cir_rd(OFF_CIR_RESPONSE);
-        cir_wr(OFF_CIR_COMMAND, value);  /* command first */
-        uint32_t status_after_cmd = cir_rd(OFF_CIR_RESPONSE);
-        cir_wr(OFF_CIR_OPWORD, CIR_OPWORD_CPGEN);  /* OpWord triggers FSM */
-        uint32_t status_after_op = cir_rd(OFF_CIR_RESPONSE);
-        xil_printf("[CIR-AXI] before=$%08X mode=$%08X cmd=$%08X op=$%08X\r\n",
-                   status_before, status_after_mode, status_after_cmd, status_after_op);
+        cir_wr(OFF_CIR_COMMAND, value);
         break;
-    }
     case 0x0E: cir_wr(OFF_CIR_CONDITION, value); break;
-    case 0x10: /* Operand */
+    case 0x10: /* Operand (16-bit write — only lower half, upper is 0) */
         cir_wr(OFF_CIR_RESPONSE, 1);
         cir_wr(OFF_CIR_OPERAND, value);
         break;
@@ -122,6 +99,35 @@ static void fpu_cir_write(uint32_t offset, uint16_t value)
     case 0x16: cir_wr(OFF_CIR_OPADDR, value); break;
     default:   break;
     }
+}
+
+/* 32-bit CIR operand access — the MC68020 CIR interface transfers operand
+ * data as 32-bit long words on the data bus.  These must map to a single
+ * AXI write/read so the VHDL FSM sees one cir_operand_word_arrived pulse
+ * per long word, matching real hardware behavior.  Other CIR registers are
+ * word-sized and don't need 32-bit native access. */
+static uint32_t fpu_cir_read32(uint32_t offset)
+{
+    if (offset == 0x10)
+        return cir_rd(OFF_CIR_OPERAND);
+    /* Non-operand: fall back to two 16-bit reads (big-endian) */
+    return ((uint32_t)fpu_cir_read(offset) << 16) |
+            (uint32_t)fpu_cir_read(offset + 2);
+}
+
+static void fpu_cir_write32(uint32_t offset, uint32_t value)
+{
+    if (offset == 0x10) {
+        /* Single 32-bit AXI write — do NOT write OFF_CIR_RESPONSE first.
+         * The extra bus_write to addr 13 can disturb the CIR_XFER_SRC FSM
+         * edge-detection between the poll read and the operand write.
+         * CIR mode is already active at this point. */
+        cir_wr(OFF_CIR_OPERAND, value);
+        return;
+    }
+    /* Non-operand: decompose to two 16-bit writes (big-endian) */
+    fpu_cir_write(offset, (value >> 16) & 0xFFFF);
+    fpu_cir_write(offset + 2, value & 0xFFFF);
 }
 
 /* Mouse I/O region: 0xFD0050-0xFD005B (12 bytes, read-only)
@@ -316,9 +322,9 @@ unsigned int m68k_read_memory_16(unsigned int address)
 
 unsigned int m68k_read_memory_32(unsigned int address)
 {
-    if (is_fpu_cir(address) || is_fpu_cir(address + 2)) {
-        return ((unsigned int)m68k_read_memory_16(address) << 16) |
-                (unsigned int)m68k_read_memory_16(address + 2);
+    if (is_fpu_cir(address)) {
+        uint32_t off = ((address & 0xFFFFFF) - FPU_CIR_BASE) & ~1;
+        return fpu_cir_read32(off);
     }
     if (is_atari_mfp(address) || is_atari_mfp(address + 3) ||
         is_acia(address) || is_acia(address + 3)) {
@@ -386,12 +392,6 @@ unsigned int m68k_read_memory_32(unsigned int address)
 
 void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
-    /* Raw trace: catch ANY write near CIR region */
-    if ((address & 0xFFFFFF) >= 0xFFFA40 && (address & 0xFFFFFF) <= 0xFFFA60) {
-        static int cir_raw_w8 = 0;
-        if (cir_raw_w8++ < 20)
-            xil_printf("[CIR-RAW] W8 $%08X = $%02X\r\n", address, value & 0xFF);
-    }
     if (is_fpu_cir(address)) {
         /* CIR registers are word-sized; byte writes accumulate via word handler.
          * Most CIR accesses are word-sized; byte writes are uncommon. */
@@ -456,12 +456,6 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
-    /* Raw trace: catch ANY write near CIR region */
-    if ((address & 0xFFFFFF) >= 0xFFFA40 && (address & 0xFFFFFF) <= 0xFFFA60) {
-        static int cir_raw_w16 = 0;
-        if (cir_raw_w16++ < 20)
-            xil_printf("[CIR-RAW] W16 $%08X = $%04X\r\n", address, value & 0xFFFF);
-    }
     /* FPU CIR: native word access */
     if (is_fpu_cir(address)) {
         uint32_t off = ((address & 0xFFFFFF) - FPU_CIR_BASE) & ~1;
@@ -526,9 +520,9 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
-    if (is_fpu_cir(address) || is_fpu_cir(address + 2)) {
-        m68k_write_memory_16(address,     (value >> 16) & 0xFFFF);
-        m68k_write_memory_16(address + 2,  value        & 0xFFFF);
+    if (is_fpu_cir(address)) {
+        uint32_t off = ((address & 0xFFFFFF) - FPU_CIR_BASE) & ~1;
+        fpu_cir_write32(off, value);
         return;
     }
     if (is_atari_mfp(address) || is_atari_mfp(address + 3) ||

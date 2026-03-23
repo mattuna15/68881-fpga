@@ -279,8 +279,9 @@ static void rom_boot(void)
         /* Execute a batch of M68K instructions */
         m68k_execute(EMU_CYCLES_PER_TICK);
 
-        /* PC sampler: print PC every ~2 seconds to trace EmuTOS progress */
-        {
+        /* PC sampler: print PC every ~2 seconds to trace EmuTOS progress.
+         * Disabled for Merlin2 to keep serial output clean for cirtest etc. */
+        if (boot_choice == BOOT_EMUTOS) {
             static int sample_count = 0;
             if (++sample_count >= 2000) {
                 sample_count = 0;

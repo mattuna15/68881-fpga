@@ -22,7 +22,7 @@
 
 /* MC68882 CIR registers at Atari TT address */
 #define FPU_CIR_BASE  0xFFFA40
-#define FPU_CIR_SIZE  0x12       /* $FFFA40-$FFFA51 */
+#define FPU_CIR_SIZE  0x18       /* $FFFA40-$FFFA57 (covers 32-bit Operand + InstAddr + OpAddr) */
 
 static inline int is_fpu_cir(unsigned int addr)
 {

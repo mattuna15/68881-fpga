@@ -38,6 +38,20 @@
 /* $FFFA50: Condition    → OFF_CIR_CONDITION (0x1C)                     */
 /* ------------------------------------------------------------------ */
 
+/* MC68020 coprocessor interface register layout (standard from Motorola):
+ * Offset  Register         AXI CIR offset
+ * $00     Response (R)     OFF_CIR_RESPONSE
+ * $02     Control (W)      OFF_CIR_RESPONSE (mode)
+ * $04     Save             OFF_CIR_SAVE
+ * $06     Restore          OFF_CIR_RESTORE
+ * $08     Operation Word   OFF_CIR_OPWORD
+ * $0A     Command          OFF_CIR_COMMAND
+ * $0C     (reserved)
+ * $0E     Condition        OFF_CIR_CONDITION
+ * $10     Operand          OFF_CIR_OPERAND
+ * $14     Inst Address     OFF_CIR_INSTADDR
+ * $16     Operand Address  OFF_CIR_OPADDR
+ */
 static uint16_t fpu_cir_read(uint32_t offset)
 {
     static int cir_dbg_count = 0;
@@ -45,20 +59,21 @@ static uint16_t fpu_cir_read(uint32_t offset)
     switch (offset) {
     case 0x00:
         val = (uint16_t)cir_rd(OFF_CIR_RESPONSE);
-        if (cir_dbg_count < 20) {
-            xil_printf("[CIR] R response=$%04X\r\n", val);
+        if (cir_dbg_count < 50) {
+            xil_printf("[CIR] R resp=$%04X\r\n", val);
             cir_dbg_count++;
         }
-        /* In peripheral/idle mode (response=$2001), return MC68882 ID
-         * instead. FPU_HARD.PRG polls this to detect FPU hardware. */
+        /* In peripheral/idle mode ($2001), return MC68882 ID instead. */
         if (val == 0x2001)
-            return 0x0802;  /* MC68882 identification */
+            return 0x0802;
         return val;
-    case 0x04: return (uint16_t)cir_rd(OFF_CIR_SAVE);       /* Save */
-    case 0x08: return (uint16_t)cir_rd(OFF_CIR_COMMAND);    /* Command */
-    case 0x0A: return (uint16_t)cir_rd(OFF_CIR_OPERAND);    /* Operand */
-    case 0x0C: return (uint16_t)cir_rd(OFF_CIR_OPWORD);     /* OpWord */
-    case 0x10: return (uint16_t)cir_rd(OFF_CIR_CONDITION);   /* Condition */
+    case 0x04: return (uint16_t)cir_rd(OFF_CIR_SAVE);
+    case 0x08: return (uint16_t)cir_rd(OFF_CIR_OPWORD);
+    case 0x0A: return (uint16_t)cir_rd(OFF_CIR_COMMAND);
+    case 0x0E: return (uint16_t)cir_rd(OFF_CIR_CONDITION);
+    case 0x10: return (uint16_t)cir_rd(OFF_CIR_OPERAND);
+    case 0x14: return (uint16_t)cir_rd(OFF_CIR_INSTADDR);
+    case 0x16: return (uint16_t)cir_rd(OFF_CIR_OPADDR);
     default:   return 0;
     }
 }
@@ -76,22 +91,26 @@ static void fpu_cir_write(uint32_t offset, uint16_t value)
         cir_write_dbg_count++;
     }
     switch (offset) {
-    case 0x00: cir_wr(OFF_CIR_RESPONSE, value); break;  /* Control/mode */
-    case 0x06: cir_wr(OFF_CIR_RESTORE, value); break;   /* Restore */
-    case 0x08:
-        /* Ensure CIR mode is active before writing command */
-        cir_wr(OFF_CIR_RESPONSE, 1);
+    case 0x00: /* Control/mode */
+    case 0x02:
+        cir_wr(OFF_CIR_RESPONSE, value);
+        break;
+    case 0x06: cir_wr(OFF_CIR_RESTORE, value); break;
+    case 0x08: /* OpWord — starts CIR dialog */
+        cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
+        cir_wr(OFF_CIR_OPWORD, value);
+        break;
+    case 0x0A: /* Command */
+        cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
         cir_wr(OFF_CIR_COMMAND, value);
         break;
-    case 0x0A:
-        /* Ensure CIR mode is active before writing operand */
+    case 0x0E: cir_wr(OFF_CIR_CONDITION, value); break;
+    case 0x10: /* Operand */
         cir_wr(OFF_CIR_RESPONSE, 1);
         cir_wr(OFF_CIR_OPERAND, value);
         break;
-    case 0x0C:
-        cir_wr(OFF_CIR_RESPONSE, 1);
-        cir_wr(OFF_CIR_OPWORD, value);
-        break;
+    case 0x14: cir_wr(OFF_CIR_INSTADDR, value); break;
+    case 0x16: cir_wr(OFF_CIR_OPADDR, value); break;
     default:   break;
     }
 }

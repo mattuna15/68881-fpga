@@ -454,9 +454,8 @@ static int handle_general(unsigned int opword, unsigned int pc)
 
     u8 core_op = map_opcode(m68k_op);
     if (core_op == 0 && m68k_op != M68K_FP_FMOVE) {
-        xil_printf("FLINE: unknown opcode 0x%02x\r\n", m68k_op);
-        m68k_set_reg(M68K_REG_PC, pc);
-        return 1;
+        xil_printf("FLINE: unknown opcode 0x%02x — letting Musashi trap\r\n", m68k_op);
+        return 0;  /* unhandled — let Musashi generate F-line exception */
     }
 
     fp80_t src_val;
@@ -1027,7 +1026,7 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
     }
     default:
         xil_printf("FLINE: FMOVE to mem unsupported fmt=%d\r\n", fmt);
-        break;
+        return 0;  /* unhandled — let Musashi generate exception */
     }
 
     /* Post-increment: advance An after use */
@@ -1068,14 +1067,20 @@ static void handle_fsave(unsigned int opword, unsigned int pc)
     /* Read data words from Operand CIR.
      * Lower byte of format word = frame data size in bytes. */
     int n_words = (format_word & 0xFF) / 4;
+    if (n_words > 56) n_words = 56;  /* clamp to buffer size */
     u32 frame_data[56];  /* max 53 words for 68882 busy frame */
     for (int i = 0; i < n_words; i++)
         frame_data[i] = cir_rd(OFF_CIR_OPERAND);
 
     /* Wait for CIR to return to idle */
-    for (int i = 0; i < 100; i++) {
-        if (cir_rd(OFF_CIR_RESPONSE) != CIR_BUSY)
-            break;
+    {
+        int i;
+        for (i = 0; i < 100; i++) {
+            if (cir_rd(OFF_CIR_RESPONSE) != CIR_BUSY)
+                break;
+        }
+        if (i == 100)
+            xil_printf("[FLINE] FATAL: CIR still busy after timeout\r\n");
     }
 
     /* Switch back to peripheral mode */
@@ -1125,6 +1130,7 @@ static void handle_frestore(unsigned int opword, unsigned int pc)
 
     /* Read data words */
     int n_words = (format_word & 0xFF) / 4;
+    if (n_words > 56) n_words = 56;  /* clamp to buffer size */
     u32 frame_data[56];
     for (int i = 0; i < n_words; i++)
         frame_data[i] = m68k_read_memory_32(ea_addr + 4 + i * 4);
@@ -1150,9 +1156,14 @@ static void handle_frestore(unsigned int opword, unsigned int pc)
         cir_wr(OFF_CIR_OPERAND, frame_data[i]);
 
     /* Wait for CIR to return to idle */
-    for (int i = 0; i < 100; i++) {
-        if (cir_rd(OFF_CIR_RESPONSE) != CIR_BUSY)
-            break;
+    {
+        int i;
+        for (i = 0; i < 100; i++) {
+            if (cir_rd(OFF_CIR_RESPONSE) != CIR_BUSY)
+                break;
+        }
+        if (i == 100)
+            xil_printf("[FLINE] FATAL: CIR still busy after timeout\r\n");
     }
 
     /* Switch back to peripheral mode */
@@ -1206,11 +1217,20 @@ int fline_illg_callback(int opcode)
     case 1: {
         /* Type 001: FScc / FDBcc / FTRAPcc */
         int ea_mode = EA_MODE(opword);
+        int ea_reg  = EA_REG(opword);
         if (ea_mode == 1) {
             /* ea_mode 001 = FDBcc */
             return handle_fdbcc(opword, pc);
         }
-        /* All other EA modes = FScc (FTRAPcc is EA mode 7/reg 2-4) */
+        if (ea_mode == 7 && (ea_reg >= 2 && ea_reg <= 4)) {
+            /* FTRAPcc — not implemented, let Musashi handle */
+            if (last_unhandled_pc != pc - 2) {
+                last_unhandled_pc = pc - 2;
+                xil_printf("[FLINE] FTRAPcc not implemented PC=$%06X\r\n", pc - 2);
+            }
+            return 0;
+        }
+        /* All other EA modes = FScc */
         return handle_fscc(opword, pc);
     }
 

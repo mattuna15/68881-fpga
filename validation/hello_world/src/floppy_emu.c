@@ -133,7 +133,7 @@ static void fdc_execute_command(uint8_t cmd)
 
     case 0x00: /* RESTORE — seek to track 0 */
         fdc_track = 0;
-        step_direction = 1;
+        step_direction = -1;  /* RESTORE steps outward toward track 0 */
         fdc_set_type1_status();
         break;
 
@@ -271,9 +271,13 @@ static void fdc_execute_command(uint8_t cmd)
                 dma_addr + track_bytes <= EMU_RAM_SIZE) {
                 memcpy(&emu_ram[dma_addr], &st_image[track_offset], track_bytes);
                 dma_addr += track_bytes;
+                fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP;
+            } else {
+                fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP | 0x10; /* RNF */
             }
+        } else {
+            fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP;
         }
-        fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP;
         break;
     }
 

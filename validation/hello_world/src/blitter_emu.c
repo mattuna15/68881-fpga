@@ -75,14 +75,14 @@ static void blitter_execute(void)
     uint8_t  hop      = blt.hop & 0x03;
     uint8_t  op       = blt.op & 0x0F;
 
-    /* Hatari: x/y count of 0 is treated as 65536 */
-    uint16_t x_count_start = blt.x_count ? blt.x_count : 65535;
-    uint16_t y_count_start = blt.y_count ? blt.y_count : 65535;
-    blt.x_count_reload = x_count_start;
+    /* Hatari: x/y count of 0 is treated as 65536. Use uint32_t for loops. */
+    uint32_t x_count_start = blt.x_count ? blt.x_count : 65536;
+    uint32_t y_count_start = blt.y_count ? blt.y_count : 65536;
+    blt.x_count_reload = blt.x_count; /* store original 16-bit value for reload */
 
-    for (uint16_t y = y_count_start; y > 0; y--) {
+    for (uint32_t y = y_count_start; y > 0; y--) {
         uint16_t src_prev = 0;
-        uint16_t xcount = blt.x_count_reload;
+        uint32_t xcount = x_count_start;
 
         /* FXSR: extra source read before first word of line */
         if (fxsr) {
@@ -90,7 +90,7 @@ static void blitter_execute(void)
             src_addr = (uint32_t)((int32_t)src_addr + blt.src_x_incr) & 0xFFFFFF;
         }
 
-        for (uint16_t x = 0; x < xcount; x++) {
+        for (uint32_t x = 0; x < xcount; x++) {
             /* Read source word (unless NFSR suppresses the final read).
              * Hatari: NFSR skips the fetch but uses the last bus value,
              * not zero. We approximate by keeping src_word from previous
@@ -129,10 +129,10 @@ static void blitter_execute(void)
             /* Apply logic operation */
             uint16_t result = apply_op(op, source, dest);
 
-            /* Select endmask (Hatari lines 787-793: endmask_1 alone for single-word) */
+            /* Select endmask. Hatari: single-word line uses endmask_1 & endmask_3 */
             uint16_t mask;
             if (xcount == 1) {
-                mask = blt.endmask_1;
+                mask = blt.endmask_1 & blt.endmask_3;
             } else if (x == 0) {
                 mask = blt.endmask_1;
             } else if (x == xcount - 1) {

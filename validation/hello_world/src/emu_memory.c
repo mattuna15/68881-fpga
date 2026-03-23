@@ -101,12 +101,16 @@ static void fpu_cir_write(uint32_t offset, uint16_t value)
         cir_wr(OFF_CIR_OPWORD, value);
         break;
     case 0x0A: { /* Command — write cmd then cpGEN OpWord to trigger dialog */
+        /* Read mode before and after to verify CIR mode switch */
+        uint32_t status_before = cir_rd(OFF_CIR_RESPONSE);
         cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
+        uint32_t status_after_mode = cir_rd(OFF_CIR_RESPONSE);
         cir_wr(OFF_CIR_COMMAND, value);  /* command first */
+        uint32_t status_after_cmd = cir_rd(OFF_CIR_RESPONSE);
         cir_wr(OFF_CIR_OPWORD, CIR_OPWORD_CPGEN);  /* OpWord triggers FSM */
-        uint16_t resp = (uint16_t)cir_rd(OFF_CIR_RESPONSE);
-        xil_printf("[CIR-AXI] cmd=$%04X opword=$%04X → resp=$%04X\r\n",
-                   value, CIR_OPWORD_CPGEN, resp);
+        uint32_t status_after_op = cir_rd(OFF_CIR_RESPONSE);
+        xil_printf("[CIR-AXI] before=$%08X mode=$%08X cmd=$%08X op=$%08X\r\n",
+                   status_before, status_after_mode, status_after_cmd, status_after_op);
         break;
     }
     case 0x0E: cir_wr(OFF_CIR_CONDITION, value); break;

@@ -16,7 +16,52 @@
 #include "floppy_emu.h"
 #include "psg_emu.h"
 #include "blitter_emu.h"
+#include "cir_periph.h"
 #include "xil_printf.h"
+
+/* ------------------------------------------------------------------ */
+/* MC68882 CIR register mapping at Atari TT address $FFFA40            */
+/*                                                                      */
+/* The 68882 coprocessor interface uses 16-bit registers on the 68K bus. */
+/* FPU_HARD.PRG and other Atari TT software access the CIR protocol    */
+/* directly at these addresses instead of using F-line instructions.     */
+/*                                                                      */
+/* Atari TT map         → AXI CIR offset                               */
+/* $FFFA40: Response     → OFF_CIR_RESPONSE (0x34) read                 */
+/* $FFFA42: Control      → OFF_CIR_RESPONSE (0x34) write (mode)         */
+/* $FFFA44: Save         → OFF_CIR_SAVE (0x30) read                     */
+/* $FFFA46: Restore      → OFF_CIR_RESTORE (0x70) write                 */
+/* $FFFA48: Command      → OFF_CIR_COMMAND (0x14)                       */
+/* $FFFA4A: Operand      → OFF_CIR_OPERAND (0x20)                       */
+/* $FFFA4C: OpWord (reg select) → OFF_CIR_OPWORD (0x10)                 */
+/* $FFFA4E: (reserved)                                                  */
+/* $FFFA50: Condition    → OFF_CIR_CONDITION (0x1C)                     */
+/* ------------------------------------------------------------------ */
+
+static uint16_t fpu_cir_read(uint32_t offset)
+{
+    switch (offset) {
+    case 0x00: return (uint16_t)cir_rd(OFF_CIR_RESPONSE);   /* Response */
+    case 0x04: return (uint16_t)cir_rd(OFF_CIR_SAVE);       /* Save */
+    case 0x08: return (uint16_t)cir_rd(OFF_CIR_COMMAND);    /* Command */
+    case 0x0A: return (uint16_t)cir_rd(OFF_CIR_OPERAND);    /* Operand */
+    case 0x0C: return (uint16_t)cir_rd(OFF_CIR_OPWORD);     /* OpWord */
+    case 0x10: return (uint16_t)cir_rd(OFF_CIR_CONDITION);   /* Condition */
+    default:   return 0;
+    }
+}
+
+static void fpu_cir_write(uint32_t offset, uint16_t value)
+{
+    switch (offset) {
+    case 0x00: cir_wr(OFF_CIR_RESPONSE, value); break;  /* Control/mode */
+    case 0x06: cir_wr(OFF_CIR_RESTORE, value); break;   /* Restore */
+    case 0x08: cir_wr(OFF_CIR_COMMAND, value); break;   /* Command */
+    case 0x0A: cir_wr(OFF_CIR_OPERAND, value); break;   /* Operand */
+    case 0x0C: cir_wr(OFF_CIR_OPWORD, value); break;    /* OpWord */
+    default:   break;
+    }
+}
 
 /* Mouse I/O region: 0xFD0050-0xFD005B (12 bytes, read-only)
  * Layout (big-endian):
@@ -128,6 +173,12 @@ static inline int is_acia(unsigned int addr)
 
 unsigned int m68k_read_memory_8(unsigned int address)
 {
+    if (is_fpu_cir(address)) {
+        /* CIR registers are word-sized; byte read returns high/low byte */
+        uint32_t off = (address - FPU_CIR_BASE) & ~1;
+        uint16_t val = fpu_cir_read(off);
+        return (address & 1) ? (val & 0xFF) : ((val >> 8) & 0xFF);
+    }
     if (is_atari_mfp(address))
         return atari_mfp_read(address - ATARI_MFP_BASE);
     if (is_acia(address))
@@ -153,6 +204,11 @@ unsigned int m68k_read_memory_8(unsigned int address)
 
 unsigned int m68k_read_memory_16(unsigned int address)
 {
+    /* FPU CIR: native word access */
+    if (is_fpu_cir(address)) {
+        uint32_t off = (address - FPU_CIR_BASE) & ~1;
+        return fpu_cir_read(off);
+    }
     /* Atari MFP / ACIA: byte-wide I/O, decompose word reads */
     if (is_atari_mfp(address) || is_atari_mfp(address + 1) ||
         is_acia(address) || is_acia(address + 1)) {
@@ -265,6 +321,18 @@ unsigned int m68k_read_memory_32(unsigned int address)
 
 void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
+    if (is_fpu_cir(address)) {
+        /* CIR registers are word-sized; byte writes accumulate via word handler.
+         * Most CIR accesses are word-sized; byte writes are uncommon. */
+        static uint8_t cir_hi_latch;
+        if (!(address & 1)) {
+            cir_hi_latch = value & 0xFF;
+        } else {
+            uint32_t off = (address - FPU_CIR_BASE) & ~1;
+            fpu_cir_write(off, ((uint16_t)cir_hi_latch << 8) | (value & 0xFF));
+        }
+        return;
+    }
     if (is_atari_mfp(address)) {
         atari_mfp_write(address - ATARI_MFP_BASE, value & 0xFF);
         return;
@@ -317,6 +385,12 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
+    /* FPU CIR: native word access */
+    if (is_fpu_cir(address)) {
+        uint32_t off = (address - FPU_CIR_BASE) & ~1;
+        fpu_cir_write(off, value & 0xFFFF);
+        return;
+    }
     if (is_atari_mfp(address) || is_atari_mfp(address + 1) ||
         is_acia(address) || is_acia(address + 1)) {
         m68k_write_memory_8(address,     (value >> 8) & 0xFF);

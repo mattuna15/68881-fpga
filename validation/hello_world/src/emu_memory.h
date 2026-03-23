@@ -20,6 +20,15 @@
 #define EMU_MFP_BASE  0xFD0000      /* MC68901 MFP I/O */
 #define EMU_MFP_SIZE  0x000040      /* 0x00-0x2F regs + 0x30 tick + 0x34 RTC + 0x38 datetime */
 
+/* MC68882 CIR registers at Atari TT address */
+#define FPU_CIR_BASE  0xFFFA40
+#define FPU_CIR_SIZE  0x12       /* $FFFA40-$FFFA51 */
+
+static inline int is_fpu_cir(unsigned int addr)
+{
+    return (addr >= FPU_CIR_BASE) && (addr < FPU_CIR_BASE + FPU_CIR_SIZE);
+}
+
 /* The emulated RAM buffer (statically allocated in DDR) */
 extern unsigned char emu_ram[];
 

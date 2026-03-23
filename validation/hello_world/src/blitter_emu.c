@@ -91,10 +91,13 @@ static void blitter_execute(void)
         }
 
         for (uint16_t x = 0; x < xcount; x++) {
-            /* Read source word (unless NFSR suppresses the final read) */
+            /* Read source word (unless NFSR suppresses the final read).
+             * Hatari: NFSR skips the fetch but uses the last bus value,
+             * not zero. We approximate by keeping src_word from previous
+             * iteration (src_prev holds it after the shift below). */
             uint16_t src_word;
             if (nfsr && x == xcount - 1) {
-                src_word = 0;
+                src_word = src_prev;  /* last bus value, not 0 */
             } else {
                 src_word = ram_read16(src_addr);
             }

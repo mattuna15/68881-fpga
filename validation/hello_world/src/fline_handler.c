@@ -621,6 +621,125 @@ static int handle_fmovecr(unsigned int cmd, unsigned int pc)
 }
 
 /* ------------------------------------------------------------------ */
+/* Evaluate FPU condition code from FPSR                                */
+/* Returns 1 if condition is true, 0 if false.                         */
+/* ------------------------------------------------------------------ */
+static int eval_fpu_condition(int condition)
+{
+    u32 fpsr = fp_reg_get_fpsr();
+    int cc_n   = (fpsr >> 27) & 1;
+    int cc_z   = (fpsr >> 26) & 1;
+    int cc_i   = (fpsr >> 25) & 1;
+    int cc_nan = (fpsr >> 24) & 1;
+    (void)cc_i; /* unused in standard conditions */
+
+    switch (condition & 0x1F) {
+    case 0x00: return 0;                                /* F */
+    case 0x01: return cc_z;                             /* EQ */
+    case 0x02: return !(cc_nan | cc_z | cc_n);         /* OGT */
+    case 0x03: return cc_z | !(cc_nan | cc_n);         /* OGE */
+    case 0x04: return cc_n & !(cc_nan | cc_z);         /* OLT */
+    case 0x05: return cc_z | (cc_n & !cc_nan);         /* OLE */
+    case 0x06: return !(cc_nan | cc_z);                /* OGL */
+    case 0x07: return !cc_nan;                         /* OR */
+    case 0x08: return cc_nan;                          /* UN */
+    case 0x09: return cc_nan | cc_z;                   /* UEQ */
+    case 0x0A: return cc_nan | !(cc_n | cc_z);        /* UGT */
+    case 0x0B: return cc_nan | cc_z | !cc_n;          /* UGE */
+    case 0x0C: return cc_nan | (cc_n & !cc_z);        /* ULT */
+    case 0x0D: return cc_nan | cc_z | cc_n;           /* ULE */
+    case 0x0E: return !cc_z;                           /* NE */
+    case 0x0F: return 1;                               /* T */
+    case 0x10: return 0;                               /* SF */
+    case 0x11: return cc_z;                            /* SEQ */
+    case 0x12: return !(cc_nan | cc_z | cc_n);        /* GT */
+    case 0x13: return cc_z | !(cc_nan | cc_n);        /* GE */
+    case 0x14: return cc_n & !(cc_nan | cc_z);        /* LT */
+    case 0x15: return cc_z | (cc_n & !cc_nan);        /* LE */
+    case 0x16: return !(cc_nan | cc_z);               /* GL */
+    case 0x17: return !cc_nan;                         /* GLE */
+    case 0x18: return cc_nan;                          /* NGLE */
+    case 0x19: return cc_nan | cc_z;                   /* NGL */
+    case 0x1A: return cc_nan | !(cc_n | cc_z);        /* NLE */
+    case 0x1B: return cc_nan | cc_z | !cc_n;          /* NLT */
+    case 0x1C: return cc_nan | (cc_n & !cc_z);        /* NGE */
+    case 0x1D: return cc_nan | cc_z | cc_n;           /* NGT */
+    case 0x1E: return !cc_z;                           /* SNE */
+    case 0x1F: return 1;                               /* ST */
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Handle FScc (type 001: set byte on FP condition)                     */
+/* Opword: 1111 001 001 eamode eareg                                   */
+/* Command word: 0000 0000 00cc cccc                                   */
+/* ------------------------------------------------------------------ */
+static int handle_fscc(unsigned int opword, unsigned int pc)
+{
+    unsigned int cmd = m68k_read_memory_16(pc);
+    pc += 2;
+    int condition = cmd & 0x3F;
+    int ea_mode = EA_MODE(opword);
+    int ea_reg  = EA_REG(opword);
+
+    int result = eval_fpu_condition(condition);
+    uint8_t byte_val = result ? 0xFF : 0x00;
+
+    if (ea_mode == 0) {
+        /* Dn — set low byte of data register */
+        uint32_t dn = m68k_get_reg(NULL, M68K_REG_D0 + ea_reg);
+        dn = (dn & 0xFFFFFF00) | byte_val;
+        m68k_set_reg(M68K_REG_D0 + ea_reg, dn);
+    } else {
+        /* Memory EA */
+        unsigned int addr = eval_ea(ea_mode, ea_reg, &pc);
+        m68k_write_memory_8(addr, byte_val);
+    }
+
+    m68k_set_reg(M68K_REG_PC, pc);
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Handle FDBcc (type 001: decrement and branch on FP condition)        */
+/* Opword: 1111 001 001 001 reg  (ea_mode=1 encodes FDBcc)             */
+/* Command word: 0000 0000 00cc cccc                                   */
+/* Displacement: 16-bit signed word follows command word                */
+/* ------------------------------------------------------------------ */
+static int handle_fdbcc(unsigned int opword, unsigned int pc)
+{
+    unsigned int cmd = m68k_read_memory_16(pc);
+    pc += 2;
+    int condition = cmd & 0x3F;
+    int reg = opword & 7;
+    unsigned int disp_pc = pc;  /* address of displacement word */
+    int16_t displacement = (int16_t)m68k_read_memory_16(pc);
+    pc += 2;
+
+    if (eval_fpu_condition(condition)) {
+        /* Condition true — no branch, no decrement, fall through */
+        m68k_set_reg(M68K_REG_PC, pc);
+    } else {
+        /* Condition false — decrement Dn.W */
+        uint32_t dn = m68k_get_reg(NULL, M68K_REG_D0 + reg);
+        int16_t counter = (int16_t)(dn & 0xFFFF);
+        counter--;
+        dn = (dn & 0xFFFF0000) | ((uint16_t)counter);
+        m68k_set_reg(M68K_REG_D0 + reg, dn);
+
+        if (counter == -1) {
+            /* Counter expired — fall through */
+            m68k_set_reg(M68K_REG_PC, pc);
+        } else {
+            /* Branch: PC = disp_pc + displacement */
+            m68k_set_reg(M68K_REG_PC, disp_pc + displacement);
+        }
+    }
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
 /* Handle FBcc (type 01x: branch on FP condition)                      */
 /* Opword: 1111 001 01s cccccc                                         */
 /*   s=0 → 16-bit displacement, s=1 → 32-bit displacement             */
@@ -643,52 +762,7 @@ static int handle_fbcc(unsigned int opword, unsigned int pc)
         pc += 4;
     }
 
-    /* Evaluate condition from FPSR */
-    u32 fpsr = fp_reg_get_fpsr();
-    /* FPSR condition code bits: N(27), Z(26), I(25), NAN(24) */
-    int cc_n   = (fpsr >> 27) & 1;
-    int cc_z   = (fpsr >> 26) & 1;
-    int cc_i   = (fpsr >> 25) & 1;
-    int cc_nan = (fpsr >> 24) & 1;
-
-    int take_branch = 0;
-
-    switch (condition & 0x1F) {
-    case 0x00: take_branch = 0; break;                                /* F */
-    case 0x01: take_branch = cc_z; break;                             /* EQ */
-    case 0x02: take_branch = !(cc_nan | cc_z | cc_n); break;         /* OGT */
-    case 0x03: take_branch = cc_z | !(cc_nan | cc_n); break;         /* OGE */
-    case 0x04: take_branch = cc_n & !(cc_nan | cc_z); break;         /* OLT */
-    case 0x05: take_branch = cc_z | (cc_n & !cc_nan); break;         /* OLE */
-    case 0x06: take_branch = !(cc_nan | cc_z); break;                /* OGL */
-    case 0x07: take_branch = !cc_nan; break;                         /* OR */
-    case 0x08: take_branch = cc_nan; break;                          /* UN */
-    case 0x09: take_branch = cc_nan | cc_z; break;                   /* UEQ */
-    case 0x0A: take_branch = cc_nan | !(cc_n | cc_z); break;        /* UGT */
-    case 0x0B: take_branch = cc_nan | cc_z | !cc_n; break;          /* UGE */
-    case 0x0C: take_branch = cc_nan | (cc_n & !cc_z); break;        /* ULT */
-    case 0x0D: take_branch = cc_nan | cc_z | cc_n; break;           /* ULE */
-    case 0x0E: take_branch = !cc_z; break;                           /* NE */
-    case 0x0F: take_branch = 1; break;                               /* T */
-    case 0x10: take_branch = 0; break;                               /* SF */
-    case 0x11: take_branch = cc_z; break;                            /* SEQ */
-    case 0x12: take_branch = !(cc_nan | cc_z | cc_n); break;        /* GT */
-    case 0x13: take_branch = cc_z | !(cc_nan | cc_n); break;        /* GE */
-    case 0x14: take_branch = cc_n & !(cc_nan | cc_z); break;        /* LT */
-    case 0x15: take_branch = cc_z | (cc_n & !cc_nan); break;        /* LE */
-    case 0x16: take_branch = !(cc_nan | cc_z); break;               /* GL */
-    case 0x17: take_branch = !cc_nan; break;                        /* GLE */
-    case 0x18: take_branch = cc_nan; break;                         /* NGLE */
-    case 0x19: take_branch = cc_nan | cc_z; break;                  /* NGL */
-    case 0x1A: take_branch = cc_nan | !(cc_n | cc_z); break;       /* NLE */
-    case 0x1B: take_branch = cc_nan | cc_z | !cc_n; break;         /* NLT */
-    case 0x1C: take_branch = cc_nan | (cc_n & !cc_z); break;       /* NGE */
-    case 0x1D: take_branch = cc_nan | cc_z | cc_n; break;          /* NGT */
-    case 0x1E: take_branch = !cc_z; break;                          /* SNE */
-    case 0x1F: take_branch = 1; break;                              /* ST */
-    }
-
-    if (take_branch)
+    if (eval_fpu_condition(condition))
         pc = branch_pc + displacement;
 
     m68k_set_reg(M68K_REG_PC, pc);
@@ -1101,6 +1175,9 @@ int fline_illg_callback(int opcode)
     unsigned int type = (opword >> 6) & 7;
     unsigned int pc = m68k_get_reg(NULL, M68K_REG_PC);
 
+    /* Debug: log unhandled F-line instructions (one-shot per PC) */
+    static unsigned int last_unhandled_pc = 0;
+
     /* Update FPIAR with instruction address */
     fp_reg_set_fpiar(pc - 2);  /* opword was at pc-2 */
 
@@ -1126,12 +1203,16 @@ int fline_illg_callback(int opcode)
         return handle_general(opword, pc);
     }
 
-    case 1:
-        /* Type 001: FDBcc / FScc / FTRAPcc — not yet implemented.
-         * Return 0 (unhandled) so Musashi takes the exception rather
-         * than us advancing PC by the wrong amount. */
-        xil_printf("FLINE: FDBcc/FScc/FTRAPcc not implemented\r\n");
-        return 0;
+    case 1: {
+        /* Type 001: FScc / FDBcc / FTRAPcc */
+        int ea_mode = EA_MODE(opword);
+        if (ea_mode == 1) {
+            /* ea_mode 001 = FDBcc */
+            return handle_fdbcc(opword, pc);
+        }
+        /* All other EA modes = FScc (FTRAPcc is EA mode 7/reg 2-4) */
+        return handle_fscc(opword, pc);
+    }
 
     case 2: /* FBcc.W */
     case 3: /* FBcc.L */
@@ -1146,7 +1227,11 @@ int fline_illg_callback(int opcode)
         return 1;
 
     default:
-        xil_printf("FLINE: type %d not implemented\r\n", type);
+        if (last_unhandled_pc != pc - 2) {
+            last_unhandled_pc = pc - 2;
+            xil_printf("[FLINE] UNHANDLED type=%d PC=$%06X opword=$%04X\r\n",
+                       type, pc - 2, opword);
+        }
         return 0;
     }
 }

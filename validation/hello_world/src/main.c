@@ -288,6 +288,19 @@ static void rom_boot(void)
                 uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
                 uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
                 xil_printf("[PC] $%06X SR=$%04X SP=$%06X\r\n", pc, sr, sp);
+
+                /* One-shot: dump instructions at stuck PC */
+                static int dump_done = 0;
+                if (!dump_done && pc == 0x023514) {
+                    dump_done = 1;
+                    xil_printf("[DUMP] Instructions at $%06X:\r\n", pc);
+                    for (int i = -8; i < 24; i += 2) {
+                        uint16_t w = (m68k_read_memory_8(pc+i) << 8) |
+                                      m68k_read_memory_8(pc+i+1);
+                        xil_printf("  $%06X: $%04X%s\r\n", pc+i, w,
+                                   (i == 0) ? " <<< PC" : "");
+                    }
+                }
             }
         }
 

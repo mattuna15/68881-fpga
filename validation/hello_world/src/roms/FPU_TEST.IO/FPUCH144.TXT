@@ -1,0 +1,4 @@
+Testet die FPU des Atari TT, Falcon oder
+Atari ST Beschleunigerboards, z.B. PAK.
+Checks the floating point unit (FPU) of your 
+Atari TT, Falcon or ST accelerator board.

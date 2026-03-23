@@ -27,30 +27,33 @@ void psg_init(void)
 
 uint8_t psg_read(uint32_t offset)
 {
-    switch (offset) {
-    case 0x00: /* Register select (read returns current select) */
-        return psg_reg_select;
-    case 0x02: /* Register data */
+    /* YM2149: A1=0 → read selected register data, A1=1 → not used */
+    if (!(offset & 2)) {
         if (psg_reg_select < PSG_NUM_REGS)
             return psg_regs[psg_reg_select];
-        return 0;
-    default:
-        return 0;
     }
+    return 0;
 }
 
 void psg_write(uint32_t offset, uint8_t value)
 {
-    switch (offset) {
-    case 0x00: /* Register select */
+    /* YM2149 address decoding uses A1 only:
+     * A1=0 ($FF8800/$FF8801) → register select
+     * A1=1 ($FF8802/$FF8803) → data write */
+    if (!(offset & 2)) {
+        /* Register select */
         psg_reg_select = value & 0x0F;
-        break;
-    case 0x02: /* Register data */
-        if (psg_reg_select < PSG_NUM_REGS)
+    } else {
+        /* Data write */
+        if (psg_reg_select < PSG_NUM_REGS) {
+            if (psg_reg_select == 14 && (psg_regs[14] ^ value) & 0x07) {
+                xil_printf("[PSG] PortA: %02X→%02X drv=%c side=%d\r\n",
+                           psg_regs[14], value,
+                           !(value & 1) ? 'A' : (!(value & 2) ? 'B' : '-'),
+                           (value & 4) ? 0 : 1);
+            }
             psg_regs[psg_reg_select] = value;
-        break;
-    default:
-        break;
+        }
     }
 }
 

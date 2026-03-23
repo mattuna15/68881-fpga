@@ -41,4 +41,8 @@ uint8_t floppy_read(uint32_t offset);
  * offset = address - FLOPPY_DMA_BASE (0x00..0x09) */
 void floppy_write(uint32_t offset, uint8_t value);
 
+/* Returns 1 if the FDC interrupt line is asserted (command completed).
+ * Cleared when the FDC status register is read. */
+int floppy_irq_active(void);
+
 #endif /* FLOPPY_EMU_H */

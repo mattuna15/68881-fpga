@@ -96,6 +96,9 @@ void atari_mfp_write(uint32_t offset, uint8_t value);
 /* Set Timer C pending bit in IPRB (called when Timer C fires) */
 void atari_mfp_set_timer_c_pending(void);
 
+/* Set FDC/HDC interrupt pending in IPRA bit 7 (called on FDC command complete) */
+void atari_mfp_set_fdc_pending(void);
+
 /* Update GPIP/IPRA based on ACIA FIFO state (call after push/pop) */
 void atari_mfp_update_acia_irq(void);
 

@@ -15,6 +15,7 @@
  */
 
 #include "mfp_emu.h"
+#include "floppy_emu.h"
 #include "acia_emu.h"
 #include "text_fb.h"
 #include "xil_printf.h"
@@ -438,9 +439,12 @@ uint8_t atari_mfp_read(uint32_t offset)
     switch (offset) {
     case AMFP_GPIP: {
         uint8_t gpip = amfp_regs[AMFP_GPIP];
-        /* Bit 5: FDC interrupt (active low). Our FDC completes instantly,
-         * so the interrupt line is always asserted (bit 5 = 0). */
+        /* Bit 5: FDC interrupt — always asserted (original working behavior).
+         * TODO: restore dynamic floppy_irq_active() once desktop boot works */
         gpip &= ~0x20;
+        /* Bit 3: Blitter done (active low — 0=busy, 1=idle/done).
+         * Our blitter completes instantly, so always report idle. */
+        gpip |= 0x08;
         /* Bit 4: ACIA interrupt (active low) */
         if (acia_has_irq())
             gpip &= ~0x10;
@@ -519,6 +523,17 @@ void atari_mfp_set_timer_c_pending(void)
         amfp_regs[AMFP_IPRB] |= 0x20;
 }
 
+void atari_mfp_set_fdc_pending(void)
+{
+    /* FDC/HDC interrupt is on GPIP5 → MFP channel I7 → IPRB bit 7
+     * (channels 0-7 map to IPRB, 8-15 to IPRA — confirmed via Hatari).
+     * Only set pending if enabled and not already in-service. */
+    if (amfp_regs[AMFP_IERB] & 0x80) {
+        if (!(amfp_regs[AMFP_ISRB] & 0x80))
+            amfp_regs[AMFP_IPRB] |= 0x80;
+    }
+}
+
 void atari_mfp_update_acia_irq(void)
 {
     /* ACIA interrupt is on GPIP4 → MFP channel I6 (IPRB bit 6).
@@ -540,9 +555,44 @@ void atari_mfp_update_acia_irq(void)
 int atari_mfp_has_pending_irq(void)
 {
     /* Check if any MFP interrupt is pending + enabled + masked and
-     * not blocked by a higher-priority in-service interrupt. */
+     * not blocked by a higher-priority in-service interrupt.
+     *
+     * In SEI mode, an in-service bit blocks all interrupts at that
+     * priority or lower.  IPRA has higher priority than IPRB.
+     * Within each register, bit 7 is highest priority. */
+    int sei_mode = (amfp_regs[AMFP_VR] & 0x08) ? 1 : 0;
+
     uint8_t pend_a = amfp_regs[AMFP_IPRA] & amfp_regs[AMFP_IERA] & amfp_regs[AMFP_IMRA];
     uint8_t pend_b = amfp_regs[AMFP_IPRB] & amfp_regs[AMFP_IERB] & amfp_regs[AMFP_IMRB];
+
+    if (!sei_mode)
+        return (pend_a || pend_b) ? 1 : 0;
+
+    /* SEI mode: find highest in-service bit, only allow higher-priority pending */
+    uint8_t isra = amfp_regs[AMFP_ISRA];
+    uint8_t isrb = amfp_regs[AMFP_ISRB];
+
+    if (isra) {
+        /* Something in-service in A (higher priority than all B).
+         * Find highest-priority (most significant) in-service bit.
+         * Only bits ABOVE it can fire. */
+        int top;
+        for (top = 7; top >= 0; top--)
+            if (isra & (1 << top)) break;
+        uint8_t higher_mask = (uint8_t)(0xFF << (top + 1));  /* bits above top */
+        return (pend_a & higher_mask) ? 1 : 0;
+    }
+    if (isrb) {
+        /* Something in-service in B — any A can fire */
+        if (pend_a)
+            return 1;
+        int top;
+        for (top = 7; top >= 0; top--)
+            if (isrb & (1 << top)) break;
+        uint8_t higher_mask = (uint8_t)(0xFF << (top + 1));
+        return (pend_b & higher_mask) ? 1 : 0;
+    }
+
     return (pend_a || pend_b) ? 1 : 0;
 }
 

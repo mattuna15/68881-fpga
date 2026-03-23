@@ -8,6 +8,7 @@
 #define EMU_MEMORY_H
 
 #include "musashi/m68k.h"
+#include "blitter_emu.h"
 
 /* 16 MB address space */
 #define EMU_RAM_SIZE  (16 * 1024 * 1024)

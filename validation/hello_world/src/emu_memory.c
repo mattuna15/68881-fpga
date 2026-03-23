@@ -15,6 +15,7 @@
 #include "usb_hid.h"
 #include "floppy_emu.h"
 #include "psg_emu.h"
+#include "blitter_emu.h"
 #include "xil_printf.h"
 
 /* Mouse I/O region: 0xFD0050-0xFD005B (12 bytes, read-only)
@@ -69,13 +70,6 @@ static void mouse_io_write(unsigned int addr, unsigned int value)
     usb_mouse_set_pos(addr - MOUSE_IO_BASE, value);
 }
 
-/* Blitter status register: $FF8A3C-$FF8A3D.
- * EmuTOS polls bit 15 (busy). Return 0 = not busy. */
-#define BLITTER_STATUS_ADDR  0xFF8A3C
-static inline int is_blitter_status(unsigned int addr)
-{
-    return (addr == BLITTER_STATUS_ADDR) || (addr == BLITTER_STATUS_ADDR + 1);
-}
 
 /* Static allocation — lives in DDR on the ZU3EG */
 unsigned char emu_ram[EMU_RAM_SIZE];
@@ -150,8 +144,8 @@ unsigned int m68k_read_memory_8(unsigned int address)
         return floppy_read(address - FLOPPY_DMA_BASE);
     if (is_psg(address))
         return psg_read(address - PSG_BASE);
-    if (is_blitter_status(address))
-        return 0;  /* Blitter not busy */
+    if (is_blitter(address))
+        return blitter_read(address - BLITTER_BASE);
     if (gfx_is_fb(address))
         return gfx_read_8(address);
     return emu_ram[address & EMU_RAM_MASK];
@@ -188,6 +182,10 @@ unsigned int m68k_read_memory_16(unsigned int address)
                 (unsigned int)m68k_read_memory_8(address + 1);
     }
     if (is_psg(address) || is_psg(address + 1)) {
+        return ((unsigned int)m68k_read_memory_8(address) << 8) |
+                (unsigned int)m68k_read_memory_8(address + 1);
+    }
+    if (is_blitter(address) || is_blitter(address + 1)) {
         return ((unsigned int)m68k_read_memory_8(address) << 8) |
                 (unsigned int)m68k_read_memory_8(address + 1);
     }
@@ -247,6 +245,12 @@ unsigned int m68k_read_memory_32(unsigned int address)
                ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
                 (unsigned int)m68k_read_memory_8(address + 3);
     }
+    if (is_blitter(address) || is_blitter(address + 3)) {
+        return ((unsigned int)m68k_read_memory_8(address)     << 24) |
+               ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
+               ((unsigned int)m68k_read_memory_8(address + 2) <<  8) |
+                (unsigned int)m68k_read_memory_8(address + 3);
+    }
     if (gfx_is_fb(address) || gfx_is_fb(address + 3)) {
         return ((unsigned int)m68k_read_memory_8(address)     << 24) |
                ((unsigned int)m68k_read_memory_8(address + 1) << 16) |
@@ -291,6 +295,10 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
     }
     if (is_psg(address)) {
         psg_write(address - PSG_BASE, value & 0xFF);
+        return;
+    }
+    if (is_blitter(address)) {
+        blitter_write(address - BLITTER_BASE, value & 0xFF);
         return;
     }
     if (gfx_is_fb(address)) {
@@ -341,6 +349,11 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
         return;
     }
     if (is_psg(address) || is_psg(address + 1)) {
+        m68k_write_memory_8(address,     (value >> 8) & 0xFF);
+        m68k_write_memory_8(address + 1,  value       & 0xFF);
+        return;
+    }
+    if (is_blitter(address) || is_blitter(address + 1)) {
         m68k_write_memory_8(address,     (value >> 8) & 0xFF);
         m68k_write_memory_8(address + 1,  value       & 0xFF);
         return;
@@ -406,6 +419,13 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
         return;
     }
     if (is_psg(address) || is_psg(address + 3)) {
+        m68k_write_memory_8(address,     (value >> 24) & 0xFF);
+        m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
+        m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);
+        m68k_write_memory_8(address + 3,  value        & 0xFF);
+        return;
+    }
+    if (is_blitter(address) || is_blitter(address + 3)) {
         m68k_write_memory_8(address,     (value >> 24) & 0xFF);
         m68k_write_memory_8(address + 1, (value >> 16) & 0xFF);
         m68k_write_memory_8(address + 2, (value >>  8) & 0xFF);

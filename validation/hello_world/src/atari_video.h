@@ -39,4 +39,8 @@ int atari_vid_render(void);
 /* Check if Atari video mode is active (resolution register written) */
 int atari_vid_active(void);
 
+/* Get current hardware video base bytes (for debug) */
+unsigned int atari_vid_get_base_hi(void);
+unsigned int atari_vid_get_base_mid(void);
+
 #endif /* ATARI_VIDEO_H */

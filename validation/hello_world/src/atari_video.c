@@ -108,6 +108,9 @@ int atari_vid_active(void)
     return active;
 }
 
+unsigned int atari_vid_get_base_hi(void) { return vid_base_hi; }
+unsigned int atari_vid_get_base_mid(void) { return vid_base_mid; }
+
 unsigned int atari_vid_read(unsigned int offset)
 {
     if (offset == 0x01) return vid_base_hi;
@@ -132,7 +135,14 @@ void atari_vid_write(unsigned int offset, unsigned int value)
 {
     value &= 0xFF;
 
-    if (offset == 0x01) { vid_base_hi  = value; return; }
+    if (offset == 0x01) {
+        if (vid_base_hi != value) {
+            vid_base_hi = value;
+            xil_printf("[VID] Base changed → $%02X%02X%02X\r\n",
+                       vid_base_hi, vid_base_mid, vid_base_lo);
+        }
+        return;
+    }
     if (offset == 0x03) { vid_base_mid = value; return; }
     if (offset == 0x0A) { sync_mode    = value; return; }
     if (offset == 0x0D) { vid_base_lo  = value; return; }

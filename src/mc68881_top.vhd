@@ -19,7 +19,7 @@ entity mc68881_top is
     fpu_lite_g : boolean := false;
     -- FPU version: FPU_68881 (default) or FPU_68882.
     -- Selects FSAVE frame format and enables pending instruction pipeline.
-    fpu_version_g : fpu_version_t := FPU_68882
+    fpu_version_g : fpu_version_t := FPU_68881
   );
   port (
     -- Bus interface

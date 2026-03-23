@@ -40,8 +40,16 @@
 
 static uint16_t fpu_cir_read(uint32_t offset)
 {
+    static int cir_dbg_count = 0;
+    uint16_t val;
     switch (offset) {
-    case 0x00: return (uint16_t)cir_rd(OFF_CIR_RESPONSE);   /* Response */
+    case 0x00:
+        val = (uint16_t)cir_rd(OFF_CIR_RESPONSE);
+        if (cir_dbg_count < 20) {
+            xil_printf("[CIR] R response=$%04X\r\n", val);
+            cir_dbg_count++;
+        }
+        return val;
     case 0x04: return (uint16_t)cir_rd(OFF_CIR_SAVE);       /* Save */
     case 0x08: return (uint16_t)cir_rd(OFF_CIR_COMMAND);    /* Command */
     case 0x0A: return (uint16_t)cir_rd(OFF_CIR_OPERAND);    /* Operand */
@@ -51,8 +59,18 @@ static uint16_t fpu_cir_read(uint32_t offset)
     }
 }
 
+static int cir_write_dbg_count = 0;
+
 static void fpu_cir_write(uint32_t offset, uint16_t value)
 {
+    if (cir_write_dbg_count < 30) {
+        static const char *names[] = {"Resp/Ctrl","?","Save","Restore",
+                                       "Command","Operand","OpWord","?","Condition"};
+        int idx = offset / 2;
+        xil_printf("[CIR] W $FFFA%02X (%s) = $%04X\r\n",
+                   0x40 + offset, (idx < 9) ? names[idx] : "?", value);
+        cir_write_dbg_count++;
+    }
     switch (offset) {
     case 0x00: cir_wr(OFF_CIR_RESPONSE, value); break;  /* Control/mode */
     case 0x06: cir_wr(OFF_CIR_RESTORE, value); break;   /* Restore */

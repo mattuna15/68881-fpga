@@ -279,9 +279,6 @@ void blitter_write(uint32_t offset, uint8_t value)
             if (blt.y_count == 0) {
                 blt.status &= ~(0x80 | 0x40);
             } else {
-                xil_printf("[BLT] GO src=%06X dst=%06X x=%u y=%u hop=%u op=%u skew=$%02X\r\n",
-                           blt.src_addr, blt.dst_addr, blt.x_count, blt.y_count,
-                           blt.hop, blt.op, blt.skew);
                 blitter_execute();
             }
         }

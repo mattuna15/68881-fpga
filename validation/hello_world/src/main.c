@@ -318,51 +318,14 @@ static void rom_boot(void)
                 atari_mfp_update_acia_irq();
             }
 
-            /* Deliver VBL and MFP interrupts.
-             * VBL must be delivered even when MFP is also pending. */
-            {
-                static int vbl_delivered = 0;
-                static int mfp_delivered = 0;
-                static int dbg_irq_count = 0;
-                int has_mfp = atari_mfp_has_pending_irq();
-
-                if (has_mfp) {
-                    m68k_set_irq(6);
-                    mfp_delivered++;
-                } else if (vbl_pending) {
-                    m68k_set_irq(4);
-                    vbl_pending = 0;
-                    vbl_delivered++;
-                } else {
-                    m68k_set_irq(0);
-                }
-
-                if (++dbg_irq_count >= 10000) {
-                    dbg_irq_count = 0;
-                    {
-                        uint32_t frclock = m68k_read_memory_32(0x466);
-                        uint32_t hz200 = m68k_read_memory_32(0x4BA);
-                        /* $44E = _v_bas_ad (logical screen base used by VDI) */
-                        uint32_t v_bas = m68k_read_memory_32(0x44E);
-                        /* Check 8 bytes at the VDI screen base */
-                        uint32_t b = v_bas & 0xFFFFFF;
-                        /* Also check if blitter is detected: $A06 cookie or check blitter reg area */
-                        uint32_t sshiftmd = m68k_read_memory_8(0xFF8260);
-                        /* Also get the actual hardware render base */
-                        uint32_t hw_base = ((uint32_t)atari_vid_get_base_hi() << 16)
-                                         | ((uint32_t)atari_vid_get_base_mid() << 8);
-                        /* Sample screen data at line 0, 100, 200 of hw_base */
-                        uint32_t h = hw_base & 0xFFFFFF;
-                        /* In mono res 2: 80 bytes/line */
-                        int nonzero = 0;
-                        for (uint32_t i = 0; i < 32000 && (h+i) < EMU_RAM_SIZE; i++)
-                            if (emu_ram[h+i]) nonzero++;
-                        xil_printf("[IRQ] vbl=%d mfp=%d frclock=%u hz200=%u v_bas=$%06X hw=$%06X res=%d nonzero=%d\r\n",
-                                   vbl_delivered, mfp_delivered, frclock, hz200, v_bas, hw_base, sshiftmd, nonzero);
-                    }
-                    vbl_delivered = 0;
-                    mfp_delivered = 0;
-                }
+            /* Deliver VBL and MFP interrupts. */
+            if (atari_mfp_has_pending_irq()) {
+                m68k_set_irq(6);
+            } else if (vbl_pending) {
+                m68k_set_irq(4);
+                vbl_pending = 0;
+            } else {
+                m68k_set_irq(0);
             }
         }
 

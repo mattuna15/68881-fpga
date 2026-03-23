@@ -87,7 +87,3 @@ int psg_get_side(void)
     return drive_side[0];
 }
 
-uint8_t psg_get_port_a(void)
-{
-    return psg_regs[14];
-}

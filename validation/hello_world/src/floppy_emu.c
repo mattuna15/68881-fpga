@@ -135,7 +135,6 @@ static void fdc_execute_command(uint8_t cmd)
         fdc_track = 0;
         step_direction = 1;
         fdc_set_type1_status();
-        xil_printf("[FDC] RESTORE → trk=0\r\n");
         break;
 
     case 0x10: /* SEEK — seek to track in data register */
@@ -145,7 +144,6 @@ static void fdc_execute_command(uint8_t cmd)
             step_direction = -1;
         fdc_track = fdc_data;
         fdc_set_type1_status();
-        xil_printf("[FDC] SEEK trk=%u\r\n", fdc_track);
         break;
 
     case 0x20: /* STEP (no update) */
@@ -157,8 +155,6 @@ static void fdc_execute_command(uint8_t cmd)
         if (cmd_type == 0x30) /* update flag (T bit) */
             fdc_track = (uint8_t)new_trk;
         fdc_set_type1_status();
-        xil_printf("[FDC] STEP dir=%d trk=%u→%u (reg=%u)\r\n",
-                   step_direction, old_trk, new_trk, fdc_track);
         break;
     }
 
@@ -170,7 +166,6 @@ static void fdc_execute_command(uint8_t cmd)
         if (cmd_type == 0x50) /* update flag */
             fdc_track = (uint8_t)new_trk;
         fdc_set_type1_status();
-        xil_printf("[FDC] STEP_IN trk=%u (reg=%u)\r\n", new_trk, fdc_track);
         break;
     }
 
@@ -182,7 +177,6 @@ static void fdc_execute_command(uint8_t cmd)
         if (cmd_type == 0x70) /* update flag */
             fdc_track = (uint8_t)new_trk;
         fdc_set_type1_status();
-        xil_printf("[FDC] STEP_OUT trk=%u (reg=%u)\r\n", new_trk, fdc_track);
         break;
     }
 
@@ -192,16 +186,8 @@ static void fdc_execute_command(uint8_t cmd)
     case 0x90: { /* READ SECTOR (multiple — bit 4 set) */
         int multi = (cmd & 0x10);
         int side = psg_get_side();
-        int drive = psg_get_drive();
-        {
-            uint32_t flock = m68k_read_memory_16(0x43E);
-            xil_printf("[FDC] READ%s trk=%u side=%d sec=%u dma=%06X cnt=%u drv=%d psg=$%02X flock=%u\r\n",
-                       multi ? "M" : "", fdc_track, side, fdc_sector,
-                       dma_addr, dma_sector_count, drive, psg_get_port_a(), flock);
-        }
         if (st_image == NULL || disk_spt == 0) {
             fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP | 0x10; /* RNF */
-            xil_printf("[FDC]  no image! RNF\r\n");
             break;
         }
         do {
@@ -212,7 +198,6 @@ static void fdc_execute_command(uint8_t cmd)
                 offset + 512 > st_image_size ||
                 dma_addr + 512 > EMU_RAM_SIZE) {
                 fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP | 0x10; /* RNF */
-                xil_printf("[FDC]  RNF sec=%u off=%u\r\n", fdc_sector, offset);
                 goto read_done;
             }
             memcpy(&emu_ram[dma_addr], &st_image[offset], 512);
@@ -226,34 +211,6 @@ static void fdc_execute_command(uint8_t cmd)
         /* Type II status: bit 2 = LOST DATA (NOT track0!), bit 5 = record type.
          * Do NOT set TRACK0 here — that's only for Type I commands. */
         fdc_status = FDC_STAT_MOTOR_ON;
-        xil_printf("[FDC]  OK dma_end=%06X\r\n", dma_addr);
-        /* One-time boot sector dump for debugging */
-        {
-            static int boot_dump_done;
-            if (!boot_dump_done && fdc_track == 0 && fdc_sector == 1 && side == 0) {
-                boot_dump_done = 1;
-                uint32_t base = dma_addr - 512;
-                xil_printf("[FDC] Boot sector @ emu_ram[%06X]:\r\n", base);
-                for (int i = 0; i < 64; i += 16) {
-                    xil_printf("[FDC]  %03X:", i);
-                    for (int j = 0; j < 16; j++)
-                        xil_printf(" %02X", emu_ram[base + i + j]);
-                    xil_printf("\r\n");
-                }
-                /* BPB fields */
-                uint16_t bps = ((uint16_t)emu_ram[base+12] << 8) | emu_ram[base+11];
-                uint16_t spt = ((uint16_t)emu_ram[base+25] << 8) | emu_ram[base+24];
-                uint16_t heads = ((uint16_t)emu_ram[base+27] << 8) | emu_ram[base+26];
-                uint16_t totsec = ((uint16_t)emu_ram[base+20] << 8) | emu_ram[base+19];
-                /* Compute Atari boot sector checksum (sum of 256 big-endian words) */
-                uint16_t cksum = 0;
-                for (int i = 0; i < 512; i += 2)
-                    cksum += ((uint16_t)emu_ram[base+i] << 8) | emu_ram[base+i+1];
-                xil_printf("[FDC] BPB: bps=%u spt=%u heads=%u totsec=%u cksum=$%04X%s\r\n",
-                           bps, spt, heads, totsec, cksum,
-                           cksum == 0x1234 ? " BOOTABLE!" : "");
-            }
-        }
     read_done:
         break;
     }
@@ -262,7 +219,6 @@ static void fdc_execute_command(uint8_t cmd)
     case 0xB0: /* WRITE SECTOR (variants) */
         /* .ST image is const — report write-protect */
         fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP | 0x40; /* WP */
-        xil_printf("[FDC] WRITE → WP\r\n");
         break;
 
     /* ---- Type III commands ---- */
@@ -271,7 +227,6 @@ static void fdc_execute_command(uint8_t cmd)
         int side = psg_get_side();
         if (st_image == NULL || disk_spt == 0) {
             fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP | 0x10; /* RNF */
-            xil_printf("[FDC] RDADDR no image RNF\r\n");
             break;
         }
         /* Fabricate an ID field for sector 1 on the current track.
@@ -298,8 +253,6 @@ static void fdc_execute_command(uint8_t cmd)
          * this is harmless — but we must still do it for correctness. */
         fdc_sector = fdc_track;
         fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP;
-        xil_printf("[FDC] RDADDR trk=%u side=%d sec_reg→%u\r\n",
-                   fdc_track, side, fdc_sector);
         break;
     }
 
@@ -307,7 +260,6 @@ static void fdc_execute_command(uint8_t cmd)
         int side = psg_get_side();
         if (st_image == NULL || disk_spt == 0) {
             fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP | 0x10;
-            xil_printf("[FDC] RDTRACK no image RNF\r\n");
             break;
         }
         /* Transfer all sectors on this track — only if DMA sector count > 0 */
@@ -322,13 +274,11 @@ static void fdc_execute_command(uint8_t cmd)
             }
         }
         fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP;
-        xil_printf("[FDC] RDTRACK trk=%u side=%d\r\n", fdc_track, side);
         break;
     }
 
     case 0xF0: /* WRITE TRACK (format) */
         fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP | 0x40; /* WP */
-        xil_printf("[FDC] WRTRACK → WP\r\n");
         break;
 
     /* ---- Type IV command ---- */
@@ -344,13 +294,10 @@ static void fdc_execute_command(uint8_t cmd)
         } else {
             fdc_irq_pending = 1;  /* $D8+: assert IRQ */
         }
-        xil_printf("[FDC] FORCE_INT $%02X st=%02X irq=%d\r\n",
-                   cmd, fdc_status, fdc_irq_pending);
         return; /* skip the common IRQ assertion below */
 
     default:
         fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP;
-        xil_printf("[FDC] UNKNOWN cmd=$%02X\r\n", cmd);
         break;
     }
 

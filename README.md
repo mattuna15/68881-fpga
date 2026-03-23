@@ -9,7 +9,7 @@ DSP-pipelined sequential FP units for the core arithmetic datapath with
 multi-cycle path constraints for timing closure at 50 MHz.
 
 Hardware-verified on an Alinx AXU3EG board (Zynq UltraScale+ ZU3EG) via the
-AXI4-Lite wrapper at 100 MHz bus / 33 MHz FPU, with end-to-end tests covering
+AXI4-Lite wrapper at 100 MHz bus / 50 MHz FPU, with end-to-end tests covering
 arithmetic, transcendental, exponential, and logarithmic operations.
 
 ## Features
@@ -86,7 +86,7 @@ hardware subset: 11 ALU ops, no trig/sglops/modrem), the core uses 37,380 LUTs
 |--------|------|------|-----------|-----------|
 | Xilinx Artix-7 200T | 133,800 | 740 | Yes (47%) | Yes (28%) |
 | Xilinx Artix-7 100T | 63,400 | 240 | Tight (99%) | Yes (59%) |
-| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~89%) | Yes (~53%) |
+| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (91%) | Yes (~53%) |
 | Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
 | Intel Cyclone V SE 5CSEBA6 (MiSTer DE10-Nano) | 41,910 ALMs | 112 | No (~75%) | Yes (~45%) |
 
@@ -257,8 +257,10 @@ hierarchy. Key differences from standalone synthesis:
 - `packed_unit_inst` is inside generate block `packed_engine_full_g`
 - CDC `get_cells` filters include `&& IS_SEQUENTIAL` to avoid matching LUT cells
 
-Verified on Xilinx Zynq UltraScale+ ZU3EG (AXU3EG board) with Vivado 2024.2:
-post-route WNS **+5.911 ns** at 100 MHz AXI / 33 MHz FPU.
+Verified on Xilinx Zynq UltraScale+ ZU3EG (AXU3EG board) with Vivado 2025.2:
+post-route WNS **+1.186 ns** at 100 MHz AXI / 50 MHz FPU (MC68882 mode).
+Board design utilization: 64,014 LUTs (91%), 15,206 registers, 8 BRAM tiles,
+34 DSPs. All timing constraints met with no hold violations.
 
 ### Vitis hardware test apps
 
@@ -395,7 +397,7 @@ ALL TESTS PASSED
 ### FPU benchmarks
 
 Standard floating-point benchmarks run on the M68K emulator with hardware FPU
-(F-line trapping to FPGA), measured on AXU3EG at 100 MHz AXI / 33 MHz FPU:
+(F-line trapping to FPGA), measured on AXU3EG at 100 MHz AXI / 50 MHz FPU:
 
 **Whetstone** (NLOOP=10, exercises ADD/SUB/MUL/DIV/SQRT/SIN/COS/ATAN/LOG/EXP):
 ```

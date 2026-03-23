@@ -22,7 +22,8 @@ set_false_path -from [get_cells -quiet -hier -filter {NAME =~ */u_bridge/fpu_err
                -to   [get_cells -quiet -hier -filter {NAME =~ */u_bridge/err_ff1_reg*}]
 
 # False path on status_valid CDC (fpu_clk -> bus_clk)
-set_false_path -from [get_cells -quiet -hier -filter {NAME =~ */u_fpu/status_valid_reg* && IS_SEQUENTIAL}] \
+# Pattern covers both direct (u_fpu) and generate-block (gen_68881.u_fpu / gen_68882.u_fpu) hierarchies.
+set_false_path -from [get_cells -quiet -hier -filter {NAME =~ *u_fpu/status_valid_reg* && IS_SEQUENTIAL}] \
                -to   [get_cells -quiet -hier -filter {NAME =~ */u_bridge/valid_ff1_reg*}]
 
 # False path on reset synchronizer (async input -> first sync FF)

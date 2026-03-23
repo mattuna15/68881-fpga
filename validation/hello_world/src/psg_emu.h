@@ -40,4 +40,7 @@ int psg_get_drive(void);
 /* Get currently selected side: 0 or 1 */
 int psg_get_side(void);
 
+/* Get raw Port A register value (for debug) */
+uint8_t psg_get_port_a(void);
+
 #endif /* PSG_EMU_H */

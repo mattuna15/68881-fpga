@@ -16,6 +16,11 @@
 static uint8_t psg_regs[PSG_NUM_REGS];
 static uint8_t psg_reg_select;
 
+/* Latched side for each drive — set when a drive is selected via PSG.
+ * On real hardware, selecting Drive B doesn't move Drive A's head.
+ * flopvbl() toggles PSG rapidly but the physical head stays put. */
+static int drive_side[2];  /* drive_side[0]=Drive A, [1]=Drive B */
+
 void psg_init(void)
 {
     for (int i = 0; i < PSG_NUM_REGS; i++)
@@ -23,6 +28,8 @@ void psg_init(void)
     /* Port A defaults: all drives deselected (bits 0-1 high) */
     psg_regs[14] = 0xFF;
     psg_reg_select = 0;
+    drive_side[0] = 0;
+    drive_side[1] = 0;
 }
 
 uint8_t psg_read(uint32_t offset)
@@ -46,11 +53,17 @@ void psg_write(uint32_t offset, uint8_t value)
     } else {
         /* Data write */
         if (psg_reg_select < PSG_NUM_REGS) {
-            if (psg_reg_select == 14 && (psg_regs[14] ^ value) & 0x07) {
-                xil_printf("[PSG] PortA: %02X→%02X drv=%c side=%d\r\n",
-                           psg_regs[14], value,
-                           !(value & 1) ? 'A' : (!(value & 2) ? 'B' : '-'),
-                           (value & 4) ? 0 : 1);
+            /* When a drive is selected, latch its side.
+             * Hatari-verified PSG Port A bit mapping (active low):
+             *   Bit 0 = side select (0=side 1, 1=side 0)
+             *   Bit 1 = Drive A select
+             *   Bit 2 = Drive B select */
+            if (psg_reg_select == 14) {
+                int side = (value & 0x01) ? 0 : 1;  /* bit 0 = side */
+                if (!(value & 0x02))  /* Bit 1 low = Drive A selected */
+                    drive_side[0] = side;
+                if (!(value & 0x04))  /* Bit 2 low = Drive B selected */
+                    drive_side[1] = side;
             }
             psg_regs[psg_reg_select] = value;
         }
@@ -59,14 +72,22 @@ void psg_write(uint32_t offset, uint8_t value)
 
 int psg_get_drive(void)
 {
+    /* Hatari-verified: bit 1 = Drive A, bit 2 = Drive B (active low) */
     uint8_t porta = psg_regs[14];
-    if (!(porta & 0x01)) return 0;  /* Drive A selected (active low) */
-    if (!(porta & 0x02)) return 1;  /* Drive B selected (active low) */
+    if (!(porta & 0x02)) return 0;  /* Bit 1 low = Drive A */
+    if (!(porta & 0x04)) return 1;  /* Bit 2 low = Drive B */
     return -1;                       /* No drive selected */
 }
 
 int psg_get_side(void)
 {
-    /* Bit 2: 0 = side 1, 1 = side 0 */
-    return (psg_regs[14] & 0x04) ? 0 : 1;
+    /* Return Drive A's latched side. Our FDC emulation only has Drive A.
+     * The latch captures the side when EmuTOS calls select(0, side),
+     * and persists even when flopvbl() later toggles PSG for monitoring. */
+    return drive_side[0];
+}
+
+uint8_t psg_get_port_a(void)
+{
+    return psg_regs[14];
 }

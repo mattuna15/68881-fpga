@@ -192,9 +192,13 @@ static void fdc_execute_command(uint8_t cmd)
     case 0x90: { /* READ SECTOR (multiple — bit 4 set) */
         int multi = (cmd & 0x10);
         int side = psg_get_side();
-        xil_printf("[FDC] READ%s trk=%u side=%d sec=%u dma=%06X cnt=%u\r\n",
-                   multi ? "M" : "", fdc_track, side, fdc_sector,
-                   dma_addr, dma_sector_count);
+        int drive = psg_get_drive();
+        {
+            uint32_t flock = m68k_read_memory_16(0x43E);
+            xil_printf("[FDC] READ%s trk=%u side=%d sec=%u dma=%06X cnt=%u drv=%d psg=$%02X flock=%u\r\n",
+                       multi ? "M" : "", fdc_track, side, fdc_sector,
+                       dma_addr, dma_sector_count, drive, psg_get_port_a(), flock);
+        }
         if (st_image == NULL || disk_spt == 0) {
             fdc_status = FDC_STAT_MOTOR_ON | FDC_STAT_SPINUP | 0x10; /* RNF */
             xil_printf("[FDC]  no image! RNF\r\n");
@@ -350,9 +354,17 @@ static void fdc_execute_command(uint8_t cmd)
         break;
     }
 
-    /* Every completed command asserts the FDC interrupt line (GPIP5 low).
+    /* Assert FDC interrupt (GPIP5 low) unless Drive B is explicitly selected.
+     * Drive A (0) or no drive (-1) both complete — on a real single-drive ST,
+     * the FDC always responds when the physical drive exists.
+     * Only Drive B (1) should timeout to indicate it's absent.
      * FORCE_INT handles IRQ itself and returns early above. */
-    fdc_irq_pending = 1;
+    if (psg_get_drive() != 1) {
+        fdc_irq_pending = 1;
+    } else {
+        /* Drive B not present — leave IRQ unasserted */
+        fdc_status = FDC_STAT_MOTOR_ON;
+    }
 }
 
 /* Read FDC register selected by DMA control bits */

@@ -439,9 +439,11 @@ uint8_t atari_mfp_read(uint32_t offset)
     switch (offset) {
     case AMFP_GPIP: {
         uint8_t gpip = amfp_regs[AMFP_GPIP];
-        /* Bit 5: FDC interrupt — always asserted (original working behavior).
-         * TODO: restore dynamic floppy_irq_active() once desktop boot works */
-        gpip &= ~0x20;
+        /* Bit 5: FDC interrupt (active low — asserted when command complete) */
+        if (floppy_irq_active())
+            gpip &= ~0x20;
+        else
+            gpip |= 0x20;
         /* Bit 3: Blitter done (active low — 0=busy, 1=idle/done).
          * Our blitter completes instantly, so always report idle. */
         gpip |= 0x08;

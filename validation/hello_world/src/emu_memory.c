@@ -100,10 +100,16 @@ static void fpu_cir_write(uint32_t offset, uint16_t value)
         cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
         cir_wr(OFF_CIR_OPWORD, value);
         break;
-    case 0x0A: /* Command */
+    case 0x0A: { /* Command — also write cpGEN OpWord to trigger dialog */
         cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
+        xil_printf("[CIR-AXI] mode=1 → resp=$%04X\r\n", (uint16_t)cir_rd(OFF_CIR_RESPONSE));
         cir_wr(OFF_CIR_COMMAND, value);
+        xil_printf("[CIR-AXI] cmd=$%04X → resp=$%04X\r\n", value, (uint16_t)cir_rd(OFF_CIR_RESPONSE));
+        /* Auto-inject cpGEN OpWord to trigger VHDL dialog */
+        cir_wr(OFF_CIR_OPWORD, 0xF200);
+        xil_printf("[CIR-AXI] opword=$F200 → resp=$%04X\r\n", (uint16_t)cir_rd(OFF_CIR_RESPONSE));
         break;
+    }
     case 0x0E: cir_wr(OFF_CIR_CONDITION, value); break;
     case 0x10: /* Operand */
         cir_wr(OFF_CIR_RESPONSE, 1);

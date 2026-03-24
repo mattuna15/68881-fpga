@@ -206,6 +206,22 @@ cir_wait_null();
 - **Multi-instruction sessions** -- CIR mode persists; consecutive dialogs reuse
   results in FP registers without readback
 
+### SFP004 Benchmark: FPU_HARD.PRG (Quidnunc 1991)
+
+FPU_HARD.PRG computes hardware FSIN for 10 seconds via the SFP004 peripheral
+protocol and reports a speed factor relative to software floating point on an
+8 MHz 68000.
+
+| Test | Speed factor | Notes |
+|------|-------------|-------|
+| FPU_SOFT.PRG (software FP) | 75% | Baseline — no FPU hardware |
+| FPU_HARD.PRG (FPGA MC68881) | 609% | **8.1x speedup** over software |
+| Real MC68881 @ 16 MHz (ref) | 1053% | ICD AdSpeedST, from Quidnunc README |
+
+The FPGA achieves ~58% of a real 16 MHz MC68881's throughput. The gap is due
+to emulation overhead: each CIR register access traverses Musashi → emu_memory.c
+→ AXI-Lite rather than direct bus cycles.
+
 ## Comparison: When to Use Which Mode
 
 | | Peripheral Mode | CIR Dialog Mode |

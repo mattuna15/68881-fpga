@@ -47,46 +47,56 @@
 /* ------------------------------------------------------------------ */
 #define OPSEL(id)  (0x01000000u | (u32)(id))
 
-/* CORE_V1 opcode IDs */
-#define FPOP_ADD      0x01
-#define FPOP_SUB      0x02
-#define FPOP_MUL      0x03
-#define FPOP_DIV      0x04
-#define FPOP_MOVE     0x05
-#define FPOP_MOVEM    0x06
-#define FPOP_CMP      0x07
-#define FPOP_MOD      0x08
-#define FPOP_REM      0x09
-#define FPOP_SCALE    0x0A
-#define FPOP_SGLDIV   0x0B
-#define FPOP_SGLMUL   0x0C
-#define FPOP_SIN      0x0D
-#define FPOP_COS      0x0E
+/* MC68881 native opcode IDs (cpGEN command word bits[6:0]).
+ * These match the Motorola ISA encoding directly — no translation needed
+ * between the 68020 coprocessor interface and the FPGA register file. */
+#define FPOP_MOVE     0x00
+#define FPOP_INT      0x01
+#define FPOP_SINH     0x02
+#define FPOP_INTRZ    0x03
+#define FPOP_SQRT     0x04
+#define FPOP_LOGNP1   0x06
+#define FPOP_ETOXM1   0x08
+#define FPOP_TANH     0x09
+#define FPOP_ATAN     0x0A
+#define FPOP_ASIN     0x0C
+#define FPOP_ATANH    0x0D
+#define FPOP_SIN      0x0E
 #define FPOP_TAN      0x0F
-#define FPOP_SINCOS   0x10
-#define FPOP_SQRT     0x11
-#define FPOP_ABS      0x12
-#define FPOP_NEG      0x13
-#define FPOP_INT      0x14
-#define FPOP_INTRZ    0x15
-#define FPOP_GETEXP   0x16
-#define FPOP_GETMAN   0x17
-#define FPOP_TST      0x18
-#define FPOP_ACOS     0x40
-#define FPOP_ASIN     0x41
-#define FPOP_ATAN     0x42
-#define FPOP_ATANH    0x43
-#define FPOP_COSH     0x44
-#define FPOP_ETOX     0x45
-#define FPOP_ETOXM1   0x46
-#define FPOP_LOGN     0x47
-#define FPOP_LOGNP1   0x48
-#define FPOP_LOG10    0x49
-#define FPOP_LOG2     0x4A
-#define FPOP_SINH     0x4B
-#define FPOP_TANH     0x4C
-#define FPOP_TENTOX   0x4D
-#define FPOP_TWOTOX   0x4E
+#define FPOP_ETOX     0x10
+#define FPOP_TWOTOX   0x11
+#define FPOP_TENTOX   0x12
+#define FPOP_LOGN     0x14
+#define FPOP_LOG10    0x15
+#define FPOP_LOG2     0x16
+#define FPOP_ABS      0x18
+#define FPOP_COSH     0x19
+#define FPOP_NEG      0x1A
+#define FPOP_ACOS     0x1C
+#define FPOP_COS      0x1D
+#define FPOP_GETEXP   0x1E
+#define FPOP_GETMAN   0x1F
+#define FPOP_DIV      0x20
+#define FPOP_MOD      0x21
+#define FPOP_ADD      0x22
+#define FPOP_MUL      0x23
+#define FPOP_SGLDIV   0x24
+#define FPOP_REM      0x25
+#define FPOP_SCALE    0x26
+#define FPOP_SGLMUL   0x27
+#define FPOP_SUB      0x28
+#define FPOP_SINCOS   0x30  /* 0x30-0x37; cos register in bits[2:0] */
+#define FPOP_CMP      0x38
+#define FPOP_TST      0x3A
+/* Non-cpGEN operations (peripheral OPSEL only, not in CIR bits[6:0]) */
+#define FPOP_MOVEM    0x40
+#define FPOP_NOP      0x41
+#define FPOP_FSCC     0x42
+#define FPOP_FBCC     0x43
+#define FPOP_FDBCC    0x44
+#define FPOP_FTRAPCC  0x45
+#define FPOP_FSAVE    0x46
+#define FPOP_FRESTORE 0x47
 
 /* ------------------------------------------------------------------ */
 /* FP80: 80-bit extended precision {sign+exp[15:0], sig_hi, sig_lo}    */

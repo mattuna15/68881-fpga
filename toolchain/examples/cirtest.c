@@ -48,19 +48,16 @@
 #define FMT_DOUBLE   5   /* IEEE 754 double */
 #define FMT_BYTE     6   /* 8-bit integer */
 
-/* ---- CORE_V1 opcode IDs (NOT MC68881 native encoding!) ---- */
-#define FPOP_ADD    0x01
-#define FPOP_SUB    0x02
-#define FPOP_MUL    0x03
-#define FPOP_DIV    0x04
-#define FPOP_MOVE   0x05
-#define FPOP_CMP    0x07
-#define FPOP_SIN    0x0D
-#define FPOP_SQRT   0x11
-#define FPOP_ABS    0x12
-#define FPOP_NEG    0x13
-#define FPOP_INT    0x14
-#define FPOP_INTRZ  0x15
+/* ---- MC68881 native opcode IDs (bits[6:0] of cpGEN command word) ---- */
+#define FPOP_MOVE   0x00
+#define FPOP_SQRT   0x04
+#define FPOP_SIN    0x0E
+#define FPOP_ABS    0x18
+#define FPOP_NEG    0x1A
+#define FPOP_DIV    0x20
+#define FPOP_ADD    0x22
+#define FPOP_MUL    0x23
+#define FPOP_SUB    0x28
 
 /* ---- Command word builders ---- */
 /* Memory-to-register: R/M=0, dir=0 */

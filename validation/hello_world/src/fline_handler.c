@@ -32,106 +32,33 @@
 #include "xil_printf.h"
 
 /* ------------------------------------------------------------------ */
-/* 68881 command word opcode (bits 6:0) → CORE_V1 opcode mapping       */
+/* 68881 command word opcode mapping                                   */
+/* FPOP_* constants now use MC68881 native encoding directly —         */
+/* no translation needed.  map_opcode() is identity for valid opcodes. */
 /* ------------------------------------------------------------------ */
 
-/* 68881 opcode field values (from Motorola reference) */
-#define M68K_FP_FMOVE     0x00
-#define M68K_FP_FINT      0x01
-#define M68K_FP_FSINH     0x02
-#define M68K_FP_FINTRZ    0x03
-#define M68K_FP_FSQRT     0x04
-/* 0x05 unused */
-#define M68K_FP_FLOGNP1   0x06
-/* 0x07 unused */
-#define M68K_FP_FETOXM1   0x08
-#define M68K_FP_FTANH     0x09
-#define M68K_FP_FATAN     0x0A
-/* 0x0B unused */
-#define M68K_FP_FASIN     0x0C
-#define M68K_FP_FATANH    0x0D
-#define M68K_FP_FSIN      0x0E
-#define M68K_FP_FTAN      0x0F
-#define M68K_FP_FETOX     0x10
-#define M68K_FP_FTWOTOX   0x11
-#define M68K_FP_FTENTOX   0x12
-/* 0x13 unused */
-#define M68K_FP_FLOGN     0x14
-#define M68K_FP_FLOG10    0x15
-#define M68K_FP_FLOG2     0x16
-/* 0x17 unused */
-#define M68K_FP_FABS      0x18
-#define M68K_FP_FCOSH     0x19
-#define M68K_FP_FNEG      0x1A
-/* 0x1B unused */
-#define M68K_FP_FACOS     0x1C
-#define M68K_FP_FCOS      0x1D
-#define M68K_FP_FGETEXP   0x1E
-#define M68K_FP_FGETMAN   0x1F
-#define M68K_FP_FDIV      0x20
-#define M68K_FP_FMOD      0x21
-#define M68K_FP_FADD      0x22
-#define M68K_FP_FMUL      0x23
-#define M68K_FP_FSGLDIV   0x24
-#define M68K_FP_FREM      0x25
-#define M68K_FP_FSCALE    0x26
-#define M68K_FP_FSGLMUL   0x27
-#define M68K_FP_FSUB      0x28
-/* 0x29..0x2F unused */
-#define M68K_FP_FSINCOS   0x30  /* 0x30..0x37: cos reg in bits 2:0 */
-/* 0x38 = FCMP, 0x3A = FTST */
-#define M68K_FP_FCMP      0x38
-#define M68K_FP_FTST      0x3A
-
 /*
- * Map 68881 7-bit opcode → CORE_V1 opcode ID.
- * Returns 0 (invalid) for unmapped opcodes.
+ * Map 68881 7-bit opcode → FPOP_* opcode ID.
+ * Since FPOP_* now matches MC68881 native encoding, this is identity
+ * for all valid opcodes.  Returns 0 for invalid/unused opcode slots.
  */
 static u8 map_opcode(unsigned int m68k_op)
 {
+    /* FSINCOS range: 0x30..0x37 (cos register in bits 2:0) */
+    if (m68k_op >= 0x30 && m68k_op <= 0x37)
+        return FPOP_SINCOS;
+    /* Reject unused opcode slots */
     switch (m68k_op) {
-    case M68K_FP_FMOVE:    return FPOP_MOVE;
-    case M68K_FP_FINT:     return FPOP_INT;
-    case M68K_FP_FSINH:    return FPOP_SINH;
-    case M68K_FP_FINTRZ:   return FPOP_INTRZ;
-    case M68K_FP_FSQRT:    return FPOP_SQRT;
-    case M68K_FP_FLOGNP1:  return FPOP_LOGNP1;
-    case M68K_FP_FETOXM1:  return FPOP_ETOXM1;
-    case M68K_FP_FTANH:    return FPOP_TANH;
-    case M68K_FP_FATAN:    return FPOP_ATAN;
-    case M68K_FP_FASIN:    return FPOP_ASIN;
-    case M68K_FP_FATANH:   return FPOP_ATANH;
-    case M68K_FP_FSIN:     return FPOP_SIN;
-    case M68K_FP_FTAN:     return FPOP_TAN;
-    case M68K_FP_FETOX:    return FPOP_ETOX;
-    case M68K_FP_FTWOTOX:  return FPOP_TWOTOX;
-    case M68K_FP_FTENTOX:  return FPOP_TENTOX;
-    case M68K_FP_FLOGN:    return FPOP_LOGN;
-    case M68K_FP_FLOG10:   return FPOP_LOG10;
-    case M68K_FP_FLOG2:    return FPOP_LOG2;
-    case M68K_FP_FABS:     return FPOP_ABS;
-    case M68K_FP_FCOSH:    return FPOP_COSH;
-    case M68K_FP_FNEG:     return FPOP_NEG;
-    case M68K_FP_FACOS:    return FPOP_ACOS;
-    case M68K_FP_FCOS:     return FPOP_COS;
-    case M68K_FP_FGETEXP:  return FPOP_GETEXP;
-    case M68K_FP_FGETMAN:  return FPOP_GETMAN;
-    case M68K_FP_FDIV:     return FPOP_DIV;
-    case M68K_FP_FMOD:     return FPOP_MOD;
-    case M68K_FP_FADD:     return FPOP_ADD;
-    case M68K_FP_FMUL:     return FPOP_MUL;
-    case M68K_FP_FSGLDIV:  return FPOP_SGLDIV;
-    case M68K_FP_FREM:     return FPOP_REM;
-    case M68K_FP_FSCALE:   return FPOP_SCALE;
-    case M68K_FP_FSGLMUL:  return FPOP_SGLMUL;
-    case M68K_FP_FSUB:     return FPOP_SUB;
-    case M68K_FP_FCMP:     return FPOP_CMP;
-    case M68K_FP_FTST:     return FPOP_TST;
-    default:
-        /* FSINCOS range: 0x30..0x37 */
-        if (m68k_op >= 0x30 && m68k_op <= 0x37)
-            return FPOP_SINCOS;
+    case 0x05: case 0x07: case 0x0B: case 0x13:
+    case 0x17: case 0x1B:
+    case 0x29: case 0x2A: case 0x2B: case 0x2C:
+    case 0x2D: case 0x2E: case 0x2F:
+    case 0x39: case 0x3B: case 0x3C: case 0x3D:
+    case 0x3E: case 0x3F:
         return 0;
+    default:
+        if (m68k_op > 0x3A) return 0;
+        return (u8)m68k_op;
     }
 }
 
@@ -141,10 +68,10 @@ static u8 map_opcode(unsigned int m68k_op)
 static int is_dyadic(unsigned int m68k_op)
 {
     switch (m68k_op) {
-    case M68K_FP_FADD:  case M68K_FP_FSUB:  case M68K_FP_FMUL:
-    case M68K_FP_FDIV:  case M68K_FP_FMOD:  case M68K_FP_FREM:
-    case M68K_FP_FSCALE: case M68K_FP_FSGLDIV: case M68K_FP_FSGLMUL:
-    case M68K_FP_FCMP:
+    case FPOP_ADD:  case FPOP_SUB:  case FPOP_MUL:
+    case FPOP_DIV:  case FPOP_MOD:  case FPOP_REM:
+    case FPOP_SCALE: case FPOP_SGLDIV: case FPOP_SGLMUL:
+    case FPOP_CMP:
         return 1;
     default:
         return 0;
@@ -453,7 +380,7 @@ static int handle_general(unsigned int opword, unsigned int pc)
     int m68k_op  = cmd & 0x7F;
 
     u8 core_op = map_opcode(m68k_op);
-    if (core_op == 0 && m68k_op != M68K_FP_FMOVE) {
+    if (core_op == 0 && m68k_op != FPOP_MOVE) {
         xil_printf("FLINE: unknown opcode 0x%02x — letting Musashi trap\r\n", m68k_op);
         return 0;  /* unhandled — let Musashi generate F-line exception */
     }
@@ -522,7 +449,7 @@ static int handle_general(unsigned int opword, unsigned int pc)
     fp80_t result;
     int rc;
 
-    if (m68k_op == M68K_FP_FTST) {
+    if (m68k_op == FPOP_TST) {
         /* TST: just send to hardware for FPSR update, no result writeback */
         rc = fpu_exec_unary(FPOP_TST, src_val, &result);
         if (rc != FPU_OK)
@@ -530,7 +457,7 @@ static int handle_general(unsigned int opword, unsigned int pc)
         else
             fp_reg_set_fpsr(fpu_read_fpsr());
 
-    } else if (m68k_op == M68K_FP_FCMP) {
+    } else if (m68k_op == FPOP_CMP) {
         /* CMP: dst - src, update FPSR, no writeback */
         fp80_t dst_val = fp_reg_get(dst_reg);
         rc = fpu_exec(FPOP_CMP, dst_val, src_val, &result);
@@ -569,7 +496,7 @@ static int handle_general(unsigned int opword, unsigned int pc)
             fp_reg_set(dst_reg, result);
         }
 
-    } else if (m68k_op == M68K_FP_FMOVE) {
+    } else if (m68k_op == FPOP_MOVE) {
         /* FMOVE: store directly to software register file.
          * Format conversion (single/double/long/etc → FP80) is already done.
          * The hardware MOVE operates on the hardware register file (for CIR),

@@ -97,7 +97,7 @@ B) Functional Completeness (Core Missing Ops)
     - FBcc, FDBcc, FScc, FNOP.
     - Ordered/unordered condition-code variants and NaN behavior.
     - FPU condition-code generation from FCMP/FTST results.
-    - Done: core-v1 decode/class metadata and conditional execution wiring are in place for
+    - Done: decode/class metadata and conditional execution wiring are in place for
       FScc/FBcc/FDBcc.
       FScc evaluates FPSR CC flags and returns byte true/false in result low byte.
       FBcc now reports condition/branch outcome via `ADDR_CIR_RESPONSE`.
@@ -356,23 +356,19 @@ extra SourceShift+SourceFetch(true) calls.
 **File:** `validation/hello_world/src/blitter_emu.c`
 
 ### DEF-CIR-001: Pending dialog dropped when EXECUTE ends mid-command (68882)
-
-**Severity:** High (affects 68882 pending instruction pipeline)
-
-**Symptom:** Back-to-back 68882 instructions can lose the second instruction
-if its OpWord arrives near the end of the first operation. The
-`pending_opword_seen_reg`/`pending_cmd_seen_reg` flags are cleared when
-leaving `CIR_EXECUTE`, but a partially received pending instruction (OpWord
-arrived, Command not yet) loses its OpWord flag.
-
-**Root cause:** `src/mc68881_top.vhd` clears pending seen flags on any
-`CIR_EXECUTE` exit, not just when consumed by `CIR_PENDING_DECODE`.
-
-**Action:** Only clear `pending_opword_seen_reg`/`pending_cmd_seen_reg` when
-transitioning to `CIR_PENDING_DECODE` (consumed), not on general state exit.
-Add testbench coverage for back-to-back instructions with tight timing.
-
-**Source:** PR #59 codex review
+- Status: Closed (2026-03-24)
+- Files: `src/mc68881_top.vhd` (cir_write_proc pending seen flag clear)
+- Description: Back-to-back 68882 instructions could lose the second instruction
+  if its OpWord arrived near the end of the first operation. The
+  `pending_opword_seen_reg`/`pending_cmd_seen_reg` flags were cleared on any
+  exit from `CIR_EXECUTE`, but a partially received pending instruction (OpWord
+  arrived, Command not yet) lost its OpWord flag when the FSM moved to
+  `CIR_EXECUTE_DONE`.
+- Resolution: Changed flag clear condition from `cir_state_reg /= CIR_EXECUTE`
+  to `cir_state_reg = CIR_PENDING_DECODE or cir_state_reg = CIR_IDLE`. Flags
+  are now only cleared when the pending instruction is consumed or the FSM
+  returns to idle.
+- Source: PR #59 codex review
 
 ### DEF-USB-001: HID interface number hardcoded to 0
 

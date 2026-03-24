@@ -44,6 +44,9 @@ int emu_mem_load(unsigned int addr, const unsigned char *data, unsigned int len)
  * Call after loading a program and before m68k_pulse_reset(). */
 void emu_mem_set_vectors(unsigned int ssp, unsigned int pc);
 
+/* Enable/disable CIR register access debug logging (off by default). */
+void emu_cir_debug_enable(int on);
+
 /*
  * Musashi memory callbacks — declared here, defined in emu_memory.c.
  * These are called by the Musashi core for all memory accesses.

@@ -57,10 +57,10 @@ architecture sim of tb_mc68882_fsave is
     x"0000" & "0000000" & CIR_TYPE_CPRESTORE & "000000";
 
   -- Opcode constants (core_v1 encoding bits[6:0]).
-  constant OPCODE_FADD : std_logic_vector(6 downto 0) := "0000001";  -- 0x01
-  constant OPCODE_FMUL : std_logic_vector(6 downto 0) := "0000011";  -- 0x03
-  constant OPCODE_FDIV : std_logic_vector(6 downto 0) := "0000100";  -- 0x04
-  constant OPCODE_FSIN : std_logic_vector(6 downto 0) := "0001101";  -- 0x0D
+  constant OPCODE_FADD : std_logic_vector(6 downto 0) := "0100010";  -- 0x22 MC68881 FADD
+  constant OPCODE_FMUL : std_logic_vector(6 downto 0) := "0100011";  -- 0x23 MC68881 FMUL
+  constant OPCODE_FDIV : std_logic_vector(6 downto 0) := "0100000";  -- 0x20 MC68881 FDIV
+  constant OPCODE_FSIN : std_logic_vector(6 downto 0) := "0001110";  -- 0x0E MC68881 FSIN
 
   -- FP80 test constants.
   constant FP80_ONE_VAL   : fp80_t := x"3FFF8000000000000000";

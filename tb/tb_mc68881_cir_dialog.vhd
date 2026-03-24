@@ -109,16 +109,17 @@ architecture sim of tb_mc68881_cir_dialog is
   -- FPU only uses bits [8:6] for type. Bits [5:0] are EA (irrelevant to FPU).
   constant CPGEN_OPWORD : std_logic_vector(31 downto 0) := x"0000" & x"0000";
 
-  -- Core_v1 opcode IDs from OP_DESCRIPTORS.
-  constant OPCODE_FADD : std_logic_vector(6 downto 0) := "0000001";  -- 0x01
-  constant OPCODE_FSUB : std_logic_vector(6 downto 0) := "0000010";  -- 0x02
-  constant OPCODE_FMUL : std_logic_vector(6 downto 0) := "0000011";  -- 0x03
-  constant OPCODE_FDIV : std_logic_vector(6 downto 0) := "0000100";  -- 0x04
-  constant OPCODE_FMOVE : std_logic_vector(6 downto 0) := "0000101";  -- 0x05
-  constant OPCODE_FCMP  : std_logic_vector(6 downto 0) := "0000111";  -- 0x07
-  constant OPCODE_FNEG : std_logic_vector(6 downto 0) := "0010011";  -- 0x13
-  constant OPCODE_FSIN : std_logic_vector(6 downto 0) := "0001101";  -- 0x0D
-  constant OPCODE_FSQRT : std_logic_vector(6 downto 0) := "0010001";  -- 0x11
+  -- MC68881 native opcode IDs (cpGEN command word bits[6:0]).
+  constant OPCODE_FMOVE : std_logic_vector(6 downto 0) := "0000000";  -- 0x00
+  constant OPCODE_FSQRT : std_logic_vector(6 downto 0) := "0000100";  -- 0x04
+  constant OPCODE_FSIN  : std_logic_vector(6 downto 0) := "0001110";  -- 0x0E
+  constant OPCODE_FABS  : std_logic_vector(6 downto 0) := "0011000";  -- 0x18
+  constant OPCODE_FNEG  : std_logic_vector(6 downto 0) := "0011010";  -- 0x1A
+  constant OPCODE_FDIV  : std_logic_vector(6 downto 0) := "0100000";  -- 0x20
+  constant OPCODE_FADD  : std_logic_vector(6 downto 0) := "0100010";  -- 0x22
+  constant OPCODE_FMUL  : std_logic_vector(6 downto 0) := "0100011";  -- 0x23
+  constant OPCODE_FSUB  : std_logic_vector(6 downto 0) := "0101000";  -- 0x28
+  constant OPCODE_FCMP  : std_logic_vector(6 downto 0) := "0111000";  -- 0x38
 
   -- CIR Condition address.
   constant CIR_CONDITION : unsigned(4 downto 0) :=

@@ -3633,10 +3633,13 @@ begin
         cir_command_written <= '0';
         cir_condition_written <= '0';
       end if;
-      -- 68882: clear pending seen flags when leaving CIR_EXECUTE (consumed or state change).
-      -- Guarded to avoid unnecessary assignments in 68881 mode.
+      -- 68882: clear pending seen flags only when the pending instruction is
+      -- consumed (transition to CIR_PENDING_DECODE) or the FSM returns to IDLE.
+      -- Previously this cleared on any exit from CIR_EXECUTE, which dropped a
+      -- partially received pending instruction if the OpWord arrived before
+      -- the Command and the ALU finished in between (DEF-CIR-001).
       if fpu_version_g = FPU_68882 then
-        if cir_state_reg /= CIR_EXECUTE then
+        if cir_state_reg = CIR_PENDING_DECODE or cir_state_reg = CIR_IDLE then
           pending_opword_seen_reg <= '0';
           pending_cmd_seen_reg <= '0';
         end if;

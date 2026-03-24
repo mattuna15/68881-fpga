@@ -141,7 +141,7 @@ begin
 
     -- Arithmetic class dispatch (FSQRT).
     report "Issuing FSQRT opcode through OPSEL." severity note;
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000011");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000004");  -- MC68881 FSQRT
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FSQRT");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
     report "FSQRT cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
@@ -151,7 +151,7 @@ begin
 
     -- Arithmetic class dispatch (FTST).
     report "Issuing FTST opcode through OPSEL." severity note;
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000018");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"0100003A");  -- MC68881 FTST
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FTST");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
     report "FTST cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
@@ -161,7 +161,7 @@ begin
 
     -- Arithmetic class dispatch (FETOX).
     report "Issuing FETOX opcode through OPSEL." severity note;
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000045");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000010");  -- MC68881 FETOX
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FETOX");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
     report "FETOX cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
@@ -171,7 +171,7 @@ begin
 
     -- Program-control class dispatch (FNOP).
     report "Issuing FNOP opcode through OPSEL." severity note;
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000020");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000041");  -- non-cpGEN FNOP
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FNOP");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
     report "FNOP cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
@@ -181,7 +181,7 @@ begin
 
     -- Program-control class dispatch (FScc).
     report "Issuing FScc opcode through OPSEL." severity note;
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000021");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000042");  -- non-cpGEN FScc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FScc");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
     report "FScc cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
@@ -194,7 +194,7 @@ begin
     report "Issuing FBcc opcode through OPSEL." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000022");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000043");  -- non-cpGEN FBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FBcc");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
     report "FBcc cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
@@ -208,7 +208,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- Z clear
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000001"); -- condition: EQ
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPB_L, x"00000003"); -- loop counter
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000023");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000044");  -- non-cpGEN FDBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FDBcc");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
     report "FDBcc cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
@@ -219,7 +219,7 @@ begin
 
     -- System-control class dispatch (FSAVE placeholder opcode).
     report "Issuing FSAVE opcode through OPSEL." severity note;
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000030");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000046");  -- non-cpGEN FSAVE
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FSAVE");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
     report "FSAVE cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
@@ -229,7 +229,7 @@ begin
 
     -- System-control class dispatch (FRESTORE placeholder opcode).
     report "Issuing FRESTORE opcode through OPSEL." severity note;
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000031");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000047");  -- non-cpGEN FRESTORE
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FRESTORE");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
     report "FRESTORE cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;
@@ -244,7 +244,7 @@ begin
     report "Issuing FTRAPcc opcode through OPSEL (EQ with Z=1)." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPA_L, x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000024"); -- FTRAPcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_OPSEL, x"01000045"); -- FTRAPcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, "FTRAPcc");
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, cycle_total_word, ADDR_CYCLE_TOTAL);
     report "FTRAPcc cycle_total=" & integer'image(to_integer(unsigned(cycle_total_word))) severity note;

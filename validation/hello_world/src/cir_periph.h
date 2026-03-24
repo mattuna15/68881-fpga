@@ -59,7 +59,7 @@
 
 /* ------------------------------------------------------------------ */
 /* Command word builder macros                                         */
-/* Opcode IDs are CORE_V1 (FPOP_*), NOT 68881 encoding.                */
+/* Opcode IDs are MC68881 native encoding (FPOP_* = bits[6:0]).        */
 /* ------------------------------------------------------------------ */
 
 /* Register-to-register: R/M=1, src_reg [12:10], dst_reg [9:7] */

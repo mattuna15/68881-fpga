@@ -481,7 +481,7 @@ begin
     report "SQRT cycle start: " & integer'image(cycle_cnt)
       severity note;
     write_binary_operands(a_in, d_in, rw, cs_n, as_n, ds_n, op_a, op_b);
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000011");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000004");
 
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
@@ -777,7 +777,7 @@ begin
     op_a := fp80_from_int(-4);
     op_b := FP80_ZERO;
     write_binary_operands(a_in, d_in, rw, cs_n, as_n, ds_n, op_a, op_b);
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000011");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000004");
 
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
@@ -876,7 +876,7 @@ begin
     op_a := fp80_from_int(-5);
     op_b := FP80_ZERO;
     write_binary_operands(a_in, d_in, rw, cs_n, as_n, ds_n, op_a, op_b);
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000012"); -- FABS
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000018"); -- FABS
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
     check_fp80(rd_full, fp80_from_int(5), "FABS -5 result");
@@ -890,7 +890,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000013"); -- FNEG
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"0100001A"); -- FNEG
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
     check_fp80(rd_full, fp80_from_int(-5), "FNEG +5 result");
@@ -904,7 +904,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000018"); -- FTST
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"0100003A"); -- FTST
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     assert rd_lo(FPSR_CC_NEG) = '1' and rd_lo(FPSR_CC_ZERO) = '0' and rd_lo(FPSR_CC_NAN) = '0'
@@ -916,7 +916,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000018"); -- FTST
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"0100003A"); -- FTST
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     assert rd_lo(FPSR_CC_ZERO) = '1' and rd_lo(FPSR_CC_NEG) = '0' and rd_lo(FPSR_CC_NAN) = '0'
@@ -928,7 +928,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000018"); -- FTST
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"0100003A"); -- FTST
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     assert rd_lo(FPSR_CC_INF) = '1' and rd_lo(FPSR_CC_NAN) = '0'
@@ -941,7 +941,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000018"); -- FTST
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"0100003A"); -- FTST
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
     assert rd_lo(FPSR_CC_NAN) = '1'
@@ -960,7 +960,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"0100004E"); -- FTWOTOX
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000011"); -- FTWOTOX
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
     split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
@@ -976,7 +976,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000047"); -- FLOGN
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000014"); -- FLOGN
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
     assert rd_full = x"FFFF8000000000000000"
@@ -1018,7 +1018,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), op_a(31 downto 0));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(2, 5), op_a(63 downto 32));
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(3, 5), x"0000" & op_a(79 downto 64));
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000041"); -- FASIN
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"0100000C"); -- FASIN
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
     split_fp80(rd_full, rd_sign, rd_exp, rd_mant);
@@ -1037,7 +1037,7 @@ begin
     report "FScc EQ test with Z=1." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000042"); -- FScc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
     assert rd_lo(7 downto 0) = x"FF"
@@ -1054,7 +1054,7 @@ begin
     report "FScc EQ test with N=1 and Z=0." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- N set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000042"); -- FScc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
     assert rd_lo(7 downto 0) = x"00"
@@ -1071,7 +1071,7 @@ begin
     report "FScc UN test with NAN=1." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000008"); -- condition: UN
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000042"); -- FScc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(7, 5));
     assert rd_lo(7 downto 0) = x"FF"
@@ -1089,7 +1089,7 @@ begin
     report "FBcc EQ test with Z=1 (branch taken)." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000022"); -- FBcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000043"); -- FBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     assert rd_lo(0) = '1' and rd_lo(1) = '1'
@@ -1099,7 +1099,7 @@ begin
     report "FBcc EQ test with Z=0 (branch not taken)." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- N set, Z clear
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000022"); -- FBcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000043"); -- FBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     assert rd_lo(0) = '0' and rd_lo(1) = '0'
@@ -1112,7 +1112,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), x"00000003"); -- Dn.w counter
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000023"); -- FDBcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000044"); -- FDBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     assert rd_lo(0) = '1' and rd_lo(1) = '0' and rd_lo(2) = '0' and rd_lo(3) = '0'
@@ -1126,7 +1126,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- N set, Z clear
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), x"00000003"); -- Dn.w counter
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000023"); -- FDBcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000044"); -- FDBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     assert rd_lo(0) = '0' and rd_lo(1) = '1' and rd_lo(2) = '1' and rd_lo(3) = '0'
@@ -1140,7 +1140,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"08000000"); -- N set, Z clear
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), x"00000000"); -- Dn.w counter
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000023"); -- FDBcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000044"); -- FDBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     assert rd_lo(0) = '0' and rd_lo(1) = '0' and rd_lo(2) = '1' and rd_lo(3) = '1'
@@ -1155,7 +1155,7 @@ begin
     report "Conditional dialog ordering: block issue before CIR_RESPONSE read." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000022"); -- FBcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000043"); -- FBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
     assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1'
@@ -1164,7 +1164,7 @@ begin
 
     -- Attempt a second conditional command without consuming the response.
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000042"); -- FScc
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
     assert status_word(STATUS_CIR_PROTOCOL_ERROR) = '1'
       report "Second conditional command before response read should set protocol error"
@@ -1188,7 +1188,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000011"); -- condition: SEQ (signaling)
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000042"); -- FScc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
     assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
@@ -1217,7 +1217,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"0000001F"); -- condition: ST (signaling)
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000022"); -- FBcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000043"); -- FBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
     assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
@@ -1243,7 +1243,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"0000001F"); -- condition: ST (signaling)
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(4, 5), x"00000003"); -- Dn.w counter
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000023"); -- FDBcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000044"); -- FDBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
     assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
@@ -1274,7 +1274,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"0000001F"); -- condition: ST (signaling)
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000022"); -- FBcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000043"); -- FBcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
     assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
@@ -1301,7 +1301,7 @@ begin
     report "FScc UN with NAN=1 should NOT set EXC.BSUN (non-signaling guard)." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000008"); -- condition: UN (non-signaling)
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000042"); -- FScc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     assert rd_lo(0) = '1' and rd_lo(4) = '0'
@@ -1317,7 +1317,7 @@ begin
     report "FScc SEQ with NAN=0 should NOT raise BSUN (ordered CC guard)." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set, NAN clear
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000011"); -- condition: SEQ (signaling)
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000042"); -- FScc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     assert rd_lo(0) = '1' and rd_lo(4) = '0'
@@ -1333,7 +1333,7 @@ begin
     report "Conditional op should clear stale EXC byte from prior ops." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04004000"); -- Z set + EXC.SNAN
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000042"); -- FScc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPSR);
@@ -1352,7 +1352,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, fpiar_seed);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000011"); -- condition: SEQ (signaling)
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000021"); -- FScc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000042"); -- FScc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word, ADDR_STATUS);
     assert status_word(STATUS_CIR_RESPONSE_PENDING) = '1' and
@@ -1380,7 +1380,7 @@ begin
     report "FSAVE round-trip: write known FPCR/FPSR, issue FSAVE, check frame format + words." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000030"); -- RN, double
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"DEADBEEF");
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000030"); -- FSAVE
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000046"); -- FSAVE
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, to_unsigned(18, 5)); -- FRAME_W0
     report "FSAVE FRAME_W0 (format)=" & to_hstring(rd_lo) severity note;
@@ -1403,7 +1403,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(18, 5), x"00000018"); -- FRAME_W0 = idle format
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(19, 5), x"0000007F"); -- FRAME_W1 = new FPCR
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(20, 5), x"12345678"); -- FRAME_W2 = new FPSR
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000031"); -- FRESTORE
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000047"); -- FRESTORE
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPCR);
     report "FRESTORE FPCR=" & to_hstring(rd_lo) severity note;
@@ -1419,7 +1419,7 @@ begin
     -- B7 slice: FRESTORE null-frame resets FPU.
     report "FRESTORE null-frame: write null format, issue FRESTORE, verify FPCR/FPSR zeroed." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(18, 5), x"00000000"); -- FRAME_W0 = null format
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000031"); -- FRESTORE
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000047"); -- FRESTORE
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPCR);
     report "FRESTORE null FPCR=" & to_hstring(rd_lo) severity note;
@@ -1437,7 +1437,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"04000000"); -- Z set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00000000"); -- clear FPCR
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000024"); -- FTRAPcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000045"); -- FTRAPcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     assert rd_lo(0) = '1'
@@ -1454,7 +1454,7 @@ begin
     report "FTRAPcc EQ with Z=0 (condition false, no trap)." severity note;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"00000000"); -- all CC clear
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000001"); -- condition: EQ
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000024"); -- FTRAPcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000045"); -- FTRAPcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     assert rd_lo(0) = '0'
@@ -1469,7 +1469,7 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPSR, x"01000000"); -- NAN set
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPCR, x"00008000"); -- enable BSUN
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(1, 5), x"00000011"); -- condition: SEQ (signaling)
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000024"); -- FTRAPcc
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"01000045"); -- FTRAPcc
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_CIR_RESPONSE);
     assert rd_lo(4) = '1'

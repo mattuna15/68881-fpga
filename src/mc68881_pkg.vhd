@@ -599,7 +599,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_ADD => (
       legacy_decode_id_valid => true, legacy_decode_id => 1,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"01",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"22",  -- MC68881 FADD
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -610,7 +610,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_SUB => (
       legacy_decode_id_valid => true, legacy_decode_id => 2,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"02",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"28",  -- MC68881 FSUB
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -621,7 +621,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_MUL => (
       legacy_decode_id_valid => true, legacy_decode_id => 3,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"03",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"23",  -- MC68881 FMUL
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -632,7 +632,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_DIV => (
       legacy_decode_id_valid => true, legacy_decode_id => 4,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"04",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"20",  -- MC68881 FDIV
       op_class => OP_CLASS_ARITH, alu_latency => 74, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_DIV,
       arith_cycles => (
@@ -643,7 +643,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_SQRT => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"11",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"04",  -- MC68881 FSQRT
       op_class => OP_CLASS_ARITH, alu_latency => 73, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -654,7 +654,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_CMP => (
       legacy_decode_id_valid => true, legacy_decode_id => 7,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"07",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"38",  -- MC68881 FCMP
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_CMP,
       arith_cycles => (
@@ -665,7 +665,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_MOD => (
       legacy_decode_id_valid => true, legacy_decode_id => 8,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"08",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"21",  -- MC68881 FMOD
       op_class => OP_CLASS_ARITH, alu_latency => 93, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
@@ -676,7 +676,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_REM => (
       legacy_decode_id_valid => true, legacy_decode_id => 9,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"09",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"25",  -- MC68881 FREM
       op_class => OP_CLASS_ARITH, alu_latency => 111, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_MOD_REM,
       arith_cycles => (
@@ -687,7 +687,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_SCALE => (
       legacy_decode_id_valid => true, legacy_decode_id => 10,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"0A",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"26",  -- MC68881 FSCALE
       op_class => OP_CLASS_ARITH, alu_latency => 2, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -698,7 +698,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_SGLDIV => (
       legacy_decode_id_valid => true, legacy_decode_id => 11,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"0B",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"24",  -- MC68881 FSGLDIV
       op_class => OP_CLASS_ARITH, alu_latency => 8, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_DIV,
       arith_cycles => (
@@ -709,7 +709,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_SGLMUL => (
       legacy_decode_id_valid => true, legacy_decode_id => 12,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"0C",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"27",  -- MC68881 FSGLMUL
       op_class => OP_CLASS_ARITH, alu_latency => 4, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -720,7 +720,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_SIN => (
       legacy_decode_id_valid => true, legacy_decode_id => 13,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"0D",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0E",  -- MC68881 FSIN
       op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -731,7 +731,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_COS => (
       legacy_decode_id_valid => true, legacy_decode_id => 14,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"0E",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"1D",  -- MC68881 FCOS
       op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -753,7 +753,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_SINCOS => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"10",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"30",  -- MC68881 FSINCOS base
       op_class => OP_CLASS_ARITH, alu_latency => 34, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -764,7 +764,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_ACOS => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"40",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"1C",  -- MC68881 FACOS
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -775,7 +775,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_ASIN => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"41",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0C",  -- MC68881 FASIN
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -786,7 +786,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_ATAN => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"42",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0A",  -- MC68881 FATAN
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -797,7 +797,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_ATANH => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"43",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"0D",  -- MC68881 FATANH
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -808,7 +808,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_COSH => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"44",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"19",  -- MC68881 FCOSH
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -819,7 +819,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_ETOX => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"45",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"10",  -- MC68881 FETOX
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -830,7 +830,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_ETOXM1 => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"46",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"08",  -- MC68881 FETOXM1
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -841,7 +841,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_LOGN => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"47",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"14",  -- MC68881 FLOGN
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_LOG,
       arith_cycles => (
@@ -852,7 +852,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_LOGNP1 => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"48",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"06",  -- MC68881 FLOGNP1
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -863,7 +863,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_LOG10 => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"49",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"15",  -- MC68881 FLOG10
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_LOG,
       arith_cycles => (
@@ -874,7 +874,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_LOG2 => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"4A",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"16",  -- MC68881 FLOG2
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_LOG,
       arith_cycles => (
@@ -885,7 +885,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_SINH => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"4B",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"02",  -- MC68881 FSINH
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -896,7 +896,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_TANH => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"4C",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"09",  -- MC68881 FTANH
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -907,7 +907,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_TENTOX => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"4D",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"12",  -- MC68881 FTENTOX
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -918,7 +918,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_TWOTOX => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"4E",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"11",  -- MC68881 FTWOTOX
       op_class => OP_CLASS_ARITH, alu_latency => 14, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -929,7 +929,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_ABS => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"12",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"18",  -- MC68881 FABS
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -940,7 +940,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_NEG => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"13",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"1A",  -- MC68881 FNEG
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -951,7 +951,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_INT => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"14",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"01",  -- MC68881 FINT
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -962,7 +962,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_INTRZ => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"15",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"03",  -- MC68881 FINTRZ
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -973,7 +973,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_GETEXP => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"16",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"1E",  -- MC68881 FGETEXP
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -984,7 +984,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_GETMAN => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"17",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"1F",  -- MC68881 FGETMAN
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => (
@@ -995,7 +995,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_TST => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"18",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"3A",  -- MC68881 FTST
       op_class => OP_CLASS_ARITH, alu_latency => 5, cycle_model => OP_CYCLE_ARITH,
       exception_policy => EXC_POLICY_TST,
       arith_cycles => (
@@ -1006,7 +1006,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_MOVE => (
       legacy_decode_id_valid => true, legacy_decode_id => 5,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"05",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"00",  -- MC68881 FMOVE
       op_class => OP_CLASS_MOVE, alu_latency => 0, cycle_model => OP_CYCLE_MOVE,
       exception_policy => EXC_POLICY_ARITH,
       arith_cycles => SRC_CYCLES_ZERO,
@@ -1017,7 +1017,7 @@ package body mc68881_pkg is
     ),
     FPU_OP_MOVEM => (
       legacy_decode_id_valid => true, legacy_decode_id => 6,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"06",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"40",  -- non-cpGEN: MOVEM
       op_class => OP_CLASS_MOVE, alu_latency => 0, cycle_model => OP_CYCLE_MOVE,
       exception_policy => EXC_POLICY_NONE,
       arith_cycles => SRC_CYCLES_ZERO,
@@ -1028,49 +1028,49 @@ package body mc68881_pkg is
     ),
     FPU_OP_FSCC => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"21",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"42",  -- non-cpGEN: FSCC
       op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
       exception_policy => EXC_POLICY_PROG_CTRL,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_FBCC => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"22",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"43",  -- non-cpGEN: FBCC
       op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
       exception_policy => EXC_POLICY_PROG_CTRL,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_FDBCC => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"23",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"44",  -- non-cpGEN: FDBCC
       op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
       exception_policy => EXC_POLICY_PROG_CTRL,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_FNOP => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"20",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"41",  -- non-cpGEN: FNOP
       op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
       exception_policy => EXC_POLICY_NONE,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_FTRAPCC => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"24",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"45",  -- non-cpGEN: FTRAPCC
       op_class => OP_CLASS_PROG_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
       exception_policy => EXC_POLICY_NONE,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_FSAVE => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"30",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"46",  -- non-cpGEN: FSAVE
       op_class => OP_CLASS_SYS_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
       exception_policy => EXC_POLICY_NONE,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO
     ),
     FPU_OP_FRESTORE => (
       legacy_decode_id_valid => false, legacy_decode_id => 0,
-      core_v1_decode_id_valid => true, core_v1_decode_id => x"31",
+      core_v1_decode_id_valid => true, core_v1_decode_id => x"47",  -- non-cpGEN: FRESTORE
       op_class => OP_CLASS_SYS_CTRL, alu_latency => 0, cycle_model => OP_CYCLE_ZERO,
       exception_policy => EXC_POLICY_NONE,
       arith_cycles => SRC_CYCLES_ZERO, move_cycles => SRC_CYCLES_ZERO

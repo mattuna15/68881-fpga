@@ -217,7 +217,10 @@ begin
               end if;
             end loop;
           end if;
-          mant_ext(0) := mant_ext(0) or low_or;
+          -- Fold sticky bit (avoid self-reference — Vivado Synth 8-326).
+          if low_or = '1' then
+            mant_ext(0) := '1';
+          end if;
 
           -- Inline apply_rounding.
           mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);

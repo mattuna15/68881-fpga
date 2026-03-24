@@ -52,3 +52,6 @@ validation/hello_world/src/roms/listing.txt
 validation/hello_world/src/roms/savage.bin
 /validation/NextCuboid
 .claude/settings.local.json
+/toolchain/emutos-src-1.4
+/validation/kicad/NextCuboid-backups
+/validation/kicad/output

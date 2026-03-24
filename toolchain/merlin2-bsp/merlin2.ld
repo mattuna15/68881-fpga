@@ -95,6 +95,7 @@ SECTIONS
 
   .data :
   {
+    __data_start = .;
     *(.got.plt) *(.got)
     *(.shdata)
     *(.data .data.*)

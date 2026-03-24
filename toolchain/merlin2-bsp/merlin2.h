@@ -35,4 +35,15 @@
 #define MERLIN2_TRAP_GET_PIXEL     20   /* D1.W=X, D2.W=Y -> D1.L=ARGB */
 #define MERLIN2_TRAP_SCREEN_INFO   21   /* -> D1.W=width, D2.W=height */
 
+/* RTC */
+#define MERLIN2_TRAP_GET_RTC       22   /* -> D1.L=Unix seconds */
+#define MERLIN2_TRAP_GET_DATETIME  23   /* -> D1.L=YYYYMMDD BCD, D2.L=HHMMSSwd BCD */
+#define MERLIN2_TRAP_SET_RTC       24   /* D1.L=Unix seconds */
+#define MERLIN2_TRAP_GET_TICKS     25   /* -> D1.L=Timer C tick count */
+
+/* Mouse */
+#define MERLIN2_TRAP_GET_MOUSE     26   /* -> D1.B=buttons, D2.W=deltaX, D3.W=deltaY (clears deltas) */
+#define MERLIN2_TRAP_GET_MOUSE_POS 27   /* -> D1.W=absX, D2.W=absY */
+#define MERLIN2_TRAP_SET_MOUSE_POS 28   /* D1.W=absX, D2.W=absY (set absolute position) */
+
 #endif /* _MERLIN2_H */

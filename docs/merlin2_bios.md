@@ -22,7 +22,11 @@ on the AXU3EG validation platform.
 | Address | Size | Description |
 |---------|------|-------------|
 | `$000000-$00FFFF` | 64K | RAM (workspace, vectors, stack) |
+| `$800000-$B84FFF` | 3.6 MB | Graphics framebuffer (1280x720 ARGB8888) |
 | `$FD0000-$FD002F` | 48 bytes | MC68901 MFP (USART, timers, GPIO) |
+| `$FD0030-$FD003F` | 16 bytes | MFP extensions (tick counter, RTC, datetime) |
+| `$FD0040-$FD004F` | 16 bytes | Graphics control registers |
+| `$FD0050-$FD005B` | 12 bytes | USB mouse state (buttons, delta, abs position) |
 | `$FE0000-$FFFFFF` | 128K | ROM (BIOS image) |
 
 Stack pointer initializes to `$1000`. System stack (SYSTACK) is at `$5AE`.
@@ -241,6 +245,49 @@ validation/hello_world/src/roms/bios.s
 | 13 | Print null-terminated string at (A1) with CR+LF |
 | 14 | Print null-terminated string at (A1) without CR+LF |
 | 15 | Print unsigned D1.L in base D2.B |
+| 16 | Display control: D1.B (0=prompt off, 1=on, 2=LF off, 3=LF on) |
+| 17 | Set video mode: D1.B (0=text, 1=graphics) |
+| 18 | Clear framebuffer: D1.L = ARGB fill colour |
+| 19 | Set pixel: D1.W=X, D2.W=Y, D3.L=ARGB |
+| 20 | Get pixel: D1.W=X, D2.W=Y → D1.L=ARGB |
+| 21 | Screen info → D1.W=width, D2.W=height |
+| 22 | Get RTC → D1.L = Unix seconds |
+| 23 | Get datetime → D1.L=YYYYMMDD BCD, D2.L=HHMMSSwd BCD |
+| 24 | Set RTC: D1.L = Unix seconds |
+| 25 | Get ticks → D1.L = Timer C tick count |
+| 26 | Get mouse → D1.B=buttons, D2.W=deltaX, D3.W=deltaY (clears deltas) |
+| 27 | Get mouse pos → D1.W=absX, D2.W=absY |
+| 28 | Set mouse pos: D1.W=absX, D2.W=absY |
+
+### USB Input
+
+The system supports USB keyboards and mice via the ZynqMP DWC3 xHCI host
+controller. Devices are enumerated at boot with automatic hub traversal
+(up to 3 levels deep).
+
+**Keyboard**: HID boot-protocol keyboard input is translated to ASCII and
+pushed into the MFP RX buffer, appearing alongside ARM UART input. Caps Lock
+and Num Lock toggle with LED feedback via HID SET_REPORT. No BIOS changes
+are needed — the USB keyboard just works at the `>` prompt and in all
+programs that read via TRAP #15 D0=5 (read char) or D0=2 (read string).
+
+**Mouse**: HID boot-protocol mouse state is maintained by the ARM USB driver
+and exposed to the 68000 via memory-mapped I/O:
+
+| Address | Size | Description |
+|---------|------|-------------|
+| `$FD0050` | byte | Buttons (bit 0=left, 1=right, 2=middle) |
+| `$FD0052` | word | Delta X (signed, cleared on read) |
+| `$FD0054` | word | Delta Y (signed, cleared on read) |
+| `$FD0056` | word | Absolute X (0–1279) |
+| `$FD0058` | word | Absolute Y (0–719) |
+
+Reading `$FD0052` snapshots both deltas atomically; the live deltas are
+cleared after `$FD0055` (DY low byte) is read. Absolute position is also
+available via TRAP #15 D0=26/27/28 (requires BIOS ROM rebuild).
+
+Programs can read the mouse either through the TRAP interface
+(`merlin2_mouse.h`) or by reading the memory-mapped addresses directly.
 
 ### Debug Internals
 

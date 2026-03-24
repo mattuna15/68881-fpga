@@ -163,7 +163,7 @@ architecture rtl of mc68881_alu is
   signal simple_op_reg : fpu_op_t := FPU_OP_NOP;
   signal simple_rm_reg : fp_round_mode_t := FP_RND_NEAREST;
   signal simple_rp_reg : fp_round_prec_t := FP_PREC_EXTENDED;
-  signal simple_hold_count_reg : integer range 0 to 1 := 0;  -- multi-cycle hold for FP settle (lightweight ops only)
+  signal simple_hold_count_reg : integer range 0 to 2 := 0;  -- multi-cycle hold for FP settle (MCP=3 at 50 MHz)
 
   -- Sequential FP units for ADD/SUB/MUL (replaces combinational mul_fp80/add_sub_fp80)
   signal alu_mul_start_reg  : std_logic := '0';
@@ -662,7 +662,7 @@ begin
             simple_rm_reg <= round_mode;
             simple_rp_reg <= round_prec;
             simple_compute_pending_reg <= '1';
-            simple_hold_count_reg <= 1;  -- reduced: heaviest remaining op is FINT (~30ns)
+            simple_hold_count_reg <= 2;  -- MCP=3 at 50 MHz: 2 hold + 1 compute = 3 cycles
             busy_reg <= '1';
             if op_alu_latency(op_sel) <= 1 then
               latency_count_reg <= 1;

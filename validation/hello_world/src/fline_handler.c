@@ -25,112 +25,40 @@
 
 #include "fline_handler.h"
 #include "fpu_periph.h"
+#include "cir_periph.h"
 #include "fp_regfile.h"
 #include "emu_memory.h"
 #include "musashi/m68k.h"
 #include "xil_printf.h"
 
 /* ------------------------------------------------------------------ */
-/* 68881 command word opcode (bits 6:0) → CORE_V1 opcode mapping       */
+/* 68881 command word opcode mapping                                   */
+/* FPOP_* constants now use MC68881 native encoding directly —         */
+/* no translation needed.  map_opcode() is identity for valid opcodes. */
 /* ------------------------------------------------------------------ */
 
-/* 68881 opcode field values (from Motorola reference) */
-#define M68K_FP_FMOVE     0x00
-#define M68K_FP_FINT      0x01
-#define M68K_FP_FSINH     0x02
-#define M68K_FP_FINTRZ    0x03
-#define M68K_FP_FSQRT     0x04
-/* 0x05 unused */
-#define M68K_FP_FLOGNP1   0x06
-/* 0x07 unused */
-#define M68K_FP_FETOXM1   0x08
-#define M68K_FP_FTANH     0x09
-#define M68K_FP_FATAN     0x0A
-/* 0x0B unused */
-#define M68K_FP_FASIN     0x0C
-#define M68K_FP_FATANH    0x0D
-#define M68K_FP_FSIN      0x0E
-#define M68K_FP_FTAN      0x0F
-#define M68K_FP_FETOX     0x10
-#define M68K_FP_FTWOTOX   0x11
-#define M68K_FP_FTENTOX   0x12
-/* 0x13 unused */
-#define M68K_FP_FLOGN     0x14
-#define M68K_FP_FLOG10    0x15
-#define M68K_FP_FLOG2     0x16
-/* 0x17 unused */
-#define M68K_FP_FABS      0x18
-#define M68K_FP_FCOSH     0x19
-#define M68K_FP_FNEG      0x1A
-/* 0x1B unused */
-#define M68K_FP_FACOS     0x1C
-#define M68K_FP_FCOS      0x1D
-#define M68K_FP_FGETEXP   0x1E
-#define M68K_FP_FGETMAN   0x1F
-#define M68K_FP_FDIV      0x20
-#define M68K_FP_FMOD      0x21
-#define M68K_FP_FADD      0x22
-#define M68K_FP_FMUL      0x23
-#define M68K_FP_FSGLDIV   0x24
-#define M68K_FP_FREM      0x25
-#define M68K_FP_FSCALE    0x26
-#define M68K_FP_FSGLMUL   0x27
-#define M68K_FP_FSUB      0x28
-/* 0x29..0x2F unused */
-#define M68K_FP_FSINCOS   0x30  /* 0x30..0x37: cos reg in bits 2:0 */
-/* 0x38 = FCMP, 0x3A = FTST */
-#define M68K_FP_FCMP      0x38
-#define M68K_FP_FTST      0x3A
-
 /*
- * Map 68881 7-bit opcode → CORE_V1 opcode ID.
- * Returns 0 (invalid) for unmapped opcodes.
+ * Map 68881 7-bit opcode → FPOP_* opcode ID.
+ * Since FPOP_* now matches MC68881 native encoding, this is identity
+ * for all valid opcodes.  Returns 0 for invalid/unused opcode slots.
  */
 static u8 map_opcode(unsigned int m68k_op)
 {
+    /* FSINCOS range: 0x30..0x37 (cos register in bits 2:0) */
+    if (m68k_op >= 0x30 && m68k_op <= 0x37)
+        return FPOP_SINCOS;
+    /* Reject unused opcode slots */
     switch (m68k_op) {
-    case M68K_FP_FMOVE:    return FPOP_MOVE;
-    case M68K_FP_FINT:     return FPOP_INT;
-    case M68K_FP_FSINH:    return FPOP_SINH;
-    case M68K_FP_FINTRZ:   return FPOP_INTRZ;
-    case M68K_FP_FSQRT:    return FPOP_SQRT;
-    case M68K_FP_FLOGNP1:  return FPOP_LOGNP1;
-    case M68K_FP_FETOXM1:  return FPOP_ETOXM1;
-    case M68K_FP_FTANH:    return FPOP_TANH;
-    case M68K_FP_FATAN:    return FPOP_ATAN;
-    case M68K_FP_FASIN:    return FPOP_ASIN;
-    case M68K_FP_FATANH:   return FPOP_ATANH;
-    case M68K_FP_FSIN:     return FPOP_SIN;
-    case M68K_FP_FTAN:     return FPOP_TAN;
-    case M68K_FP_FETOX:    return FPOP_ETOX;
-    case M68K_FP_FTWOTOX:  return FPOP_TWOTOX;
-    case M68K_FP_FTENTOX:  return FPOP_TENTOX;
-    case M68K_FP_FLOGN:    return FPOP_LOGN;
-    case M68K_FP_FLOG10:   return FPOP_LOG10;
-    case M68K_FP_FLOG2:    return FPOP_LOG2;
-    case M68K_FP_FABS:     return FPOP_ABS;
-    case M68K_FP_FCOSH:    return FPOP_COSH;
-    case M68K_FP_FNEG:     return FPOP_NEG;
-    case M68K_FP_FACOS:    return FPOP_ACOS;
-    case M68K_FP_FCOS:     return FPOP_COS;
-    case M68K_FP_FGETEXP:  return FPOP_GETEXP;
-    case M68K_FP_FGETMAN:  return FPOP_GETMAN;
-    case M68K_FP_FDIV:     return FPOP_DIV;
-    case M68K_FP_FMOD:     return FPOP_MOD;
-    case M68K_FP_FADD:     return FPOP_ADD;
-    case M68K_FP_FMUL:     return FPOP_MUL;
-    case M68K_FP_FSGLDIV:  return FPOP_SGLDIV;
-    case M68K_FP_FREM:     return FPOP_REM;
-    case M68K_FP_FSCALE:   return FPOP_SCALE;
-    case M68K_FP_FSGLMUL:  return FPOP_SGLMUL;
-    case M68K_FP_FSUB:     return FPOP_SUB;
-    case M68K_FP_FCMP:     return FPOP_CMP;
-    case M68K_FP_FTST:     return FPOP_TST;
-    default:
-        /* FSINCOS range: 0x30..0x37 */
-        if (m68k_op >= 0x30 && m68k_op <= 0x37)
-            return FPOP_SINCOS;
+    case 0x05: case 0x07: case 0x0B: case 0x13:
+    case 0x17: case 0x1B:
+    case 0x29: case 0x2A: case 0x2B: case 0x2C:
+    case 0x2D: case 0x2E: case 0x2F:
+    case 0x39: case 0x3B: case 0x3C: case 0x3D:
+    case 0x3E: case 0x3F:
         return 0;
+    default:
+        if (m68k_op > 0x3A) return 0;
+        return (u8)m68k_op;
     }
 }
 
@@ -140,10 +68,10 @@ static u8 map_opcode(unsigned int m68k_op)
 static int is_dyadic(unsigned int m68k_op)
 {
     switch (m68k_op) {
-    case M68K_FP_FADD:  case M68K_FP_FSUB:  case M68K_FP_FMUL:
-    case M68K_FP_FDIV:  case M68K_FP_FMOD:  case M68K_FP_FREM:
-    case M68K_FP_FSCALE: case M68K_FP_FSGLDIV: case M68K_FP_FSGLMUL:
-    case M68K_FP_FCMP:
+    case FPOP_ADD:  case FPOP_SUB:  case FPOP_MUL:
+    case FPOP_DIV:  case FPOP_MOD:  case FPOP_REM:
+    case FPOP_SCALE: case FPOP_SGLDIV: case FPOP_SGLMUL:
+    case FPOP_CMP:
         return 1;
     default:
         return 0;
@@ -452,10 +380,9 @@ static int handle_general(unsigned int opword, unsigned int pc)
     int m68k_op  = cmd & 0x7F;
 
     u8 core_op = map_opcode(m68k_op);
-    if (core_op == 0 && m68k_op != M68K_FP_FMOVE) {
-        xil_printf("FLINE: unknown opcode 0x%02x\r\n", m68k_op);
-        m68k_set_reg(M68K_REG_PC, pc);
-        return 1;
+    if (core_op == 0 && m68k_op != FPOP_MOVE) {
+        xil_printf("FLINE: unknown opcode 0x%02x — letting Musashi trap\r\n", m68k_op);
+        return 0;  /* unhandled — let Musashi generate F-line exception */
     }
 
     fp80_t src_val;
@@ -522,7 +449,7 @@ static int handle_general(unsigned int opword, unsigned int pc)
     fp80_t result;
     int rc;
 
-    if (m68k_op == M68K_FP_FTST) {
+    if (m68k_op == FPOP_TST) {
         /* TST: just send to hardware for FPSR update, no result writeback */
         rc = fpu_exec_unary(FPOP_TST, src_val, &result);
         if (rc != FPU_OK)
@@ -530,7 +457,7 @@ static int handle_general(unsigned int opword, unsigned int pc)
         else
             fp_reg_set_fpsr(fpu_read_fpsr());
 
-    } else if (m68k_op == M68K_FP_FCMP) {
+    } else if (m68k_op == FPOP_CMP) {
         /* CMP: dst - src, update FPSR, no writeback */
         fp80_t dst_val = fp_reg_get(dst_reg);
         rc = fpu_exec(FPOP_CMP, dst_val, src_val, &result);
@@ -569,7 +496,7 @@ static int handle_general(unsigned int opword, unsigned int pc)
             fp_reg_set(dst_reg, result);
         }
 
-    } else if (m68k_op == M68K_FP_FMOVE) {
+    } else if (m68k_op == FPOP_MOVE) {
         /* FMOVE: store directly to software register file.
          * Format conversion (single/double/long/etc → FP80) is already done.
          * The hardware MOVE operates on the hardware register file (for CIR),
@@ -620,6 +547,125 @@ static int handle_fmovecr(unsigned int cmd, unsigned int pc)
 }
 
 /* ------------------------------------------------------------------ */
+/* Evaluate FPU condition code from FPSR                                */
+/* Returns 1 if condition is true, 0 if false.                         */
+/* ------------------------------------------------------------------ */
+static int eval_fpu_condition(int condition)
+{
+    u32 fpsr = fp_reg_get_fpsr();
+    int cc_n   = (fpsr >> 27) & 1;
+    int cc_z   = (fpsr >> 26) & 1;
+    int cc_i   = (fpsr >> 25) & 1;
+    int cc_nan = (fpsr >> 24) & 1;
+    (void)cc_i; /* unused in standard conditions */
+
+    switch (condition & 0x1F) {
+    case 0x00: return 0;                                /* F */
+    case 0x01: return cc_z;                             /* EQ */
+    case 0x02: return !(cc_nan | cc_z | cc_n);         /* OGT */
+    case 0x03: return cc_z | !(cc_nan | cc_n);         /* OGE */
+    case 0x04: return cc_n & !(cc_nan | cc_z);         /* OLT */
+    case 0x05: return cc_z | (cc_n & !cc_nan);         /* OLE */
+    case 0x06: return !(cc_nan | cc_z);                /* OGL */
+    case 0x07: return !cc_nan;                         /* OR */
+    case 0x08: return cc_nan;                          /* UN */
+    case 0x09: return cc_nan | cc_z;                   /* UEQ */
+    case 0x0A: return cc_nan | !(cc_n | cc_z);        /* UGT */
+    case 0x0B: return cc_nan | cc_z | !cc_n;          /* UGE */
+    case 0x0C: return cc_nan | (cc_n & !cc_z);        /* ULT */
+    case 0x0D: return cc_nan | cc_z | cc_n;           /* ULE */
+    case 0x0E: return !cc_z;                           /* NE */
+    case 0x0F: return 1;                               /* T */
+    case 0x10: return 0;                               /* SF */
+    case 0x11: return cc_z;                            /* SEQ */
+    case 0x12: return !(cc_nan | cc_z | cc_n);        /* GT */
+    case 0x13: return cc_z | !(cc_nan | cc_n);        /* GE */
+    case 0x14: return cc_n & !(cc_nan | cc_z);        /* LT */
+    case 0x15: return cc_z | (cc_n & !cc_nan);        /* LE */
+    case 0x16: return !(cc_nan | cc_z);               /* GL */
+    case 0x17: return !cc_nan;                         /* GLE */
+    case 0x18: return cc_nan;                          /* NGLE */
+    case 0x19: return cc_nan | cc_z;                   /* NGL */
+    case 0x1A: return cc_nan | !(cc_n | cc_z);        /* NLE */
+    case 0x1B: return cc_nan | cc_z | !cc_n;          /* NLT */
+    case 0x1C: return cc_nan | (cc_n & !cc_z);        /* NGE */
+    case 0x1D: return cc_nan | cc_z | cc_n;           /* NGT */
+    case 0x1E: return !cc_z;                           /* SNE */
+    case 0x1F: return 1;                               /* ST */
+    }
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Handle FScc (type 001: set byte on FP condition)                     */
+/* Opword: 1111 001 001 eamode eareg                                   */
+/* Command word: 0000 0000 00cc cccc                                   */
+/* ------------------------------------------------------------------ */
+static int handle_fscc(unsigned int opword, unsigned int pc)
+{
+    unsigned int cmd = m68k_read_memory_16(pc);
+    pc += 2;
+    int condition = cmd & 0x3F;
+    int ea_mode = EA_MODE(opword);
+    int ea_reg  = EA_REG(opword);
+
+    int result = eval_fpu_condition(condition);
+    uint8_t byte_val = result ? 0xFF : 0x00;
+
+    if (ea_mode == 0) {
+        /* Dn — set low byte of data register */
+        uint32_t dn = m68k_get_reg(NULL, M68K_REG_D0 + ea_reg);
+        dn = (dn & 0xFFFFFF00) | byte_val;
+        m68k_set_reg(M68K_REG_D0 + ea_reg, dn);
+    } else {
+        /* Memory EA */
+        unsigned int addr = eval_ea(ea_mode, ea_reg, &pc);
+        m68k_write_memory_8(addr, byte_val);
+    }
+
+    m68k_set_reg(M68K_REG_PC, pc);
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* Handle FDBcc (type 001: decrement and branch on FP condition)        */
+/* Opword: 1111 001 001 001 reg  (ea_mode=1 encodes FDBcc)             */
+/* Command word: 0000 0000 00cc cccc                                   */
+/* Displacement: 16-bit signed word follows command word                */
+/* ------------------------------------------------------------------ */
+static int handle_fdbcc(unsigned int opword, unsigned int pc)
+{
+    unsigned int cmd = m68k_read_memory_16(pc);
+    pc += 2;
+    int condition = cmd & 0x3F;
+    int reg = opword & 7;
+    unsigned int disp_pc = pc;  /* address of displacement word */
+    int16_t displacement = (int16_t)m68k_read_memory_16(pc);
+    pc += 2;
+
+    if (eval_fpu_condition(condition)) {
+        /* Condition true — no branch, no decrement, fall through */
+        m68k_set_reg(M68K_REG_PC, pc);
+    } else {
+        /* Condition false — decrement Dn.W */
+        uint32_t dn = m68k_get_reg(NULL, M68K_REG_D0 + reg);
+        int16_t counter = (int16_t)(dn & 0xFFFF);
+        counter--;
+        dn = (dn & 0xFFFF0000) | ((uint16_t)counter);
+        m68k_set_reg(M68K_REG_D0 + reg, dn);
+
+        if (counter == -1) {
+            /* Counter expired — fall through */
+            m68k_set_reg(M68K_REG_PC, pc);
+        } else {
+            /* Branch: PC = disp_pc + displacement */
+            m68k_set_reg(M68K_REG_PC, disp_pc + displacement);
+        }
+    }
+    return 1;
+}
+
+/* ------------------------------------------------------------------ */
 /* Handle FBcc (type 01x: branch on FP condition)                      */
 /* Opword: 1111 001 01s cccccc                                         */
 /*   s=0 → 16-bit displacement, s=1 → 32-bit displacement             */
@@ -642,52 +688,7 @@ static int handle_fbcc(unsigned int opword, unsigned int pc)
         pc += 4;
     }
 
-    /* Evaluate condition from FPSR */
-    u32 fpsr = fp_reg_get_fpsr();
-    /* FPSR condition code bits: N(27), Z(26), I(25), NAN(24) */
-    int cc_n   = (fpsr >> 27) & 1;
-    int cc_z   = (fpsr >> 26) & 1;
-    int cc_i   = (fpsr >> 25) & 1;
-    int cc_nan = (fpsr >> 24) & 1;
-
-    int take_branch = 0;
-
-    switch (condition & 0x1F) {
-    case 0x00: take_branch = 0; break;                                /* F */
-    case 0x01: take_branch = cc_z; break;                             /* EQ */
-    case 0x02: take_branch = !(cc_nan | cc_z | cc_n); break;         /* OGT */
-    case 0x03: take_branch = cc_z | !(cc_nan | cc_n); break;         /* OGE */
-    case 0x04: take_branch = cc_n & !(cc_nan | cc_z); break;         /* OLT */
-    case 0x05: take_branch = cc_z | (cc_n & !cc_nan); break;         /* OLE */
-    case 0x06: take_branch = !(cc_nan | cc_z); break;                /* OGL */
-    case 0x07: take_branch = !cc_nan; break;                         /* OR */
-    case 0x08: take_branch = cc_nan; break;                          /* UN */
-    case 0x09: take_branch = cc_nan | cc_z; break;                   /* UEQ */
-    case 0x0A: take_branch = cc_nan | !(cc_n | cc_z); break;        /* UGT */
-    case 0x0B: take_branch = cc_nan | cc_z | !cc_n; break;          /* UGE */
-    case 0x0C: take_branch = cc_nan | (cc_n & !cc_z); break;        /* ULT */
-    case 0x0D: take_branch = cc_nan | cc_z | cc_n; break;           /* ULE */
-    case 0x0E: take_branch = !cc_z; break;                           /* NE */
-    case 0x0F: take_branch = 1; break;                               /* T */
-    case 0x10: take_branch = 0; break;                               /* SF */
-    case 0x11: take_branch = cc_z; break;                            /* SEQ */
-    case 0x12: take_branch = !(cc_nan | cc_z | cc_n); break;        /* GT */
-    case 0x13: take_branch = cc_z | !(cc_nan | cc_n); break;        /* GE */
-    case 0x14: take_branch = cc_n & !(cc_nan | cc_z); break;        /* LT */
-    case 0x15: take_branch = cc_z | (cc_n & !cc_nan); break;        /* LE */
-    case 0x16: take_branch = !(cc_nan | cc_z); break;               /* GL */
-    case 0x17: take_branch = !cc_nan; break;                        /* GLE */
-    case 0x18: take_branch = cc_nan; break;                         /* NGLE */
-    case 0x19: take_branch = cc_nan | cc_z; break;                  /* NGL */
-    case 0x1A: take_branch = cc_nan | !(cc_n | cc_z); break;       /* NLE */
-    case 0x1B: take_branch = cc_nan | cc_z | !cc_n; break;         /* NLT */
-    case 0x1C: take_branch = cc_nan | (cc_n & !cc_z); break;       /* NGE */
-    case 0x1D: take_branch = cc_nan | cc_z | cc_n; break;          /* NGT */
-    case 0x1E: take_branch = !cc_z; break;                          /* SNE */
-    case 0x1F: take_branch = 1; break;                              /* ST */
-    }
-
-    if (take_branch)
+    if (eval_fpu_condition(condition))
         pc = branch_pc + displacement;
 
     m68k_set_reg(M68K_REG_PC, pc);
@@ -952,7 +953,7 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
     }
     default:
         xil_printf("FLINE: FMOVE to mem unsupported fmt=%d\r\n", fmt);
-        break;
+        return 0;  /* unhandled — let Musashi generate exception */
     }
 
     /* Post-increment: advance An after use */
@@ -963,6 +964,139 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
 
     m68k_set_reg(M68K_REG_PC, pc);
     return 1;
+}
+
+/* ------------------------------------------------------------------ */
+/* FSAVE / FRESTORE via CIR cpSAVE/cpRESTORE dialog                    */
+/*                                                                     */
+/* Switches to CIR mode, executes the save/restore dialog to transfer  */
+/* the FPU internal state frame, then returns to peripheral mode.      */
+/* EmuTOS uses FSAVE/FRESTORE for FPU detection (_detect_fpu) and      */
+/* context switching.                                                  */
+/* ------------------------------------------------------------------ */
+
+static void handle_fsave(unsigned int opword, unsigned int pc)
+{
+    int ea_mode = EA_MODE(opword);
+    int ea_reg  = EA_REG(opword);
+
+    /* --- CIR cpSAVE dialog --- */
+    fpu_wr(OFF_CIR_MODE, 1);
+
+    /* Write cpSAVE opword to start the dialog */
+    cir_wr(OFF_CIR_OPWORD, CIR_OPWORD_CPSAVE);
+
+    /* Read format word from Save CIR register.
+     * FPGA transitions CIR_SAVE_WAIT → CIR_SAVE_FORMAT in one clock;
+     * by the time our AXI read completes the format word is ready. */
+    u16 format_word = (u16)cir_rd(OFF_CIR_SAVE);
+
+    /* Read data words from Operand CIR.
+     * Lower byte of format word = frame data size in bytes. */
+    int n_words = (format_word & 0xFF) / 4;
+    if (n_words > 56) n_words = 56;  /* clamp to buffer size */
+    u32 frame_data[56];  /* max 53 words for 68882 busy frame */
+    for (int i = 0; i < n_words; i++)
+        frame_data[i] = cir_rd(OFF_CIR_OPERAND);
+
+    /* Wait for CIR to return to idle */
+    {
+        int i;
+        for (i = 0; i < 100; i++) {
+            if (cir_rd(OFF_CIR_RESPONSE) != CIR_BUSY)
+                break;
+        }
+        if (i == 100)
+            xil_printf("[FLINE] FATAL: CIR still busy after timeout\r\n");
+    }
+
+    /* Switch back to peripheral mode */
+    fpu_wr(OFF_CIR_MODE, 0);
+
+    /* --- Write frame to 68K memory --- */
+    int total_frame_size = 4 + n_words * 4;  /* format longword + data */
+    unsigned int ea_addr;
+
+    if (ea_mode == 4) {
+        /* -(An) predecrement */
+        unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+        an -= total_frame_size;
+        m68k_set_reg(M68K_REG_A0 + ea_reg, an);
+        ea_addr = an;
+    } else {
+        ea_addr = eval_ea(ea_mode, ea_reg, &pc);
+    }
+
+    /* Format word in upper 16 bits of first longword */
+    m68k_write_memory_32(ea_addr, (u32)format_word << 16);
+
+    /* Data words follow */
+    for (int i = 0; i < n_words; i++)
+        m68k_write_memory_32(ea_addr + 4 + i * 4, frame_data[i]);
+
+    m68k_set_reg(M68K_REG_PC, pc);
+}
+
+static void handle_frestore(unsigned int opword, unsigned int pc)
+{
+    int ea_mode = EA_MODE(opword);
+    int ea_reg  = EA_REG(opword);
+
+    /* --- Read frame from 68K memory --- */
+    unsigned int ea_addr;
+
+    if (ea_mode == 3) {
+        /* (An)+ postincrement: use current An, advance after */
+        ea_addr = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+    } else {
+        ea_addr = eval_ea(ea_mode, ea_reg, &pc);
+    }
+
+    /* Format word is upper 16 bits of first longword */
+    u16 format_word = (u16)(m68k_read_memory_32(ea_addr) >> 16);
+
+    /* Read data words */
+    int n_words = (format_word & 0xFF) / 4;
+    if (n_words > 56) n_words = 56;  /* clamp to buffer size */
+    u32 frame_data[56];
+    for (int i = 0; i < n_words; i++)
+        frame_data[i] = m68k_read_memory_32(ea_addr + 4 + i * 4);
+
+    /* Advance An for postincrement */
+    if (ea_mode == 3) {
+        int total_frame_size = 4 + n_words * 4;
+        unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+        m68k_set_reg(M68K_REG_A0 + ea_reg, an + total_frame_size);
+    }
+
+    /* --- CIR cpRESTORE dialog --- */
+    fpu_wr(OFF_CIR_MODE, 1);
+
+    /* Write cpRESTORE opword */
+    cir_wr(OFF_CIR_OPWORD, CIR_OPWORD_CPRESTORE);
+
+    /* Write format word to Restore CIR register */
+    cir_wr(OFF_CIR_RESTORE, (u32)format_word);
+
+    /* Write data words to Operand CIR (skip for null frame) */
+    for (int i = 0; i < n_words; i++)
+        cir_wr(OFF_CIR_OPERAND, frame_data[i]);
+
+    /* Wait for CIR to return to idle */
+    {
+        int i;
+        for (i = 0; i < 100; i++) {
+            if (cir_rd(OFF_CIR_RESPONSE) != CIR_BUSY)
+                break;
+        }
+        if (i == 100)
+            xil_printf("[FLINE] FATAL: CIR still busy after timeout\r\n");
+    }
+
+    /* Switch back to peripheral mode */
+    fpu_wr(OFF_CIR_MODE, 0);
+
+    m68k_set_reg(M68K_REG_PC, pc);
 }
 
 /* ------------------------------------------------------------------ */
@@ -978,6 +1112,9 @@ int fline_illg_callback(int opcode)
 
     unsigned int type = (opword >> 6) & 7;
     unsigned int pc = m68k_get_reg(NULL, M68K_REG_PC);
+
+    /* Debug: log unhandled F-line instructions (one-shot per PC) */
+    static unsigned int last_unhandled_pc = 0;
 
     /* Update FPIAR with instruction address */
     fp_reg_set_fpiar(pc - 2);  /* opword was at pc-2 */
@@ -1004,32 +1141,44 @@ int fline_illg_callback(int opcode)
         return handle_general(opword, pc);
     }
 
-    case 1:
-        /* Type 001: FDBcc / FScc / FTRAPcc — not yet implemented.
-         * Return 0 (unhandled) so Musashi takes the exception rather
-         * than us advancing PC by the wrong amount. */
-        xil_printf("FLINE: FDBcc/FScc/FTRAPcc not implemented\r\n");
-        return 0;
+    case 1: {
+        /* Type 001: FScc / FDBcc / FTRAPcc */
+        int ea_mode = EA_MODE(opword);
+        int ea_reg  = EA_REG(opword);
+        if (ea_mode == 1) {
+            /* ea_mode 001 = FDBcc */
+            return handle_fdbcc(opword, pc);
+        }
+        if (ea_mode == 7 && (ea_reg >= 2 && ea_reg <= 4)) {
+            /* FTRAPcc — not implemented, let Musashi handle */
+            if (last_unhandled_pc != pc - 2) {
+                last_unhandled_pc = pc - 2;
+                xil_printf("[FLINE] FTRAPcc not implemented PC=$%06X\r\n", pc - 2);
+            }
+            return 0;
+        }
+        /* All other EA modes = FScc */
+        return handle_fscc(opword, pc);
+    }
 
     case 2: /* FBcc.W */
     case 3: /* FBcc.L */
         return handle_fbcc(opword, pc);
 
     case 4: /* FSAVE <ea> */
-        /* No preemptive context — write a 4-byte null (idle) frame.
-         * Format: opword is F327 xxxx etc.; EA in bits 5-0.
-         * For now, just advance past the 2-byte opword.  The destination
-         * gets a null frame (all zeros) which newlib/libgcc won't inspect. */
-        m68k_set_reg(M68K_REG_PC, pc);
+        handle_fsave(opword, pc);
         return 1;
 
     case 5: /* FRESTORE <ea> */
-        /* Restoring from a null frame is a no-op — FPU stays idle. */
-        m68k_set_reg(M68K_REG_PC, pc);
+        handle_frestore(opword, pc);
         return 1;
 
     default:
-        xil_printf("FLINE: type %d not implemented\r\n", type);
+        if (last_unhandled_pc != pc - 2) {
+            last_unhandled_pc = pc - 2;
+            xil_printf("[FLINE] UNHANDLED type=%d PC=$%06X opword=$%04X\r\n",
+                       type, pc - 2, opword);
+        }
         return 0;
     }
 }
@@ -1046,12 +1195,9 @@ int fline_init(void)
         return FPU_BUS_ERR;
     }
     /* Disable CIR mode — use peripheral register interface (OPSEL/OPA/OPB).
-     * CIR is enabled by default on the AXI peripheral. */
+     * CIR is enabled by default on the FPU. The mode register is write-only
+     * (reading ADDR_CIR_RESPONSE returns the dialog response, not the mode). */
     fpu_wr(OFF_CIR_MODE, 0);
-    if (fpu_rd(OFF_CIR_MODE) != 0) {
-        xil_printf("FATAL: fline_init: CIR mode disable failed\r\n");
-        return FPU_BUS_ERR;
-    }
     fpu_write_fpcr(0);
     return FPU_OK;
 }

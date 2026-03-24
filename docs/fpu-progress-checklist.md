@@ -97,7 +97,7 @@ B) Functional Completeness (Core Missing Ops)
     - FBcc, FDBcc, FScc, FNOP.
     - Ordered/unordered condition-code variants and NaN behavior.
     - FPU condition-code generation from FCMP/FTST results.
-    - Done: core-v1 decode/class metadata and conditional execution wiring are in place for
+    - Done: decode/class metadata and conditional execution wiring are in place for
       FScc/FBcc/FDBcc.
       FScc evaluates FPSR CC flags and returns byte true/false in result low byte.
       FBcc now reports condition/branch outcome via `ADDR_CIR_RESPONSE`.
@@ -330,7 +330,99 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Open Defects
 
-(none)
+### DEF-CIR-002: FPU_HARD.PRG SFP004 peripheral protocol not supported
+
+**Severity:** High (blocks FPU_HARD.PRG and similar Atari SFP004 software)
+
+**Symptom:** FPU_HARD.PRG (Quidnunc 1991) hangs polling $FFFA40 for response
+$9608 after writing command $540E (FSIN.D) to $FFFA4A. The stuck loop is at
+the CIR response comparison — the FPU returns $0802 (NULL→ID) but the code
+expects SFP004 peripheral response values.
+
+**Root cause:** FPU_HARD.PRG uses the Atari SFP004 peripheral protocol:
+1. Writes Command only (no OpWord) — our CIR FSM needs both
+2. Expects SFP004 response encoding ($9608=transfer-to-CP 8 bytes,
+   $B208=transfer-from-CP 8 bytes, $B104=transfer-from-CP 4 bytes)
+   instead of standard CIR primitives ($7008, $6008, $6004)
+
+**Disassembly of FPU_HARD.PRG dialog pattern:**
+```
+CMPI.W  #$0802, ($FFFFA40).L  ; poll idle
+BNE.S   *
+MOVE.W  #$540E, ($FFFFA4A).L  ; write command (no OpWord!)
+CMPI.W  #$9608, ($FFFFA40).L  ; poll transfer-to-CP (SFP004 encoding)
+BNE.S   *                      ; ← STUCK HERE
+MOVE.L  4(SP), ($FFFFA50).L   ; write operand word 1
+MOVE.L  8(SP), ($FFFFA50).L   ; write operand word 2
+```
+
+**Action:**
+1. Auto-inject cpGEN OpWord in emu_memory.c when Command write arrives
+   without a preceding OpWord (SFP004 compatibility)
+2. Map SFP004 response values to/from CIR primitives in fpu_cir_read,
+   or add SFP004 response mode to the VHDL
+3. Consult MC68881 User Manual for complete SFP004 peripheral response
+   encoding table
+
+**File:** `validation/hello_world/src/emu_memory.c`
+
+### DEF-BLT-001: Blitter icon corruption with NFSR + non-zero skew
+
+**Severity:** Medium (cosmetic — floppy and desktop are functional)
+
+**Symptom:** Desktop floppy icon (DISK A) draws correctly, but ghost/shifted
+copies appear to the right. Labels show repeated "A A A A A". Affects icon
+drawing only; menus and windows render correctly after NFSR zero-fill fix.
+
+**Blitter parameters triggering the bug:**
+- `hop=2 op=7 skew=$44` — source AND dest, NFSR=1, skew_amt=4
+- `hop=2 op=4 skew=$44` — source AND NOT dest, NFSR=1, skew_amt=4
+
+**Root cause:** The barrel shifter produces data that leaks past the endmask
+boundary when NFSR is active with a non-zero skew amount. The interaction
+between `src_prev` (used as last bus value for NFSR), the 4-bit skew shift,
+and the endmask clipping is not correctly matching Hatari's behavior.
+
+**Action:** Compare `blitter_emu.c` step-by-step against Hatari's
+`Blitter_SourceShift()` and `Blitter_Step()` for the NFSR + skew path.
+Key areas: NFSR evaluation timing (Hatari: at x_count==2), barrel shift
+buffer update order, and the "weird" NFSR+FXSR combined case with two
+extra SourceShift+SourceFetch(true) calls.
+
+**File:** `validation/hello_world/src/blitter_emu.c`
+
+### DEF-CIR-001: Pending dialog dropped when EXECUTE ends mid-command (68882)
+- Status: Closed (2026-03-24)
+- Files: `src/mc68881_top.vhd` (cir_write_proc pending seen flag clear)
+- Description: Back-to-back 68882 instructions could lose the second instruction
+  if its OpWord arrived near the end of the first operation. The
+  `pending_opword_seen_reg`/`pending_cmd_seen_reg` flags were cleared on any
+  exit from `CIR_EXECUTE`, but a partially received pending instruction (OpWord
+  arrived, Command not yet) lost its OpWord flag when the FSM moved to
+  `CIR_EXECUTE_DONE`.
+- Resolution: Changed flag clear condition from `cir_state_reg /= CIR_EXECUTE`
+  to `cir_state_reg = CIR_PENDING_DECODE or cir_state_reg = CIR_IDLE`. Flags
+  are now only cleared when the pending instruction is consumed or the FSM
+  returns to idle.
+- Source: PR #59 codex review
+
+### DEF-USB-001: HID interface number hardcoded to 0
+
+**Severity:** Medium (affects composite USB devices)
+
+**Symptom:** `SET_PROTOCOL` and `SET_REPORT` (LED update) use `wIndex=0`
+regardless of the actual HID interface number detected during enumeration.
+Composite keyboards/mice with HID on interface != 0 may fail to switch to
+boot protocol or update LEDs.
+
+**Root cause:** `validation/hello_world/src/usb_hid.c` — `find_hid_keyboard()`
+and `find_hid_mouse()` detect and print the interface number but the setup
+requests hardcode `wIndex=0`.
+
+**Action:** Store detected interface number and use it in `SET_PROTOCOL` and
+`SET_REPORT` class requests.
+
+**Source:** PR #59 codex review
 
 ## Closed Defects
 
@@ -504,6 +596,66 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
   Affects MUL HUGE*TWO RZ/RM golden vectors (currently tested as +inf).
 - **Subnormal reference flush**: `fp80_hex_safe` flushes subnormal results to zero.
   DIV TINY/TWO and MUL TINY*HALF comments should note the reference is flushed to zero.
+
+G) MC68882 Upgrade
+------------------
+Target: Add MC68882 mode via `fpu_version_g` generic (FPU_68881 default, FPU_68882 optional).
+
+[x] G1. Package: add `fpu_version_t` type, 68882 frame constants, helper functions, new CIR states.
+    - `fpu_version_t` enum (FPU_68881, FPU_68882) in mc68881_pkg.
+    - Frame constants: IDLE_FW_82=$0038/14W, BUSY_FW_82=$00D4/53W.
+    - 8 helper functions: frame_idle_fw/busy_fw/idle_words/busy_words(ver),
+      is_valid_idle_fw/busy_fw(fw), idle_words_for_fw/busy_words_for_fw(fw).
+    - 4 new CIR states: CIR_PENDING_DECODE, CIR_PENDING_XFER_SRC, _WAIT, _WAIT2.
+
+[x] G2. Top-level: add `fpu_version_g` generic, version-resolved local constants.
+    - Entity generic `fpu_version_g : fpu_version_t := FPU_68881`.
+    - Architecture constants VER_FRAME_IDLE_FW/BUSY_FW/IDLE_WORDS/BUSY_WORDS.
+    - Widened signal ranges: cir_xfer_word_idx 0..52, cir_xfer_word_count 0..53.
+    - 15 pending instruction pipeline signals (pending_valid/opword/command/operand_staging/...).
+
+[x] G3. FSAVE: version-aware frame format output.
+    - CIR_SAVE_WAIT uses VER_FRAME_* constants.
+    - SAVE_FRAME data mux: 8 extra words (idle 6-13, busy 45-52) for pending pipeline state.
+    - Idle words 6-13 multiplex between pending state (68882 idle) and operand data (busy).
+
+[x] G4. FRESTORE: cross-compatible format acceptance.
+    - Accepts both 68881 ($0018/$00B4) and 68882 ($0038/$00D4) format words via is_valid_*_fw().
+    - Restore commit check widened to accept both busy word counts.
+    - Extra 68882 words (idle 6-13, busy 45-52) restore pending pipeline state.
+    - Null restore clears pending_valid_reg.
+
+[x] G5. Pending instruction pipeline (68882 mode only).
+    - CIR_EXECUTE: accept new cpGEN while ALU busy (gated on fpu_version_g = FPU_68882).
+    - CIR_PENDING_DECODE/XFER_SRC/WAIT/WAIT2: mirror normal CIR flow for pending operands.
+    - CIR_EXECUTE_DONE: auto-launch pending instruction via pending_launch_reg pulse.
+    - bus_frame_proc: pending_launch_reg handler mirrors cir_launch_alu operand loading.
+    - alu_control_proc: pending_launch_reg dispatch, FPIAR capture, cycle counting.
+    - Response primitive: CIR_EXECUTE returns NULL (not BUSY) when pending slot empty in 68882.
+    - was_pending_launch_reg + launch_dst_reg_idx_reg for correct writeback routing.
+
+[ ] G6. New testbench: tb_mc68882_fsave.vhd.
+    - 9 frame format tests (null/idle/busy save, idle/busy round-trip, cross-compat, invalid).
+    - 10 pending pipeline tests (back-to-back, handoff, full queue, exception, FSAVE preempt).
+
+[ ] G7. Update test runner: add tb_mc68882_fsave.vhd to scripts/run_tests.ps1.
+
+[x] G8. (Nice-to-have) Clock speed target 50 MHz.
+    - XDC constraint set to 20.0ns (50 MHz). Timing met post-route physopt (WNS=+0.000ns).
+    - Multi-cycle path constraints added for format conversion paths (operand→result MCP=14,
+      fp_reg_file→result_hi/lo MCP=2, operand→fp_reg_file MCP=3, operand→exc_event_result MCP=3,
+      simple_*→result MCP=3, cir_dst_reg_idx→result MCP=2, fpcr→exc_event_force MCP=2,
+      fp_reg_file→cir_operand_staging MCP=2).
+    - Sequential FP units (mul/add/div) in trig and ALU eliminate combinational FP MCPs.
+    - No alu_latency changes required — existing values absorb extra hold cycles.
+
+[ ] G9. 50 MHz timing margin: pipeline log_unbiased_exp → mul_a_reg path.
+    - Tightest path at 50 MHz: log_unbiased_exp_reg → mul_a_reg (39.9ns, MCP=2, 0.000ns slack).
+    - 50 logic levels, 60% route-dominated. fp80_from_int(log_unbiased_exp_reg) conversion.
+    - Options: (a) register the fp80_from_int output in an intermediate pipeline stage,
+      (b) Vivado placement constraints (pblock) to keep trig_inst compact,
+      (c) bump MCP to 3 if RTL can guarantee 3-cycle separation (currently 2-cycle via
+      ST_LOG_GETEXP_HOLD).
 
 ## Implementation Snapshot (2026-03-18, Graphics + Toolchain + FMOVECR)
 - Milestone:

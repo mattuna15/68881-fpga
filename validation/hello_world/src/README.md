@@ -247,6 +247,12 @@ ARM Cortex-A53 (bare-metal Vitis BSP)
 |   +-- Transfers operand words via CIR Operand register
 |   +-- Uses FPU's internal FP register file (FP0-FP7)
 |
++-- USB HID keyboard driver (usb_hid.c)
+|   +-- DWC3 @ 0xFE200000 -> xHCI host mode
+|   +-- Hub enumeration (up to 3 levels)
+|   +-- HID boot protocol -> ASCII -> mfp_rx_push()
+|   +-- Caps Lock / Num Lock LED control
+|
 +-- AXI-Lite @ 0x80000000
          |
     mc68881_axilite_wrapper -> FPU core
@@ -336,16 +342,72 @@ provides an interactive monitor with a built-in assembler (CODE68K) and disassem
   arithmetic, FMOVECR, FMOVE to/from control registers, FMOVE to memory,
   and FBcc branches with all 32 condition codes
 - **MFP emulation** -- MC68901 USART emulation maps ARM UART RX/TX to the
-  BIOS character I/O, enabling keyboard input and serial output
+  BIOS character I/O, enabling keyboard input and serial output. Includes
+  millisecond tick counter, RTC (Unix seconds + BCD datetime via ZynqMP PS
+  RTC), and Timer C periodic interrupt (~133 Hz, IPL 6 autovectored)
+- **USB keyboard** -- ZynqMP DWC3 xHCI host-mode driver enumerates USB HID
+  keyboards (including devices behind up to 3 levels of USB hubs), translates
+  boot-protocol key reports to ASCII, and feeds characters into the MFP RX
+  buffer. Caps Lock and Num Lock toggle with LED feedback via HID SET_REPORT.
+  Initialises at boot; falls back to UART-only input if no keyboard is present
+- **USB mouse** -- HID boot-protocol mouse enumerated alongside the keyboard
+  (separate xHCI slot and transfer ring). Button state, signed deltas, and
+  absolute position (clamped to 1280x720) tracked by the ARM USB driver and
+  exposed at `$FD0050` via memory-mapped I/O. TRAP #15 D0=26/27/28 provide
+  get-mouse, get-position, and set-position functions. The `mousetest` GCC
+  example demonstrates graphical cursor tracking with click detection
+- **Real-time clock** -- TRAP #15 D0=22 (GET_RTC), D0=23 (GET_DATETIME),
+  D0=24 (SET_RTC). Backed by ZynqMP PS hardware RTC with battery retention.
+  BCD datetime returns packed YYYYMMDD + HHMMSSwd
+- **Timer C interrupt** -- MC68901-compatible Timer C with configurable
+  prescaler (TCDCR bits 6-4) and counter (TCDR). Default ~133 Hz
+  (prescaler /200, counter 92). Fires IPL 6 autovector (vector 30).
+  BIOS tick counter via TRAP #15 D0=25
+- **Graphics mode** -- 1280x720 ARGB8888 pixel-addressable framebuffer at
+  `$800000`. TRAP #15 D0=17-21 for mode switching, clear, set/get pixel,
+  screen info. Direct framebuffer writes for high-speed rendering
 - **DisplayPort text output** -- 80x30 character text framebuffer rendered
   to 1280x720@60Hz ARGB8888 via PS DisplayPort TX + DPDMA
+- **S-record loader** -- `L` command loads Motorola S-record files (S1/S2/S3
+  data records, S7/S8/S9 termination). Used to load GCC-compiled programs
+
+### TRAP #15 Functions
+
+| D0 | Function | Parameters | Returns |
+|----|----------|-----------|---------|
+| 0 | Print string (CRLF) | A1=string, D1.W=len | — |
+| 1 | Print string (raw) | A1=string, D1.W=len | — |
+| 2 | Read string | A1=buffer | D1.W=len |
+| 3 | Print signed decimal | D1.L=number | — |
+| 5 | Read char | — | D1.B=char |
+| 6 | Write char | D1.B=char | — |
+| 7 | Char ready | — | D1.B (0/1) |
+| 8 | Get time (ms) | — | D1.L=milliseconds |
+| 12 | Set echo | D1.B (0=off, 1=on) | — |
+| 17 | Set video mode | D1.B (0=text, 1=gfx) | — |
+| 18 | Clear framebuffer | D1.L=ARGB colour | — |
+| 19 | Set pixel | D1.W=X, D2.W=Y, D3.L=ARGB | — |
+| 20 | Get pixel | D1.W=X, D2.W=Y | D1.L=ARGB |
+| 21 | Screen info | — | D1.W=width, D2.W=height |
+| 22 | Get RTC | — | D1.L=Unix seconds |
+| 23 | Get datetime | — | D1.L=YYYYMMDD, D2.L=HHMMSSwd (BCD) |
+| 24 | Set RTC | D1.L=Unix seconds | — |
+| 25 | Get ticks | — | D1.L=Timer C tick count |
+| 26 | Get mouse | — | D1.B=buttons, D2.W=deltaX, D3.W=deltaY |
+| 27 | Get mouse pos | — | D1.W=absX, D2.W=absY |
+| 28 | Set mouse pos | D1.W=absX, D2.W=absY | — |
 
 ### Memory Map
 
 | Address | Size | Description |
 |---------|------|-------------|
-| `$000000-$00FFFF` | 64K | RAM (workspace, stack) |
-| `$FD0000-$FD003F` | 64 bytes | MC68901 MFP (emulated) |
+| `$000000-$001FFF` | 8K | BIOS workspace (vectors, variables, stack) |
+| `$002000-$7FDFFF` | ~8 MB | Program RAM (code, data, BSS, heap) |
+| `$7FDFFC` | — | Stack top (grows down) |
+| `$800000-$B84FFF` | 3.6 MB | Graphics framebuffer (1280x720 ARGB8888) |
+| `$FD0000-$FD003F` | 64 bytes | MC68901 MFP (emulated, incl. RTC + timers) |
+| `$FD0040-$FD004F` | 16 bytes | Graphics control registers |
+| `$FD0050-$FD005B` | 12 bytes | Mouse state (buttons, delta, abs position) |
 | `$FE0000-$FFFFFF` | 128K | ROM (BIOS image) |
 
 ### Building the ROM
@@ -412,6 +474,7 @@ The project is a standard Vitis embedded application targeting the ZU3EG platfor
 | `dp_video.c` | PS DisplayPort TX + DPDMA output driver |
 | `text_fb.c` | 80x30 text framebuffer (8x16 font, ARGB8888) |
 | `mfp_emu.c` | MC68901 MFP USART emulation |
+| `usb_hid.c` | USB HID keyboard driver (DWC3 xHCI host, hub traversal) |
 
 **Do NOT compile:** `m68kfpu.c` (Musashi's software FPU -- `#include`d by
 m68kcpu.c but its functions are dead code with all higher CPUs disabled),
@@ -434,3 +497,33 @@ the functions are never executed).
 - **Branch:** FBcc (16-bit and 32-bit displacement, all 32 condition codes)
 
 **Source formats:** Byte, Word, Long, Single, Double, Extended (12-byte).
+
+## GCC Example Programs
+
+The `toolchain/examples/` directory contains C programs that run on the M68K emulator.
+Programs are cross-compiled with m68k-elf-gcc, loaded via S-record (`L` command), and
+executed with `G 2000`. Build with `.\build.ps1` from the examples directory (requires
+Cygwin with m68k-elf-gcc).
+
+| Program | Description | Input |
+|---------|-------------|-------|
+| `hello.c` | Hello world — printf, TRAP I/O | — |
+| `fputest.c` | FPU arithmetic (sin, cos, sqrt via hardware MC68881) | — |
+| `fireworks.c` | Animated fireworks with physics (gravity, particles) | Key to exit |
+| `rtctest.c` | RTC date/time read/set, Timer C tick monitor | UART input |
+| `mousetest.c` | USB mouse cursor demo with click markers | Mouse + key to exit |
+
+### Mouse Demo (`mousetest.c`)
+
+Graphical demo showing USB mouse integration:
+
+1. Switches to 1280x720 graphics mode
+2. Draws a green crosshair cursor tracking the mouse position
+3. Left/right/middle clicks leave coloured dot markers (red/blue/yellow)
+4. Top banner shows live X/Y coordinates and active buttons
+5. Press any keyboard key to exit back to text mode
+
+The demo reads mouse state directly from memory-mapped I/O at `$FD0050`,
+bypassing the TRAP layer (works without rebuilding the BIOS ROM). It uses
+the `merlin2_gfx.h` library for graphics and a built-in 5x7 bitmap font
+for on-screen text rendering.

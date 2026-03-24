@@ -15,7 +15,7 @@
 
 /* MC68901 MFP base address and register span (as expected by bios.s) */
 #define MFP_BASE        0xFD0000
-#define MFP_SIZE        0x34        /* registers 0x01..0x2F + tick counter 0x30..0x33 */
+#define MFP_SIZE        0x40        /* registers 0x01..0x2F + tick 0x30 + RTC 0x34 + datetime 0x38 */
 #define MFP_END         (MFP_BASE + MFP_SIZE)
 
 /* ROM region */
@@ -52,8 +52,16 @@
 /* Extension: 32-bit millisecond tick counter (read-only, big-endian) */
 #define MFP_OFF_TICK    0x30    /* 4 bytes: ms since mfp_init() */
 
-/* Initialize MFP emulation state */
+/* Extension: RTC Unix seconds (R/W) and BCD datetime (R) */
+#define MFP_OFF_RTC         0x34    /* 4 bytes: Unix timestamp (R/W, big-endian) */
+#define MFP_OFF_DATETIME    0x38    /* 8 bytes: YYYYMMDD + HHMMSSwd BCD (R, big-endian) */
+
+/* Initialize MFP emulation state (including Timer C) */
 void mfp_init(void);
+
+/* Advance Timer C by elapsed CPU cycles.
+ * Returns 1 if Timer C expired (caller should assert IRQ 6). */
+int mfp_timer_tick(uint32_t cycles_elapsed);
 
 /* Read a byte from an MFP register.
  * offset = address - MFP_BASE (0x00..0x2F) */
@@ -69,5 +77,36 @@ int mfp_rx_push(uint8_t ch);
 
 /* Check if RX buffer has data */
 int mfp_rx_has_data(void);
+
+/* ------------------------------------------------------------------ */
+/* Atari ST MFP at $FFFA00 — interrupt controller for ACIA/Timer C    */
+/* ------------------------------------------------------------------ */
+
+#define ATARI_MFP_BASE  0xFFFA00
+#define ATARI_MFP_SIZE  0x30
+
+/* Initialise Atari MFP registers (call after mfp_init) */
+void atari_mfp_init(void);
+
+/* Read/write a byte at offset within the Atari MFP register space.
+ * offset = address - ATARI_MFP_BASE (0x00..0x2F) */
+uint8_t atari_mfp_read(uint32_t offset);
+void atari_mfp_write(uint32_t offset, uint8_t value);
+
+/* Set Timer C pending bit in IPRB (called when Timer C fires) */
+void atari_mfp_set_timer_c_pending(void);
+
+/* Set FDC/HDC interrupt pending in IPRA bit 7 (called on FDC command complete) */
+void atari_mfp_set_fdc_pending(void);
+
+/* Update GPIP/IPRA based on ACIA FIFO state (call after push/pop) */
+void atari_mfp_update_acia_irq(void);
+
+/* Check if MFP has any deliverable interrupt (pending + enabled + masked) */
+int atari_mfp_has_pending_irq(void);
+
+/* Acknowledge highest-priority pending interrupt.
+ * Returns vector number (>= 0) or -1 if none pending. */
+int atari_mfp_acknowledge(void);
 
 #endif /* MFP_EMU_H */

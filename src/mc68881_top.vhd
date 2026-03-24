@@ -16,7 +16,10 @@ entity mc68881_top is
     packed_decimal_full_g : boolean := true;
     -- `true`: MC68040 hardware subset (11 ALU ops, no trig/sglops/modrem/getexp/getman).
     -- `false`: full MC68881 (37 ALU ops + 10 control/move).
-    fpu_lite_g : boolean := false
+    fpu_lite_g : boolean := false;
+    -- FPU version: FPU_68881 (default) or FPU_68882.
+    -- Selects FSAVE frame format and enables pending instruction pipeline.
+    fpu_version_g : fpu_version_t := FPU_68881
   );
   port (
     -- Bus interface
@@ -38,6 +41,12 @@ entity mc68881_top is
 end entity mc68881_top;
 
 architecture rtl of mc68881_top is
+  -- Version-resolved FSAVE frame constants (elaboration-time, zero runtime cost).
+  constant VER_FRAME_IDLE_FW    : std_logic_vector(15 downto 0) := frame_idle_fw(fpu_version_g);
+  constant VER_FRAME_BUSY_FW    : std_logic_vector(15 downto 0) := frame_busy_fw(fpu_version_g);
+  constant VER_FRAME_IDLE_WORDS : natural := frame_idle_words(fpu_version_g);
+  constant VER_FRAME_BUSY_WORDS : natural := frame_busy_words(fpu_version_g);
+
   -- Two-slot operand buffer (A/B) used by bus writes before ALU launch.
   type reg_array_t is array (0 to 1) of fp80_t;
   type reg_hi16_array_t is array (0 to 1) of std_logic_vector(15 downto 0);
@@ -149,6 +158,8 @@ architecture rtl of mc68881_top is
   signal micro_total_reg : std_logic_vector(31 downto 0) := (others => '0');
   signal result_ready_reg    : std_logic := '0';
   signal last_op_sel_reg     : fpu_op_t := FPU_OP_NOP;
+  signal launch_dst_reg_idx_reg : natural range 0 to 7 := 0;  -- Captured dst FP reg for pending launch
+  signal was_pending_launch_reg : std_logic := '0';  -- Tracks if active ALU op was pending-launched
   signal fpiar_issue_snapshot_reg : std_logic_vector(31 downto 0) := (others => '0');
   type fp_reg_file_t is array (0 to 7) of fp80_t;
   signal fp_reg_file_reg : fp_reg_file_t := (others => (others => '0'));
@@ -201,8 +212,8 @@ architecture rtl of mc68881_top is
   signal cir_src_reg_idx       : natural range 0 to 7 := 0;
   signal cir_reg_to_reg        : std_logic := '0';
   signal cir_direction         : std_logic := '0';  -- Bit 13: 0=mem→reg, 1=reg→mem
-  signal cir_xfer_word_idx     : natural range 0 to 44 := 0;
-  signal cir_xfer_word_count   : natural range 0 to 45 := 0;
+  signal cir_xfer_word_idx     : natural range 0 to 52 := 0;
+  signal cir_xfer_word_count   : natural range 0 to 53 := 0;
   signal cir_response_prim     : std_logic_vector(15 downto 0) := CIR_PRIM_NULL;
   signal cir_opword_written    : std_logic := '0';
   signal cir_command_written   : std_logic := '0';
@@ -221,6 +232,27 @@ architecture rtl of mc68881_top is
   signal cir_decoded_op        : fpu_op_t := FPU_OP_NOP;     -- Combinational decode of command word
   signal cir_arith_active_reg  : std_logic := '0';           -- Tracks CIR-launched arith op in alu_control_proc
   signal cir_move_pending_reg  : std_logic := '0';           -- One-cycle deferred FMOVE copy
+
+  -- MC68882 pending instruction pipeline (1-deep queue).
+  -- In FPU_68881 mode these signals stay at default and all CIR_PENDING_* states are unreachable.
+  signal pending_valid_reg       : std_logic := '0';
+  signal pending_opword_reg      : std_logic_vector(15 downto 0) := (others => '0');
+  signal pending_command_reg     : std_logic_vector(15 downto 0) := (others => '0');
+  signal pending_instr_type      : std_logic_vector(2 downto 0) := (others => '0');
+  signal pending_src_fmt_reg     : std_logic_vector(2 downto 0) := (others => '0');
+  signal pending_dst_reg_idx_reg : natural range 0 to 7 := 0;
+  signal pending_src_reg_idx_reg : natural range 0 to 7 := 0;
+  signal pending_reg_to_reg      : std_logic := '0';
+  signal pending_direction       : std_logic := '0';
+  signal pending_decoded_op      : fpu_op_t := FPU_OP_NOP;
+  signal pending_operand_staging : std_logic_vector(95 downto 0) := (others => '0');
+  signal pending_xfer_word_count : natural range 0 to 3 := 0;
+  signal pending_xfer_word_idx   : natural range 0 to 2 := 0;
+  signal pending_instaddr_reg    : std_logic_vector(31 downto 0) := (others => '0');
+  signal pending_launch_reg      : std_logic := '0';  -- One-cycle pulse: launch pending instruction via alu_control_proc
+  signal pending_opword_seen_reg : std_logic := '0';  -- Latched: opword written while in CIR_EXECUTE (68882)
+  signal pending_cmd_seen_reg    : std_logic := '0';  -- Latched: command written while in CIR_EXECUTE (68882)
+  signal pending_skip_valid_reg  : natural range 0 to 2 := 0;  -- Guard: skip stale valid cycles after pending launch (2 needed)
 
   -- CIR operand staging for memory-source/destination transfers (up to 3 x 32-bit words).
   signal cir_operand_staging     : std_logic_vector(95 downto 0) := (others => '0');
@@ -1816,6 +1848,8 @@ begin
      not (conditional_prog_op_write = '1' and cir_response_pending_reg = '1'))
     or
     (cir_launch_alu = '1')
+    or
+    (pending_launch_reg = '1')
   ) else '0';
 
   alu_inst : entity work.mc68881_alu
@@ -2060,6 +2094,52 @@ begin
           else
             operand_reg(0) <= fp_reg_file_reg(cir_dst_reg_idx);
           end if;
+        end if;
+      end if;
+
+      -- MC68882 pending instruction auto-launch: mirrors cir_launch_alu but reads
+      -- from pending_* registers. Only fires for cpGEN (arithmetic/move).
+      if fpu_version_g = FPU_68882 and pending_launch_reg = '1' then
+        op_sel_reg <= pending_decoded_op;
+        if pending_reg_to_reg = '1' then
+          cir_source_val := fp_reg_file_reg(pending_src_reg_idx_reg);
+        else
+          case pending_src_fmt_reg is
+            when CIR_SRC_LONG =>
+              cir_source_val := fp80_from_int(
+                signed32_to_integer(pending_operand_staging(31 downto 0)));
+            when CIR_SRC_SINGLE =>
+              cir_source_val := fp80_from_single(
+                pending_operand_staging(31 downto 0));
+            when CIR_SRC_EXTENDED =>
+              cir_source_val := pending_operand_staging(15 downto 0) &
+                                pending_operand_staging(63 downto 32) &
+                                pending_operand_staging(95 downto 64);
+            when CIR_SRC_WORD =>
+              cir_source_val := fp80_from_int(
+                signed16_to_integer(pending_operand_staging(15 downto 0)));
+            when CIR_SRC_DOUBLE =>
+              cir_source_val := fp80_from_double(
+                pending_operand_staging(31 downto 0) &
+                pending_operand_staging(63 downto 32));
+            when CIR_SRC_BYTE =>
+              cir_source_val := fp80_from_int(
+                signed8_to_integer(pending_operand_staging(7 downto 0)));
+            when CIR_SRC_PACKED =>
+              cir_source_val := packed96_to_fp80_fast(
+                pending_operand_staging(31 downto 0) &
+                pending_operand_staging(63 downto 32) &
+                pending_operand_staging(95 downto 64),
+                fp_reg_file_reg(pending_dst_reg_idx_reg));
+            when others =>
+              cir_source_val := (others => '0');
+          end case;
+        end if;
+        operand_reg(1) <= cir_source_val;
+        if op_is_monadic(pending_decoded_op) then
+          operand_reg(0) <= cir_source_val;
+        else
+          operand_reg(0) <= fp_reg_file_reg(pending_dst_reg_idx_reg);
         end if;
       end if;
 
@@ -2325,6 +2405,7 @@ begin
       -- CIR FRESTORE null: reset FPU to power-on state.
       if cir_restore_null_req = '1' then
         fpu_initialized_reg <= '0';
+        -- pending_valid_reg cleared in cir_dialog_proc (null restore clears CIR state).
       end if;
 
       -- CIR FRESTORE commit: mark FPU initialized and restore staged header data.
@@ -2333,7 +2414,8 @@ begin
         -- Busy frame: restore operands and FPSR from staged header words.
         -- Save layout: word 6=opA(31:0), 7=opA(79:64)&opA(63:48),
         --   8=opB(31:0), 9=opB(79:64)&opB(63:48), 10=opA(63:32), 11=opB(63:32).
-        if cir_xfer_word_count = CIR_FRAME_BUSY_WORDS then
+        if cir_xfer_word_count = CIR_FRAME_BUSY_WORDS
+           or cir_xfer_word_count = CIR_FRAME_BUSY_WORDS_82 then
           fpsr_reg <= cir_frame_data_reg(2);
           operand_reg(0)(31 downto 0)  <= cir_frame_data_reg(6);
           operand_reg(0)(63 downto 32) <= cir_frame_data_reg(10);
@@ -2583,6 +2665,8 @@ begin
         -- Use instruction address from CIR protocol when available.
         if cir_launch_alu = '1' then
           fpiar_issue_snapshot_reg <= cir_instaddr_reg;
+        elsif pending_launch_reg = '1' then
+          fpiar_issue_snapshot_reg <= pending_instaddr_reg;
         else
           fpiar_issue_snapshot_reg <= fpiar_reg;
         end if;
@@ -2601,14 +2685,27 @@ begin
             eff_op_sel := cir_decoded_op;
             eff_op_class := op_class(cir_decoded_op);
           end if;
+        elsif pending_launch_reg = '1' then
+          -- MC68882 pending instruction launch: always cpGEN.
+          eff_op_sel := pending_decoded_op;
+          eff_op_class := op_class(pending_decoded_op);
         else
           eff_op_sel := op_sel_write_decoded;
           eff_op_class := op_class_write_decoded;
         end if;
 
         -- Set last_op_sel_reg, operands, cycle count.
-        if cir_launch_alu = '1' then
+        if cir_launch_alu = '1' or pending_launch_reg = '1' then
           last_op_sel_reg <= eff_op_sel;
+          -- Capture destination register at launch time for writeback.
+          -- Critical for 68882: cir_dst_reg_idx may be overwritten by pending
+          -- instruction's command word before the active op completes.
+          if pending_launch_reg = '1' then
+            launch_dst_reg_idx_reg <= pending_dst_reg_idx_reg;
+          else
+            launch_dst_reg_idx_reg <= cir_dst_reg_idx;
+          end if;
+          was_pending_launch_reg <= pending_launch_reg;
           if eff_op_class = OP_CLASS_PROG_CTRL then
             -- CIR conditional: condition selector is loaded into operand_reg(0)
             -- by the bus_frame_proc CIR launch block (not here, to avoid
@@ -2650,7 +2747,7 @@ begin
         end if;
 
         -- Dispatch uses operation classes to keep execution paths scalable.
-        if cir_launch_alu = '1' and eff_op_class /= OP_CLASS_PROG_CTRL then
+        if (cir_launch_alu = '1' or pending_launch_reg = '1') and eff_op_class /= OP_CLASS_PROG_CTRL then
           -- CIR cpGEN path: MOVE or ARITH only.
           -- MOVE ops bypass the ALU; defer register file copy via flag.
           if eff_op_class = OP_CLASS_MOVE then
@@ -2928,7 +3025,7 @@ begin
             -- assigns operand_reg(0) on this same rising_edge, but the
             -- new value is not visible until the next delta cycle (so
             -- alu_control_proc would read the stale pre-assignment value).
-            if cir_launch_alu = '1' then
+            if cir_launch_alu = '1' or pending_launch_reg = '1' then
               cond_selector := cir_condition_reg;
             else
               cond_selector := operand_reg(0)(5 downto 0);
@@ -3056,9 +3153,13 @@ begin
         -- Gate writeback for compare/test ops that only update condition codes.
         if cir_arith_active_reg = '1' then
           if last_op_sel_reg /= FPU_OP_CMP and last_op_sel_reg /= FPU_OP_TST then
-            fp_reg_file_reg(cir_dst_reg_idx) <= result;
+            -- Always use captured dst index (safe against pending overwrite of cir_dst_reg_idx).
+            fp_reg_file_reg(launch_dst_reg_idx_reg) <= result;
           end if;
-          cir_arith_active_reg <= '0';
+          -- Don't clear if pending launch is simultaneously re-setting it (68882 pipeline overlap).
+          if pending_launch_reg = '0' then
+            cir_arith_active_reg <= '0';
+          end if;
           -- No exc_event needed: the ALU valid path in bus_frame_proc
           -- already runs exc_classification with the correct operands
           -- (operand_reg(0/1)) and result on this same clock edge.
@@ -3068,7 +3169,11 @@ begin
           aux_result_hi_reg <= aux_result(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH);
           aux_result_ex_reg <= aux_result(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH);
         end if;
-        result_ready_reg <= '1';
+        -- Don't set result_ready when pending_launch is simultaneously starting a new op
+        -- (the dispatch block's result_ready_reg <= '0' must take precedence).
+        if pending_launch_reg = '0' then
+          result_ready_reg <= '1';
+        end if;
       end if;
 
       -- CIR FMOVE deferred copy: operand_reg(1) now holds the converted
@@ -3173,7 +3278,12 @@ begin
     op_sel_reg,
     operand_reg,
     alu_save_data,
-    packed_save_data
+    packed_save_data,
+    pending_valid_reg, pending_opword_reg, pending_command_reg,
+    pending_instr_type, pending_src_fmt_reg, pending_dst_reg_idx_reg,
+    pending_src_reg_idx_reg, pending_reg_to_reg, pending_direction,
+    pending_decoded_op, pending_operand_staging, pending_xfer_word_count,
+    pending_xfer_word_idx, pending_instaddr_reg
   )
     variable cfg0 : std_logic_vector(31 downto 0);
     variable cfg1 : std_logic_vector(31 downto 0);
@@ -3226,33 +3336,98 @@ begin
                 d_out_comb <= (others => '0');
               -- Busy frame words 6-44 (only present for Busy format).
               when 6 =>
-                -- Operand A lower 32 bits.
-                d_out_comb <= std_logic_vector(operand_reg(0)(31 downto 0));
+                if is_valid_idle_fw(frame_format_word_reg) then
+                  -- MC68882 idle frame word 6: pending valid + opword.
+                  d_out_comb <= pending_valid_reg & "000000000000000" & pending_opword_reg;
+                else
+                  -- Busy frame: Operand A lower 32 bits.
+                  d_out_comb <= std_logic_vector(operand_reg(0)(31 downto 0));
+                end if;
               when 7 =>
-                -- Operand A upper 48 bits (packed: [47:32] in [15:0], [79:64] in [31:16]).
-                d_out_comb <= std_logic_vector(operand_reg(0)(79 downto 64)) &
-                              std_logic_vector(operand_reg(0)(63 downto 48));
+                if is_valid_idle_fw(frame_format_word_reg) then
+                  d_out_comb <= pending_command_reg & "00000000" &
+                                pending_src_fmt_reg & pending_instr_type & pending_direction & pending_reg_to_reg;
+                else
+                  -- Busy frame: Operand A upper 48 bits.
+                  d_out_comb <= std_logic_vector(operand_reg(0)(79 downto 64)) &
+                                std_logic_vector(operand_reg(0)(63 downto 48));
+                end if;
               when 8 =>
-                -- Operand B lower 32 bits.
-                d_out_comb <= std_logic_vector(operand_reg(1)(31 downto 0));
+                if is_valid_idle_fw(frame_format_word_reg) then
+                  d_out_comb <= pending_operand_staging(31 downto 0);
+                else
+                  d_out_comb <= std_logic_vector(operand_reg(1)(31 downto 0));
+                end if;
               when 9 =>
-                -- Operand B upper 48 bits.
-                d_out_comb <= std_logic_vector(operand_reg(1)(79 downto 64)) &
-                              std_logic_vector(operand_reg(1)(63 downto 48));
+                if is_valid_idle_fw(frame_format_word_reg) then
+                  d_out_comb <= pending_operand_staging(63 downto 32);
+                else
+                  d_out_comb <= std_logic_vector(operand_reg(1)(79 downto 64)) &
+                                std_logic_vector(operand_reg(1)(63 downto 48));
+                end if;
               when 10 =>
-                -- Operand A middle 32 bits.
-                d_out_comb <= std_logic_vector(operand_reg(0)(63 downto 32));
+                if is_valid_idle_fw(frame_format_word_reg) then
+                  d_out_comb <= pending_operand_staging(95 downto 64);
+                else
+                  d_out_comb <= std_logic_vector(operand_reg(0)(63 downto 32));
+                end if;
               when 11 =>
-                -- Operand B middle 32 bits.
-                d_out_comb <= std_logic_vector(operand_reg(1)(63 downto 32));
-              when 12 to 37 =>
-                -- ALU + sub-unit save data (26 words: ALU 0-4, trig 5-15, divrem 16-25).
+                if is_valid_idle_fw(frame_format_word_reg) then
+                  d_out_comb <= pending_instaddr_reg;
+                else
+                  d_out_comb <= std_logic_vector(operand_reg(1)(63 downto 32));
+                end if;
+              when 12 to 13 =>
+                if is_valid_idle_fw(frame_format_word_reg) then
+                  -- MC68882 idle frame words 12-13: pending metadata + reserved.
+                  if cir_save_word_idx = 12 then
+                    d_out_comb <= std_logic_vector(to_unsigned(pending_dst_reg_idx_reg, 4)) &
+                                  std_logic_vector(to_unsigned(pending_src_reg_idx_reg, 4)) &
+                                  std_logic_vector(to_unsigned(fpu_op_t'pos(pending_decoded_op), 8)) &
+                                  std_logic_vector(to_unsigned(pending_xfer_word_count, 4)) &
+                                  std_logic_vector(to_unsigned(pending_xfer_word_idx, 4)) &
+                                  x"00";
+                  else
+                    d_out_comb <= (others => '0');  -- Word 13: reserved.
+                  end if;
+                else
+                  -- Busy frame words 12-13: part of ALU sub-unit save range.
+                  d_out_comb <= alu_save_data;
+                end if;
+              when 14 to 37 =>
+                -- ALU + sub-unit save data (words 14-37 always ALU; 12-13 handled above).
                 d_out_comb <= alu_save_data;
               when 38 to 40 =>
                 -- Packed decimal save data (words 0..2).
                 d_out_comb <= packed_save_data;
+              when 41 to 44 =>
+                -- Padding.
+                d_out_comb <= (others => '0');
+              -- MC68882 extended frame words (idle 6-13, busy 45-52).
+              -- Saves pending instruction pipeline state.
+              -- Unreachable in FPU_68881 mode (word count < 45/6); optimized away.
+              when 45 =>
+                d_out_comb <= pending_valid_reg & "000000000000000" & pending_opword_reg;
+              when 46 =>
+                d_out_comb <= pending_command_reg & "00000000" &
+                              pending_src_fmt_reg & pending_instr_type & pending_direction & pending_reg_to_reg;
+              when 47 =>
+                d_out_comb <= pending_operand_staging(31 downto 0);
+              when 48 =>
+                d_out_comb <= pending_operand_staging(63 downto 32);
+              when 49 =>
+                d_out_comb <= pending_operand_staging(95 downto 64);
+              when 50 =>
+                d_out_comb <= pending_instaddr_reg;
+              when 51 =>
+                d_out_comb <= std_logic_vector(to_unsigned(pending_dst_reg_idx_reg, 4)) &
+                              std_logic_vector(to_unsigned(pending_src_reg_idx_reg, 4)) &
+                              std_logic_vector(to_unsigned(fpu_op_t'pos(pending_decoded_op), 8)) &
+                              std_logic_vector(to_unsigned(pending_xfer_word_count, 4)) &
+                              std_logic_vector(to_unsigned(pending_xfer_word_idx, 4)) &
+                              x"00";
               when others =>
-                -- Padding (words 41-44).
+                -- Word 52 (reserved) and any out-of-range.
                 d_out_comb <= (others => '0');
             end case;
           else
@@ -3458,6 +3633,17 @@ begin
         cir_command_written <= '0';
         cir_condition_written <= '0';
       end if;
+      -- 68882: clear pending seen flags only when the pending instruction is
+      -- consumed (transition to CIR_PENDING_DECODE) or the FSM returns to IDLE.
+      -- Previously this cleared on any exit from CIR_EXECUTE, which dropped a
+      -- partially received pending instruction if the OpWord arrived before
+      -- the Command and the ALU finished in between (DEF-CIR-001).
+      if fpu_version_g = FPU_68882 then
+        if cir_state_reg = CIR_PENDING_DECODE or cir_state_reg = CIR_IDLE then
+          pending_opword_seen_reg <= '0';
+          pending_cmd_seen_reg <= '0';
+        end if;
+      end if;
 
       -- Edge-detect register for operand writes (prevents multi-pulse from
       -- a single bus transaction that holds strobes active across clocks).
@@ -3503,6 +3689,10 @@ begin
               cir_opword_reg <= d_in(15 downto 0);
               cir_instr_type <= d_in(8 downto 6);
               cir_opword_written <= '1';
+              -- 68882: latch opword arrival during CIR_EXECUTE for pending pipeline.
+              if fpu_version_g = FPU_68882 and cir_state_reg = CIR_EXECUTE then
+                pending_opword_seen_reg <= '1';
+              end if;
             end if;
 
           when CIR_ADDR_COMMAND =>
@@ -3515,6 +3705,10 @@ begin
               cir_reg_to_reg <= d_in(14);
               cir_direction <= d_in(13);
               cir_command_written <= '1';
+              -- 68882: latch command arrival during CIR_EXECUTE for pending pipeline.
+              if fpu_version_g = FPU_68882 and cir_state_reg = CIR_EXECUTE then
+                pending_cmd_seen_reg <= '1';
+              end if;
             end if;
 
           when CIR_ADDR_CONDITION =>
@@ -3535,6 +3729,10 @@ begin
                 when 2 => cir_operand_staging(95 downto 64) <= d_in;
                 when others => null;
               end case;
+              cir_operand_word_arrived <= '1';
+            end if;
+            -- 68882: store operand word during pending source transfer.
+            if cir_state_reg = CIR_PENDING_XFER_SRC and cir_operand_write_prev = '0' then
               cir_operand_word_arrived <= '1';
             end if;
             -- Store frame data word during FRESTORE frame transfer.
@@ -3621,6 +3819,9 @@ begin
       alu_restore_wr_reg <= '0';
       packed_restore_wr <= '0';
       cir_exc_vector <= (others => '0');
+      pending_valid_reg <= '0';
+      pending_launch_reg <= '0';
+      pending_skip_valid_reg <= 0;
     elsif rising_edge(clk) then
       cir_launch_alu <= '0';  -- default: clear one-shot pulse
       cir_flags_consumed <= '0';
@@ -3629,6 +3830,7 @@ begin
       alu_save_req_reg <= '0';
       alu_restore_wr_reg <= '0';
       packed_restore_wr <= '0';
+      pending_launch_reg <= '0';  -- default: clear one-shot pulse
 
       case cir_state_reg is
 
@@ -3725,8 +3927,32 @@ begin
           -- Wait for ALU completion. Go to CIR_EXECUTE_DONE so that
           -- bus_frame_proc has time to update fpsr_reg with exception flags
           -- (VHDL signal semantics: same-edge write not visible until next cycle).
-          if valid = '1' then
+          -- pending_skip_valid_reg: after pending auto-launch, skip 2 cycles of
+          -- stale valid (ALU needs 1 cycle to see start, 1 more to clear valid).
+          if pending_skip_valid_reg > 0 then
+            pending_skip_valid_reg <= pending_skip_valid_reg - 1;
+          elsif valid = '1' then
             cir_state_reg <= CIR_EXECUTE_DONE;
+          -- MC68882 pending instruction pipeline: accept new cpGEN while ALU busy.
+          -- Use latched seen flags (opword/command may arrive on separate bus cycles;
+          -- cir_opword_written/cir_command_written are cleared each cycle in non-IDLE states).
+          elsif fpu_version_g = FPU_68882
+                and pending_opword_seen_reg = '1' and pending_cmd_seen_reg = '1'
+                and pending_valid_reg = '0'
+                and cir_instr_type = CIR_TYPE_CPGEN then
+            pending_opword_reg <= cir_opword_reg;
+            pending_command_reg <= cir_command_reg;
+            pending_instr_type <= cir_instr_type;
+            pending_src_fmt_reg <= cir_src_fmt;
+            pending_dst_reg_idx_reg <= to_integer(unsigned(cir_command_reg(9 downto 7)));
+            pending_src_reg_idx_reg <= to_integer(unsigned(cir_command_reg(12 downto 10)));
+            pending_decoded_op <= cir_decode_cpgen_opcode(cir_command_reg);
+            pending_reg_to_reg <= cir_command_reg(14);
+            pending_direction <= cir_command_reg(13);
+            pending_instaddr_reg <= cir_instaddr_reg;
+            -- Note: cir_opword_written/cir_command_written are driven by the bus write
+            -- process and will be auto-cleared on next cycle when cir_state /= CIR_IDLE.
+            cir_state_reg <= CIR_PENDING_DECODE;
           end if;
           -- cpSAVE preemption: allow FSAVE to suspend an in-progress computation.
           if cir_opword_written = '1' and cir_instr_type = CIR_TYPE_CPSAVE then
@@ -3767,7 +3993,32 @@ begin
             cir_exc_vector <= CIR_VEC_INEXACT;
             cir_state_reg <= CIR_EXCEPT_POST;
           else
-            cir_state_reg <= CIR_IDLE;
+            -- No enabled exception. Check for pending instruction (68882).
+            if fpu_version_g = FPU_68882 and pending_valid_reg = '1' then
+              -- Auto-launch pending instruction.
+              -- Cannot write to cir_command_reg etc. (driven by bus write process).
+              -- Use pending_launch_reg pulse → handled by bus_frame_proc/alu_control_proc.
+              pending_valid_reg <= '0';
+              pending_launch_reg <= '1';
+              pending_skip_valid_reg <= 2;  -- Guard: skip 2 cycles of stale ALU valid
+              if pending_reg_to_reg = '1' then
+                if op_class(pending_decoded_op) = OP_CLASS_MOVE then
+                  cir_state_reg <= CIR_IDLE;
+                else
+                  cir_state_reg <= CIR_EXECUTE;
+                end if;
+              elsif pending_direction = '1' then
+                cir_xfer_word_count <= cir_src_word_count(pending_src_fmt_reg);
+                cir_xfer_word_idx <= 0;
+                cir_state_reg <= CIR_XFER_DST;
+              else
+                -- Mem-to-reg: operands in pending_operand_staging, need format conversion.
+                -- pending_launch_reg will trigger conversion + launch in bus_frame_proc.
+                cir_state_reg <= CIR_EXECUTE;
+              end if;
+            else
+              cir_state_reg <= CIR_IDLE;
+            end if;
           end if;
 
         when CIR_XFER_DST =>
@@ -3833,14 +4084,14 @@ begin
             cir_save_word_idx <= 0;
             cir_xfer_word_count <= 0;  -- Null: 0 data words
           elsif busy = '1' then
-            frame_format_word_reg <= CIR_FRAME_BUSY_FW;
+            frame_format_word_reg <= VER_FRAME_BUSY_FW;
             cir_save_word_idx <= 0;
-            cir_xfer_word_count <= CIR_FRAME_BUSY_WORDS;  -- Busy: 45 data words
+            cir_xfer_word_count <= VER_FRAME_BUSY_WORDS;  -- Busy: 45/53 data words
             alu_save_req_reg <= '1';  -- Trigger sub-unit state snapshot
           else
-            frame_format_word_reg <= CIR_FRAME_IDLE_FW;
+            frame_format_word_reg <= VER_FRAME_IDLE_FW;
             cir_save_word_idx <= 0;
-            cir_xfer_word_count <= CIR_FRAME_IDLE_WORDS;  -- Idle: 6 data words
+            cir_xfer_word_count <= VER_FRAME_IDLE_WORDS;  -- Idle: 6/14 data words
           end if;
           cir_save_req <= '0';
           cir_state_reg <= CIR_SAVE_FORMAT;
@@ -3876,16 +4127,23 @@ begin
             if cir_restore_fw_reg = CIR_FRAME_NULL_FW then
               -- Null frame: reset FPU to power-on state, no data follows.
               cir_restore_null_req <= '1';
+              pending_valid_reg <= '0';  -- Clear 68882 pending queue on null restore.
               cir_state_reg <= CIR_IDLE;
-            elsif cir_restore_fw_reg = CIR_FRAME_IDLE_FW then
-              -- Idle frame: expect 6 data words.
+            elsif is_valid_idle_fw(cir_restore_fw_reg) then
+              -- Idle frame: expect 6 (68881) or 14 (68882) data words.
+              -- Clear pending queue: 68881 frames lack pending state words,
+              -- so stale pending_valid_reg from a prior context must not survive.
+              pending_valid_reg <= '0';
               cir_restore_word_idx <= 0;
-              cir_xfer_word_count <= CIR_FRAME_IDLE_WORDS;
+              cir_xfer_word_count <= idle_words_for_fw(cir_restore_fw_reg);
               cir_state_reg <= CIR_RESTORE_FRAME;
-            elsif cir_restore_fw_reg = CIR_FRAME_BUSY_FW then
-              -- Busy frame: expect 45 data words (Task 15).
+            elsif is_valid_busy_fw(cir_restore_fw_reg) then
+              -- Busy frame: expect 45 (68881) or 53 (68882) data words.
+              -- Clear pending queue: 68881 frames lack pending state words.
+              -- 68882 frames will re-set pending_valid_reg from word 45/0.
+              pending_valid_reg <= '0';
               cir_restore_word_idx <= 0;
-              cir_xfer_word_count <= CIR_FRAME_BUSY_WORDS;
+              cir_xfer_word_count <= busy_words_for_fw(cir_restore_fw_reg);
               alu_restore_req_reg <= '1';  -- Hold high for sub-unit restore gating
               cir_state_reg <= CIR_RESTORE_FRAME;
             else
@@ -3904,6 +4162,69 @@ begin
             elsif cir_restore_word_idx >= 38 and cir_restore_word_idx <= 40 then
               packed_restore_wr <= '1';   -- Packed decimal (3 words)
             end if;
+            -- MC68882 pending instruction restore from extra frame words.
+            -- Idle frame: pending state in words 6-13 (overlaps header staging buffer).
+            -- Busy frame: pending state in words 45-52.
+            -- Determine the base offset for pending data based on frame type.
+            if is_valid_idle_fw(cir_restore_fw_reg)
+               and cir_restore_word_idx >= 6 and cir_restore_word_idx <= 13 then
+              case cir_restore_word_idx - 6 is
+                when 0 =>
+                  pending_valid_reg <= d_in(31);
+                  pending_opword_reg <= d_in(15 downto 0);
+                when 1 =>
+                  pending_command_reg <= d_in(31 downto 16);
+                  pending_src_fmt_reg <= d_in(7 downto 5);
+                  pending_instr_type <= d_in(4 downto 2);
+                  pending_direction <= d_in(1);
+                  pending_reg_to_reg <= d_in(0);
+                when 2 =>
+                  pending_operand_staging(31 downto 0) <= d_in;
+                when 3 =>
+                  pending_operand_staging(63 downto 32) <= d_in;
+                when 4 =>
+                  pending_operand_staging(95 downto 64) <= d_in;
+                when 5 =>
+                  pending_instaddr_reg <= d_in;
+                when 6 =>
+                  pending_dst_reg_idx_reg <= to_integer(unsigned(d_in(31 downto 28)));
+                  pending_src_reg_idx_reg <= to_integer(unsigned(d_in(27 downto 24)));
+                  pending_decoded_op <= fpu_op_t'val(to_integer(unsigned(d_in(23 downto 16))));
+                  pending_xfer_word_count <= to_integer(unsigned(d_in(15 downto 12)));
+                  pending_xfer_word_idx <= to_integer(unsigned(d_in(11 downto 8)));
+                when others =>
+                  null;  -- Word 13 (7): reserved
+              end case;
+            elsif is_valid_busy_fw(cir_restore_fw_reg)
+                  and cir_restore_word_idx >= 45 and cir_restore_word_idx <= 52 then
+              case cir_restore_word_idx - 45 is
+                when 0 =>
+                  pending_valid_reg <= d_in(31);
+                  pending_opword_reg <= d_in(15 downto 0);
+                when 1 =>
+                  pending_command_reg <= d_in(31 downto 16);
+                  pending_src_fmt_reg <= d_in(7 downto 5);
+                  pending_instr_type <= d_in(4 downto 2);
+                  pending_direction <= d_in(1);
+                  pending_reg_to_reg <= d_in(0);
+                when 2 =>
+                  pending_operand_staging(31 downto 0) <= d_in;
+                when 3 =>
+                  pending_operand_staging(63 downto 32) <= d_in;
+                when 4 =>
+                  pending_operand_staging(95 downto 64) <= d_in;
+                when 5 =>
+                  pending_instaddr_reg <= d_in;
+                when 6 =>
+                  pending_dst_reg_idx_reg <= to_integer(unsigned(d_in(31 downto 28)));
+                  pending_src_reg_idx_reg <= to_integer(unsigned(d_in(27 downto 24)));
+                  pending_decoded_op <= fpu_op_t'val(to_integer(unsigned(d_in(23 downto 16))));
+                  pending_xfer_word_count <= to_integer(unsigned(d_in(15 downto 12)));
+                  pending_xfer_word_idx <= to_integer(unsigned(d_in(11 downto 8)));
+                when others =>
+                  null;  -- Word 52 (7): reserved
+              end case;
+            end if;
             if cir_restore_word_idx + 1 >= cir_xfer_word_count then
               -- All frame words received. Request commit via bus_frame_proc.
               cir_restore_commit_req <= '1';
@@ -3914,12 +4235,74 @@ begin
             end if;
           end if;
 
+        -- MC68882 pending instruction pipeline states.
+        when CIR_PENDING_DECODE =>
+          -- Mirrors CIR_DECODE but for the pending instruction.
+          -- ALU completion takes priority in all pending states.
+          if valid = '1' then
+            cir_state_reg <= CIR_EXECUTE_DONE;
+          elsif pending_reg_to_reg = '1' then
+            -- Reg-to-reg: no operand transfer needed.
+            pending_valid_reg <= '1';
+            cir_state_reg <= CIR_EXECUTE;  -- Return to waiting for ALU
+          elsif pending_direction = '0' then
+            -- Mem-to-reg: need operand data from CPU.
+            pending_xfer_word_count <= cir_src_word_count(pending_src_fmt_reg);
+            pending_xfer_word_idx <= 0;
+            cir_state_reg <= CIR_PENDING_XFER_SRC;
+          else
+            -- Reg-to-mem: no operand fetch needed (output after execution).
+            pending_valid_reg <= '1';
+            cir_state_reg <= CIR_EXECUTE;
+          end if;
+
+        when CIR_PENDING_XFER_SRC =>
+          -- Accept operand words into pending staging buffer.
+          if valid = '1' then
+            cir_state_reg <= CIR_EXECUTE_DONE;
+          elsif cir_operand_word_arrived = '1' then
+            case pending_xfer_word_idx is
+              when 0 => pending_operand_staging(31 downto 0) <= d_in;
+              when 1 => pending_operand_staging(63 downto 32) <= d_in;
+              when 2 => pending_operand_staging(95 downto 64) <= d_in;
+              when others => null;
+            end case;
+            if pending_xfer_word_idx + 1 >= pending_xfer_word_count then
+              cir_state_reg <= CIR_PENDING_XFER_SRC_WAIT;
+            else
+              pending_xfer_word_idx <= pending_xfer_word_idx + 1;
+            end if;
+          end if;
+
+        when CIR_PENDING_XFER_SRC_WAIT =>
+          -- Hold cycle 1 (mirrors CIR_XFER_SRC_WAIT).
+          -- Do NOT shortcut to CIR_EXECUTE_DONE on valid here — must
+          -- always pass through WAIT2/WAIT3 to guarantee 5-cycle MCP from
+          -- pending_operand_staging write to operand_reg load.
+          cir_state_reg <= CIR_PENDING_XFER_SRC_WAIT2;
+
+        when CIR_PENDING_XFER_SRC_WAIT2 =>
+          -- Hold cycle 2.
+          cir_state_reg <= CIR_PENDING_XFER_SRC_WAIT3;
+
+        when CIR_PENDING_XFER_SRC_WAIT3 =>
+          -- Hold cycle 3.  Format conversion path has now had 4 cycles
+          -- to settle (write @ T0, WAIT @ T1, WAIT2 @ T2, WAIT3 @ T3).
+          -- pending_launch_reg fires earliest at CIR_EXECUTE_DONE (T4+),
+          -- bus_frame_proc samples one cycle later (T5+) = 5-cycle MCP.
+          pending_valid_reg <= '1';
+          if valid = '1' then
+            cir_state_reg <= CIR_EXECUTE_DONE;
+          else
+            cir_state_reg <= CIR_EXECUTE;  -- Return to waiting for ALU
+          end if;
+
       end case;
     end if;
   end process;
 
   -- Combinational response primitive generation from FSM state.
-  cir_response_gen : process(cir_state_reg, cir_xfer_word_count, cir_exc_vector)
+  cir_response_gen : process(all)
   begin
     case cir_state_reg is
       when CIR_IDLE =>
@@ -3927,7 +4310,11 @@ begin
       when CIR_DECODE =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_EXECUTE =>
-        cir_response_prim <= CIR_PRIM_BUSY;
+        if fpu_version_g = FPU_68882 and pending_valid_reg = '0' then
+          cir_response_prim <= CIR_PRIM_NULL;  -- Ready to accept pending instruction
+        else
+          cir_response_prim <= CIR_PRIM_BUSY;
+        end if;
       when CIR_EXECUTE_DONE =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_SRC =>
@@ -3961,6 +4348,16 @@ begin
       when CIR_SAVE_FORMAT | CIR_SAVE_FRAME =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_RESTORE_FORMAT | CIR_RESTORE_FRAME =>
+        cir_response_prim <= CIR_PRIM_BUSY;
+      -- MC68882 pending instruction pipeline states.
+      when CIR_PENDING_DECODE =>
+        cir_response_prim <= CIR_PRIM_BUSY;
+      when CIR_PENDING_XFER_SRC =>
+        -- Transfer Operand to-CP for pending instruction (same encoding as CIR_XFER_SRC).
+        cir_response_prim <= "0111" & "0000" &
+          std_logic_vector(to_unsigned(pending_xfer_word_count * 4, 8));
+      when CIR_PENDING_XFER_SRC_WAIT | CIR_PENDING_XFER_SRC_WAIT2
+         | CIR_PENDING_XFER_SRC_WAIT3 =>
         cir_response_prim <= CIR_PRIM_BUSY;
     end case;
   end process;

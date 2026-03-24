@@ -1,15 +1,15 @@
 # MC68881 FPGA Core
 
 ## Overview
-A VHDL implementation of a Motorola MC68881-compatible floating-point
+A VHDL implementation of a Motorola MC68881/MC68882-compatible floating-point
 coprocessor targeting Xilinx 7-series and UltraScale+ FPGAs. The design implements
 the full MC68881 instruction set including all arithmetic, transcendental,
 program-control, system-control, and packed-decimal operations. It uses
 DSP-pipelined sequential FP units for the core arithmetic datapath with
-multi-cycle path constraints for timing closure at 33 MHz.
+multi-cycle path constraints for timing closure at 50 MHz.
 
 Hardware-verified on an Alinx AXU3EG board (Zynq UltraScale+ ZU3EG) via the
-AXI4-Lite wrapper at 100 MHz bus / 33 MHz FPU, with end-to-end tests covering
+AXI4-Lite wrapper at 100 MHz bus / 50 MHz FPU, with end-to-end tests covering
 arithmetic, transcendental, exponential, and logarithmic operations.
 
 ## Features
@@ -28,8 +28,14 @@ arithmetic, transcendental, exponential, and logarithmic operations.
 - **Data movement**: FMOVE (all formats including packed decimal `.P`),
   FMOVEM (register lists and control registers), FMOVECR (ROM constants).
 - **Program control**: FScc, FBcc, FDBcc, FTRAPcc, FNOP with BSUN trap gating.
+- **MC68882 mode** (`fpu_version_g => FPU_68882`): Pin-compatible 68882 variant
+  with larger FSAVE frames (idle $0038/14W, busy $00D4/53W), pending instruction
+  pipeline (accepts a second cpGEN while the first is executing; auto-launches on
+  completion), and NULL response during CIR_EXECUTE for reduced CPU stalls.
+  FRESTORE accepts both 68881 and 68882 format words for migration compatibility.
+  Default is FPU_68881 for backward compatibility.
 - **System control**: FSAVE/FRESTORE with Null/Idle/Busy frame support (45-word
-  Busy frame with full sub-unit save/restore hierarchy).
+  68881 / 53-word 68882 Busy frame with full sub-unit save/restore hierarchy).
 - **IEEE 754 compliance**: NaN propagation (SNaN/QNaN discrimination, payload
   preservation), infinity handling, signed zero, gradual underflow, all four
   rounding modes (nearest, zero, +inf, -inf), single/double/extended precision.
@@ -50,25 +56,26 @@ arithmetic, transcendental, exponential, and logarithmic operations.
 
 | Resource | Full | Lite (`fpu_lite_g`) | Available | Full % | Lite % |
 |----------|------|---------------------|-----------|--------|--------|
-| Slice LUTs | 62,834 | 37,380 | 133,800 | 46.96% | 27.94% |
-| Registers | 13,661 | 7,030 | 267,600 | 5.11% | 2.63% |
+| Slice LUTs | 60,421 | 37,380 | 133,800 | 45.16% | 27.94% |
+| Registers | 13,853 | 7,030 | 267,600 | 5.18% | 2.63% |
 | Block RAM | 8 tiles | 0 | 365 | 2.19% | 0% |
 | DSP48E1 | 34 | 18 | 740 | 4.59% | 2.43% |
 
-*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-18.
-33 MHz target clock. Includes transcendental accuracy improvements (BRAM coefficient ROM,
-table-assisted ATAN/LOG, Cody-Waite trig/EXP), GHDL synth-compatible RTL,
-CIR coprocessor interface, full exception dialog paths, undocumented FMOVECR ROM constants,
+*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-21.
+50 MHz target clock. MC68882 mode enabled (`fpu_version_g => FPU_68882`). Includes
+transcendental accuracy improvements (BRAM coefficient ROM, table-assisted ATAN/LOG,
+Cody-Waite trig/EXP), GHDL synth-compatible RTL, CIR coprocessor interface, full
+exception dialog paths, undocumented FMOVECR ROM constants, pending instruction pipeline,
 and graphics framebuffer support.*
 
 ### Timing
-- Target clock: **33 MHz** (30.303 ns period) — 3.3× faster than original MC68881.
+- Target clock: **50 MHz** (20.0 ns period) — 2× the original MC68881 max (25 MHz).
 - Multi-cycle path constraints on sequential FP units, trig engine hold states,
   format conversion paths (operand staging, MOVE dispatch, LOG exponent conversion,
   FP register file to exception destinations).
 - Packed decimal encode pipeline: 3-stage split (exponent extraction → DSP multiply
   → scale computation) with pipelined DSP48E1 input.
-- Post-route WNS: **+0.045 ns** full / **+0.160 ns** lite (timing met). No hold violations.
+- Post-route WNS: **+0.272 ns** at 50 MHz (timing met). No hold violations.
 
 ### Target device compatibility
 The design fits on several FPGA families. With `fpu_lite_g => true` (MC68040
@@ -79,7 +86,7 @@ hardware subset: 11 ALU ops, no trig/sglops/modrem), the core uses 37,380 LUTs
 |--------|------|------|-----------|-----------|
 | Xilinx Artix-7 200T | 133,800 | 740 | Yes (47%) | Yes (28%) |
 | Xilinx Artix-7 100T | 63,400 | 240 | Tight (99%) | Yes (59%) |
-| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~89%) | Yes (~53%) |
+| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (91%) | Yes (~53%) |
 | Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
 | Intel Cyclone V SE 5CSEBA6 (MiSTer DE10-Nano) | 41,910 ALMs | 112 | No (~75%) | Yes (~45%) |
 
@@ -138,7 +145,8 @@ instances per consumer.
   - `mc68881_smoke_test.c` — Register read/write connectivity test (FPCR, FPIAR)
   - `mc68881_fsin_test.c` — FSIN computation test (sin(1.0), sin(0.0))
   - `mc68881_e2e_test.c` — End-to-end test with 15 vectors from GHDL testbench
-- `validation/hello_world/` — M68K emulator + hardware FPU validation (Musashi, F-line trapping, ROM boot)
+- `validation/hello_world/` — M68K emulator + hardware FPU validation (Musashi, F-line trapping, ROM boot, USB keyboard)
+- `validation/kicad/` — Validation PCB: MC68SEC000 + QMTECH Artix-7 + original MC68881FN (KiCad 8, Gerbers in `output/`)
 - `src/vitis/roms/` — 68000 BIOS ROM source (assembler, disassembler, monitor with FPU support)
 - `tb/` — VHDL-2008 self-checking testbenches (14 files, ~8.5K lines)
 - `docs/` — Implementation plan, timing notes, reference documentation
@@ -199,7 +207,7 @@ report_utilization -hierarchical -hierarchical_depth 10 -file mc68881_top_util_h
 
 ### Transcendental accuracy
 The transcendental engine achieves 30–55 bits of accuracy across operations,
-verified by the torture testbench (349 self-checking tests):
+verified by the torture testbench (357 self-checking tests):
 
 | Operation | Typical accuracy | Method |
 |-----------|-----------------|--------|
@@ -249,8 +257,10 @@ hierarchy. Key differences from standalone synthesis:
 - `packed_unit_inst` is inside generate block `packed_engine_full_g`
 - CDC `get_cells` filters include `&& IS_SEQUENTIAL` to avoid matching LUT cells
 
-Verified on Xilinx Zynq UltraScale+ ZU3EG (AXU3EG board) with Vivado 2024.2:
-post-route WNS **+5.911 ns** at 100 MHz AXI / 33 MHz FPU.
+Verified on Xilinx Zynq UltraScale+ ZU3EG (AXU3EG board) with Vivado 2025.2:
+post-route WNS **+1.186 ns** at 100 MHz AXI / 50 MHz FPU (MC68882 mode).
+Board design utilization: 64,014 LUTs (91%), 15,206 registers, 8 BRAM tiles,
+34 DSPs. All timing constraints met with no hold violations.
 
 ### Vitis hardware test apps
 
@@ -317,6 +327,14 @@ assembler (CODE68K), and disassembler (DCODE68K). Character I/O is routed throug
 MC68901 MFP emulation (ARM UART ↔ emulated MFP USART) and rendered to a text
 framebuffer displayed on the PS DisplayPort output (1280×720@60Hz).
 
+USB keyboards and mice are supported via the ZynqMP DWC3 xHCI host controller:
+- **Keyboard**: HID boot-protocol, Caps Lock/Num Lock with LED feedback, feeds
+  ASCII into the MFP RX buffer alongside ARM UART input
+- **Mouse**: HID boot-protocol, buttons + relative/absolute position tracking,
+  accessible via memory-mapped I/O at `$FD0050` and TRAP #15 (D0=26/27/28)
+- Automatic hub traversal (up to 3 levels) — works with keyboards and mice
+  behind USB hubs, including combo devices with built-in hubs
+
 The assembler and disassembler support all MC68881 FPU instructions:
 - **39 FPU mnemonics**: FMOVE through FMOVECR (all arithmetic, transcendental,
   data movement, and compare/test operations)
@@ -379,7 +397,7 @@ ALL TESTS PASSED
 ### FPU benchmarks
 
 Standard floating-point benchmarks run on the M68K emulator with hardware FPU
-(F-line trapping to FPGA), measured on AXU3EG at 100 MHz AXI / 33 MHz FPU:
+(F-line trapping to FPGA), measured on AXU3EG at 100 MHz AXI / 50 MHz FPU:
 
 **Whetstone** (NLOOP=10, exercises ADD/SUB/MUL/DIV/SQRT/SIN/COS/ATAN/LOG/EXP):
 ```
@@ -412,6 +430,67 @@ over 2500 iterations of 6 chained transcendental operations — reasonable for
 64-bit extended precision.
 
 Benchmark sources are in `validation/hello_world/src/roms/` (`savage.s`, `whetstone.s`).
+
+### GCC example programs
+
+The `toolchain/examples/` directory contains C programs compiled with the m68k-elf-gcc
+cross-compiler and loaded via S-record transfer. Build with `.\build.ps1` (requires
+Cygwin with m68k-elf-gcc).
+
+| Program | Description | FPU? |
+|---------|-------------|------|
+| `hello.c` | Hello world (printf, TRAP I/O) | No |
+| `fputest.c` | FPU arithmetic test (sin, cos, sqrt) | Yes |
+| `fireworks.c` | Animated fireworks demo (physics + graphics) | Yes |
+| `rtctest.c` | RTC date/time read/set, Timer C tick monitor | No |
+| `mousetest.c` | USB mouse demo (crosshair cursor, click markers) | No |
+
+**Mouse demo** (`mousetest.c`): Switches to 1280×720 graphics mode and renders a
+green crosshair cursor that tracks the USB mouse. Left/right/middle clicks leave
+coloured dot markers on the screen. A banner at the top displays the current X/Y
+position and active buttons. Press any keyboard key to exit. Reads mouse state
+directly from memory-mapped I/O at `$FD0050` (buttons, delta, absolute position).
+
+## Validation PCB
+
+The `validation/kicad/` directory contains a KiCad 8 project ("NextCuboid") for a
+physical validation board that connects a real MC68SEC000 CPU to the QMTECH
+Artix-7 200T core board running the FPGA FPU core, alongside an original 5V
+MC68881FN for comparison testing. This is the first physical hardware validation
+of the coprocessor interface — exercising real bus timing, level shifting, and
+the CIR dialog protocol over actual copper.
+
+### Board architecture
+
+```
+MC68SEC000FU20 (3.3V, 20 MHz)
+    │
+    ├── Coprocessor bus ──► SN74LVC8T245 level shifters (3.3V ↔ 5V)
+    │                           │
+    │                           ├──► MC68881FN (original 5V DIP/PLCC)
+    │                           │
+    │                           └──► QMTECH Artix-7 200T (mc68881_top)
+    │
+    └── Active-low control ──► 74LVC1G125 single-gate buffers
+```
+
+### Key components
+
+| Component | Part | Role |
+|-----------|------|------|
+| CPU | MC68SEC000FU20 | 3.3V 68000-compatible bus master |
+| FPGA FPU | QMTECH XC7A200T core board | Runs `mc68881_top` with bus bridge |
+| Reference FPU | MC68881FN (original Motorola) | 5V DIP/PLCC, golden reference |
+| Level shifters | SN74LVC8T245 (×5) | Bidirectional 3.3V ↔ 5V translation |
+| Control buffers | 74LVC1G125 (×2) | Single-gate active-low signal translation |
+
+The board uses dual QMTECH connectors (active main + active secondary headers)
+and includes 4.7K pull-up resistors on open-drain/open-collector signals plus
+100nF decoupling capacitors on all ICs. Gerber outputs are in
+`validation/kicad/output/`.
+
+PCB production sponsored by [PCBWay](https://www.pcbway.com) — thanks to them
+for supporting this project.
 
 ## Status
 All checklist items complete. See `docs/fpu-progress-checklist.md` for history.

@@ -131,10 +131,9 @@ In the package body (after line ~1133, after `decode_op_sel_word` body), add:
     variable key : op_key_t;
   begin
     opcode_bits := cmd_word(6 downto 0);
-    -- Map MC68881 opcode encoding to core_v1 decode IDs.
-    -- The command word opcode field matches the MC68881 opcode table
-    -- (e.g. $22=FADD, $28=FSUB, $23=FMUL, $20=FDIV, etc.).
-    -- Build an op_key in OP_NS_CORE_V1 namespace and look up via descriptors.
+    -- Look up MC68881 native opcode in OP_DESCRIPTORS.
+    -- The decode IDs now match MC68881 encoding directly
+    -- (e.g. $00=FMOVE, $22=FADD, $28=FSUB, $23=FMUL, $20=FDIV, etc.).
     key.namespace := OP_NS_CORE_V1;
     key.opcode_id := '0' & opcode_bits;
     for op in fpu_op_t loop

@@ -8,16 +8,27 @@
 #define EMU_MEMORY_H
 
 #include "musashi/m68k.h"
+#include "blitter_emu.h"
 
 /* 16 MB address space */
 #define EMU_RAM_SIZE  (16 * 1024 * 1024)
 #define EMU_RAM_MASK  (EMU_RAM_SIZE - 1)
 
-/* Memory map regions (matching bios.s expectations) */
-#define EMU_ROM_BASE  0xFE0000      /* 128 KB ROM image */
-#define EMU_ROM_SIZE  0x020000
+/* Memory map regions */
+#define EMU_ROM_BASE  0xE00000      /* 256 KB EmuTOS ROM */
+#define EMU_ROM_SIZE  0x040000
 #define EMU_MFP_BASE  0xFD0000      /* MC68901 MFP I/O */
-#define EMU_MFP_SIZE  0x000034
+#define EMU_MFP_SIZE  0x000040      /* 0x00-0x2F regs + 0x30 tick + 0x34 RTC + 0x38 datetime */
+
+/* MC68882 CIR registers at Atari TT address */
+#define FPU_CIR_BASE  0xFFFA40
+#define FPU_CIR_SIZE  0x18       /* $FFFA40-$FFFA57 (covers 32-bit Operand + InstAddr + OpAddr) */
+
+static inline int is_fpu_cir(unsigned int addr)
+{
+    addr &= 0xFFFFFF;  /* 68000: 24-bit address bus */
+    return (addr >= FPU_CIR_BASE) && (addr < FPU_CIR_BASE + FPU_CIR_SIZE);
+}
 
 /* The emulated RAM buffer (statically allocated in DDR) */
 extern unsigned char emu_ram[];
@@ -32,6 +43,9 @@ int emu_mem_load(unsigned int addr, const unsigned char *data, unsigned int len)
 /* Set up M68K initial SSP and PC from the vector table in emu_ram.
  * Call after loading a program and before m68k_pulse_reset(). */
 void emu_mem_set_vectors(unsigned int ssp, unsigned int pc);
+
+/* Enable/disable CIR register access debug logging (off by default). */
+void emu_cir_debug_enable(int on);
 
 /*
  * Musashi memory callbacks — declared here, defined in emu_memory.c.

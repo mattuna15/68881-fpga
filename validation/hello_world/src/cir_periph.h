@@ -16,9 +16,11 @@
 #define OFF_CIR_COMMAND     (5  * 4)   /* 0x14 — overlaps OPB_H */
 #define OFF_CIR_CONDITION   (7  * 4)   /* 0x1C — overlaps RES_L */
 #define OFF_CIR_OPERAND     (8  * 4)   /* 0x20 — overlaps RES_H */
+#define OFF_CIR_SAVE        (12 * 4)   /* 0x30 — read format word during cpSAVE */
 #define OFF_CIR_INSTADDR    (12 * 4)   /* 0x30 — overlaps CIR_SAVE */
 #define OFF_CIR_OPADDR      (14 * 4)   /* 0x38 — overlaps FPSR */
 #define OFF_CIR_RESPONSE    (13 * 4)   /* 0x34 — CIR response (read) / mode control (write) */
+#define OFF_CIR_RESTORE     (28 * 4)   /* 0x70 — write format word for cpRESTORE */
 
 /* ------------------------------------------------------------------ */
 /* CIR response primitives                                             */
@@ -38,9 +40,11 @@
 #define STATUS_CIR_PENDING   0x10u     /* bit 4: cir_response_pending */
 
 /* ------------------------------------------------------------------ */
-/* OpWord: cpGEN = instruction type "000" in bits [8:6] = 0x0000       */
+/* OpWord instruction types: bits [8:6]                                */
 /* ------------------------------------------------------------------ */
-#define CIR_OPWORD_CPGEN     0x0000u
+#define CIR_OPWORD_CPGEN     0x0000u   /* type 000 */
+#define CIR_OPWORD_CPSAVE    0x0100u   /* type 100: bits [8:6] = 100 */
+#define CIR_OPWORD_CPRESTORE 0x0140u   /* type 101: bits [8:6] = 101 */
 
 /* ------------------------------------------------------------------ */
 /* Source format codes (for memory-source / memory-dest operations)     */
@@ -55,7 +59,7 @@
 
 /* ------------------------------------------------------------------ */
 /* Command word builder macros                                         */
-/* Opcode IDs are CORE_V1 (FPOP_*), NOT 68881 encoding.                */
+/* Opcode IDs are MC68881 native encoding (FPOP_* = bits[6:0]).        */
 /* ------------------------------------------------------------------ */
 
 /* Register-to-register: R/M=1, src_reg [12:10], dst_reg [9:7] */

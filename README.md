@@ -1,4 +1,4 @@
-# MC68881 FPGA Core
+# MC68881/2 FPGA Core
 
 ## Overview
 A VHDL implementation of a Motorola MC68881/MC68882-compatible floating-point

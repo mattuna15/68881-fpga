@@ -3840,12 +3840,12 @@ begin
              (cir_instr_type = CIR_TYPE_CPGEN) then
             cir_state_reg <= CIR_DECODE;
           -- cpGEN: SFP004 command-only (no OpWord written).
-          -- cir_instr_type defaults to CIR_TYPE_CPGEN at reset and is only
-          -- changed by OpWord writes, so command-only is always cpGEN.
+          -- When no OpWord is present, the instruction is always cpGEN:
+          -- cpBcc/cpScc require a Condition write, cpSAVE/cpRESTORE require
+          -- an OpWord with their type bits.  No cir_instr_type check needed.
           -- Supports Atari SFP004/Mega STE peripheral protocol where the
           -- 68000 writes only the Command register to start a dialog.
-          elsif cir_command_written = '1' and cir_opword_written = '0' and
-                cir_instr_type = CIR_TYPE_CPGEN then
+          elsif cir_command_written = '1' and cir_opword_written = '0' then
             cir_state_reg <= CIR_DECODE;
           end if;
           -- cpBcc/cpScc: wait for OpWord + Condition write

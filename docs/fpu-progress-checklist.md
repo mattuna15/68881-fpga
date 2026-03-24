@@ -330,6 +330,42 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Open Defects
 
+### DEF-CIR-002: FPU_HARD.PRG SFP004 peripheral protocol not supported
+
+**Severity:** High (blocks FPU_HARD.PRG and similar Atari SFP004 software)
+
+**Symptom:** FPU_HARD.PRG (Quidnunc 1991) hangs polling $FFFA40 for response
+$9608 after writing command $540E (FSIN.D) to $FFFA4A. The stuck loop is at
+the CIR response comparison — the FPU returns $0802 (NULL→ID) but the code
+expects SFP004 peripheral response values.
+
+**Root cause:** FPU_HARD.PRG uses the Atari SFP004 peripheral protocol:
+1. Writes Command only (no OpWord) — our CIR FSM needs both
+2. Expects SFP004 response encoding ($9608=transfer-to-CP 8 bytes,
+   $B208=transfer-from-CP 8 bytes, $B104=transfer-from-CP 4 bytes)
+   instead of standard CIR primitives ($7008, $6008, $6004)
+
+**Disassembly of FPU_HARD.PRG dialog pattern:**
+```
+CMPI.W  #$0802, ($FFFFA40).L  ; poll idle
+BNE.S   *
+MOVE.W  #$540E, ($FFFFA4A).L  ; write command (no OpWord!)
+CMPI.W  #$9608, ($FFFFA40).L  ; poll transfer-to-CP (SFP004 encoding)
+BNE.S   *                      ; ← STUCK HERE
+MOVE.L  4(SP), ($FFFFA50).L   ; write operand word 1
+MOVE.L  8(SP), ($FFFFA50).L   ; write operand word 2
+```
+
+**Action:**
+1. Auto-inject cpGEN OpWord in emu_memory.c when Command write arrives
+   without a preceding OpWord (SFP004 compatibility)
+2. Map SFP004 response values to/from CIR primitives in fpu_cir_read,
+   or add SFP004 response mode to the VHDL
+3. Consult MC68881 User Manual for complete SFP004 peripheral response
+   encoding table
+
+**File:** `validation/hello_world/src/emu_memory.c`
+
 ### DEF-BLT-001: Blitter icon corruption with NFSR + non-zero skew
 
 **Severity:** Medium (cosmetic — floppy and desktop are functional)

@@ -136,7 +136,7 @@ cir_wr(OFF_CIR_OPWORD,  CIR_OPWORD_CPGEN);
 
 // Step 3: Poll for XFER_TO_CP response (FPU wants operand data)
 u16 resp = cir_poll_response();
-// resp = 0x7004 → "Transfer to coprocessor, 4 bytes"
+// resp = 0x9604 → "AN-947: Transfer CPU→FPU, 4 bytes"
 
 // Step 4: Write the operand (integer 42)
 cir_wr(OFF_CIR_OPERAND, 42);
@@ -156,7 +156,7 @@ cir_wr(OFF_CIR_RESPONSE, 1);   // ensure CIR mode
 cir_wr(OFF_CIR_COMMAND, (u32)cmd);
 cir_wr(OFF_CIR_OPWORD,  CIR_OPWORD_CPGEN);
 
-u16 resp = cir_poll_response(); // → 0x7004 (XFER_TO_CP, 4 bytes)
+u16 resp = cir_poll_response(); // → 0x9604 (AN-947: CPU→FPU, 4 bytes)
 cir_wr(OFF_CIR_OPERAND, 9);    // write source operand
 
 cir_wait_null();                // FP3 = 3.0
@@ -172,7 +172,7 @@ cir_wr(OFF_CIR_RESPONSE, 1);
 cir_wr(OFF_CIR_COMMAND, (u32)cmd);
 cir_wr(OFF_CIR_OPWORD,  CIR_OPWORD_CPGEN);
 
-u16 resp = cir_poll_response(); // → 0x600C (XFER_FROM_CP, 12 bytes)
+u16 resp = cir_poll_response(); // → 0xB20C (AN-947: FPU→CPU, 12 bytes)
 
 u32 words[3];
 words[0] = cir_rd(OFF_CIR_OPERAND);  // sign + exponent
@@ -183,18 +183,19 @@ words[2] = cir_rd(OFF_CIR_OPERAND);  // significand low
 cir_wait_null();
 ```
 
-### CIR Response Primitives
+### CIR Response Primitives (AN-947 MC68881 native encoding)
 
 | Code     | Meaning | Action |
 |----------|---------|--------|
-| `0x0000` | Busy    | Keep polling |
-| `0x2001` | Null    | Dialog complete, release bus |
-| `0x7004` | Transfer to CP, 4 bytes  | Write 1 long word to CIR Operand |
-| `0x7008` | Transfer to CP, 8 bytes  | Write 2 long words |
-| `0x700C` | Transfer to CP, 12 bytes | Write 3 long words (extended) |
-| `0x6004` | Transfer from CP, 4 bytes  | Read 1 long word from CIR Operand |
-| `0x6008` | Transfer from CP, 8 bytes  | Read 2 long words |
-| `0x600C` | Transfer from CP, 12 bytes | Read 3 long words (extended) |
+| `0x8900` | Null CA=1 (come again) | Keep polling |
+| `0x0900` | Null CA=0 (release)    | Dialog complete |
+| `0x0802` | Idle (MC68882 ID)      | FPU idle, no active dialog |
+| `0x9604` | Transfer CPU→FPU, 4 bytes  | Write 1 long word to CIR Operand |
+| `0x9608` | Transfer CPU→FPU, 8 bytes  | Write 2 long words |
+| `0x960C` | Transfer CPU→FPU, 12 bytes | Write 3 long words (extended) |
+| `0xB204` | Transfer FPU→CPU, 4 bytes  | Read 1 long word from CIR Operand |
+| `0xB208` | Transfer FPU→CPU, 8 bytes  | Read 2 long words |
+| `0xB20C` | Transfer FPU→CPU, 12 bytes | Read 3 long words (extended) |
 
 ### Key Characteristics
 - **Faithful AN-947 protocol** -- same dialog a real M68020 uses with a real MC68881

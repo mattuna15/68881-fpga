@@ -47,12 +47,12 @@ architecture sim of tb_mc68881_cir_dialog is
   constant CIR_OPERAND  : unsigned(4 downto 0) := unsigned(std_logic_vector(CIR_ADDR_OPERAND));
   constant CIR_RESPONSE : unsigned(4 downto 0) := to_unsigned(13, 5);
 
-  -- Expected CIR response primitives (lower 16 bits of response register).
-  -- MC68020 CIR protocol: Null=0x2001, Busy=0x0000.
-  constant RESP_NULL           : std_logic_vector(15 downto 0) := CIR_PRIM_NULL;  -- x"2001"
-  constant RESP_BUSY           : std_logic_vector(15 downto 0) := CIR_PRIM_BUSY;  -- x"0000"
-  constant RESP_XFER_TO_CP_4   : std_logic_vector(15 downto 0) := x"7004";  -- 1 longword to-CP
-  constant RESP_XFER_FROM_CP_4 : std_logic_vector(15 downto 0) := x"6004";  -- 1 longword from-CP
+  -- Expected AN-947 response primitives (MC68881 native bus encoding).
+  -- Null CA=0 = $0900 (release), Null CA=1 = $8900 (come again/busy).
+  constant RESP_NULL           : std_logic_vector(15 downto 0) := CIR_PRIM_NULL;  -- x"0900"
+  constant RESP_BUSY           : std_logic_vector(15 downto 0) := CIR_PRIM_BUSY;  -- x"8900"
+  constant RESP_XFER_TO_CP_4   : std_logic_vector(15 downto 0) := x"9604";  -- EA+Xfer CPU→FPU, 4B
+  constant RESP_XFER_FROM_CP_4 : std_logic_vector(15 downto 0) := x"B204";  -- EA+Xfer FPU→CPU, 4B
 
   -- Exception response primitives: [15:13]=category, [12]=0, [11:10]=00, [9:0]=vector.
   constant RESP_EXCEPT_PRE_BSUN : std_logic_vector(15 downto 0) :=

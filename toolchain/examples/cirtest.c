@@ -36,9 +36,9 @@
 #define OPWORD_CPGEN     0x0000
 
 /* ---- CIR response primitives ---- */
-#define CIR_PRIM_BUSY    0x0000
-#define CIR_PRIM_NULL    0x2001
-#define CIR_PRIM_NULL_ID 0x0802  /* emu_memory.c NULL→ID transform */
+/* AN-947 response primitives (MC68881 native) */
+#define CIR_PRIM_BUSY    0x8900  /* Null CA=1 (come again) */
+#define CIR_PRIM_NULL_ID 0x0802  /* idle (emu_memory.c NULL→ID transform) */
 
 /* ---- Source format codes (bits [12:10] of command word) ---- */
 #define FMT_LONG     0   /* 32-bit integer */
@@ -162,10 +162,10 @@ static unsigned short cir_start(unsigned short cmd)
 static int cir_load_long(int dst_reg, unsigned long int_val)
 {
     unsigned short resp = cir_start(CMD_MEM2REG(FMT_LONG, dst_reg, FPOP_MOVE));
-    if ((resp & 0xF000) != 0x7000) return -1;
+    if ((resp & 0xFF00) != 0x9600) return -1;
     wr32(CIR_OPERAND, int_val);
     resp = poll_resp(200);
-    return (resp == CIR_PRIM_NULL_ID || resp == CIR_PRIM_NULL) ? 0 : -2;
+    return (resp == CIR_PRIM_NULL_ID) ? 0 : -2;
 }
 
 /* (cir_load_single and cir_load_double removed — use cir_op_long/cir_op_double) */
@@ -174,32 +174,32 @@ static int cir_load_long(int dst_reg, unsigned long int_val)
 static int cir_read_long(int src_reg, unsigned long *result)
 {
     unsigned short resp = cir_start(CMD_REG2MEM(FMT_LONG, src_reg, FPOP_MOVE));
-    if ((resp & 0xF000) != 0x6000) return -1;
+    if ((resp & 0xFF00) != 0xB200) return -1;
     *result = rd32(CIR_OPERAND);
     /* Poll until NULL to complete the dialog */
     resp = poll_resp(200);
-    return (resp == CIR_PRIM_NULL_ID || resp == CIR_PRIM_NULL) ? 0 : -2;
+    return (resp == CIR_PRIM_NULL_ID) ? 0 : -2;
 }
 
 /* Execute a mem-to-reg ALU operation with long operand */
 static int cir_op_long(int dst_reg, int opcode, unsigned long int_val)
 {
     unsigned short resp = cir_start(CMD_MEM2REG(FMT_LONG, dst_reg, opcode));
-    if ((resp & 0xF000) != 0x7000) return -1;
+    if ((resp & 0xFF00) != 0x9600) return -1;
     wr32(CIR_OPERAND, int_val);
     resp = poll_resp(50000);  /* long timeout for trig/sqrt */
-    return (resp == CIR_PRIM_NULL_ID || resp == CIR_PRIM_NULL) ? 0 : -2;
+    return (resp == CIR_PRIM_NULL_ID) ? 0 : -2;
 }
 
 /* Execute a mem-to-reg ALU operation with double operand */
 static int cir_op_double(int dst_reg, int opcode, unsigned long hi, unsigned long lo)
 {
     unsigned short resp = cir_start(CMD_MEM2REG(FMT_DOUBLE, dst_reg, opcode));
-    if ((resp & 0xF000) != 0x7000) return -1;
+    if ((resp & 0xFF00) != 0x9600) return -1;
     wr32(CIR_OPERAND, hi);
     wr32(CIR_OPERAND, lo);
     resp = poll_resp(50000);  /* long timeout for trig */
-    return (resp == CIR_PRIM_NULL_ID || resp == CIR_PRIM_NULL) ? 0 : -2;
+    return (resp == CIR_PRIM_NULL_ID) ? 0 : -2;
 }
 
 /* Execute a reg-to-reg operation */
@@ -210,7 +210,7 @@ static int cir_op_reg(int src_reg, int dst_reg, int opcode)
     wr16(CIR_COMMAND, CMD_REG2REG(src_reg, dst_reg, opcode));
     wr16(CIR_OPWORD, OPWORD_CPGEN);
     resp = poll_resp(50000);
-    return (resp == CIR_PRIM_NULL_ID || resp == CIR_PRIM_NULL) ? 0 : -2;
+    return (resp == CIR_PRIM_NULL_ID) ? 0 : -2;
 }
 
 /* ---- TESTS ---- */

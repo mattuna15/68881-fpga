@@ -25,14 +25,16 @@
 /* ------------------------------------------------------------------ */
 /* CIR response primitives                                             */
 /* ------------------------------------------------------------------ */
-#define CIR_BUSY             0x0000u
-#define CIR_NULL             0x2001u
-#define CIR_XFER_TO_CP_4    0x7004u
-#define CIR_XFER_TO_CP_8    0x7008u
-#define CIR_XFER_TO_CP_12   0x700Cu
-#define CIR_XFER_FROM_CP_4  0x6004u
-#define CIR_XFER_FROM_CP_8  0x6008u
-#define CIR_XFER_FROM_CP_12 0x600Cu
+/* AN-947 response primitives (MC68881 native bus encoding).
+ * Bit 15=CA (come again), Bit 13=DR (0=to-FPU, 1=from-FPU), Bits 7:0=length. */
+#define CIR_BUSY             0x8900u  /* Null CA=1 (come again) */
+#define CIR_NULL             0x0900u  /* Null CA=0 (release) */
+#define CIR_XFER_TO_CP_4    0x9604u  /* EA+Xfer CPU→FPU, 4 bytes, CA=1 */
+#define CIR_XFER_TO_CP_8    0x9608u
+#define CIR_XFER_TO_CP_12   0x960Cu
+#define CIR_XFER_FROM_CP_4  0xB204u  /* EA+Xfer FPU→CPU, 4 bytes, CA=1 */
+#define CIR_XFER_FROM_CP_8  0xB208u
+#define CIR_XFER_FROM_CP_12 0xB20Cu
 
 /* ------------------------------------------------------------------ */
 /* Status register bits (supplement to fpu_periph.h)                   */

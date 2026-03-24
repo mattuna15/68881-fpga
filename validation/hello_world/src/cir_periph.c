@@ -22,7 +22,7 @@ u16 cir_poll_response(void)
             return r;
     }
     xil_printf("  [poll TIMEOUT]\r\n");
-    return 0;   /* timeout — returns BUSY (0) */
+    return CIR_BUSY;   /* timeout — returns BUSY */
 }
 
 /* ------------------------------------------------------------------ */

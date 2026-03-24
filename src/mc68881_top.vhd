@@ -4318,16 +4318,16 @@ begin
       when CIR_EXECUTE_DONE =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_SRC =>
-        -- Transfer Operand to-CP: [15:13]=011, [12]=1, [7:0]=byte count
-        cir_response_prim <= "0111" & "0000" &
+        -- AN-947: Evaluate EA + Transfer Data, CPU→FPU (CA=1, DR=0, len=bytes)
+        cir_response_prim <= "1001" & "0110" &
           std_logic_vector(to_unsigned(cir_xfer_word_count * 4, 8));
       when CIR_XFER_SRC_WAIT =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_SRC_WAIT2 =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_DST =>
-        -- Transfer Operand from-CP: [15:13]=011, [12]=0, [7:0]=byte count
-        cir_response_prim <= "0110" & "0000" &
+        -- AN-947: Evaluate EA + Transfer Data, FPU→CPU (CA=1, DR=1, len=bytes)
+        cir_response_prim <= "1011" & "0010" &
           std_logic_vector(to_unsigned(cir_xfer_word_count * 4, 8));
       when CIR_XFER_DST_WAIT =>
         cir_response_prim <= CIR_PRIM_BUSY;
@@ -4353,8 +4353,8 @@ begin
       when CIR_PENDING_DECODE =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_PENDING_XFER_SRC =>
-        -- Transfer Operand to-CP for pending instruction (same encoding as CIR_XFER_SRC).
-        cir_response_prim <= "0111" & "0000" &
+        -- AN-947: Pending transfer to-CP (same encoding as CIR_XFER_SRC).
+        cir_response_prim <= "1001" & "0110" &
           std_logic_vector(to_unsigned(pending_xfer_word_count * 4, 8));
       when CIR_PENDING_XFER_SRC_WAIT | CIR_PENDING_XFER_SRC_WAIT2
          | CIR_PENDING_XFER_SRC_WAIT3 =>

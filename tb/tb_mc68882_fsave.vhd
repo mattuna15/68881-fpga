@@ -456,7 +456,7 @@ begin
     for poll_idx in 0 to 31 loop
       bus_read(a_in, rw, cs_n, as_n, ds_n,
                dsack0_n, dsack1_n, d_out, rd_val, CIR_RESPONSE);
-      exit when rd_val(15 downto 0) /= x"0000";
+      exit when rd_val(15 downto 0) /= CIR_PRIM_BUSY;
     end loop;
     report "TEST 5 response=" & to_hstring(rd_val(15 downto 0)) severity note;
     -- Format error: [15:13]=101 (pre), [9:0]=0x0E (14)
@@ -499,8 +499,8 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n,
              dsack0_n, dsack1_n, d_out, rd_val, CIR_RESPONSE);
     report "TEST 6 response during EXECUTE=" & to_hstring(rd_val(15 downto 0)) severity note;
-    assert rd_val(15 downto 0) = x"2001"
-      report "FAIL TEST 6: Expected NULL ($2001) during CIR_EXECUTE with empty pending, got $" &
+    assert rd_val(15 downto 0) = CIR_PRIM_NULL
+      report "FAIL TEST 6: Expected NULL ($0900) during CIR_EXECUTE with empty pending, got $" &
              to_hstring(rd_val(15 downto 0))
       severity failure;
 
@@ -618,8 +618,8 @@ begin
     bus_read(a_in, rw, cs_n, as_n, ds_n,
              dsack0_n, dsack1_n, d_out, rd_val, CIR_RESPONSE);
     report "TEST 8 response (pending full)=" & to_hstring(rd_val(15 downto 0)) severity note;
-    assert rd_val(15 downto 0) = x"0000"
-      report "FAIL TEST 8: Expected BUSY ($0000) when pending slot full, got $" &
+    assert rd_val(15 downto 0) = CIR_PRIM_BUSY
+      report "FAIL TEST 8: Expected BUSY ($8900) when pending slot full, got $" &
              to_hstring(rd_val(15 downto 0))
       severity failure;
 

@@ -272,9 +272,6 @@ static void rom_boot(void)
 
     xil_printf("[ROM] M68000 reset — %s\r\n",
                boot_choice == BOOT_MERLIN2 ? "Merlin2 BIOS" : "EmuTOS");
-    /* Enable CIR debug logging for EmuTOS to trace FPU detection/access */
-    if (boot_choice == BOOT_EMUTOS)
-        emu_cir_debug_enable(1);
     xil_printf("[ROM] Entering emulation loop...\r\n");
 
     /* Main emulation loop */

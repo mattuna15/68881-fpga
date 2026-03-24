@@ -330,6 +330,21 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Open Defects
 
+### DEF-CIR-003: VHDL needs command-only FSM trigger for real 68000 bus
+
+**Severity:** Low (only affects future real-68000 hardware, not Musashi emulation)
+
+**Symptom:** SFP004/Mega STE software writes only the Command register (no
+OpWord) to start a CIR dialog. Currently the auto-inject OpWord is done in
+`emu_memory.c` (C software), which only works in the Musashi emulation path.
+
+**Action:** When connecting a real 68000 to the FPGA bus, the VHDL CIR FSM
+must support starting a dialog from a Command write alone (without requiring
+OpWord). Add a mode or flag in the FSM that triggers IDLE→DECODE when only
+`cir_command_written` is set and the instruction type can be inferred as cpGEN.
+
+**File:** `src/mc68881_top.vhd` (cir_dialog_proc CIR_IDLE state)
+
 ### DEF-CIR-002: FPU_HARD.PRG SFP004 peripheral protocol not supported
 - Status: Closed (2026-03-24)
 - Files: `src/mc68881_pkg.vhd`, `src/mc68881_top.vhd`, `validation/hello_world/src/emu_memory.c`,

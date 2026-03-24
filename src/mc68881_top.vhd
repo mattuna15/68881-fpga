@@ -3702,7 +3702,7 @@ begin
               cir_src_fmt <= d_in(12 downto 10);
               cir_dst_reg_idx <= to_integer(unsigned(d_in(9 downto 7)));
               cir_src_reg_idx <= to_integer(unsigned(d_in(12 downto 10)));
-              cir_reg_to_reg <= d_in(14);
+              cir_reg_to_reg <= not d_in(14);  -- MC68881: R/M=0=register, R/M=1=EA/memory
               cir_direction <= d_in(13);
               cir_command_written <= '1';
               -- 68882: latch command arrival during CIR_EXECUTE for pending pipeline.
@@ -3947,7 +3947,7 @@ begin
             pending_dst_reg_idx_reg <= to_integer(unsigned(cir_command_reg(9 downto 7)));
             pending_src_reg_idx_reg <= to_integer(unsigned(cir_command_reg(12 downto 10)));
             pending_decoded_op <= cir_decode_cpgen_opcode(cir_command_reg);
-            pending_reg_to_reg <= cir_command_reg(14);
+            pending_reg_to_reg <= not cir_command_reg(14);  -- MC68881: R/M=0=register
             pending_direction <= cir_command_reg(13);
             pending_instaddr_reg <= cir_instaddr_reg;
             -- Note: cir_opword_written/cir_command_written are driven by the bus write

@@ -220,7 +220,7 @@ architecture sim of tb_mc68882_fsave is
   ) return std_logic_vector is
     variable cmd : std_logic_vector(15 downto 0) := (others => '0');
   begin
-    cmd(14) := '1';
+    cmd(14) := '0';  -- R/M = 0 = register source (Motorola convention)
     cmd(12 downto 10) := std_logic_vector(to_unsigned(src_reg, 3));
     cmd(9 downto 7) := std_logic_vector(to_unsigned(dst_reg, 3));
     cmd(6 downto 0) := opcode;

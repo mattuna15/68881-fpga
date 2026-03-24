@@ -59,18 +59,20 @@
 #define FPOP_MUL    0x23
 #define FPOP_SUB    0x28
 
-/* ---- Command word builders ---- */
-/* Memory-to-register: R/M=0, dir=0 */
+/* ---- Command word builders (Motorola R/M convention) ---- */
+/* R/M=0: register source, R/M=1: EA/memory source */
+
+/* Memory-to-register: R/M=1, dir=0 */
 #define CMD_MEM2REG(fmt, dst, op) \
-    (((fmt) << 10) | ((dst) << 7) | (op))
+    (0x4000 | ((fmt) << 10) | ((dst) << 7) | (op))
 
-/* Register-to-memory: R/M=0, dir=1 */
+/* Register-to-memory: R/M=1, dir=1 */
 #define CMD_REG2MEM(fmt, src, op) \
-    (0x2000 | ((fmt) << 10) | ((src) << 7) | (op))
+    (0x6000 | ((fmt) << 10) | ((src) << 7) | (op))
 
-/* Register-to-register: R/M=1 */
+/* Register-to-register: R/M=0 */
 #define CMD_REG2REG(src, dst, op) \
-    (0x4000 | ((src) << 10) | ((dst) << 7) | (op))
+    (((src) << 10) | ((dst) << 7) | (op))
 
 /* ---- Bus access ---- */
 static void wr16(int offset, unsigned short val)

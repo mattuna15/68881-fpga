@@ -64,17 +64,22 @@
 /* Opcode IDs are MC68881 native encoding (FPOP_* = bits[6:0]).        */
 /* ------------------------------------------------------------------ */
 
-/* Register-to-register: R/M=1, src_reg [12:10], dst_reg [9:7] */
+/* MC68881 command word format (Motorola convention):
+ * R/M=0: source is FP register (bits[12:10]=register number)
+ * R/M=1: source is effective address/memory (bits[12:10]=data format)
+ * dir(bit13): 0=to-register, 1=from-register (FMOVE reg-to-mem only) */
+
+/* Register-to-register: R/M=0, src_reg [12:10], dst_reg [9:7] */
 #define CIR_CMD_REG(src, dst, op) \
-    ((u16)(0x4000u | ((u16)(src) << 10) | ((u16)(dst) << 7) | (u16)(op)))
+    ((u16)(((u16)(src) << 10) | ((u16)(dst) << 7) | (u16)(op)))
 
-/* Memory-to-register: R/M=0, dir=0, fmt [12:10], dst_reg [9:7] */
+/* Memory-to-register: R/M=1, dir=0, fmt [12:10], dst_reg [9:7] */
 #define CIR_CMD_MEM2REG(fmt, dst, op) \
-    ((u16)(((u16)(fmt) << 10) | ((u16)(dst) << 7) | (u16)(op)))
+    ((u16)(0x4000u | ((u16)(fmt) << 10) | ((u16)(dst) << 7) | (u16)(op)))
 
-/* Register-to-memory: R/M=0, dir=1, fmt [12:10], src_reg [9:7] */
+/* Register-to-memory: R/M=1, dir=1, fmt [12:10], src_reg [9:7] */
 #define CIR_CMD_REG2MEM(fmt, src, op) \
-    ((u16)(0x2000u | ((u16)(fmt) << 10) | ((u16)(src) << 7) | (u16)(op)))
+    ((u16)(0x6000u | ((u16)(fmt) << 10) | ((u16)(src) << 7) | (u16)(op)))
 
 /* ------------------------------------------------------------------ */
 /* Low-level CIR register access (same base as peripheral)             */

@@ -74,7 +74,7 @@ architecture sim of tb_mc68881_cir_dialog is
   constant FP80_NEG_ONE   : fp80_t := x"BFFF8000000000000000";  -- -1.0
 
   -- cpGEN command word builder for register-to-register operations.
-  -- R/M=1, bits[12:10]=src_reg, bits[9:7]=dst_reg, bits[6:0]=core_v1 opcode
+  -- MC68881: R/M=0 = register source, bits[12:10]=src_reg, bits[9:7]=dst_reg
   function make_cpgen_reg_cmd(
     src_reg : natural range 0 to 7;
     dst_reg : natural range 0 to 7;
@@ -82,7 +82,7 @@ architecture sim of tb_mc68881_cir_dialog is
   ) return std_logic_vector is
     variable cmd : std_logic_vector(15 downto 0) := (others => '0');
   begin
-    cmd(14) := '1';  -- R/M = register
+    cmd(14) := '0';  -- R/M = 0 = register source (Motorola convention)
     cmd(12 downto 10) := std_logic_vector(to_unsigned(src_reg, 3));
     cmd(9 downto 7) := std_logic_vector(to_unsigned(dst_reg, 3));
     cmd(6 downto 0) := opcode;
@@ -90,7 +90,7 @@ architecture sim of tb_mc68881_cir_dialog is
   end function;
 
   -- cpGEN command word builder for memory-source operations.
-  -- R/M=0, bits[12:10]=src_fmt, bits[9:7]=dst_reg, bits[6:0]=core_v1 opcode
+  -- MC68881: R/M=1 = EA/memory source, bits[12:10]=src_fmt, bits[9:7]=dst_reg
   function make_cpgen_mem_cmd(
     src_fmt : std_logic_vector(2 downto 0);
     dst_reg : natural range 0 to 7;
@@ -98,7 +98,7 @@ architecture sim of tb_mc68881_cir_dialog is
   ) return std_logic_vector is
     variable cmd : std_logic_vector(15 downto 0) := (others => '0');
   begin
-    cmd(14) := '0';  -- R/M = memory
+    cmd(14) := '1';  -- R/M = 1 = memory/EA source (Motorola convention)
     cmd(12 downto 10) := src_fmt;
     cmd(9 downto 7) := std_logic_vector(to_unsigned(dst_reg, 3));
     cmd(6 downto 0) := opcode;
@@ -552,13 +552,13 @@ architecture sim of tb_mc68881_cir_dialog is
     -- Write OpWord (cpGEN type).
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               CIR_OPWORD, CPGEN_OPWORD);
-    -- Write Command word: R/M=0, direction=1 (reg→mem), fmt=Single, src_reg in bits[9:7].
-    -- Note: FMOVE opcode = 0x05 in core_v1 encoding.
+    -- Write Command word: R/M=1 (EA/memory), direction=1 (reg→mem), fmt=Single.
     cmd_word := (others => '0');
+    cmd_word(14) := '1';  -- R/M = 1 = EA/memory (Motorola)
     cmd_word(13) := '1';  -- direction = reg→mem
     cmd_word(12 downto 10) := CIR_SRC_SINGLE;  -- destination format
     cmd_word(9 downto 7) := std_logic_vector(to_unsigned(src_reg, 3));
-    cmd_word(6 downto 0) := "0000101";  -- FMOVE opcode (core_v1 = 0x05)
+    cmd_word(6 downto 0) := OPCODE_FMOVE;
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               CIR_COMMAND, x"0000" & cmd_word(15 downto 0));
     -- FSM enters CIR_XFER_DST. Wait for staging to be ready.
@@ -592,10 +592,11 @@ architecture sim of tb_mc68881_cir_dialog is
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := (others => '0');
+    cmd_word(14) := '1';  -- R/M = 1 = EA/memory (Motorola)
     cmd_word(13) := '1';  -- direction = reg→mem
     cmd_word(12 downto 10) := dst_fmt;
     cmd_word(9 downto 7) := std_logic_vector(to_unsigned(src_reg, 3));
-    cmd_word(6 downto 0) := "0000101";  -- FMOVE opcode
+    cmd_word(6 downto 0) := OPCODE_FMOVE;
     bus_write(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s,
               CIR_COMMAND, x"0000" & cmd_word(15 downto 0));
     wait for CLK_PERIOD * 3;
@@ -1032,10 +1033,11 @@ begin
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_OPWORD, CPGEN_OPWORD);
     cmd_word := (others => '0');
+    cmd_word(14) := '1';  -- R/M = 1 = EA/memory (Motorola)
     cmd_word(13) := '1';  -- direction = reg→mem
     cmd_word(12 downto 10) := CIR_SRC_SINGLE;
     cmd_word(9 downto 7) := "000";  -- src_reg = FP0
-    cmd_word(6 downto 0) := "0000101";  -- FMOVE
+    cmd_word(6 downto 0) := OPCODE_FMOVE;
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
               CIR_COMMAND, x"0000" & cmd_word(15 downto 0));
 
@@ -1216,6 +1218,7 @@ begin
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n,
                     dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "10", 2);
     cmd_word := (others => '0');
+    cmd_word(14) := '1';  -- R/M = 1 = EA/memory (Motorola)
     cmd_word(13) := '1';  -- direction = reg→mem
     cmd_word(12 downto 10) := CIR_SRC_SINGLE;
     cmd_word(9 downto 7) := "010";  -- FP2
@@ -1278,6 +1281,7 @@ begin
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n,
                     dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "01", 4);
     cmd_word := (others => '0');
+    cmd_word(14) := '1';  -- R/M = 1 = EA/memory (Motorola)
     cmd_word(13) := '1';  -- direction = reg→mem
     cmd_word(12 downto 10) := CIR_SRC_SINGLE;
     cmd_word(9 downto 7) := "100";  -- FP4

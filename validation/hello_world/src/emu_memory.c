@@ -90,17 +90,12 @@ static void fpu_cir_write(uint32_t offset, uint16_t value)
         cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
         cir_wr(OFF_CIR_OPWORD, value);
         break;
-    case 0x0A: /* Command — auto-inject cpGEN OpWord for SFP004 compatibility.
-               * SFP004 software writes only Command (no OpWord); the CIR FSM
-               * needs both to start.  Write Command FIRST so command_written
-               * is already latched when the OpWord write arrives.
-               * Must set CIR mode first: fline_init() switches to peripheral
-               * mode, and CIR register writes are gated on cir_mode_reg=1.
-               * TODO: When connecting a real 68000 to the FPGA bus, this
-               * auto-inject must move to VHDL (command-only FSM trigger). */
-        cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode (fline_init sets peripheral) */
+    case 0x0A: /* Command — the VHDL CIR FSM supports command-only trigger
+               * (SFP004 compat): if only command_written is set and
+               * cir_instr_type = cpGEN, it transitions IDLE→DECODE.
+               * Must ensure CIR mode since fline_init() sets peripheral. */
+        cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
         cir_wr(OFF_CIR_COMMAND, value);
-        cir_wr(OFF_CIR_OPWORD, 0);    /* auto-inject cpGEN OpWord (triggers FSM) */
         break;
     case 0x0E: cir_wr(OFF_CIR_CONDITION, value); break;
     case 0x10: /* Operand (16-bit write — only lower half, upper is 0) */

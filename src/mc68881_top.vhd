@@ -3835,9 +3835,17 @@ begin
       case cir_state_reg is
 
         when CIR_IDLE =>
-          -- cpGEN: wait for both OpWord + Command
+          -- cpGEN: standard protocol (both OpWord + Command written)
           if cir_opword_written = '1' and cir_command_written = '1' and
              (cir_instr_type = CIR_TYPE_CPGEN) then
+            cir_state_reg <= CIR_DECODE;
+          -- cpGEN: SFP004 command-only (no OpWord written).
+          -- cir_instr_type defaults to CIR_TYPE_CPGEN at reset and is only
+          -- changed by OpWord writes, so command-only is always cpGEN.
+          -- Supports Atari SFP004/Mega STE peripheral protocol where the
+          -- 68000 writes only the Command register to start a dialog.
+          elsif cir_command_written = '1' and cir_opword_written = '0' and
+                cir_instr_type = CIR_TYPE_CPGEN then
             cir_state_reg <= CIR_DECODE;
           end if;
           -- cpBcc/cpScc: wait for OpWord + Condition write

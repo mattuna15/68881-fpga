@@ -71,7 +71,7 @@ static uint16_t fpu_cir_read(uint32_t offset)
     case 0x14: return (uint16_t)cir_rd(OFF_CIR_INSTADDR);
     case 0x16: return (uint16_t)cir_rd(OFF_CIR_OPADDR);
     default:
-#ifdef DEBUG
+#ifdef CIR_DEBUG
         xil_printf("[CIR] R unknown off=$%02X\r\n", (unsigned)offset);
 #endif
         return 0;
@@ -105,7 +105,7 @@ static void fpu_cir_write(uint32_t offset, uint16_t value)
     case 0x14: cir_wr(OFF_CIR_INSTADDR, value); break;
     case 0x16: cir_wr(OFF_CIR_OPADDR, value); break;
     default:
-#ifdef DEBUG
+#ifdef CIR_DEBUG
         xil_printf("[CIR] W unknown off=$%02X val=$%04X\r\n",
                    (unsigned)offset, (unsigned)value);
 #endif

@@ -25,14 +25,16 @@
 /* ------------------------------------------------------------------ */
 /* CIR response primitives                                             */
 /* ------------------------------------------------------------------ */
-#define CIR_BUSY             0x0000u
-#define CIR_NULL             0x2001u
-#define CIR_XFER_TO_CP_4    0x7004u
-#define CIR_XFER_TO_CP_8    0x7008u
-#define CIR_XFER_TO_CP_12   0x700Cu
-#define CIR_XFER_FROM_CP_4  0x6004u
-#define CIR_XFER_FROM_CP_8  0x6008u
-#define CIR_XFER_FROM_CP_12 0x600Cu
+/* AN-947 response primitives (MC68881 native bus encoding).
+ * Bit 15=CA (come again), Bit 13=DR (0=to-FPU, 1=from-FPU), Bits 7:0=length. */
+#define CIR_BUSY             0x8900u  /* Null CA=1 (come again) */
+#define CIR_NULL             0x0900u  /* Null CA=0 (release) */
+#define CIR_XFER_TO_CP_4    0x9604u  /* EA+Xfer CPU→FPU, 4 bytes, CA=1 */
+#define CIR_XFER_TO_CP_8    0x9608u
+#define CIR_XFER_TO_CP_12   0x960Cu
+#define CIR_XFER_FROM_CP_4  0xB204u  /* EA+Xfer FPU→CPU, 4 bytes, CA=1 */
+#define CIR_XFER_FROM_CP_8  0xB208u
+#define CIR_XFER_FROM_CP_12 0xB20Cu
 
 /* ------------------------------------------------------------------ */
 /* Status register bits (supplement to fpu_periph.h)                   */
@@ -62,17 +64,22 @@
 /* Opcode IDs are MC68881 native encoding (FPOP_* = bits[6:0]).        */
 /* ------------------------------------------------------------------ */
 
-/* Register-to-register: R/M=1, src_reg [12:10], dst_reg [9:7] */
+/* MC68881 command word format (Motorola convention):
+ * R/M=0: source is FP register (bits[12:10]=register number)
+ * R/M=1: source is effective address/memory (bits[12:10]=data format)
+ * dir(bit13): 0=to-register, 1=from-register (FMOVE reg-to-mem only) */
+
+/* Register-to-register: R/M=0, src_reg [12:10], dst_reg [9:7] */
 #define CIR_CMD_REG(src, dst, op) \
-    ((u16)(0x4000u | ((u16)(src) << 10) | ((u16)(dst) << 7) | (u16)(op)))
+    ((u16)(((u16)(src) << 10) | ((u16)(dst) << 7) | (u16)(op)))
 
-/* Memory-to-register: R/M=0, dir=0, fmt [12:10], dst_reg [9:7] */
+/* Memory-to-register: R/M=1, dir=0, fmt [12:10], dst_reg [9:7] */
 #define CIR_CMD_MEM2REG(fmt, dst, op) \
-    ((u16)(((u16)(fmt) << 10) | ((u16)(dst) << 7) | (u16)(op)))
+    ((u16)(0x4000u | ((u16)(fmt) << 10) | ((u16)(dst) << 7) | (u16)(op)))
 
-/* Register-to-memory: R/M=0, dir=1, fmt [12:10], src_reg [9:7] */
+/* Register-to-memory: R/M=1, dir=1, fmt [12:10], src_reg [9:7] */
 #define CIR_CMD_REG2MEM(fmt, src, op) \
-    ((u16)(0x2000u | ((u16)(fmt) << 10) | ((u16)(src) << 7) | (u16)(op)))
+    ((u16)(0x6000u | ((u16)(fmt) << 10) | ((u16)(src) << 7) | (u16)(op)))
 
 /* ------------------------------------------------------------------ */
 /* Low-level CIR register access (same base as peripheral)             */

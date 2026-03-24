@@ -52,32 +52,16 @@
  * $14     Inst Address     OFF_CIR_INSTADDR
  * $16     Operand Address  OFF_CIR_OPADDR
  */
-/* CIR debug logging: set to 1 to trace all CIR register access.
- * Controlled by emu_cir_debug_enable() from main.c. */
-static int cir_debug = 0;
-void emu_cir_debug_enable(int on) { cir_debug = on; }
-#include "musashi/m68k.h"
-
 static uint16_t fpu_cir_read(uint32_t offset)
 {
     uint16_t val;
     switch (offset) {
     case 0x00:
         val = (uint16_t)cir_rd(OFF_CIR_RESPONSE);
-        /* In peripheral/idle mode ($2001), return MC68882 ID instead.
-         * FPU_HARD.PRG polls this to detect FPU hardware. */
-        if (val == 0x2001) {
-            if (cir_debug) {
-                static int null_count = 0;
-                if (++null_count <= 10)
-                    xil_printf("[CIR] R resp=NULL->$0802 PC=$%06X\r\n",
-                               m68k_get_reg(NULL, M68K_REG_PC));
-            }
+        /* AN-947 Null CA=0 ($0900) when idle → return MC68882 ID ($0802).
+         * FPU_HARD.PRG polls for $0802 to detect idle FPU. */
+        if (val == 0x0900)
             return 0x0802;
-        }
-        if (cir_debug)
-            xil_printf("[CIR] R resp=$%04X PC=$%06X\r\n",
-                       (unsigned)val, m68k_get_reg(NULL, M68K_REG_PC));
         return val;
     case 0x04: return (uint16_t)cir_rd(OFF_CIR_SAVE);
     case 0x08: return (uint16_t)cir_rd(OFF_CIR_OPWORD);
@@ -87,23 +71,15 @@ static uint16_t fpu_cir_read(uint32_t offset)
     case 0x14: return (uint16_t)cir_rd(OFF_CIR_INSTADDR);
     case 0x16: return (uint16_t)cir_rd(OFF_CIR_OPADDR);
     default:
-        if (cir_debug)
-            xil_printf("[CIR] R UNHANDLED off=$%02X PC=$%06X\r\n",
-                       (unsigned)offset, m68k_get_reg(NULL, M68K_REG_PC));
+#ifdef DEBUG
+        xil_printf("[CIR] R unknown off=$%02X\r\n", (unsigned)offset);
+#endif
         return 0;
     }
 }
 
 static void fpu_cir_write(uint32_t offset, uint16_t value)
 {
-    if (cir_debug) {
-        static const char *regnames[] = {
-            "RESP","CTRL","SAVE","REST","OPWD","CMD",NULL,"COND","OPER"};
-        const char *name = (offset <= 0x10 && offset % 2 == 0 && regnames[offset/2])
-                           ? regnames[offset/2] : "???";
-        xil_printf("[CIR] W %s=$%04X PC=$%06X\r\n",
-                   name, (unsigned)value, m68k_get_reg(NULL, M68K_REG_PC));
-    }
     switch (offset) {
     case 0x00: /* Control/mode */
     case 0x02:
@@ -114,9 +90,17 @@ static void fpu_cir_write(uint32_t offset, uint16_t value)
         cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
         cir_wr(OFF_CIR_OPWORD, value);
         break;
-    case 0x0A: /* Command — pass through to CIR */
-        cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode */
+    case 0x0A: /* Command — auto-inject cpGEN OpWord for SFP004 compatibility.
+               * SFP004 software writes only Command (no OpWord); the CIR FSM
+               * needs both to start.  Write Command FIRST so command_written
+               * is already latched when the OpWord write arrives.
+               * Must set CIR mode first: fline_init() switches to peripheral
+               * mode, and CIR register writes are gated on cir_mode_reg=1.
+               * TODO: When connecting a real 68000 to the FPGA bus, this
+               * auto-inject must move to VHDL (command-only FSM trigger). */
+        cir_wr(OFF_CIR_RESPONSE, 1);  /* ensure CIR mode (fline_init sets peripheral) */
         cir_wr(OFF_CIR_COMMAND, value);
+        cir_wr(OFF_CIR_OPWORD, 0);    /* auto-inject cpGEN OpWord (triggers FSM) */
         break;
     case 0x0E: cir_wr(OFF_CIR_CONDITION, value); break;
     case 0x10: /* Operand (16-bit write — only lower half, upper is 0) */
@@ -126,10 +110,10 @@ static void fpu_cir_write(uint32_t offset, uint16_t value)
     case 0x14: cir_wr(OFF_CIR_INSTADDR, value); break;
     case 0x16: cir_wr(OFF_CIR_OPADDR, value); break;
     default:
-        if (cir_debug)
-            xil_printf("[CIR] W UNHANDLED off=$%02X val=$%04X PC=$%06X\r\n",
-                       (unsigned)offset, (unsigned)value,
-                       m68k_get_reg(NULL, M68K_REG_PC));
+#ifdef DEBUG
+        xil_printf("[CIR] W unknown off=$%02X val=$%04X\r\n",
+                   (unsigned)offset, (unsigned)value);
+#endif
         break;
     }
 }

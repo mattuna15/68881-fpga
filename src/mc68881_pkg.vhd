@@ -334,19 +334,18 @@ package mc68881_pkg is
     CIR_PENDING_XFER_SRC_WAIT3
   );
 
-  -- Response primitive categories (bits 15:13 of Response CIR).
-  constant CIR_RESP_BUSY         : std_logic_vector(2 downto 0) := "000";
-  constant CIR_RESP_NULL         : std_logic_vector(2 downto 0) := "001";
-  constant CIR_RESP_SUPERVISOR   : std_logic_vector(2 downto 0) := "010";
-  constant CIR_RESP_TRANSFER     : std_logic_vector(2 downto 0) := "011";
-  constant CIR_RESP_WRITEBACK    : std_logic_vector(2 downto 0) := "100";
+  -- AN-947 response primitive format (MC68881 native bus encoding).
+  -- Bit 15: CA (come again), Bit 14: PC, Bit 13: DR (direction 0=to-FPU 1=from-FPU)
+  -- Bits 12-8: primitive type/flags, Bits 7-0: length or register select.
+  --
+  -- Exception primitive categories (bits 15:13 for pre/mid/post-instruction).
   constant CIR_RESP_EXCEPT_PRE   : std_logic_vector(2 downto 0) := "101";
   constant CIR_RESP_EXCEPT_MID   : std_logic_vector(2 downto 0) := "110";
   constant CIR_RESP_EXCEPT_POST  : std_logic_vector(2 downto 0) := "111";
 
-  -- Common response primitive words.
-  constant CIR_PRIM_BUSY         : std_logic_vector(15 downto 0) := x"0000";
-  constant CIR_PRIM_NULL         : std_logic_vector(15 downto 0) := x"2001";
+  -- Common response primitive words (AN-947 encoding).
+  constant CIR_PRIM_BUSY         : std_logic_vector(15 downto 0) := x"8900";  -- Null CA=1 (come again)
+  constant CIR_PRIM_NULL         : std_logic_vector(15 downto 0) := x"0900";  -- Null CA=0 (release)
 
   -- Operation Word type field [8:6] — instruction family.
   constant CIR_TYPE_CPGEN        : std_logic_vector(2 downto 0) := "000";

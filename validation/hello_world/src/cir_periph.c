@@ -22,7 +22,7 @@ u16 cir_poll_response(void)
             return r;
     }
     xil_printf("  [poll TIMEOUT]\r\n");
-    return 0;   /* timeout — returns BUSY (0) */
+    return CIR_BUSY;   /* timeout — returns BUSY */
 }
 
 /* ------------------------------------------------------------------ */
@@ -92,7 +92,7 @@ int cir_cpgen_mem_to_reg(u8 fmt, u8 dst_reg, u8 opcode,
 
     /* Poll for XFER_TO_CP_* and validate response primitive */
     u16 resp = cir_poll_response();
-    if (resp == 0)
+    if (resp == CIR_BUSY)
         return CIR_TIMEOUT;
 
     u16 expected_resp = (word_count == 1) ? CIR_XFER_TO_CP_4 :
@@ -131,7 +131,7 @@ int cir_cpgen_reg_to_mem(u8 fmt, u8 src_reg,
 
     /* Poll for XFER_FROM_CP_* and validate response primitive */
     u16 resp = cir_poll_response();
-    if (resp == 0)
+    if (resp == CIR_BUSY)
         return CIR_TIMEOUT;
 
     u16 expected_resp = (word_count == 1) ? CIR_XFER_FROM_CP_4 :

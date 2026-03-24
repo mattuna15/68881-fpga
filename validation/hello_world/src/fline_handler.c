@@ -16,9 +16,10 @@
  *    5..0  = varies (EA mode/reg, or instruction-specific)
  *
  * Command word (second word, for type 0b000 general instructions):
- *   15     = R/M        (0=reg-to-reg, 1=memory/imm to reg)
- *   14     = 0
- *   13..10 = source spec (R/M=0: src FP reg; R/M=1: format code)
+ *   15     = 0
+ *   14     = R/M        (0=register source, 1=EA/memory source)
+ *   13     = direction   (0=to register, 1=from register, FMOVE only)
+ *   12..10 = source spec (R/M=0: src FP reg; R/M=1: format code)
  *    9..7  = destination FP register
  *    6..0  = opcode
  */

@@ -397,11 +397,13 @@ static int fdc_write_dbg_count;
 
 void floppy_write(uint32_t offset, uint8_t value)
 {
+#ifdef DEBUG
     if (fdc_write_dbg_count < 50) {
         xil_printf("[DMA] W off=%02X val=%02X ctrl=%04X\r\n",
                    offset, value, dma_control);
         fdc_write_dbg_count++;
     }
+#endif
 
     switch (offset) {
     case 0x00: /* $FF8604 DMA data high byte — latch */

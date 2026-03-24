@@ -308,7 +308,7 @@ register, and the FPU stores results in its internal FP register file (FP0-FP7):
 cir_wr(OFF_CIR_RESPONSE, 1);           // ensure CIR mode
 cir_wr(OFF_CIR_COMMAND, cmd);          // operation + format + register
 cir_wr(OFF_CIR_OPWORD,  CIR_OPWORD_CPGEN);  // triggers FSM
-resp = cir_poll_response();            // → 0x7004 (transfer to CP, 4 bytes)
+resp = cir_poll_response();            // → 0x9604 (AN-947: transfer CPU→FPU, 4 bytes)
 cir_wr(OFF_CIR_OPERAND, 42);          // write source operand
 cir_wait_null();                       // dialog complete; result in FP register
 ```

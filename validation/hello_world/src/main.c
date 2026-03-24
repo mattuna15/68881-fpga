@@ -272,9 +272,6 @@ static void rom_boot(void)
 
     xil_printf("[ROM] M68000 reset — %s\r\n",
                boot_choice == BOOT_MERLIN2 ? "Merlin2 BIOS" : "EmuTOS");
-    /* Enable CIR debug logging for EmuTOS to trace FPU detection/access */
-    if (boot_choice == BOOT_EMUTOS)
-        emu_cir_debug_enable(1);
     xil_printf("[ROM] Entering emulation loop...\r\n");
 
     /* Main emulation loop */
@@ -282,8 +279,8 @@ static void rom_boot(void)
         /* Execute a batch of M68K instructions */
         m68k_execute(EMU_CYCLES_PER_TICK);
 
-        /* PC sampler: print PC every ~2 seconds to trace EmuTOS progress.
-         * Disabled for Merlin2 to keep serial output clean for cirtest etc. */
+#ifdef DEBUG
+        /* PC sampler: print PC every ~2 seconds to trace EmuTOS progress. */
         if (boot_choice == BOOT_EMUTOS) {
             static int sample_count = 0;
             if (++sample_count >= 2000) {
@@ -316,6 +313,7 @@ static void rom_boot(void)
                 }
             }
         }
+#endif
 
         /* Interrupt logic: VBL (level 4) + MFP Timer C / ACIA (level 6).
          * Only for EmuTOS — Merlin2 uses its own MFP handler and doesn't

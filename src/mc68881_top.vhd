@@ -3702,7 +3702,7 @@ begin
               cir_src_fmt <= d_in(12 downto 10);
               cir_dst_reg_idx <= to_integer(unsigned(d_in(9 downto 7)));
               cir_src_reg_idx <= to_integer(unsigned(d_in(12 downto 10)));
-              cir_reg_to_reg <= d_in(14);
+              cir_reg_to_reg <= not d_in(14);  -- MC68881: R/M=0=register, R/M=1=EA/memory
               cir_direction <= d_in(13);
               cir_command_written <= '1';
               -- 68882: latch command arrival during CIR_EXECUTE for pending pipeline.
@@ -3871,8 +3871,9 @@ begin
 
         when CIR_DECODE =>
           if cir_reg_to_reg = '1' then
-            -- Register-to-register: launch ALU and go to execute.
+            -- Register-to-register (R/M=0 in Motorola convention): launch ALU.
             -- MOVE ops bypass the ALU, so go directly to IDLE.
+            -- Note: FMOVECR is not supported through CIR (only peripheral mode).
             cir_launch_alu <= '1';
             if op_class(cir_decoded_op) = OP_CLASS_MOVE then
               cir_state_reg <= CIR_IDLE;
@@ -3947,7 +3948,7 @@ begin
             pending_dst_reg_idx_reg <= to_integer(unsigned(cir_command_reg(9 downto 7)));
             pending_src_reg_idx_reg <= to_integer(unsigned(cir_command_reg(12 downto 10)));
             pending_decoded_op <= cir_decode_cpgen_opcode(cir_command_reg);
-            pending_reg_to_reg <= cir_command_reg(14);
+            pending_reg_to_reg <= not cir_command_reg(14);  -- MC68881: R/M=0=register
             pending_direction <= cir_command_reg(13);
             pending_instaddr_reg <= cir_instaddr_reg;
             -- Note: cir_opword_written/cir_command_written are driven by the bus write
@@ -4318,16 +4319,16 @@ begin
       when CIR_EXECUTE_DONE =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_SRC =>
-        -- Transfer Operand to-CP: [15:13]=011, [12]=1, [7:0]=byte count
-        cir_response_prim <= "0111" & "0000" &
+        -- AN-947: Evaluate EA + Transfer Data, CPU→FPU (CA=1, DR=0, len=bytes)
+        cir_response_prim <= "1001" & "0110" &
           std_logic_vector(to_unsigned(cir_xfer_word_count * 4, 8));
       when CIR_XFER_SRC_WAIT =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_SRC_WAIT2 =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_DST =>
-        -- Transfer Operand from-CP: [15:13]=011, [12]=0, [7:0]=byte count
-        cir_response_prim <= "0110" & "0000" &
+        -- AN-947: Evaluate EA + Transfer Data, FPU→CPU (CA=1, DR=1, len=bytes)
+        cir_response_prim <= "1011" & "0010" &
           std_logic_vector(to_unsigned(cir_xfer_word_count * 4, 8));
       when CIR_XFER_DST_WAIT =>
         cir_response_prim <= CIR_PRIM_BUSY;
@@ -4353,8 +4354,8 @@ begin
       when CIR_PENDING_DECODE =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_PENDING_XFER_SRC =>
-        -- Transfer Operand to-CP for pending instruction (same encoding as CIR_XFER_SRC).
-        cir_response_prim <= "0111" & "0000" &
+        -- AN-947: Pending transfer to-CP (same encoding as CIR_XFER_SRC).
+        cir_response_prim <= "1001" & "0110" &
           std_logic_vector(to_unsigned(pending_xfer_word_count * 4, 8));
       when CIR_PENDING_XFER_SRC_WAIT | CIR_PENDING_XFER_SRC_WAIT2
          | CIR_PENDING_XFER_SRC_WAIT3 =>

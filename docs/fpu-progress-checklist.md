@@ -330,41 +330,33 @@ Keep this list short, actionable, and updated whenever a defect is fixed or newl
 
 ## Open Defects
 
+### DEF-CIR-003: VHDL needs command-only FSM trigger for real 68000 bus
+
+**Severity:** Low (only affects future real-68000 hardware, not Musashi emulation)
+
+**Symptom:** SFP004/Mega STE software writes only the Command register (no
+OpWord) to start a CIR dialog. Currently the auto-inject OpWord is done in
+`emu_memory.c` (C software), which only works in the Musashi emulation path.
+
+**Action:** When connecting a real 68000 to the FPGA bus, the VHDL CIR FSM
+must support starting a dialog from a Command write alone (without requiring
+OpWord). Add a mode or flag in the FSM that triggers IDLE→DECODE when only
+`cir_command_written` is set and the instruction type can be inferred as cpGEN.
+
+**File:** `src/mc68881_top.vhd` (cir_dialog_proc CIR_IDLE state)
+
 ### DEF-CIR-002: FPU_HARD.PRG SFP004 peripheral protocol not supported
-
-**Severity:** High (blocks FPU_HARD.PRG and similar Atari SFP004 software)
-
-**Symptom:** FPU_HARD.PRG (Quidnunc 1991) hangs polling $FFFA40 for response
-$9608 after writing command $540E (FSIN.D) to $FFFA4A. The stuck loop is at
-the CIR response comparison — the FPU returns $0802 (NULL→ID) but the code
-expects SFP004 peripheral response values.
-
-**Root cause:** FPU_HARD.PRG uses the Atari SFP004 peripheral protocol:
-1. Writes Command only (no OpWord) — our CIR FSM needs both
-2. Expects SFP004 response encoding ($9608=transfer-to-CP 8 bytes,
-   $B208=transfer-from-CP 8 bytes, $B104=transfer-from-CP 4 bytes)
-   instead of standard CIR primitives ($7008, $6008, $6004)
-
-**Disassembly of FPU_HARD.PRG dialog pattern:**
-```
-CMPI.W  #$0802, ($FFFFA40).L  ; poll idle
-BNE.S   *
-MOVE.W  #$540E, ($FFFFA4A).L  ; write command (no OpWord!)
-CMPI.W  #$9608, ($FFFFA40).L  ; poll transfer-to-CP (SFP004 encoding)
-BNE.S   *                      ; ← STUCK HERE
-MOVE.L  4(SP), ($FFFFA50).L   ; write operand word 1
-MOVE.L  8(SP), ($FFFFA50).L   ; write operand word 2
-```
-
-**Action:**
-1. Auto-inject cpGEN OpWord in emu_memory.c when Command write arrives
-   without a preceding OpWord (SFP004 compatibility)
-2. Map SFP004 response values to/from CIR primitives in fpu_cir_read,
-   or add SFP004 response mode to the VHDL
-3. Consult MC68881 User Manual for complete SFP004 peripheral response
-   encoding table
-
-**File:** `validation/hello_world/src/emu_memory.c`
+- Status: Closed (2026-03-24)
+- Files: `src/mc68881_pkg.vhd`, `src/mc68881_top.vhd`, `validation/hello_world/src/emu_memory.c`,
+  `validation/hello_world/src/cir_periph.h`, `validation/hello_world/src/cir_periph.c`
+- Description: FPU_HARD.PRG (Quidnunc 1991, Atari SFP004) hung polling $FFFA40
+  for $9608 after writing FSIN.D command. Two issues: (1) SFP004 writes Command
+  without OpWord — CIR FSM needs both. (2) Response encoding used MC68020 CIR
+  format ($7008/$6008) instead of MC68881 native AN-947 format ($9608/$B208).
+- Resolution: Changed VHDL cir_response_gen to output AN-947 native primitives
+  (CA=1, DR, length). Added auto-inject cpGEN OpWord in emu_memory.c when Command
+  write arrives without a preceding OpWord. Updated CIR_PRIM_BUSY=$8900 (Null CA=1),
+  CIR_PRIM_NULL=$0900 (Null CA=0). All 13 GHDL testbenches pass.
 
 ### DEF-BLT-001: Blitter icon corruption with NFSR + non-zero skew
 

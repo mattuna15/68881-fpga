@@ -1004,7 +1004,7 @@ begin
                       dsack0_n, dsack1_n, d_out, resp);
     report "Xfer-src response=" & to_hstring(resp) severity note;
     assert resp = RESP_XFER_TO_CP_4
-      report "FAIL: expected Transfer Operand to-CP ($7004), got " & to_hstring(resp)
+      report "FAIL: expected Transfer Operand to-CP ($9604), got " & to_hstring(resp)
       severity failure;
 
     -- Write operand data.
@@ -1047,7 +1047,7 @@ begin
                       dsack0_n, dsack1_n, d_out, resp);
     report "Xfer-dst response=" & to_hstring(resp) severity note;
     assert resp = RESP_XFER_FROM_CP_4
-      report "FAIL: expected Transfer from-CP ($6004), got " & to_hstring(resp)
+      report "FAIL: expected Transfer from-CP ($B204), got " & to_hstring(resp)
       severity failure;
 
     -- Read the operand data.
@@ -3032,7 +3032,7 @@ begin
                       dsack0_n, dsack1_n, d_out, cir_resp_16);
     report "TEST 52 xfer_src resp=" & to_hstring(cir_resp_16) severity note;
     assert cir_resp_16 = RESP_XFER_TO_CP_4
-      report "FAIL TEST 52: Expected Transfer-to-CP ($7004), got=" & to_hstring(cir_resp_16)
+      report "FAIL TEST 52: Expected Transfer-to-CP ($9604), got=" & to_hstring(cir_resp_16)
       severity failure;
 
     -- Write operand (single-precision 3.5 = 0x40600000).

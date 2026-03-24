@@ -1,13 +1,12 @@
 /*
  * cirtest.c -- CIR (Coprocessor Interface Register) diagnostic test.
  *
- * Tests the MC68882 CIR dialog protocol by directly writing to the
+ * Tests the MC68881 CIR dialog protocol by directly writing to the
  * AXI register file via 68K memory-mapped I/O at $FFFA40.
  * Run from the Merlin2 monitor (not EmuTOS).
  *
- * IMPORTANT: CIR command word bits[6:0] use CORE_V1 opcode encoding
- * (the FPGA's internal IDs), NOT MC68881 native opcodes.  The
- * fline_handler translates MC68881 opcodes before writing to CIR.
+ * Command word bits[6:0] use MC68881 native opcode encoding.
+ * Response primitives use AN-947 format (same as real MC68881 hardware).
  *
  * Register map (5-bit address * 4 = AXI byte offset):
  *   addr  4 (0x10): CIR OpWord     (overlaps OPB_L in peripheral mode)

@@ -3871,8 +3871,9 @@ begin
 
         when CIR_DECODE =>
           if cir_reg_to_reg = '1' then
-            -- Register-to-register: launch ALU and go to execute.
+            -- Register-to-register (R/M=0 in Motorola convention): launch ALU.
             -- MOVE ops bypass the ALU, so go directly to IDLE.
+            -- Note: FMOVECR is not supported through CIR (only peripheral mode).
             cir_launch_alu <= '1';
             if op_class(cir_decoded_op) = OP_CLASS_MOVE then
               cir_state_reg <= CIR_IDLE;

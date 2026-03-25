@@ -279,7 +279,7 @@ static void rom_boot(void)
         /* Execute a batch of M68K instructions */
         m68k_execute(EMU_CYCLES_PER_TICK);
 
-#ifdef DEBUG
+#ifdef PC_DEBUG
         /* PC sampler: print PC every ~2 seconds to trace EmuTOS progress. */
         if (boot_choice == BOOT_EMUTOS) {
             static int sample_count = 0;

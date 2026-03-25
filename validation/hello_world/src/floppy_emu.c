@@ -397,7 +397,7 @@ static int fdc_write_dbg_count;
 
 void floppy_write(uint32_t offset, uint8_t value)
 {
-#ifdef DEBUG
+#ifdef DMA_DEBUG
     if (fdc_write_dbg_count < 50) {
         xil_printf("[DMA] W off=%02X val=%02X ctrl=%04X\r\n",
                    offset, value, dma_control);

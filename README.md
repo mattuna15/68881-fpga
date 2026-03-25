@@ -495,13 +495,50 @@ for supporting this project.
 ## Status
 All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
 
-## Key documentation
-- Master checklist: `docs/fpu-progress-checklist.md`
-- BIOS user guide: [`docs/merlin2_bios.md`](docs/merlin2_bios.md)
-- GHDL test results (349 tests): `docs/tests.txt`
-- Programming reference: `docs/68881-programming.txt`
-- FMOVECR constant cross-reference: `docs/fmovecr_qemu_summary.md`
-- Technical summary: `docs/68881-tech-summary.pdf`
+## Documentation index
+
+### Project documentation
+| File | Description |
+|------|-------------|
+| [`docs/fpu-progress-checklist.md`](docs/fpu-progress-checklist.md) | Master checklist: implementation status, open/closed defects |
+| [`docs/history.md`](docs/history.md) | Development history and changelog |
+| [`docs/merlin2_bios.md`](docs/merlin2_bios.md) | Merlin2 BIOS monitor user guide |
+| [`docs/trig_design.md`](docs/trig_design.md) | Transcendental engine architecture and algorithm design |
+| [`docs/fmovecr_qemu_summary.md`](docs/fmovecr_qemu_summary.md) | FMOVECR ROM constant cross-reference (QEMU vs MC68881) |
+| [`docs/68881-programming.txt`](docs/68881-programming.txt) | MC68881 programming reference notes |
+| [`docs/tests.txt`](docs/tests.txt) | GHDL test results (349+ tests) |
+| [`docs/qmtech_constraints_verification.md`](docs/qmtech_constraints_verification.md) | XDC constraints verification for QMTECH Artix-7 board |
+
+### Motorola / Atari reference manuals
+| File | Description |
+|------|-------------|
+| `docs/MC68881UM.pdf` | MC68881/MC68882 User Manual (Motorola) |
+| `docs/68881-tech-summary.pdf` | MC68881 Technical Summary |
+| `docs/AN-0947_MC68881...pdf` | AN-947: MC68881 as Peripheral in M68000 System |
+| `docs/atari_sfp_en.pdf` | Atari SFP-004 programming by example |
+| `docs/atari_68881_co-processor.pdf` | Atari MC68881 coprocessor board reference |
+
+### Hardware reference
+| File | Description |
+|------|-------------|
+| `docs/AXU3EG_User_Manual.pdf` | Alinx AXU3EG (Zynq UltraScale+ ZU3EG) board manual |
+| `docs/QMTECH_XC7A200T-CORE-BOARD-V01-*.pdf` | QMTECH Artix-7 200T core board manual |
+| `docs/MecbManual.pdf` | MECB 68000 educational board manual |
+
+### Design plans
+| File | Description |
+|------|-------------|
+| [`docs/plans/2026-03-22-68040-emutos-variant.md`](docs/plans/2026-03-22-68040-emutos-variant.md) | MC68040 EmuTOS variant plan |
+| [`docs/plans/2026-03-19-68882-upgrade.md`](docs/plans/2026-03-19-68882-upgrade.md) | MC68882 upgrade plan (pending pipeline, frame formats) |
+| [`docs/plans/2026-03-03-s7-coprocessor-interface.md`](docs/plans/2026-03-03-s7-coprocessor-interface.md) | CIR coprocessor interface implementation plan |
+| [`docs/plans/2026-02-28-packed-decimal-completion.md`](docs/plans/2026-02-28-packed-decimal-completion.md) | Packed decimal conversion completion plan |
+
+### READMEs
+| File | Description |
+|------|-------------|
+| [`validation/hello_world/src/README.md`](validation/hello_world/src/README.md) | Validation firmware: peripheral + CIR protocol, SFP004 benchmark |
+| [`toolchain/README.md`](toolchain/README.md) | M68K GCC cross-compilation toolchain |
+| [`toolchain/merlin-68k-toolchain/README.md`](toolchain/merlin-68k-toolchain/README.md) | Merlin2 68K toolchain (newlib, BSP) |
 
 ## License
 See repository for license terms.

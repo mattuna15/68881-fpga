@@ -86,10 +86,10 @@ cir_dialog_state_t:
 **cpGEN with memory source** (e.g. FADD.S <ea>,FP0):
 1. Host writes OpWord ($08), Command ($0A)
 2. FSM decodes: need N-word source operand
-3. Response = Transfer Operand primitive ($68xx, byte count)
+3. Response = Transfer Operand primitive (AN-947: $96xx CPU→FPU, byte count)
 4. Host writes N longwords to Operand CIR ($10)
-5. FSM converts format, launches ALU. Response = Busy ($0000)
-6. ALU completes. Response = Null ($2001)
+5. FSM converts format, launches ALU. Response = Busy ($8900)
+6. ALU completes. Response = Null ($0900)
 
 **cpGEN register-to-register** (e.g. FADD FP1,FP0):
 1. Host writes OpWord ($08), Command ($0A)

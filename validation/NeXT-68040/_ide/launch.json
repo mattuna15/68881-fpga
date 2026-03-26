@@ -1,0 +1,79 @@
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "tcf-debug",
+			"request": "launch",
+			"name": "NeXT-68040_hw",
+			"debugType": "baremetal-zu",
+			"attachToRunningTargetOptions": {
+				"targetSetupMode": "standalone",
+				"executeScript": true,
+				"scriptPath": ""
+			},
+			"autoAttachProcessChildren": false,
+			"target": {
+				"targetConnectionId": "Local",
+				"peersIniPath": "../../_ide/.peers.ini",
+				"context": "ZUPlus"
+			},
+			"pathMap": [],
+			"targetSetup": {
+				"resetSystem": true,
+				"programDevice": true,
+				"partialBitstream": false,
+				"skipRevisionCheck": false,
+				"device": {
+					"plDevice": "Auto Detect",
+					"psDevice": "Auto Detect"
+				},
+				"enableRPUSplitMode": false,
+				"resetAPU": false,
+				"resetRPU": false,
+				"bitstreamFile": "${workspaceFolder}\\hello_world\\_ide\\bitstream\\68881_wrapper.bit",
+				"zuInitialization": {
+					"isFsbl": true,
+					"usingFSBL": {
+						"initWithFSBL": true,
+						"fsblFile": "${workspaceFolder}\\platform-68-linux\\export\\platform-68-linux\\sw\\boot\\fsbl.elf",
+						"fsblExitSymbol": "XFsbl_Exit"
+					},
+					"usingPsuInit": {
+						"runPsuInit": true,
+						"plPowerup": true,
+						"psuInitTclFile": "${workspaceFolder}\\hello_world\\_ide\\psinit\\psu_init.tcl"
+					}
+				},
+				"zuTraceOptions": {
+					"isSelected": false,
+					"scratchAddress": "0x60000",
+					"scratchSize": "0x60000",
+					"traceOutputPath": ""
+				},
+				"downloadElf": [
+					{
+						"core": "psu_cortexa53_0",
+						"resetProcessor": true,
+						"elfFile": "${workspaceFolder}\\NeXT-68040\\build\\NeXT-68040.elf",
+						"stopAtEntry": false,
+						"isSelfRelocatingApp": false,
+						"relativeAddress": ""
+					},
+					{
+						"core": "psu_pmu_0",
+						"resetProcessor": true,
+						"elfFile": "C:\\code\\68881-fpga\\validation\\platform-68-linux\\zynqmp_pmufw\\build\\pmufw.elf",
+						"stopAtEntry": false,
+						"isSelfRelocatingApp": false,
+						"relativeAddress": ""
+					}
+				],
+				"crossTriggerBreakpoints": {
+					"isSelected": false,
+					"breakpoints": []
+				}
+			},
+			"internalConsoleOptions": "openOnSessionStart"
+		}
+	]
+}

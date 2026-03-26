@@ -1,0 +1,5 @@
+build/
+build-qemu/
+compile_commands.json
+src/compile_commands.json
+src/.cache/

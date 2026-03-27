@@ -1478,14 +1478,14 @@ begin
                   state_reg <= ST_DONE;
                 else
                   -- ETOXM1 via 2^(J/64) decomposition, then subtract 1
+                  -- NOTE: subtract 1 must happen AFTER fscale (2^M), not before.
+                  -- Don't use trans_post_add — it fires before fscale.
+                  -- Instead, the -1 is handled in ST_TRANS_POST_ADD_POST via op check.
                   exp_reduce_en_reg <= '1';
                   exp_reduce_done_reg <= '1';
                   coeff_set_reg <= COEFF_SET_EXP64;
                   poly_degree_reg <= 6;
                   trans_post_mul_en_reg <= '1';  -- multiply by EXPTBL[J]
-                  trans_post_add_en_reg <= '1';
-                  trans_post_add_sub_reg <= '0';
-                  trans_post_add_const_reg <= FP80_NEG_ONE;
                   x_reg <= x_local;
                   mul_a_reg <= x_local;
                   mul_b_reg <= FP80_64_INV_LN2;
@@ -3115,6 +3115,15 @@ begin
             result_reg <= fscale_fp80(exp_k_reg, tmp_reg);
             if op_reg = FPU_OP_TANH then
               state_reg <= ST_TANH_EXP_POST;
+            elsif op_reg = FPU_OP_ETOXM1 then
+              -- Subtract 1 AFTER fscale: e^x - 1 = 2^M*EXPTBL[J]*exp(R) - 1
+              add_a_reg <= fscale_fp80(exp_k_reg, tmp_reg);
+              add_b_reg <= FP80_ONE;
+              add_sub_reg <= true;
+              add_rm_reg <= rm_reg;
+              add_rp_reg <= rp_reg;
+              cont_state_reg <= ST_ACOS_FINAL_POST;  -- reuse: sets result_reg, ST_DONE
+              state_reg <= ST_FP_ADD;
             else
               state_reg <= ST_DONE;
             end if;
@@ -3141,6 +3150,14 @@ begin
             result_reg <= fscale_fp80(exp_k_reg, tmp_reg);
             if op_reg = FPU_OP_TANH then
               state_reg <= ST_TANH_EXP_POST;
+            elsif op_reg = FPU_OP_ETOXM1 then
+              add_a_reg <= fscale_fp80(exp_k_reg, tmp_reg);
+              add_b_reg <= FP80_ONE;
+              add_sub_reg <= true;
+              add_rm_reg <= rm_reg;
+              add_rp_reg <= rp_reg;
+              cont_state_reg <= ST_ACOS_FINAL_POST;
+              state_reg <= ST_FP_ADD;
             else
               state_reg <= ST_DONE;
             end if;

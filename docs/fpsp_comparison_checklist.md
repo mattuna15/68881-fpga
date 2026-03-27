@@ -250,7 +250,7 @@ emulation of unimplemented 68040 FPU instructions — the same algorithms the
 6. **6.1/6.2** `[E]` ~~TWOTOX/TENTOX skip pre-multiply~~ **DONE** — saves ~4 FP ops per TWOTOX, ~3 per TENTOX
 
 ### Accuracy regressions from efficiency changes (recoverable)
-- **LOGN** lost ~10 bits (54 vs 64): reciprocal MUL vs exact DIV. Fix: Newton-Raphson refinement `u' = u + u*(1 - c_i*u)` after reciprocal multiply (+1 MUL +1 ADD).
+- **LOGN** lost ~3 bits (~54 vs ~57): reciprocal MUL vs exact DIV. Fix: Newton-Raphson refinement `u' = u + u*(1 - c_i*u)` after reciprocal multiply (+1 MUL +1 ADD).
 - **TWOTOX/TENTOX** lost ~7 bits (47 vs 54): single `r*ln(2)` multiply vs 3-term CW. Fix: 2-term CW split of ln(2) for the `r*ln(2)` multiply (+1 MUL +1 ADD, recovers ~10 bits).
 
 ### Accuracy-only (no efficiency impact)

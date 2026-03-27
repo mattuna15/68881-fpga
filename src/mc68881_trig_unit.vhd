@@ -225,6 +225,7 @@ architecture rtl of mc68881_trig_unit is
   type seed_domain_t is (SEED_DOMAIN_TRIG, SEED_DOMAIN_EXP, SEED_DOMAIN_LOG, SEED_DOMAIN_ATAN);
 
   -- Coefficient ROM: 6 sets × 10 coefficients for Horner polynomial evaluation
+  -- Sets 0-4 use Taylor (1/n!) coefficients; set 5 (EXP64) uses FPSP minimax.
   constant COEFF_SET_EXP   : integer := 0;  -- TWOTOX/TENTOX (Taylor, wide range)
   constant COEFF_SET_LOG   : integer := 1;  -- LOGN/LOG2/LOG10/LOGNP1/ATANH
   constant COEFF_SET_ATAN  : integer := 2;  -- ATAN/ASIN/ACOS
@@ -2401,7 +2402,8 @@ begin
 
         when ST_TWOTOX_RLN2_POST =>
           -- tmp_reg = r * ln(2), the reduced argument for exp()
-          -- |r*ln(2)| <= 0.5*ln(2) ~ 0.347 (same range as standard EXP)
+          -- |r*ln(2)| <= 0.5*ln(2) ~ 0.347 (wider than EXP64's |R| <= 0.0054;
+          -- uses degree-9 Taylor via COEFF_SET_EXP instead of minimax degree-6)
           x_reg <= tmp_reg;
           -- exp_reduce_done=1 already set, so ST_TRANS_PREP skips reduction
           state_reg <= ST_TRANS_PREP;

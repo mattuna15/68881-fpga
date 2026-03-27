@@ -10,8 +10,9 @@ set(BSP_LIB "C:/code/68881-fpga/validation/platform-68-linux/export/platform-68-
 set(LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/src/lscript.ld")
 
 # Compile flags: QEMU_MODE + debug
-add_compile_options(-DQEMU_MODE -DNEXT_IO_DEBUG -Wall -O0 -g3)
-add_compile_options(-I${BSP_INCLUDE})
+add_definitions(-DQEMU_MODE -DNEXT_IO_DEBUG)
+add_compile_options(-Wall -O0 -g3)
+include_directories(${BSP_INCLUDE})
 
 # Source files — build as a static library so the linker can do
 # multi-pass resolution (libxilstandalone crt0 references main).
@@ -19,6 +20,7 @@ set(SOURCES
     src/main.c
     src/next_memory.c
     src/next_devs.c
+    src/next_rtc.c
     src/next_mon_stub.c
     src/fline_handler.c
     src/fpu_periph.c

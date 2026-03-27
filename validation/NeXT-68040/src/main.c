@@ -21,6 +21,7 @@
 #include "next_hw.h"
 #include "next_rom_image.h"
 #include "fline_handler.h"
+#include "next_rtc.h"
 #include "text_fb.h"
 #include "dp_video.h"
 
@@ -118,6 +119,7 @@ static void next_boot(void)
 
     /* Initialise NeXT hardware stubs */
     next_devs_init();
+    next_rtc_init();
     xil_printf("[NEXT] Device stubs: SCR1=%08X (WARP9/040)\r\n",
                SCR1_VALUE(NeXT_WARP9, 0));
 
@@ -189,8 +191,9 @@ static void next_boot(void)
     while (1) {
         m68k_execute(EMU_CYCLES_PER_TICK);
 
-        /* Advance timer and check for interrupts */
+        /* Advance timer, RTC, and check for interrupts */
         next_timer_tick(EMU_CYCLES_PER_TICK);
+        next_rtc_tick(EMU_CYCLES_PER_TICK);
 
         int ipl = next_intr_pending_ipl();
         m68k_set_irq(ipl);

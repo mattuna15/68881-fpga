@@ -13,6 +13,7 @@
 
 #include "next_devs.h"
 #include "next_hw.h"
+#include "next_rtc.h"
 #include "xil_printf.h"
 #include <string.h>
 
@@ -290,14 +291,9 @@ uint32_t next_io_read_32(uint32_t address)
     if (address == P_SCR1)
         return scr1_value;
 
-    /* SCR2 — when RTC chip-enable is active, return RTDATA=1 so the
-     * ROM's bit-bang RTC read sees data (all 1s = valid enough to proceed) */
-    if (address == P_SCR2) {
-        uint32_t val = scr2_value;
-        if (val & SCR2_RTCE)
-            val |= SCR2_RTDATA;
-        return val;
-    }
+    /* SCR2 — let RTC module inject RTDATA for bit-bang reads */
+    if (address == P_SCR2)
+        return next_rtc_scr2_read(scr2_value);
 
     /* Interrupt status */
     if (address == P_INTRSTAT)
@@ -406,8 +402,9 @@ void next_io_write_32(uint32_t address, uint32_t value)
 {
     address = next_io_canon(address);
 
-    /* SCR2 */
+    /* SCR2 — feed RTC bit-bang state machine before updating */
     if (address == P_SCR2) {
+        next_rtc_scr2_write(value, scr2_value);
         scr2_value = value;
         return;
     }

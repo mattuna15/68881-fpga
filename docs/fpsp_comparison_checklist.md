@@ -71,8 +71,13 @@ emulation of unimplemented 68040 FPU instructions — the same algorithms the
 | Odd quadrant | -V/U (negated cotangent) | cos/sin via quadrant |
 | Accuracy | 3 ulp in 64-bit | Inherits sin/cos + division error |
 
+<<<<<<< HEAD
 - [ ] **2.1** `[E]` FPSP uses a dedicated rational approximation for tan (3 ulp). VHDL computes sin(r)/cos(r) — two polynomial evals plus a division. ~60-70% fewer cycles with rational form.
 - [ ] **2.2** `[E]` FPSP's -cot(r) = -V/U for odd quadrants is a single rational eval. VHDL needs two polynomials + division.
+=======
+- [ ] **2.1** `[E]` FPSP uses a dedicated rational approximation for tan (3 ulp). VHDL computes sin(r)/cos(r) — two polynomial evals plus a division. ~60-70% fewer cycles with rational form. **Analysis: cycle-neutral with VHDL's table-assisted sin/cos (~17 vs ~17 FP ops). Skipped.**
+- [ ] **2.2** `[E]` FPSP's -cot(r) = -V/U for odd quadrants is a single rational eval. VHDL needs two polynomials + division. **Skipped (see 2.1).**
+>>>>>>> main
 
 ---
 
@@ -85,7 +90,11 @@ emulation of unimplemented 68040 FPU instructions — the same algorithms the
 | Large range (\|X\| >= 16) | Polynomial degree 5 (C1..C5) on -1/X | Reciprocal -> same pipeline |
 | Division avoidance | Tabulated 1/F values, uses multiplication | FP division |
 
+<<<<<<< HEAD
 - [ ] **3.1** `[E]` FPSP avoids division by tabulating 1/F values. VHDL performs FP division for u = (x-c)/(1+cx). Eliminates one FP division (~6+ cycles).
+=======
+- [ ] **3.1** `[E]` FPSP avoids division by tabulating 1/F values. VHDL performs FP division for u = (x-c)/(1+cx). Eliminates one FP division (~6+ cycles). **Skipped: ATAN denominator (1+c_i*x) is input-dependent, cannot precompute.**
+>>>>>>> main
 - [ ] **3.2** FPSP has 3 separate polynomial sets for 3 ranges. VHDL uses a single degree-9 set.
 - [ ] **3.3** FPSP table has 128 entries; VHDL has 64. Coarser table = larger residuals.
 
@@ -113,8 +122,13 @@ emulation of unimplemented 68040 FPU instructions — the same algorithms the
 | Polynomial (expm1) | Degree 12, minimax, error < \|X\|*2^(-70.6) | Same exp pipeline, subtract 1 at end |
 | Accuracy | 0.85 ulp (64-bit), monotonic | ~60-80 bits from Taylor |
 
+<<<<<<< HEAD
 - [ ] **5.1** `[E]` FPSP reduces to |R| <= 0.0054 (via 2^(J/64)); VHDL to |r| <= 0.347. The 64x tighter reduction allows FPSP degree-5 to beat VHDL degree-9. Saves ~4 Horner iterations (~8 FP mul/add cycles).
 - [ ] **5.2** `[E]` Minimax degree-5 (error < 2^(-68.8)) outperforms Taylor degree-9 over VHDL's wider interval.
+=======
+- [x] **5.1** `[E]` FPSP reduces to |R| <= 0.0054 (via 2^(J/64)); VHDL to |r| <= 0.347. The 64x tighter reduction allows FPSP degree-5 to beat VHDL degree-9. Saves ~4 Horner iterations (~8 FP mul/add cycles). **DONE: Added 64-entry EXPTBL, 2^(J/64) decomposition for ETOX/ETOXM1/TANH.**
+- [x] **5.2** `[E]` Minimax degree-5 (error < 2^(-68.8)) outperforms Taylor degree-9 over VHDL's wider interval. **DONE: COEFF_SET_EXP64 with FPSP A1-A5 minimax, degree 6 Horner.**
+>>>>>>> main
 - [ ] **5.3** ETOXM1: FPSP has dedicated degree-12 minimax for |X| < 0.25. VHDL uses EXP then subtracts 1 — catastrophic cancellation for small X. Significant accuracy gap.
 - [ ] **5.4** Verify FPSP's L1+L2 (88-bit ln2/64) vs VHDL's 131-bit Cody-Waite ln2 net precision.
 
@@ -127,8 +141,13 @@ emulation of unimplemented 68040 FPU instructions — the same algorithms the
 | TWOTOX | Direct 64ths decomposition, dedicated | Converts via X*ln(2) then EXP pipeline |
 | TENTOX | Direct via log2(10), dedicated | Converts via X*ln(10) then EXP pipeline |
 
+<<<<<<< HEAD
 - [ ] **6.1** `[E]` FPSP avoids intermediate multiply by ln(2) for 2^X. VHDL's extra multiply introduces rounding. Saves 1 FP multiply cycle.
 - [ ] **6.2** `[E]` Same for 10^X. Saves 1 FP multiply cycle.
+=======
+- [x] **6.1** `[E]` FPSP avoids intermediate multiply by ln(2) for 2^X. VHDL's extra multiply introduces rounding. Saves 1 FP multiply cycle. **DONE: TWOTOX uses k=nint(x), r=x-k, exp(r*ln2). Saves ~4 FP ops.**
+- [x] **6.2** `[E]` Same for 10^X. Saves 1 FP multiply cycle. **DONE: TENTOX uses y=x*log2(10), k=nint(y), r=y-k, exp(r*ln2). Saves ~3 FP ops.**
+>>>>>>> main
 
 ---
 
@@ -143,8 +162,13 @@ emulation of unimplemented 68040 FPU instructions — the same algorithms the
 | LOGNP1 | u = 2X/(2+X) for small X, careful Y-F | z = a+1, then LOG pipeline |
 | Accuracy | 2 ulp (64-bit), monotonic | ~56+ bits |
 
+<<<<<<< HEAD
 - [ ] **7.1** `[E]` FPSP uses tabulated 1/F to avoid division. VHDL divides. Eliminates one FP division (~6+ cycles).
 - [ ] **7.2** `[E]` Minimax degree-6 vs Taylor degree-9. Saves ~3 Horner iterations (~6 FP mul/add cycles).
+=======
+- [x] **7.1** `[E]` FPSP uses tabulated 1/F to avoid division. VHDL divides. Eliminates one FP division (~6+ cycles). **DONE: Added LOG_RECIP_CENTER table (64 entries of 1/c_i). LOG u=(m-c_i)*(1/c_i) via MUL instead of DIV. Saves ~50 cycles.**
+- [ ] **7.2** `[E]` Minimax degree-6 vs Taylor degree-9. Saves ~3 Horner iterations (~6 FP mul/add cycles). **Not implemented: Taylor adequate with table-assisted reduction (|u|<1/128).**
+>>>>>>> main
 - [ ] **7.3** LOGNP1: FPSP uses u = 2X/(2+X) preserving precision for small X. VHDL computes z = 1+X then routes through LOG (loses bits via cancellation).
 - [ ] **7.4** Verify VHDL handles Y-F precision when 1/2 <= X < 3/2.
 - [ ] **7.5** LOG2: FPSP extracts integer exponent directly. VHDL computes ln then multiplies by INV_LN2.
@@ -212,7 +236,11 @@ emulation of unimplemented 68040 FPU instructions — the same algorithms the
 | EXPM1 | Minimax B1-12 | Taylor 1/n! (no dedicated) |
 | LOG | Minimax LOGA1-6 | Taylor alternating harmonic |
 
+<<<<<<< HEAD
 - [ ] **13.1** `[E]` Replace Taylor with minimax coefficients for each function. Highest-impact single change — enables lower polynomial degrees (fewer Horner iterations) across all functions.
+=======
+- [x] **13.1** `[E]` Replace Taylor with minimax coefficients for each function. Highest-impact single change — enables lower polynomial degrees (fewer Horner iterations) across all functions. **DONE for EXP: COEFF_SET_EXP64 uses FPSP A1-A5 minimax with degree 6 (was degree 9 Taylor). LOG/ATAN keep Taylor — their table-assisted reduction already provides tight ranges.**
+>>>>>>> main
 - [ ] **13.2** Consider extracting exact FPSP coefficient values from .sa files (hex extended-precision) or computing fresh minimax via Remez algorithm.
 
 ---
@@ -224,7 +252,11 @@ emulation of unimplemented 68040 FPU instructions — the same algorithms the
 | Reciprocal tables | 1/F tabulated (atan, log) | No reciprocals — uses FP division |
 | Atan table size | 128 entries | 64 entries |
 
+<<<<<<< HEAD
 - [ ] **14.1** `[E]` Add reciprocal tables (1/F) for ATAN and LOG to eliminate FP division rounding. +1-2 BRAMs but frees divrem unit.
+=======
+- [x] **14.1** `[E]` Add reciprocal tables (1/F) for ATAN and LOG to eliminate FP division rounding. +1-2 BRAMs but frees divrem unit. **DONE for LOG (1/c_i table). ATAN skipped — its denominator (1+c_i*x) is input-dependent and cannot be precomputed.**
+>>>>>>> main
 - [ ] **14.2** Consider doubling ATAN table to 128 entries.
 
 ---
@@ -242,12 +274,25 @@ emulation of unimplemented 68040 FPU instructions — the same algorithms the
 `[E]` = Improves efficiency (fewer cycles) or reduces resource usage
 
 ### Efficiency (cycle/resource impact)
+<<<<<<< HEAD
 1. **13.1** `[E]` Minimax coefficients — enables lower degree across ALL functions (saves 2-4 Horner iterations each)
 2. **5.1/5.2** `[E]` EXP 2^(J/64) decomposition — degree 5 vs 9, saves ~8 FP mul/add cycles
 3. **2.1/2.2** `[E]` Rational TAN — one eval vs two polynomials + division (~60-70% fewer cycles)
 4. **14.1/3.1/7.1** `[E]` Reciprocal tables — eliminates FP division in ATAN and LOG (+1-2 BRAM, saves ~6+ cycles each)
 5. **7.2** `[E]` LOG minimax degree 6 vs Taylor degree 9 — saves ~3 Horner iterations
 6. **6.1/6.2** `[E]` TWOTOX/TENTOX skip pre-multiply — saves 1 FP multiply each
+=======
+1. **13.1** `[E]` ~~Minimax coefficients~~ **DONE** for EXP (COEFF_SET_EXP64, degree 6)
+2. **5.1/5.2** `[E]` ~~EXP 2^(J/64) decomposition~~ **DONE** — 64-entry EXPTBL, FPSP minimax degree 6, ETOX GV exact match
+3. **2.1/2.2** `[E]` Rational TAN — analysis showed cycle-neutral with table-assisted sin/cos. **SKIPPED.**
+4. **14.1/3.1/7.1** `[E]` ~~Reciprocal tables~~ **DONE** for LOG (1/c_i table, ~50 cycle savings). ATAN skipped (input-dependent denominator).
+5. **7.2** `[E]` LOG minimax degree 6 — not implemented (Taylor adequate with table-assisted reduction)
+6. **6.1/6.2** `[E]` ~~TWOTOX/TENTOX skip pre-multiply~~ **DONE** — saves ~4 FP ops per TWOTOX, ~3 per TENTOX
+
+### Accuracy regressions from efficiency changes (recoverable)
+- **LOGN** lost ~3 bits (~54 vs ~57): reciprocal MUL vs exact DIV. Fix: Newton-Raphson refinement `u' = u + u*(1 - c_i*u)` after reciprocal multiply (+1 MUL +1 ADD).
+- **TWOTOX/TENTOX** lost ~7 bits (47 vs 54): single `r*ln(2)` multiply vs 3-term CW. Fix: 2-term CW split of ln(2) for the `r*ln(2)` multiply (+1 MUL +1 ADD, recovers ~10 bits).
+>>>>>>> main
 
 ### Accuracy-only (no efficiency impact)
 7. **5.3** Dedicated ETOXM1 polynomial (catastrophic cancellation)
@@ -261,4 +306,8 @@ emulation of unimplemented 68040 FPU instructions — the same algorithms the
 13. **10.2** FREM tie-break verification
 14. **12.2** Overflow/underflow bias verification
 15. **11.1** Packed decimal completeness
+<<<<<<< HEAD
 16. **15.1-15.3** Denormal/unnormal input paths
+=======
+16. **15.1-15.3** Denormal/unnormal input paths
+>>>>>>> main

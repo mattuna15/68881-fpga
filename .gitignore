@@ -55,3 +55,6 @@ validation/hello_world/src/roms/savage.bin
 /toolchain/emutos-src-1.4
 /validation/kicad/NextCuboid-backups
 /validation/kicad/output
+/validation/NeXT-68040/build-qemu
+/validation/NeXT-68040/build
+/validation/NeXT-68040

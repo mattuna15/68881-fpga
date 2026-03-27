@@ -83,11 +83,22 @@ architecture rtl of mc68881_trig_unit is
     ST_TRIG_TAN_DIV,
     ST_TRIG_TAN_DIV_POST,
     ST_TRIG_TINY_ROUND_POST,
+    ST_TWOTOX_ROUND,
+    ST_TWOTOX_ROUND_POST,
+    ST_TWOTOX_FRAC_POST,
+    ST_TWOTOX_RLN2_POST,
     ST_TANH_2X_POST,
     ST_TANH_EXP_POST,
     ST_TANH_NUMER_POST,
     ST_TANH_DENOM_POST,
     ST_TANH_DIV_POST,
+    ST_EXP64_N_ROUND,
+    ST_EXP64_N_POST,
+    ST_EXP64_TABLE_WAIT,
+    ST_EXP64_TABLE_LATCH,
+    ST_EXP64_CW_HI_POST,
+    ST_EXP64_CW_LO_MUL,
+    ST_EXP64_CW_LO_POST,
     ST_EXP_REDUCE_K_POST,
     ST_EXP_REDUCE_KLN2_POST,
     ST_EXP_REDUCE_R_POST,
@@ -191,6 +202,12 @@ architecture rtl of mc68881_trig_unit is
   constant FP80_INV_LN2 : fp80_t := x"3FFFB8AA3B295C17F0BC";
   constant FP80_INV_LN10 : fp80_t := x"3FFDDE5BD8A937287195";
   constant FP80_LOG10_2 : fp80_t := x"3FFD9A209A84FBCFF798";
+  constant FP80_LOG2_10 : fp80_t := x"4000D49A784BCD1B8AFE"; -- log2(10) = ln(10)/ln(2)
+
+  -- EXP 2^(J/64) decomposition constants
+  constant FP80_64_INV_LN2    : fp80_t := x"4005B8AA3B295C17F0BC"; -- 64/ln(2)
+  constant FP80_LN2_DIV64_HI  : fp80_t := x"3FF8B17217F700000000"; -- ln(2)/64 high
+  constant FP80_LN2_DIV64_LO  : fp80_t := x"3FD8D1CF79AC00000000"; -- ln(2)/64 low
 
   constant FP80_ONE_720TH     : fp80_t := x"3FF5B60B60B60B60B60B"; -- 1/720 = 1/6!
   constant FP80_ONE_5040TH    : fp80_t := x"3FF2D00D00D00D00D00D"; -- 1/5040 = 1/7!
@@ -207,15 +224,17 @@ architecture rtl of mc68881_trig_unit is
   type fp80_table64_t is array (0 to 63) of fp80_t;
   type seed_domain_t is (SEED_DOMAIN_TRIG, SEED_DOMAIN_EXP, SEED_DOMAIN_LOG, SEED_DOMAIN_ATAN);
 
-  -- Coefficient ROM: 5 sets × 10 coefficients for Horner polynomial evaluation
-  constant COEFF_SET_EXP  : integer := 0;  -- EXP/ETOXM1/TWOTOX/TENTOX/TANH
-  constant COEFF_SET_LOG  : integer := 1;  -- LOGN/LOG2/LOG10/LOGNP1/ATANH
-  constant COEFF_SET_ATAN : integer := 2;  -- ATAN/ASIN/ACOS
-  constant COEFF_SET_SINH : integer := 3;  -- SINH (odd terms of EXP)
-  constant COEFF_SET_COSH : integer := 4;  -- COSH (even terms of EXP)
-  type fp80_table50_t is array (0 to 49) of fp80_t;
-  constant COEFF_ROM_INIT : fp80_table50_t := (
-    -- EXP set (indices 0-9): 1/n! Taylor series
+  -- Coefficient ROM: 6 sets × 10 coefficients for Horner polynomial evaluation
+  -- Sets 0-4 use Taylor (1/n!) coefficients; set 5 (EXP64) uses FPSP minimax.
+  constant COEFF_SET_EXP   : integer := 0;  -- TWOTOX/TENTOX (Taylor, wide range)
+  constant COEFF_SET_LOG   : integer := 1;  -- LOGN/LOG2/LOG10/LOGNP1/ATANH
+  constant COEFF_SET_ATAN  : integer := 2;  -- ATAN/ASIN/ACOS
+  constant COEFF_SET_SINH  : integer := 3;  -- SINH (odd terms of EXP)
+  constant COEFF_SET_COSH  : integer := 4;  -- COSH (even terms of EXP)
+  constant COEFF_SET_EXP64 : integer := 5;  -- ETOX/ETOXM1/TANH (minimax, tight range)
+  type fp80_table60_t is array (0 to 59) of fp80_t;
+  constant COEFF_ROM_INIT : fp80_table60_t := (
+    -- EXP set (indices 0-9): 1/n! Taylor series for TWOTOX/TENTOX (wide range)
      0 => x"3FFF8000000000000000", -- 1         (coeff0: constant term)
      1 => x"3FFF8000000000000000", -- 1         (coeff1: x)
      2 => x"3FFE8000000000000000", -- 1/2       (coeff2: x^2)
@@ -269,7 +288,20 @@ architecture rtl of mc68881_trig_unit is
     46 => x"3FF5B60B60B60B60B60B", -- 1/720     (coeff6: x^6)
     47 => x"00000000000000000000", -- 0         (coeff7)
     48 => x"3FEFD00D00D00D00D00D", -- 1/40320   (coeff8: x^8)
-    49 => x"00000000000000000000"  -- 0         (coeff9)
+    49 => x"00000000000000000000", -- 0         (coeff9)
+    -- EXP64 set (indices 50-56): FPSP minimax for 2^(J/64) decomposition
+    -- exp(R) = 1 + R*(1 + R*(A1 + R*(A2 + R*(A3 + R*(A4 + R*A5)))))
+    -- Valid for |R| <= ln(2)/128 ~ 0.0054 (after 2^(J/64) reduction)
+    50 => x"3FFF8000000000000000", -- 1         (coeff0: constant term)
+    51 => x"3FFF8000000000000000", -- 1         (coeff1: R)
+    52 => x"3FFE8000000000000000", -- A1 = 0.5  (coeff2: R^2)
+    53 => x"3FFCAAAAAAAAAA52A000", -- A2        (coeff3: R^3, minimax ~1/6)
+    54 => x"3FFAAAAAAAAAAA660800", -- A3        (coeff4: R^4, minimax ~1/24)
+    55 => x"3FF88888918163896000", -- A4        (coeff5: R^5, minimax ~1/120)
+    56 => x"3FF5B60B6B7BDE859000", -- A5        (coeff6: R^6, minimax ~1/720)
+    57 => x"00000000000000000000", -- unused
+    58 => x"00000000000000000000", -- unused
+    59 => x"00000000000000000000"  -- unused
   );
   constant TRIG_SEED_CENTER_INIT : fp80_table64_t := (
      0 => x"BFFEC5EB9B3798E32000",
@@ -469,6 +501,41 @@ architecture rtl of mc68881_trig_unit is
     62 => x"3FFEBB8F3AF81B931000",
     63 => x"3FFEB73A22A755457800"
   );
+  -- FPSP EXPTBL: 2^(J/64) for J=0..63 (minimax precision)
+  constant EXP64_TABLE_INIT : fp80_table64_t := (
+     0 => x"3FFF8000000000000000",  1 => x"3FFF8164D1F3BC030774",
+     2 => x"3FFF82CD8698AC2BA1D8",  3 => x"3FFF843A28C3ACDE4048",
+     4 => x"3FFF85AAC367CC487B14",  5 => x"3FFF871F61969E8D1010",
+     6 => x"3FFF88980E8092DA8528",  7 => x"3FFF8A14D575496EFD9C",
+     8 => x"3FFF8B95C1E3EA8BD6E8",  9 => x"3FFF8D1ADF5B7E5BA9E4",
+    10 => x"3FFF8EA4398B45CD53C0", 11 => x"3FFF9031DC431466B1DC",
+    12 => x"3FFF91C3D373AB11C338", 13 => x"3FFF935A2B2F13E6E92C",
+    14 => x"3FFF94F4EFA8FEF70960", 15 => x"3FFF96942D3720185A00",
+    16 => x"3FFF9837F0518DB8A970", 17 => x"3FFF99E0459320B7FA64",
+    18 => x"3FFF9B8D39B9D54E5538", 19 => x"3FFF9D3ED9A72CFFB750",
+    20 => x"3FFF9EF5326091A111AC", 21 => x"3FFFA0B0510FB9714FC4",
+    22 => x"3FFFA27043030C496818", 23 => x"3FFFA43515AE09E680A0",
+    24 => x"3FFFA5FED6A9B15138EC", 25 => x"3FFFA7CD93B4E9653568",
+    26 => x"3FFFA9A15AB4EA7C0EF8", 27 => x"3FFFAB7A39B5A93ED338",
+    28 => x"3FFFAD583EEA42A14AC8", 29 => x"3FFFAF3B78AD690A4374",
+    30 => x"3FFFB123F581D2AC2590", 31 => x"3FFFB311C412A9112488",
+    32 => x"3FFFB504F333F9DE6484", 33 => x"3FFFB6FD91E328D17790",
+    34 => x"3FFFB8FBAF4762FB9EE8", 35 => x"3FFFBAFF5AB2133E45FC",
+    36 => x"3FFFBD08A39F580C36C0", 37 => x"3FFFBF1799B67A731084",
+    38 => x"3FFFC12C4CCA66709458", 39 => x"3FFFC346CCDA24976408",
+    40 => x"3FFFC5672A115506DADC", 41 => x"3FFFC78D74C8ABB9B15C",
+    42 => x"3FFFC9B9BD866E2F27A4", 43 => x"3FFFCBEC14FEF2727C5C",
+    44 => x"3FFFCE248C151F8480E4", 45 => x"3FFFD06333DAEF2B2594",
+    46 => x"3FFFD2A81D91F12AE45C", 47 => x"3FFFD4F35AABCFEDFA20",
+    48 => x"3FFFD744FCCAD69D6AF4", 49 => x"3FFFD99D15C278AFD7B4",
+    50 => x"3FFFDBFBB797DAF23754", 51 => x"3FFFDE60F4825E0E9124",
+    52 => x"3FFFE0CCDEEC2A94E110", 53 => x"3FFFE33F8972BE8A5A50",
+    54 => x"3FFFE5B906E77C8348A8", 55 => x"3FFFE8396A503C4BDC68",
+    56 => x"3FFFEAC0C6E7DD243930", 57 => x"3FFFED4F301ED9942B84",
+    58 => x"3FFFEFE4B99BDCDAF5CC", 59 => x"3FFFF281773C59FFB138",
+    60 => x"3FFFF5257D152486CC2C", 61 => x"3FFFF7D0DF730AD13BB8",
+    62 => x"3FFFFA83B2DB722A033C", 63 => x"3FFFFD3E0C0CF486C174"
+  );
   constant EXP_SEED_PRE_MUL_INIT : fp80_table64_t := (
      0 => FP80_ONE,
      1 => FP80_LN2,
@@ -555,6 +622,73 @@ architecture rtl of mc68881_trig_unit is
     61 => x"3FFFFB00000000000000",
     62 => x"3FFFFD00000000000000",
     63 => x"3FFFFF00000000000000"
+  );
+  -- Table-assisted LOG range reduction: 1/c_i (reciprocal, avoids FP division)
+  constant LOG_RECIP_CENTER_INIT : fp80_table64_t := (
+     0 => x"3FFEFE03F80FE03F80FE",
+     1 => x"3FFEFA232CF252138AC0",
+     2 => x"3FFEF6603D980F6603DA",
+     3 => x"3FFEF2B9D6480F2B9D65",
+     4 => x"3FFEEF2EB71FC4345238",
+     5 => x"3FFEEBBDB2A5C1619C8C",
+     6 => x"3FFEE865AC7B7603A197",
+     7 => x"3FFEE525982AF70C880E",
+     8 => x"3FFEE1FC780E1FC780E2",
+     9 => x"3FFEDEE95C4CA037BA57",
+    10 => x"3FFEDBEB61EED19C5958",
+    11 => x"3FFED901B2036406C80E",
+    12 => x"3FFED62B80D62B80D62C",
+    13 => x"3FFED3680D3680D3680D",
+    14 => x"3FFED0B69FCBD2580D0B",
+    15 => x"3FFECE168A7725080CE1",
+    16 => x"3FFECB8727C065C393E0",
+    17 => x"3FFEC907DA4E871146AD",
+    18 => x"3FFEC6980C6980C6980C",
+    19 => x"3FFEC4372F855D824CA6",
+    20 => x"3FFEC1E4BBD595F6E947",
+    21 => x"3FFEBFA02FE80BFA02FF",
+    22 => x"3FFEBD69104707661AA3",
+    23 => x"3FFEBB3EE721A54D880C",
+    24 => x"3FFEB92143FA36F5E02E",
+    25 => x"3FFEB70FBB5A19BE3659",
+    26 => x"3FFEB509E68A9B94821F",
+    27 => x"3FFEB30F63528917C80B",
+    28 => x"3FFEB11FD3B80B11FD3C",
+    29 => x"3FFEAF3ADDC680AF3ADE",
+    30 => x"3FFEAD602B580AD602B6",
+    31 => x"3FFEAB8F69E28359CD11",
+    32 => x"3FFEA9C84A47A07F5638",
+    33 => x"3FFEA80A80A80A80A80B",
+    34 => x"3FFEA655C4392D7B73A8",
+    35 => x"3FFEA4A9CF1D96833751",
+    36 => x"3FFEA3065E3FAE7CD0E0",
+    37 => x"3FFEA16B312EA8FC377D",
+    38 => x"3FFE9FD809FD809FD80A",
+    39 => x"3FFE9E4CAD23DD5F3A20",
+    40 => x"3FFE9CC8E160C3FB19B9",
+    41 => x"3FFE9B4C6F9EF03A3CAA",
+    42 => x"3FFE99D722DABDE58F06",
+    43 => x"3FFE9868C809868C8098",
+    44 => x"3FFE97012E025C04B809",
+    45 => x"3FFE95A02568095A0257",
+    46 => x"3FFE9445809445809446",
+    47 => x"3FFE92F113840497889C",
+    48 => x"3FFE91A2B3C4D5E6F809",
+    49 => x"3FFE905A38633E06C43B",
+    50 => x"3FFE8F1779D9FDC3A219",
+    51 => x"3FFE8DDA520237694809",
+    52 => x"3FFE8CA29C046514E023",
+    53 => x"3FFE8B70344A139BC75A",
+    54 => x"3FFE8A42F8705669DB46",
+    55 => x"3FFE891AC73AE9819B50",
+    56 => x"3FFE87F78087F78087F8",
+    57 => x"3FFE86D905447A34ACC6",
+    58 => x"3FFE85BF37612CEE3C9B",
+    59 => x"3FFE84A9F9C8084A9F9D",
+    60 => x"3FFE839930523FBE3368",
+    61 => x"3FFE828CBFBEB9A020A3",
+    62 => x"3FFE81848DA8FAF0D277",
+    63 => x"3FFE8080808080808081"
   );
   -- Table-assisted LOG range reduction: ln(c_i)
   constant LOG_LN_CENTER_INIT : fp80_table64_t := (
@@ -781,9 +915,9 @@ architecture rtl of mc68881_trig_unit is
   signal aux_valid_reg : std_logic := '0';
   signal flag_divzero_reg : std_logic := '0';
 
-  signal coeff_set_reg : integer range 0 to 4 := COEFF_SET_EXP;
-  signal coeff_rom_sig : fp80_table50_t := COEFF_ROM_INIT;
-  signal coeff_rom_addr_reg : integer range 0 to 49 := 0;
+  signal coeff_set_reg : integer range 0 to 5 := COEFF_SET_EXP;
+  signal coeff_rom_sig : fp80_table60_t := COEFF_ROM_INIT;
+  signal coeff_rom_addr_reg : integer range 0 to 59 := 0;
   signal coeff_rom_q : fp80_t := (others => '0');
   signal coeff0_override_en_reg : std_logic := '0';
   signal coeff0_override_reg : fp80_t := (others => '0');
@@ -821,8 +955,10 @@ architecture rtl of mc68881_trig_unit is
   signal log_seed_post_scale_rom : fp80_table64_t := LOG_SEED_POST_SCALE_INIT;
   signal atan_center_rom : fp80_table64_t := ATAN_CENTER_INIT;
   signal atan_seed_offset_rom : fp80_table64_t := ATAN_SEED_OFFSET_INIT;
+  signal exp64_table_rom : fp80_table64_t := EXP64_TABLE_INIT;
   signal log_center_rom : fp80_table64_t := LOG_CENTER_INIT;
   signal log_ln_center_rom : fp80_table64_t := LOG_LN_CENTER_INIT;
+  signal log_recip_center_rom : fp80_table64_t := LOG_RECIP_CENTER_INIT;
   attribute rom_style : string;
   attribute rom_style of trig_seed_center_rom : signal is "block";
   attribute rom_style of trig_seed_sin_rom : signal is "block";
@@ -834,11 +970,18 @@ architecture rtl of mc68881_trig_unit is
   attribute rom_style of atan_seed_offset_rom : signal is "block";
   attribute rom_style of log_center_rom : signal is "block";
   attribute rom_style of log_ln_center_rom : signal is "block";
+  attribute rom_style of log_recip_center_rom : signal is "block";
+  attribute rom_style of exp64_table_rom : signal is "block";
   attribute rom_style of coeff_rom_sig : signal is "block";
+
+  signal exp64_table_addr_reg : integer range 0 to 63 := 0;
+  signal exp64_table_q : fp80_t := (others => '0');
+  signal exp64_n_int_reg : integer := 0;  -- N = nint(x * 64/ln2)
 
   signal log_table_addr_reg : integer range 0 to 63 := 0;
   signal log_center_q : fp80_t := (others => '0');
   signal log_ln_center_q : fp80_t := (others => '0');
+  signal log_recip_center_q : fp80_t := (others => '0');
 
   signal trans_pre_mul_en_reg : std_logic := '0';
   signal trans_pre_mul_const_reg : fp80_t := (others => '0');
@@ -882,6 +1025,7 @@ architecture rtl of mc68881_trig_unit is
   signal atan_neg_reg : std_logic := '0';
   signal atan_recip_reg : std_logic := '0';
   signal acos_neg_input_reg : std_logic := '0';
+
 
   signal trig_mul_start_reg : std_logic := '0';
   signal trig_mul_busy      : std_logic;
@@ -1077,8 +1221,10 @@ begin
       log_seed_post_scale_q <= log_seed_post_scale_rom(aux_seed_addr_reg);
       atan_seed_offset_q <= atan_seed_offset_rom(aux_seed_addr_reg);
       atan_center_q <= atan_center_rom(aux_seed_addr_reg);
+      exp64_table_q <= exp64_table_rom(exp64_table_addr_reg);
       log_center_q <= log_center_rom(log_table_addr_reg);
       log_ln_center_q <= log_ln_center_rom(log_table_addr_reg);
+      log_recip_center_q <= log_recip_center_rom(log_table_addr_reg);
       coeff_rom_q <= coeff_rom_sig(coeff_rom_addr_reg);
     end if;
   end process;
@@ -1139,6 +1285,8 @@ begin
       seed_aux0_reg <= (others => '0');
       seed_aux1_reg <= (others => '0');
       trig_seed_addr_reg <= 0;
+      exp64_table_addr_reg <= 0;
+      exp64_n_int_reg <= 0;
       log_table_addr_reg <= 0;
       r_reg <= (others => '0');
       s_reg <= (others => '0');
@@ -1300,14 +1448,24 @@ begin
                   result_reg <= FP80_ONE;
                   state_reg <= ST_DONE;
                 else
+                  -- EXP via 2^(J/64) decomposition (FPSP algorithm):
+                  -- N = nint(x * 64/ln2), J = N mod 64, M = (N-J)/64
+                  -- R = x - N*(ln2/64), |R| <= ln2/128 ~ 0.0054
+                  -- exp(x) = 2^M * EXPTBL[J] * exp(R)
+                  -- exp(R) = minimax degree 6 polynomial
                   exp_reduce_en_reg <= '1';
-                  coeff_set_reg <= COEFF_SET_EXP;
-                  poly_degree_reg <= 9;
-                  seed_domain_reg <= SEED_DOMAIN_EXP;
-                  seed_idx_reg <= 0;
-                  seed_return_state_reg <= ST_TRANS_PREP;
+                  exp_reduce_done_reg <= '1';  -- skip old CW reduction
+                  coeff_set_reg <= COEFF_SET_EXP64;
+                  poly_degree_reg <= 6;
+                  trans_post_mul_en_reg <= '1';  -- will multiply by EXPTBL[J]
                   x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
+                  -- Start: compute N = nint(x * 64/ln(2))
+                  mul_a_reg <= x_local;
+                  mul_b_reg <= FP80_64_INV_LN2;
+                  mul_rm_reg <= FP_RND_NEAREST;
+                  mul_rp_reg <= FP_PREC_EXTENDED;
+                  cont_state_reg <= ST_EXP64_N_ROUND;
+                  state_reg <= ST_FP_MUL;
                 end if;
 
               when FPU_OP_ETOXM1 =>
@@ -1322,16 +1480,22 @@ begin
                   result_reg <= FP80_ZERO;
                   state_reg <= ST_DONE;
                 else
-                  coeff_set_reg <= COEFF_SET_EXP;
-                  poly_degree_reg <= 9;
-                  trans_post_add_en_reg <= '1';
-                  trans_post_add_sub_reg <= '0';
-                  trans_post_add_const_reg <= FP80_NEG_ONE;
-                  seed_domain_reg <= SEED_DOMAIN_EXP;
-                  seed_idx_reg <= 0;
-                  seed_return_state_reg <= ST_TRANS_PREP;
+                  -- ETOXM1 via 2^(J/64) decomposition, then subtract 1
+                  -- NOTE: subtract 1 must happen AFTER fscale (2^M), not before.
+                  -- Don't use trans_post_add — it fires before fscale.
+                  -- Instead, the -1 is handled in ST_TRANS_FINAL_ROUND_POST via op check.
+                  exp_reduce_en_reg <= '1';
+                  exp_reduce_done_reg <= '1';
+                  coeff_set_reg <= COEFF_SET_EXP64;
+                  poly_degree_reg <= 6;
+                  trans_post_mul_en_reg <= '1';  -- multiply by EXPTBL[J]
                   x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
+                  mul_a_reg <= x_local;
+                  mul_b_reg <= FP80_64_INV_LN2;
+                  mul_rm_reg <= FP_RND_NEAREST;
+                  mul_rp_reg <= FP_PREC_EXTENDED;
+                  cont_state_reg <= ST_EXP64_N_ROUND;
+                  state_reg <= ST_FP_MUL;
                 end if;
 
               when FPU_OP_TWOTOX =>
@@ -1349,15 +1513,14 @@ begin
                   result_reg <= FP80_TWO;
                   state_reg <= ST_DONE;
                 else
+                  -- Direct 2^x: k=round(x), r=x-k, exp(r*ln2)*2^k
+                  -- Skips redundant pre-multiply by ln(2) then divide by ln(2).
                   exp_reduce_en_reg <= '1';
+                  exp_reduce_done_reg <= '1';  -- skip EXP CW reduction
                   coeff_set_reg <= COEFF_SET_EXP;
                   poly_degree_reg <= 9;
-                  trans_pre_mul_en_reg <= '1';
-                  seed_domain_reg <= SEED_DOMAIN_EXP;
-                  seed_idx_reg <= 1;
-                  seed_return_state_reg <= ST_TRANS_PREP;
                   x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
+                  state_reg <= ST_TWOTOX_ROUND;
                 end if;
 
               when FPU_OP_TENTOX =>
@@ -1372,15 +1535,21 @@ begin
                   result_reg <= FP80_ONE;
                   state_reg <= ST_DONE;
                 else
+                  -- Direct 10^x: y=x*log2(10), k=round(y), r=y-k, exp(r*ln2)*2^k
+                  -- Replaces pre-multiply by ln(10) + EXP reduction INV_LN2 with
+                  -- single multiply by log2(10), saving 1 FP multiply + CW chain.
                   exp_reduce_en_reg <= '1';
+                  exp_reduce_done_reg <= '1';  -- skip EXP CW reduction
                   coeff_set_reg <= COEFF_SET_EXP;
                   poly_degree_reg <= 9;
-                  trans_pre_mul_en_reg <= '1';
-                  seed_domain_reg <= SEED_DOMAIN_EXP;
-                  seed_idx_reg <= 2;
-                  seed_return_state_reg <= ST_TRANS_PREP;
                   x_reg <= x_local;
-                  state_reg <= ST_SEED_READ;
+                  -- Multiply x by log2(10), then route to TWOTOX path
+                  mul_a_reg <= x_local;
+                  mul_b_reg <= FP80_LOG2_10;
+                  mul_rm_reg <= FP_RND_NEAREST;
+                  mul_rp_reg <= FP_PREC_EXTENDED;
+                  cont_state_reg <= ST_TWOTOX_ROUND;
+                  state_reg <= ST_FP_MUL;
                 end if;
 
               when FPU_OP_LOGN =>
@@ -1699,15 +1868,13 @@ begin
                     result_reg <= a_reg;
                     state_reg <= ST_DONE;
                   else
-                    -- Save sign, compute 2*|x| then route through EXP pipeline
+                    -- Save sign, compute 2*|x| then route through EXP64 pipeline
                     atan_neg_reg <= fp80_sign(a_reg);
-                    -- Set up EXP pipeline coefficients
                     exp_reduce_en_reg <= '1';
-                    coeff_set_reg <= COEFF_SET_EXP;
-                    poly_degree_reg <= 9;
-                    seed_domain_reg <= SEED_DOMAIN_EXP;
-                    seed_idx_reg <= 0;
-                    seed_return_state_reg <= ST_TRANS_PREP;
+                    exp_reduce_done_reg <= '1';
+                    coeff_set_reg <= COEFF_SET_EXP64;
+                    poly_degree_reg <= 6;
+                    trans_post_mul_en_reg <= '1';  -- multiply by EXPTBL[J]
                     -- Multiply |x| * 2
                     mul_a_reg <= abs_a;
                     mul_b_reg <= FP80_TWO;
@@ -2182,10 +2349,75 @@ begin
           s_reg <= tmp_reg;
           state_reg <= ST_TRIG_RECONSTRUCT;
 
-        when ST_TANH_2X_POST =>
-          -- tmp_reg = 2|x|, feed into EXP pipeline
+        -- ================================================================
+        -- TWOTOX/TENTOX Direct Reduction States
+        -- Saves 1-2 FP multiplies by avoiding pre-mul × ln(2)/ln(10)
+        -- then divide by ln(2) round-trip in EXP reduction.
+        -- ================================================================
+        when ST_TWOTOX_ROUND =>
+          -- For TWOTOX: x_reg = x (the input).
+          -- For TENTOX: tmp_reg = x*log2(10) from preceding FP_MUL.
+          if op_reg = FPU_OP_TENTOX then
+            x_reg <= tmp_reg;  -- x_reg = x * log2(10)
+          end if;
+          -- Round to nearest integer: add ±0.5 then fintrz.
+          -- This ensures |r| <= 0.5 so |r*ln2| <= ln(2)/2 ~ 0.347.
+          if op_reg = FPU_OP_TENTOX then
+            add_a_reg <= tmp_reg;
+          else
+            add_a_reg <= x_reg;
+          end if;
+          add_b_reg <= FP80_HALF;
+          if op_reg = FPU_OP_TENTOX then
+            add_sub_reg <= (tmp_reg(FP_WIDTH-1) = '1');  -- subtract 0.5 if negative
+          else
+            add_sub_reg <= (x_reg(FP_WIDTH-1) = '1');
+          end if;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TWOTOX_ROUND_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_TWOTOX_ROUND_POST =>
+          -- fintrz_tmp = fintrz(x ± 0.5) = nearest integer k
+          exp_k_reg <= fintrz_tmp;
+          -- Compute r = x_reg - k (exact by Sterbenz lemma since |r| <= 0.5)
+          add_a_reg <= x_reg;
+          add_b_reg <= fintrz_tmp;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TWOTOX_FRAC_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_TWOTOX_FRAC_POST =>
+          -- tmp_reg = r = fractional part (x - k), |r| <= 0.5
+          -- Compute x_new = r * ln(2) for polynomial evaluation
+          mul_a_reg <= tmp_reg;
+          mul_b_reg <= FP80_LN2;
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_TWOTOX_RLN2_POST;
+          state_reg <= ST_FP_MUL;
+
+        when ST_TWOTOX_RLN2_POST =>
+          -- tmp_reg = r * ln(2), the reduced argument for exp()
+          -- |r*ln(2)| <= 0.5*ln(2) ~ 0.347 (wider than EXP64's |R| <= 0.0054;
+          -- uses degree-9 Taylor via COEFF_SET_EXP instead of minimax degree-6)
           x_reg <= tmp_reg;
-          state_reg <= ST_SEED_READ;
+          -- exp_reduce_done=1 already set, so ST_TRANS_PREP skips reduction
+          state_reg <= ST_TRANS_PREP;
+
+        when ST_TANH_2X_POST =>
+          -- tmp_reg = 2|x|, feed into EXP64 pipeline
+          x_reg <= tmp_reg;
+          -- Start EXP64 reduction: N = nint(2|x| * 64/ln(2))
+          mul_a_reg <= tmp_reg;
+          mul_b_reg <= FP80_64_INV_LN2;
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP64_N_ROUND;
+          state_reg <= ST_FP_MUL;
 
         when ST_TANH_EXP_POST =>
           -- result_reg = e^(2|x|); save it, compute e^(2|x|) - 1
@@ -2225,6 +2457,86 @@ begin
             result_reg(FP_WIDTH-1) <= not tmp_reg(FP_WIDTH-1);
           end if;
           state_reg <= ST_DONE;
+
+        -- ================================================================
+        -- EXP 2^(J/64) Decomposition States
+        -- exp(x) = 2^M * EXPTBL[J] * exp(R) where
+        --   N = nint(x*64/ln2), J = N mod 64, M = (N-J)/64
+        --   R = x - N*ln(2)/64, |R| <= ln(2)/128 ~ 0.0054
+        -- ================================================================
+        when ST_EXP64_N_ROUND =>
+          -- tmp_reg = x * 64/ln(2), round to nearest integer
+          -- Add ±0.5 for round-to-nearest (same trick as TWOTOX)
+          add_a_reg <= tmp_reg;
+          add_b_reg <= FP80_HALF;
+          add_sub_reg <= (tmp_reg(FP_WIDTH-1) = '1');
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP64_N_POST;
+          state_reg <= ST_FP_ADD;
+
+        when ST_EXP64_N_POST =>
+          -- fintrz_tmp = N = nint(x * 64/ln(2))
+          -- Extract J = N mod 64 and M = (N-J)/64
+          exp64_n_int_reg <= fp80_to_int_trunc(fintrz_tmp);
+          -- J = N mod 64 (always in 0..63)
+          exp64_table_addr_reg <= fp80_to_int_trunc(fintrz_tmp) mod 64;
+          -- exp_k_reg = N as fp80 (for CW subtraction)
+          exp_k_reg <= fintrz_tmp;
+          -- Start BRAM read for EXPTBL[J]
+          state_reg <= ST_EXP64_TABLE_WAIT;
+
+        when ST_EXP64_TABLE_WAIT =>
+          -- BRAM read latency cycle
+          state_reg <= ST_EXP64_TABLE_LATCH;
+
+        when ST_EXP64_TABLE_LATCH =>
+          -- Latch EXPTBL[J] as post-multiply factor
+          trans_post_mul_const_reg <= exp64_table_q;
+          -- exp_k_reg still holds N (fp80) from ST_EXP64_N_POST.
+          -- Keep it for the CW chain; will compute M after CW completes.
+          -- Start Cody-Waite: R = x - N * ln(2)/64
+          -- Step 1: multiply N * LN2_DIV64_HI
+          mul_a_reg <= exp_k_reg;  -- N as fp80
+          mul_b_reg <= FP80_LN2_DIV64_HI;
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP64_CW_HI_POST;
+          state_reg <= ST_FP_MUL;
+
+        when ST_EXP64_CW_HI_POST =>
+          -- tmp_reg = N * LN2_DIV64_HI, compute x - N*LN2_DIV64_HI
+          add_a_reg <= x_reg;
+          add_b_reg <= tmp_reg;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP64_CW_LO_MUL;
+          state_reg <= ST_FP_ADD;
+
+        when ST_EXP64_CW_LO_MUL =>
+          -- tmp_reg = x - N*LN2_DIV64_HI (r_hi), save and compute LO correction
+          r_reg <= tmp_reg;
+          -- exp_k_reg still holds N (fp80)
+          mul_a_reg <= exp_k_reg;  -- N
+          mul_b_reg <= FP80_LN2_DIV64_LO;
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP64_CW_LO_POST;
+          state_reg <= ST_FP_MUL;
+
+        when ST_EXP64_CW_LO_POST =>
+          -- tmp_reg = N * LN2_DIV64_LO, compute R = r_hi - N*LN2_DIV64_LO
+          -- Also compute M = (N-J)/64 for final fscale (before exp_k_reg gets to poly)
+          exp_k_reg <= fp80_from_int(
+            (exp64_n_int_reg - (exp64_n_int_reg mod 64)) / 64);
+          add_a_reg <= r_reg;
+          add_b_reg <= tmp_reg;
+          add_sub_reg <= true;
+          add_rm_reg <= FP_RND_NEAREST;
+          add_rp_reg <= FP_PREC_EXTENDED;
+          cont_state_reg <= ST_EXP_REDUCE_R_POST;  -- reuse: sets x_reg, goes to poly
+          state_reg <= ST_FP_ADD;
 
         when ST_EXP_REDUCE_K_POST =>
           exp_k_reg <= fintrz_tmp;
@@ -2639,13 +2951,14 @@ begin
           state_reg <= ST_FP_ADD;
 
         when ST_LOG_DELTA_POST =>
-          -- tmp_reg = m - c_i (delta), compute u = delta / c_i
-          div_a_reg <= tmp_reg;            -- delta
-          div_b_reg <= c_reg;              -- c_i
-          div_rm_reg <= FP_RND_NEAREST;
-          div_rp_reg <= FP_PREC_EXTENDED;
+          -- tmp_reg = m - c_i (delta), compute u = delta * (1/c_i)
+          -- Uses reciprocal table to avoid FP division (~50 cycle savings).
+          mul_a_reg <= tmp_reg;            -- delta
+          mul_b_reg <= log_recip_center_q; -- 1/c_i (from BRAM table)
+          mul_rm_reg <= FP_RND_NEAREST;
+          mul_rp_reg <= FP_PREC_EXTENDED;
           cont_state_reg <= ST_LOG_U_POST;
-          state_reg <= ST_FP_DIV;
+          state_reg <= ST_FP_MUL;
 
         when ST_LOG_U_POST =>
           -- tmp_reg = u = (m - c_i) / c_i, a small value |u| < 1/128
@@ -2832,6 +3145,14 @@ begin
             result_reg <= fscale_fp80(exp_k_reg, tmp_reg);
             if op_reg = FPU_OP_TANH then
               state_reg <= ST_TANH_EXP_POST;
+            elsif op_reg = FPU_OP_ETOXM1 then
+              add_a_reg <= fscale_fp80(exp_k_reg, tmp_reg);
+              add_b_reg <= FP80_ONE;
+              add_sub_reg <= true;
+              add_rm_reg <= rm_reg;
+              add_rp_reg <= rp_reg;
+              cont_state_reg <= ST_ACOS_FINAL_POST;
+              state_reg <= ST_FP_ADD;
             else
               state_reg <= ST_DONE;
             end if;

@@ -22,9 +22,10 @@ arithmetic, transcendental, exponential, and logarithmic operations.
   synthesis verification). Unsupported ops return zero in 1 cycle.
 - **Transcendental engine**: FSIN, FCOS, FTAN, FSINCOS, FASIN, FACOS, FATAN,
   FATANH, FSINH, FCOSH, FTANH, FETOX, FETOXM1, FTWOTOX, FTENTOX, FLOGN,
-  FLOGNP1, FLOG2, FLOG10. BRAM coefficient ROM with degree-9 Horner polynomial
-  evaluation, table-assisted range reduction (ATAN, LOG), and Cody-Waite
-  argument reduction (trig, EXP).
+  FLOGNP1, FLOG2, FLOG10. BRAM coefficient ROM with Horner polynomial
+  evaluation, table-assisted range reduction (ATAN, LOG), Cody-Waite
+  argument reduction (trig), and FPSP-derived 2^(J/64) EXP decomposition
+  with minimax degree-6 polynomial.
 - **Data movement**: FMOVE (all formats including packed decimal `.P`),
   FMOVEM (register lists and control registers), FMOVECR (ROM constants).
 - **Program control**: FScc, FBcc, FDBcc, FTRAPcc, FNOP with BSUN trap gating.
@@ -56,17 +57,19 @@ arithmetic, transcendental, exponential, and logarithmic operations.
 
 | Resource | Full | Lite (`fpu_lite_g`) | Available | Full % | Lite % |
 |----------|------|---------------------|-----------|--------|--------|
-| Slice LUTs | 60,421 | 37,380 | 133,800 | 45.16% | 27.94% |
-| Registers | 13,853 | 7,030 | 267,600 | 5.18% | 2.63% |
-| Block RAM | 8 tiles | 0 | 365 | 2.19% | 0% |
+| Slice LUTs | 59,919 | 37,380 | 133,800 | 44.78% | 27.94% |
+| Registers | 14,087 | 7,030 | 267,600 | 5.26% | 2.63% |
+| Block RAM | 10.5 tiles | 0 | 365 | 2.88% | 0% |
 | DSP48E1 | 34 | 18 | 740 | 4.59% | 2.43% |
 
-*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-21.
+*Non-incremental synthesis + implementation, Vivado 2025.2, `xc7a200tfbg676-1`. Date: 2026-03-27.
 50 MHz target clock. MC68882 mode enabled (`fpu_version_g => FPU_68882`). Includes
-transcendental accuracy improvements (BRAM coefficient ROM, table-assisted ATAN/LOG,
-Cody-Waite trig/EXP), GHDL synth-compatible RTL, CIR coprocessor interface, full
-exception dialog paths, undocumented FMOVECR ROM constants, pending instruction pipeline,
-and graphics framebuffer support.*
+FPSP-derived EXP 2^(J/64) decomposition with minimax degree-6 polynomial (EXPTBL
+64-entry BRAM), LOG reciprocal table (avoids FP division), TWOTOX/TENTOX direct
+reduction, table-assisted ATAN/LOG, Cody-Waite trig, CIR coprocessor interface,
+full exception dialog paths, undocumented FMOVECR ROM constants, pending instruction
+pipeline, and graphics framebuffer support. Lite figures are from 2026-03-21 (pre-
+efficiency changes, trig engine excluded by generate block).*
 
 ### Timing
 - Target clock: **50 MHz** (20.0 ns period) — 2× the original MC68881 max (25 MHz).
@@ -84,9 +87,9 @@ hardware subset: 11 ALU ops, no trig/sglops/modrem), the core uses 37,380 LUTs
 
 | Device | LUTs | DSPs | Full fit? | Lite fit? |
 |--------|------|------|-----------|-----------|
-| Xilinx Artix-7 200T | 133,800 | 740 | Yes (47%) | Yes (28%) |
-| Xilinx Artix-7 100T | 63,400 | 240 | Tight (99%) | Yes (59%) |
-| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (91%) | Yes (~53%) |
+| Xilinx Artix-7 200T | 133,800 | 740 | Yes (45%) | Yes (28%) |
+| Xilinx Artix-7 100T | 63,400 | 240 | Tight (95%) | Yes (59%) |
+| Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~84%) | Yes (~53%) |
 | Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
 | Intel Cyclone V SE 5CSEBA6 (MiSTer DE10-Nano) | 41,910 ALMs | 112 | No (~75%) | Yes (~45%) |
 
@@ -97,7 +100,7 @@ Porting requires XDC-to-SDC constraint conversion and minor DSP inference
 adjustments.
 
 **MiSTer note:** The DE10-Nano's Cyclone V SE has 41,910 ALMs (each ALM roughly
-maps to 2 Xilinx LUTs, giving ~84K LUT-equivalent). The full FPU (63K LUTs /
+maps to 2 Xilinx LUTs, giving ~84K LUT-equivalent). The full FPU (60K LUTs /
 34 DSPs) exceeds ALM capacity but fits within the 112 DSP budget. Lite mode
 (37K LUTs ≈ ~19K ALMs, 18 DSPs, 0 BRAM) should fit comfortably. These are rough
 estimates; actual Quartus ALM counts may differ from Xilinx LUT counts due to
@@ -206,23 +209,28 @@ report_utilization -hierarchical -hierarchical_depth 10 -file mc68881_top_util_h
 ```
 
 ### Transcendental accuracy
-The transcendental engine achieves 30–55 bits of accuracy across operations,
+The transcendental engine achieves 30–64 bits of accuracy across operations,
 verified by the torture testbench (357 self-checking tests):
 
 | Operation | Typical accuracy | Method |
 |-----------|-----------------|--------|
-| SIN, COS, TAN | 30–40 bits | Cody-Waite argument reduction, degree-9 Horner |
-| ASIN, ACOS, ATAN | 55–62 bits | Table-assisted polynomial (8 BRAM entries) |
-| EXP, ETOXM1 | 40–50 bits | Cody-Waite ln(2) splitting, degree-9 Horner |
-| LOG, LOG2, LOG10 | 56+ bits | Table-assisted range reduction (16 BRAM entries) |
-| SINH, COSH | 30–50 bits | Via EXP pipeline |
-| TANH | ~30 bits | Via EXP pipeline (replaces Padé approximant) |
+| SIN, COS, TAN | 30–40 bits | Cody-Waite argument reduction, table-assisted seed refinement |
+| ASIN, ACOS, ATAN | 55–62 bits | Table-assisted polynomial (64 BRAM entries) |
+| EXP, ETOXM1 | ~40–54 bits | FPSP 2^(J/64) decomposition, minimax degree-6 Horner |
+| TWOTOX, TENTOX | ~47 bits | Direct k=nint(x) reduction, degree-9 Taylor |
+| LOG, LOG2, LOG10 | ~54 bits | Table-assisted range reduction, reciprocal multiply |
+| SINH, COSH | 30–50 bits | Dedicated odd/even Taylor polynomials |
+| TANH | ~32–42 bits | Via EXP64 pipeline |
 
 ## Transcendental architecture guardrails
 - The transcendental engine uses BRAM-style synchronous reads via
   `ST_SEED_READ -> ST_SEED_READ_WAIT -> ST_SEED_READ_LATCH`.
-- Coefficient BRAM ROM stores 5 sets × 10 coefficients (EXP/LOG/ATAN/SINH/COSH);
+- Coefficient BRAM ROM stores 6 sets × 10 coefficients (EXP/LOG/ATAN/SINH/COSH/EXP64);
   requires 2-cycle read latency: `POLY_INIT` → `INIT_WAIT` → `MUL_PREP`.
+- EXP64 BRAM (64 entries of 2^(J/64)) uses same synchronous read pattern:
+  `ST_EXP64_N_POST` → `ST_EXP64_TABLE_WAIT` → `ST_EXP64_TABLE_LATCH`.
+- LOG reciprocal table (64 entries of 1/c_i) reads alongside c_i and ln(c_i)
+  on the same BRAM address — no extra read cycle needed.
 - Do **not** replace synchronous reads with combinational table indexing — it
   breaks BRAM inference and increases LUT usage sharply.
 - Validate architecture changes with non-incremental synth utilization reports.

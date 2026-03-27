@@ -46,17 +46,18 @@ hardware init:
 4. Programmes BMAP memory controller registers at `0x020C0xxx`
 5. Sizes main memory via BMAP probe sequence
 6. Reads event counter (microsecond timer) for timing calibration
-7. Reads RTC via SCR2 bit-bang protocol
+7. Reads RTC via SCR2 bit-bang protocol — NVRAM checksum validates
+8. Reads NVRAM a second time (readback verify)
+9. Enters peripheral hardware probe (`$0100C474`)
 
-The ROM currently loops in the RTC read routine (`0x01004104`/`0x0100411E`),
-performing repeated MC68HC68T1 bit-bang transactions via SCR2. The simple
-RTDATA=1 stub returns all-1s but the ROM's RTC protocol likely requires
-proper clock-edge timing and valid time/checksum bytes.
+The ROM currently polls a device register at `0x02208000` (likely DSP,
+`P_DSP = SLOT_ID_BMAP + 0x02008000`) waiting for bit 3 to be set.
+This is part of the DSP or SCSI initialisation sequence.
 
 ### Next Steps
 
-1. Implement MC68HC68T1 RTC emulation (bit-bang protocol on SCR2 RTCE/RTCLK/RTDATA) — reference: Previous emulator `src/sysReg.c`
-2. Get the ROM monitor past RTC init to reach the serial console prompt
+1. Stub DSP register at `0x02008000` (mapped via SLOT_ID_BMAP to `0x02108000`/`0x02208000`) to return bit 3 set
+2. Continue stubbing peripherals until the ROM monitor reaches its serial console prompt
 3. Add keyboard/mouse stub (if ROM polls for input devices)
 4. Cross-compile standalone boot code from mk-108.1 sources (MIT syntax assembly needs translation)
 
@@ -66,7 +67,7 @@ proper clock-edge timing and valid time/checksum bytes.
 |-------|------|-------------|
 | `0x00000000` | 128 KB | EPROM (exception vectors, ROM monitor) |
 | `0x01000000` | 128 KB | EPROM BMAP mirror (68040 execution address) |
-| `0x02000000` | 1 MB | NeXT device I/O space |
+| `0x02000000` | 2 MB | NeXT device I/O space (includes SLOT_ID_BMAP mirror at +1 MB) |
 | `0x04000000` | 16 MB | Main RAM (kernel loads here) |
 | `0x0B000000` | 256 KB | Video RAM (mono framebuffer) |
 
@@ -125,12 +126,13 @@ The Turbo ROM (Rev 3.3) is currently loaded. Its vectors:
 |------|---------|
 | `src/main.c` | Boot flow, emulation loop, ROM loading |
 | `src/next_memory.c/h` | Musashi memory callbacks, sparse 32-bit address map |
-| `src/next_devs.c/h` | NeXT hardware register emulation stubs |
+| `src/next_devs.c/h` | NeXT hardware register emulation stubs + SLOT_ID_BMAP remapping |
+| `src/next_rtc.c/h` | MC68HC68T1 RTC emulation (SCR2 bit-bang, QEMU/hardware backends) |
 | `src/next_hw.h` | NeXT hardware address definitions (from mk-108.1) |
 | `src/next_mon_stub.c/h` | Fake ROM monitor (mon_global) for kernel boot |
 | `src/next_rom_image.h` | Rev 3.3 ROM binary as C header (128 KB) |
 | `src/musashi/m68kconf.h` | Musashi config: 68040 enabled, F-line callback |
-| `src/musashi/m68kcpu.c` | Patched: added CPU_ADDRESS_MASK for 68LC040 |
+| `src/musashi/m68kcpu.c/h` | Patched: CPU_ADDRESS_MASK + CPU_TYPE_IS_xxx_PLUS for 68LC040 |
 | `src/fline_handler.c` | F-line FPU instruction decode to MC68882 hardware |
 | `CMakeLists.txt` | Standalone CMake for QEMU builds |
 | `qemu_build_run.ps1` | Build + launch script for QEMU |

@@ -10,7 +10,7 @@ set(BSP_LIB "C:/code/68881-fpga/validation/platform-68-linux/export/platform-68-
 set(LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/src/lscript.ld")
 
 # Compile flags: QEMU_MODE + debug
-add_compile_options(-DQEMU_MODE -Wall -O0 -g3)
+add_compile_options(-DQEMU_MODE -DNEXT_IO_DEBUG -Wall -O0 -g3)
 add_compile_options(-I${BSP_INCLUDE})
 
 # Source files — build as a static library so the linker can do

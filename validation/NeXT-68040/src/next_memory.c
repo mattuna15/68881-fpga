@@ -34,7 +34,15 @@ static inline int in_ram(uint32_t addr)
 
 static inline int in_rom(uint32_t addr)
 {
-    return (addr < NEXT_ROM_SIZE);
+    return (addr < NEXT_ROM_SIZE) ||
+           (addr >= NEXT_ROM_BMAP && addr < NEXT_ROM_BMAP + NEXT_ROM_SIZE);
+}
+
+static inline uint32_t rom_offset(uint32_t addr)
+{
+    if (addr >= NEXT_ROM_BMAP)
+        return addr - NEXT_ROM_BMAP;
+    return addr;
 }
 
 static inline int in_vram(uint32_t addr)
@@ -114,7 +122,7 @@ void next_mem_set_vectors(uint32_t ssp, uint32_t pc)
 unsigned int m68k_read_memory_8(unsigned int address)
 {
     if (in_rom(address))
-        return next_rom[address];
+        return next_rom[rom_offset(address)];
 
     if (in_ram(address))
         return next_ram[address - NEXT_RAM_BASE];
@@ -166,7 +174,7 @@ unsigned int m68k_read_memory_16(unsigned int address)
 
     /* Fast path: ROM */
     if (in_rom(address) && in_rom(address + 1)) {
-        return ((unsigned int)next_rom[address] << 8) |
+        return ((unsigned int)next_rom[rom_offset(address)] << 8) |
                 (unsigned int)next_rom[address + 1];
     }
 
@@ -229,7 +237,7 @@ unsigned int m68k_read_memory_32(unsigned int address)
 
     /* Fast path: ROM */
     if (in_rom(address) && in_rom(address + 3)) {
-        return ((unsigned int)next_rom[address]     << 24) |
+        return ((unsigned int)next_rom[rom_offset(address)]     << 24) |
                ((unsigned int)next_rom[address + 1] << 16) |
                ((unsigned int)next_rom[address + 2] <<  8) |
                 (unsigned int)next_rom[address + 3];

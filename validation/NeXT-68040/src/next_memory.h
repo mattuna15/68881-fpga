@@ -3,7 +3,8 @@
  * Memory map for NeXT 68040LC emulator on Musashi.
  *
  * 32-bit address space with sparse mapping:
- *   0x00000000 - 0x0001FFFF : EPROM (128 KB, read-only)
+ *   0x00000000 - 0x0001FFFF : EPROM (128 KB, read-only, mirrors 0x01000000)
+ *   0x01000000 - 0x0101FFFF : EPROM BMAP (128 KB, read-only, 68040 address)
  *   0x02000000 - 0x020FFFFF : Device I/O space
  *   0x04000000 - 0x04FFFFFF : Main RAM (16 MB, kernel + data)
  *   0x0B000000 - 0x0B03FFFF : Video RAM (256 KB)
@@ -21,8 +22,9 @@
 #define NEXT_RAM_BASE   0x04000000
 #define NEXT_RAM_SIZE   (16 * 1024 * 1024)
 
-/* EPROM: 128 KB at 0x00000000 */
+/* EPROM: 128 KB at 0x00000000, also mirrored at 0x01000000 (BMAP) */
 #define NEXT_ROM_BASE   0x00000000
+#define NEXT_ROM_BMAP   0x01000000
 #define NEXT_ROM_SIZE   (128 * 1024)
 
 /* Video RAM: 256 KB at 0x0B000000 */

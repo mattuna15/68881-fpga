@@ -19,6 +19,7 @@
 #include "next_devs.h"
 #include "next_mon_stub.h"
 #include "next_hw.h"
+#include "next_rom_image.h"
 #include "fline_handler.h"
 #include "text_fb.h"
 #include "dp_video.h"
@@ -97,50 +98,15 @@ static void next_boot(void)
                                        NeXT_WARP9);
     xil_printf("[NEXT] mon_global stub @ 0x%08X\r\n", mg_addr);
 
-    /* TODO: Load kernel image into RAM at 0x04000000.
-     *
-     * For now, we set up a minimal test: the kernel entry point would
-     * normally come from the kernel binary. Until we have one, write
-     * a tiny test program that reads SCR1 and prints to SCC.
-     *
-     * To load a real kernel:
-     *   #include "next_kernel.h"
-     *   next_mem_load(NEXT_RAM_BASE, next_kernel_data, NEXT_KERNEL_SIZE);
-     *
-     * Then set vectors to the kernel's entry point. */
+    /* Load NeXT 68040 Turbo ROM (Rev 3.3 v74, 128 KB).
+     * ROM is mapped at both 0x00000000 and 0x01000000 (BMAP).
+     * The ROM's vectors: SSP=0x04000400, PC=0x0100001E */
+    next_rom_load(next_rom_data, next_rom_data_len);
+    xil_printf("[NEXT] ROM loaded: %u bytes (Rev 3.3 v74 Turbo)\r\n",
+               next_rom_data_len);
 
-    /* Minimal test program at 0x04001000:
-     *   move.l  0x0200C000, d0    ; read SCR1
-     *   move.b  #'N', 0x02018003  ; write 'N' to SCC channel A data
-     *   move.b  #'X', 0x02018003  ; write 'X'
-     *   move.b  #'T', 0x02018003  ; write 'T'
-     *   move.b  #'\r', 0x02018003
-     *   move.b  #'\n', 0x02018003
-     *   stop    #$2700            ; halt
-     */
-    {
-        static const uint8_t test_prog[] = {
-            /* move.l $0200C000, d0 */
-            0x20, 0x39, 0x02, 0x00, 0xC0, 0x00,
-            /* move.b #'N', $02018003 */
-            0x13, 0xFC, 0x00, 0x4E, 0x02, 0x01, 0x80, 0x03,
-            /* move.b #'X', $02018003 */
-            0x13, 0xFC, 0x00, 0x58, 0x02, 0x01, 0x80, 0x03,
-            /* move.b #'T', $02018003 */
-            0x13, 0xFC, 0x00, 0x54, 0x02, 0x01, 0x80, 0x03,
-            /* move.b #'\r', $02018003 */
-            0x13, 0xFC, 0x00, 0x0D, 0x02, 0x01, 0x80, 0x03,
-            /* move.b #'\n', $02018003 */
-            0x13, 0xFC, 0x00, 0x0A, 0x02, 0x01, 0x80, 0x03,
-            /* stop #$2700 */
-            0x4E, 0x72, 0x27, 0x00,
-        };
-        next_mem_load(NEXT_RAM_BASE + 0x1000, test_prog, sizeof(test_prog));
-    }
-
-    /* Set exception vectors: SSP = top of 64KB scratch area, PC = test program */
-    next_mem_set_vectors(NEXT_RAM_BASE + 0x10000,  /* SSP */
-                         NEXT_RAM_BASE + 0x1000);  /* PC -> test program */
+    /* Vectors come directly from the ROM image (first 8 bytes).
+     * SSP and PC are already in the ROM at address 0. */
 
     /* Verify vectors were written correctly */
     xil_printf("[NEXT] Vec0(SSP)=%08X Vec1(PC)=%08X Vec2(BusErr)=%08X\r\n",
@@ -196,8 +162,8 @@ static void next_boot(void)
                 static uint32_t prev_pc = 0;
                 static int stuck = 0;
                 if (pc == prev_pc) {
-                    if (++stuck >= 3) {
-                        xil_printf("[HALT] PC stuck at $%08X — stopping\r\n", pc);
+                    if (++stuck >= 10) {
+                        xil_printf("[HALT] PC stuck at $%08X - stopping\r\n", pc);
                         return;
                     }
                 } else {

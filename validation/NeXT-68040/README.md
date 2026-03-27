@@ -21,7 +21,11 @@ ARM Cortex-A53 (bare-metal on ZU3EG)
 ### Working
 
 - 68LC040 CPU emulation via Musashi (fixed CPU_ADDRESS_MASK bug for 32-bit addressing)
+- Musashi CPU_TYPE_LC040 fix: added LC040 to all `CPU_TYPE_IS_xxx_PLUS` macros and fixed `#else` fallback chains that evaluated to 0 when only `M68K_EMULATE_040` was enabled (caused `movec`, `movem`, and all 010+ instructions to throw illegal instruction exceptions)
 - NeXT hardware register stubs (SCR1/SCR2, SCC serial, timer, event counter, interrupt controller, DMA CSRs)
+- SLOT_ID_BMAP address remapping: the 68040 ROM uses `SLOT_ID_BMAP=0x00100000` (from mk-108.1 cpu.h), shifting all device registers from `0x020xxxxx` to `0x021xxxxx`. I/O handlers now accept both ranges via `next_io_canon()`.
+- Byte-level I/O reads for event counter, SCR1, SCR2 (ROM reads these as individual bytes)
+- RTC stub: returns RTDATA=1 when RTCE is active on SCR2 reads (needs full MC68HC68T1 protocol for completion)
 - SCC channel A serial console: TX routed to ARM UART, RX buffered from ARM UART
 - Test program verified on hardware: reads SCR1, outputs `NXT` via SCC, halts cleanly
 - QEMU support: two-process launch (A53 + PMU MicroBlaze), verified `NXT` output
@@ -29,24 +33,32 @@ ARM Cortex-A53 (bare-metal on ZU3EG)
 - Standalone CMake build for QEMU (packages sources as static lib to solve link-order issues)
 - NeXT ROM images obtained (68030 Rev 1.2, 68040 Rev 2.5, 68040 Turbo Rev 3.3)
 - ROM loaded at 0x00000000 with BMAP mirror at 0x01000000
+- Instruction trace hook (configurable TRACE_LIMIT in main.c) for boot debugging
 
 ### ROM Boot - In Progress
 
-The 68040 Turbo ROM (Rev 3.3 v74, 128 KB) loads and begins executing at
-PC=0x0100001E but hits a recursive exception cascade. The ROM's first
-instructions use `movec` to set VBR and configure 68040 TT registers,
-then probe hardware. An unhandled exception (likely from accessing an
-unimplemented register) triggers the ROM's exception handler, which itself
-faults, pushing 68040 exception frames down the stack into the device I/O
-space (0x020Exxxx).
+The 68040 Turbo ROM (Rev 3.3 v74, 128 KB) boots successfully through early
+hardware init:
+
+1. Sets VBR to ROM exception table at `0x010145B0`
+2. Configures 68040 CACR, TT0/TT1/DTT0/DTT1 registers
+3. Executes PFLUSH and CINVA (cache invalidate)
+4. Programmes BMAP memory controller registers at `0x020C0xxx`
+5. Sizes main memory via BMAP probe sequence
+6. Reads event counter (microsecond timer) for timing calibration
+7. Reads RTC via SCR2 bit-bang protocol
+
+The ROM currently loops in the RTC read routine (`0x01004104`/`0x0100411E`),
+performing repeated MC68HC68T1 bit-bang transactions via SCR2. The simple
+RTDATA=1 stub returns all-1s but the ROM's RTC protocol likely requires
+proper clock-edge timing and valid time/checksum bytes.
 
 ### Next Steps
 
-1. Enable `M68K_EMULATE_PMMU` in Musashi so `movec` TT/TC/SRP instructions work
-2. Add trace logging at the first exception to identify which instruction/address triggers it
-3. Expand device stubs for registers the ROM probes during early init
-4. Get the ROM monitor to reach its serial console prompt
-5. Cross-compile standalone boot code from mk-108.1 sources (MIT syntax assembly needs translation)
+1. Implement MC68HC68T1 RTC emulation (bit-bang protocol on SCR2 RTCE/RTCLK/RTDATA) — reference: Previous emulator `src/sysReg.c`
+2. Get the ROM monitor past RTC init to reach the serial console prompt
+3. Add keyboard/mouse stub (if ROM polls for input devices)
+4. Cross-compile standalone boot code from mk-108.1 sources (MIT syntax assembly needs translation)
 
 ## Memory Map
 
@@ -136,6 +148,22 @@ be truncated, making the kernel entry point `0x04001000` become `0x001000`
 (zeroed RAM = garbage instructions).
 
 Fix: one line added to `musashi/m68kcpu.c` line 939.
+
+### Musashi 68LC040 CPU_TYPE_IS_xxx_PLUS macros (Critical)
+
+`CPU_TYPE_LC040 (0x100)` was missing from all `CPU_TYPE_IS_xxx_PLUS` bitmask
+macros in `m68kcpu.h`. Additionally, when only `M68K_EMULATE_040` is enabled
+(010/020/030 all OFF), the `#else` fallback chains resolved to 0:
+
+    CPU_TYPE_IS_010_PLUS → CPU_TYPE_IS_EC020_PLUS → CPU_TYPE_IS_020_PLUS → 0
+
+This caused **every** 010+ instruction (`movec`, `moves`, bitfield ops, etc.)
+to throw an illegal instruction exception for the LC040, making ROM boot
+impossible — the very first `movec A0,VBR` at the ROM entry point failed.
+
+Fix: added `CPU_TYPE_LC040` to all bitmask variants, changed `#else` branches
+to delegate upward (`020_PLUS → 030_PLUS → 040_PLUS`) instead of returning 0,
+and added `M68K_EMULATE_040` to the `EC020_PLUS` preprocessor guard.
 
 ## Reference
 

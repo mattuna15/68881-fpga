@@ -38,10 +38,21 @@ void     next_io_write_8(uint32_t address, uint8_t value);
 void     next_io_write_16(uint32_t address, uint16_t value);
 void     next_io_write_32(uint32_t address, uint32_t value);
 
-/* Check if address falls in NeXT I/O space (0x02000000-0x020FFFFF) */
+/* Check if address falls in NeXT I/O space.
+ * The 68040 ROM uses SLOT_ID_BMAP=0x00100000, shifting device registers
+ * from 0x020xxxxx to 0x021xxxxx.  Accept both ranges. */
 static inline int is_next_io(uint32_t addr)
 {
-    return (addr >= 0x02000000) && (addr < 0x02100000);
+    return (addr >= 0x02000000) && (addr < 0x02200000);
+}
+
+/* Normalise a NeXT I/O address: strip the SLOT_ID_BMAP offset so that
+ * 0x021xxxxx addresses map back to the canonical 0x020xxxxx range. */
+static inline uint32_t next_io_canon(uint32_t addr)
+{
+    if (addr >= 0x02100000 && addr < 0x02200000)
+        return addr - 0x00100000;
+    return addr;
 }
 
 #endif /* NEXT_DEVS_H */

@@ -27,6 +27,35 @@
 /* Number of M68K instructions to execute per main-loop tick */
 #define EMU_CYCLES_PER_TICK  10000
 
+/* ------------------------------------------------------------------ */
+/* Early instruction trace (first N instructions for boot debugging)   */
+/* ------------------------------------------------------------------ */
+#define TRACE_LIMIT  0  /* Disabled — early boot trace complete */
+static int trace_count = 0;
+
+void emu_instr_hook(unsigned int pc)
+{
+    if (trace_count < TRACE_LIMIT) {
+        uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+        uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
+        uint16_t opword = m68k_read_memory_16(pc);
+        uint32_t a0 = m68k_get_reg(NULL, M68K_REG_A0);
+        uint32_t d0 = m68k_get_reg(NULL, M68K_REG_D0);
+        uint32_t vbr = m68k_get_reg(NULL, M68K_REG_VBR);
+        xil_printf("[T%03d] PC=$%08X SR=$%04X SP=$%08X op=$%04X A0=$%08X D0=$%08X VBR=$%08X\r\n",
+                   trace_count, pc, sr, sp, opword, a0, d0, vbr);
+        /* On exception: dump stacked frame */
+        if (trace_count > 0 && pc < 0x00001000 && sp < 0x04000400) {
+            xil_printf("  [EXC] frame@SP: %08X %08X\r\n",
+                       m68k_read_memory_32(sp),
+                       m68k_read_memory_32(sp + 4));
+        }
+        trace_count++;
+        if (trace_count == TRACE_LIMIT)
+            xil_printf("[TRACE] --- limit reached, tracing off ---\r\n");
+    }
+}
+
 /* Location to place mon_global stub in RAM (near top of first 64KB) */
 #define MON_GLOBAL_ADDR  (NEXT_RAM_BASE + 0x00008000)
 
@@ -113,6 +142,24 @@ static void next_boot(void)
                m68k_read_memory_32(0x00000000),
                m68k_read_memory_32(0x00000004),
                m68k_read_memory_32(0x00000008));
+    xil_printf("[NEXT] Vec3(AddrErr)=%08X Vec4(Illegal)=%08X Vec5(DivZ)=%08X\r\n",
+               m68k_read_memory_32(0x0000000C),
+               m68k_read_memory_32(0x00000010),
+               m68k_read_memory_32(0x00000014));
+    xil_printf("[NEXT] Vec11(Fline)=%08X Vec24(SpurInt)=%08X Vec32(Trap0)=%08X\r\n",
+               m68k_read_memory_32(0x0000002C),
+               m68k_read_memory_32(0x00000060),
+               m68k_read_memory_32(0x00000080));
+    /* Dump first 4 instructions at entry point */
+    xil_printf("[NEXT] ROM @entry: %04X %04X %04X %04X %04X %04X %04X %04X\r\n",
+               m68k_read_memory_16(0x0100001E),
+               m68k_read_memory_16(0x01000020),
+               m68k_read_memory_16(0x01000022),
+               m68k_read_memory_16(0x01000024),
+               m68k_read_memory_16(0x01000026),
+               m68k_read_memory_16(0x01000028),
+               m68k_read_memory_16(0x0100002A),
+               m68k_read_memory_16(0x0100002C));
 
     /* Initialise F-line handler (hardware FPU via AXI-Lite) */
 #ifndef QEMU_MODE
@@ -151,7 +198,7 @@ static void next_boot(void)
         /* PC trace (debug: print every ~2 seconds) */
         {
             static int sample_count = 0;
-            if (++sample_count >= 2000) {
+            if (++sample_count >= 500) {
                 sample_count = 0;
                 uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
                 uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);

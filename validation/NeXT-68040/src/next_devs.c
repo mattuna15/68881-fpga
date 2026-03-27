@@ -218,6 +218,8 @@ int next_intr_acknowledge(int level)
 
 uint8_t next_io_read_8(uint32_t address)
 {
+    address = next_io_canon(address);
+
     /* SCC registers (byte-wide) */
     if (address >= P_SCC && address < P_SCC + 4) {
         uint32_t off = address - P_SCC;
@@ -242,11 +244,32 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == P_BRIGHTNESS)
         return 0x3D;  /* max brightness */
 
+    /* Fall through: decompose wider registers to byte reads */
+    if (address >= P_EVENTC && address < P_EVENTC + 4) {
+        uint32_t val = event_counter;
+        int byte_off = address - P_EVENTC;
+        return (val >> (8 * (3 - byte_off))) & 0xFF;
+    }
+
+    /* SCR1 (byte-level access) */
+    if (address >= P_SCR1 && address < P_SCR1 + 4) {
+        int byte_off = address - P_SCR1;
+        return (scr1_value >> (8 * (3 - byte_off))) & 0xFF;
+    }
+
+    /* SCR2 (byte-level access) */
+    if (address >= P_SCR2 && address < P_SCR2 + 4) {
+        int byte_off = address - P_SCR2;
+        return (scr2_value >> (8 * (3 - byte_off))) & 0xFF;
+    }
+
     return 0;
 }
 
 uint16_t next_io_read_16(uint32_t address)
 {
+    address = next_io_canon(address);
+
     /* Timer counter (16-bit) */
     if (address == P_TIMER)
         return timer_counter;
@@ -261,13 +284,20 @@ uint16_t next_io_read_16(uint32_t address)
 
 uint32_t next_io_read_32(uint32_t address)
 {
+    address = next_io_canon(address);
+
     /* SCR1 — the first thing the kernel reads */
     if (address == P_SCR1)
         return scr1_value;
 
-    /* SCR2 */
-    if (address == P_SCR2)
-        return scr2_value;
+    /* SCR2 — when RTC chip-enable is active, return RTDATA=1 so the
+     * ROM's bit-bang RTC read sees data (all 1s = valid enough to proceed) */
+    if (address == P_SCR2) {
+        uint32_t val = scr2_value;
+        if (val & SCR2_RTCE)
+            val |= SCR2_RTDATA;
+        return val;
+    }
 
     /* Interrupt status */
     if (address == P_INTRSTAT)
@@ -305,6 +335,8 @@ uint32_t next_io_read_32(uint32_t address)
 
 void next_io_write_8(uint32_t address, uint8_t value)
 {
+    address = next_io_canon(address);
+
     /* SCC channel A */
     if (address >= P_SCC && address < P_SCC + 4) {
         uint32_t off = address - P_SCC;
@@ -350,6 +382,8 @@ void next_io_write_8(uint32_t address, uint8_t value)
 
 void next_io_write_16(uint32_t address, uint16_t value)
 {
+    address = next_io_canon(address);
+
     /* Timer counter (16-bit) */
     if (address == P_TIMER) {
         timer_counter = value;
@@ -370,6 +404,8 @@ void next_io_write_16(uint32_t address, uint16_t value)
 
 void next_io_write_32(uint32_t address, uint32_t value)
 {
+    address = next_io_canon(address);
+
     /* SCR2 */
     if (address == P_SCR2) {
         scr2_value = value;

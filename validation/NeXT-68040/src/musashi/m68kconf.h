@@ -56,7 +56,9 @@ extern int fline_illg_callback(int opcode);
 #define M68K_TRAP_HAS_CALLBACK      M68K_OPT_OFF
 #define M68K_EMULATE_FC             M68K_OPT_OFF
 #define M68K_MONITOR_PC             M68K_OPT_OFF
-#define M68K_INSTRUCTION_HOOK       M68K_OPT_OFF
+#define M68K_INSTRUCTION_HOOK       M68K_OPT_SPECIFY_HANDLER
+extern void emu_instr_hook(unsigned int pc);
+#define M68K_INSTRUCTION_CALLBACK(pc) emu_instr_hook(pc)
 #define M68K_EMULATE_PREFETCH       M68K_OPT_OFF
 #define M68K_EMULATE_ADDRESS_ERROR  M68K_OPT_OFF
 #define M68K_LOG_ENABLE             M68K_OPT_OFF

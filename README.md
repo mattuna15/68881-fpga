@@ -87,7 +87,7 @@ hardware subset: 11 ALU ops, no trig/sglops/modrem), the core uses 37,380 LUTs
 
 | Device | LUTs | DSPs | Full fit? | Lite fit? |
 |--------|------|------|-----------|-----------|
-| Xilinx Artix-7 200T | 134,600 | 740 | Yes (45%) | Yes (28%) |
+| Xilinx Artix-7 200T | 133,800 | 740 | Yes (45%) | Yes (28%) |
 | Xilinx Artix-7 100T | 63,400 | 240 | Tight (95%) | Yes (59%) |
 | Xilinx Zynq UltraScale+ ZU3EG | ~71,000 | 360 | Yes (~84%) | Yes (~53%) |
 | Intel Cyclone V 5CEBA7 | 150,720 ALMs | 156 | Yes | Yes |
@@ -216,11 +216,11 @@ verified by the torture testbench (357 self-checking tests):
 |-----------|-----------------|--------|
 | SIN, COS, TAN | 30–40 bits | Cody-Waite argument reduction, table-assisted seed refinement |
 | ASIN, ACOS, ATAN | 55–62 bits | Table-assisted polynomial (64 BRAM entries) |
-| EXP, ETOXM1 | **64 bits** | FPSP 2^(J/64) decomposition, minimax degree-6 Horner |
+| EXP, ETOXM1 | ~40–54 bits | FPSP 2^(J/64) decomposition, minimax degree-6 Horner |
 | TWOTOX, TENTOX | ~47 bits | Direct k=nint(x) reduction, degree-9 Taylor |
 | LOG, LOG2, LOG10 | ~54 bits | Table-assisted range reduction, reciprocal multiply |
 | SINH, COSH | 30–50 bits | Dedicated odd/even Taylor polynomials |
-| TANH | **~63 bits** | Via EXP64 pipeline (1 ulp from golden vector) |
+| TANH | ~32–42 bits | Via EXP64 pipeline |
 
 ## Transcendental architecture guardrails
 - The transcendental engine uses BRAM-style synchronous reads via

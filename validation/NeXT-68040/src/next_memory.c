@@ -174,8 +174,11 @@ unsigned int m68k_read_memory_16(unsigned int address)
 
     /* Fast path: ROM */
     if (in_rom(address) && in_rom(address + 1)) {
-        return ((unsigned int)next_rom[rom_offset(address)] << 8) |
-                (unsigned int)next_rom[address + 1];
+    {
+        uint32_t off = rom_offset(address);
+        return ((unsigned int)next_rom[off] << 8) |
+                (unsigned int)next_rom[off + 1];
+    }
     }
 
     /* I/O: native 16-bit handler */
@@ -237,10 +240,13 @@ unsigned int m68k_read_memory_32(unsigned int address)
 
     /* Fast path: ROM */
     if (in_rom(address) && in_rom(address + 3)) {
-        return ((unsigned int)next_rom[rom_offset(address)]     << 24) |
-               ((unsigned int)next_rom[address + 1] << 16) |
-               ((unsigned int)next_rom[address + 2] <<  8) |
-                (unsigned int)next_rom[address + 3];
+    {
+        uint32_t off = rom_offset(address);
+        return ((unsigned int)next_rom[off]     << 24) |
+               ((unsigned int)next_rom[off + 1] << 16) |
+               ((unsigned int)next_rom[off + 2] <<  8) |
+                (unsigned int)next_rom[off + 3];
+    }
     }
 
     /* I/O: native 32-bit handler */

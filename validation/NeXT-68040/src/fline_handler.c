@@ -710,8 +710,40 @@ static int handle_fmove_ctrl(unsigned int opword, unsigned int cmd,
     int ea_mode   = EA_MODE(opword);
     int ea_reg    = EA_REG(opword);
 
-    if (direction == 0) {
-        /* EA → control register(s) */
+    if (ea_mode == 0) {
+        /* Data register direct: Dn ↔ single control register */
+        int dn = M68K_REG_D0 + ea_reg;
+        if (direction == 0) {
+            /* Dn → control register */
+            u32 val = m68k_get_reg(NULL, dn);
+            if (regsel & 4) { fp_reg_set_fpcr(val); fpu_write_fpcr(val); }
+            if (regsel & 2) { fp_reg_set_fpsr(val); }
+            if (regsel & 1) { fp_reg_set_fpiar(val); fpu_write_fpiar(val); }
+        } else {
+            /* Control register → Dn (first selected register) */
+            u32 val = 0;
+            if (regsel & 4)      val = fp_reg_get_fpcr();
+            else if (regsel & 2) val = fp_reg_get_fpsr();
+            else if (regsel & 1) val = fp_reg_get_fpiar();
+            m68k_set_reg(dn, val);
+        }
+    } else if (ea_mode == 1) {
+        /* Address register direct: An ↔ single control register */
+        int an = M68K_REG_A0 + ea_reg;
+        if (direction == 0) {
+            u32 val = m68k_get_reg(NULL, an);
+            if (regsel & 4) { fp_reg_set_fpcr(val); fpu_write_fpcr(val); }
+            if (regsel & 2) { fp_reg_set_fpsr(val); }
+            if (regsel & 1) { fp_reg_set_fpiar(val); fpu_write_fpiar(val); }
+        } else {
+            u32 val = 0;
+            if (regsel & 4)      val = fp_reg_get_fpcr();
+            else if (regsel & 2) val = fp_reg_get_fpsr();
+            else if (regsel & 1) val = fp_reg_get_fpiar();
+            m68k_set_reg(an, val);
+        }
+    } else if (direction == 0) {
+        /* EA (memory) → control register(s) */
         unsigned int ea_addr = eval_ea(ea_mode, ea_reg, &pc);
         if (regsel & 4) {
             u32 val = m68k_read_memory_32(ea_addr);
@@ -731,7 +763,7 @@ static int handle_fmove_ctrl(unsigned int opword, unsigned int cmd,
             fpu_write_fpiar(val);
         }
     } else {
-        /* Control register(s) → EA */
+        /* Control register(s) → EA (memory) */
         unsigned int ea_addr = eval_ea(ea_mode, ea_reg, &pc);
         if (regsel & 4) {
             m68k_write_memory_32(ea_addr, fp_reg_get_fpcr());

@@ -51,7 +51,12 @@ int emu_int_ack_callback(int int_level)
 
 int main(void)
 {
+    /* init_platform enables caches/MMU which may hang under QEMU
+     * if the MMU page tables aren't set up by crt0. On real hardware
+     * the Xilinx crt0 handles this. Skip for safety under QEMU. */
+#ifndef QEMU_MODE
     init_platform();
+#endif
 
     xil_printf("\r\n");
     xil_printf("================================================\r\n");
@@ -61,7 +66,9 @@ int main(void)
 
     next_boot();
 
+#ifndef QEMU_MODE
     cleanup_platform();
+#endif
     return 0;
 }
 

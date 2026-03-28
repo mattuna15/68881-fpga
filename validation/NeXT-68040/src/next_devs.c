@@ -233,11 +233,26 @@ uint8_t next_io_read_8(uint32_t address)
         uint32_t off = address - P_SCC;
         switch (off) {
         case SCC_CHAN_A_CTRL: {
-            /* Read Register 0: TX empty + RX available */
-            uint8_t rr0 = SCC_RR0_TX_EMPTY;
-            if (scc_rx_available())
-                rr0 |= SCC_RR0_RX_AVAIL;
-            return rr0;
+            /* Read Register selected by scc_wr_reg_ptr (set by prior ctrl write) */
+            uint8_t val = 0;
+            switch (scc_wr_reg_ptr) {
+            case 0: /* RR0: TX/RX status */
+                val = SCC_RR0_TX_EMPTY | SCC_RR0_DCD | SCC_RR0_CTS;
+                if (scc_rx_available())
+                    val |= SCC_RR0_RX_AVAIL;
+                break;
+            case 1: /* RR1: special receive conditions — all bits clear = OK */
+                val = 0x07; /* All Sent + no errors */
+                break;
+            case 2: /* RR2: interrupt vector (channel B returns modified) */
+                val = 0;
+                break;
+            default:
+                val = 0;
+                break;
+            }
+            scc_wr_reg_ptr = 0;  /* auto-reset to RR0 after read */
+            return val;
         }
         case SCC_CHAN_A_DATA:
             return scc_rx_pop();

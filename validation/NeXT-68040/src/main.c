@@ -23,6 +23,7 @@
 #include "fline_handler.h"
 #include "next_rtc.h"
 #include "next_dsp.h"
+#include "next_video.h"
 #include "text_fb.h"
 #include "dp_video.h"
 
@@ -189,8 +190,11 @@ static void next_boot(void)
         xil_printf("[NEXT] WARNING: F-line handler init failed\r\n");
 #endif
 
-    /* Initialise text framebuffer for serial mirror / debug display */
+    /* Initialise text framebuffer (provides the pixel buffer) */
     pixel_buf = text_fb_init();
+
+    /* Initialise NeXT VRAM → pixel buffer converter */
+    next_video_init(pixel_buf, next_vram);
 
 #ifndef QEMU_MODE
     {
@@ -272,12 +276,23 @@ static void next_boot(void)
             }
         }
 
-        /* Refresh text display */
-        if (text_fb_is_dirty()) {
-            text_fb_render();
+        /* Refresh display: render NeXT VRAM (2bpp mono) to pixel buffer.
+         * Falls back to text_fb if VRAM has no content yet. */
+        if (next_vram_is_dirty()) {
+            next_video_render();
+            next_vram_mark_clean();
+#ifndef QEMU_MODE
             Xil_DCacheFlushRange((UINTPTR)pixel_buf, 1280*720*4);
             if (dp_ok)
                 dp_video_refresh();
+#endif
+        } else if (text_fb_is_dirty()) {
+            text_fb_render();
+#ifndef QEMU_MODE
+            Xil_DCacheFlushRange((UINTPTR)pixel_buf, 1280*720*4);
+            if (dp_ok)
+                dp_video_refresh();
+#endif
             text_fb_mark_clean();
         }
 

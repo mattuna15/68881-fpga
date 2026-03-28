@@ -12,8 +12,15 @@
 
 #include "next_memory.h"
 #include "next_devs.h"
+#include "next_video.h"
 #include "xil_printf.h"
 #include <string.h>
+
+/* Track VRAM writes for display refresh */
+static int vram_dirty;
+
+int next_vram_is_dirty(void)  { return vram_dirty; }
+void next_vram_mark_clean(void) { vram_dirty = 0; }
 
 /* ------------------------------------------------------------------ */
 /* Static memory arrays (in DDR on the ZU3EG)                          */
@@ -145,6 +152,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 
     if (in_vram(address)) {
         next_vram[address - NEXT_VRAM_BASE] = value & 0xFF;
+        vram_dirty = 1;
         return;
     }
 
@@ -215,6 +223,7 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
         uint32_t off = address - NEXT_VRAM_BASE;
         next_vram[off]     = (value >> 8) & 0xFF;
         next_vram[off + 1] =  value       & 0xFF;
+        vram_dirty = 1;
         return;
     }
 
@@ -294,6 +303,7 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
         next_vram[off + 1] = (value >> 16) & 0xFF;
         next_vram[off + 2] = (value >>  8) & 0xFF;
         next_vram[off + 3] =  value        & 0xFF;
+        vram_dirty = 1;
         return;
     }
 

@@ -58,4 +58,8 @@ void         m68k_write_memory_8(unsigned int address, unsigned int value);
 void         m68k_write_memory_16(unsigned int address, unsigned int value);
 void         m68k_write_memory_32(unsigned int address, unsigned int value);
 
+/* VRAM dirty tracking for display refresh */
+int  next_vram_is_dirty(void);
+void next_vram_mark_clean(void);
+
 #endif /* NEXT_MEMORY_H */

@@ -54,8 +54,17 @@ static inline uint32_t rom_offset(uint32_t addr)
 
 static inline int in_vram(uint32_t addr)
 {
-    return (addr >= NEXT_VRAM_BASE) &&
-           (addr < NEXT_VRAM_BASE + NEXT_VRAM_SIZE);
+    return ((addr >= NEXT_VRAM_BASE) &&
+            (addr < NEXT_VRAM_BASE + NEXT_VRAM_SIZE)) ||
+           ((addr >= NEXT_VRAM_TURBO_BASE) &&
+            (addr < NEXT_VRAM_TURBO_BASE + NEXT_VRAM_SIZE));
+}
+
+static inline uint32_t vram_offset(uint32_t addr)
+{
+    if (addr >= NEXT_VRAM_TURBO_BASE)
+        return addr - NEXT_VRAM_TURBO_BASE;
+    return addr - NEXT_VRAM_BASE;
 }
 
 /* ------------------------------------------------------------------ */
@@ -135,7 +144,7 @@ unsigned int m68k_read_memory_8(unsigned int address)
         return next_ram[address - NEXT_RAM_BASE];
 
     if (in_vram(address))
-        return next_vram[address - NEXT_VRAM_BASE];
+        return next_vram[vram_offset(address)];
 
     if (is_next_io(address))
         return next_io_read_8(address);
@@ -151,7 +160,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
     }
 
     if (in_vram(address)) {
-        next_vram[address - NEXT_VRAM_BASE] = value & 0xFF;
+        next_vram[vram_offset(address)] = value & 0xFF;
         vram_dirty = 1;
         return;
     }
@@ -195,7 +204,7 @@ unsigned int m68k_read_memory_16(unsigned int address)
 
     /* VRAM */
     if (in_vram(address) && in_vram(address + 1)) {
-        uint32_t off = address - NEXT_VRAM_BASE;
+        uint32_t off = vram_offset(address);
         return ((unsigned int)next_vram[off] << 8) |
                 (unsigned int)next_vram[off + 1];
     }
@@ -220,7 +229,7 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
     }
 
     if (in_vram(address) && in_vram(address + 1)) {
-        uint32_t off = address - NEXT_VRAM_BASE;
+        uint32_t off = vram_offset(address);
         next_vram[off]     = (value >> 8) & 0xFF;
         next_vram[off + 1] =  value       & 0xFF;
         vram_dirty = 1;
@@ -264,7 +273,7 @@ unsigned int m68k_read_memory_32(unsigned int address)
 
     /* VRAM */
     if (in_vram(address) && in_vram(address + 3)) {
-        uint32_t off = address - NEXT_VRAM_BASE;
+        uint32_t off = vram_offset(address);
         return ((unsigned int)next_vram[off]     << 24) |
                ((unsigned int)next_vram[off + 1] << 16) |
                ((unsigned int)next_vram[off + 2] <<  8) |
@@ -298,7 +307,7 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
 
     /* VRAM */
     if (in_vram(address) && in_vram(address + 3)) {
-        uint32_t off = address - NEXT_VRAM_BASE;
+        uint32_t off = vram_offset(address);
         next_vram[off]     = (value >> 24) & 0xFF;
         next_vram[off + 1] = (value >> 16) & 0xFF;
         next_vram[off + 2] = (value >>  8) & 0xFF;

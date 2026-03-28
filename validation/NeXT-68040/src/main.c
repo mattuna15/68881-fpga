@@ -290,9 +290,8 @@ static void next_boot(void)
                 }
                 next_vram_active = 1;
                 next_vram_mark_clean();
-                /* Throttle: only render every 200 ticks (~1 second) to
-                 * avoid partial-frame artifacts during ROM init */
-                if (++vram_refresh_count >= 200) {
+                /* Throttle: render every 50 ticks (~250ms) */
+                if (++vram_refresh_count >= 50) {
                     vram_refresh_count = 0;
                     next_video_render();
                     need_refresh = 1;

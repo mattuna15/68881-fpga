@@ -27,9 +27,13 @@
 #define NEXT_ROM_BMAP   0x01000000
 #define NEXT_ROM_SIZE   (128 * 1024)
 
-/* Video RAM: 256 KB at 0x0B000000 */
-#define NEXT_VRAM_BASE  0x0B000000
-#define NEXT_VRAM_SIZE  (256 * 1024)
+/* Video RAM: 256 KB
+ * Non-Turbo: 0x0B000000    Turbo: 0x0C000000
+ * The Turbo ROM (Rev 3.3 v74) writes display data to 0x0C000000.
+ * We map both ranges to the same backing buffer. */
+#define NEXT_VRAM_BASE       0x0B000000
+#define NEXT_VRAM_TURBO_BASE 0x0C000000
+#define NEXT_VRAM_SIZE       (256 * 1024)
 
 /* The emulated RAM buffer (lives in DDR on the ZU3EG) */
 extern unsigned char next_ram[];

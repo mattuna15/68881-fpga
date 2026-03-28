@@ -58,57 +58,7 @@ void next_video_render(void)
     if (!pbuf || !vram)
         return;
 
-    /* Deferred VRAM dump: wait for render_count > 200 (after ROM settles) */
-    {
-        static int dumped = 0;
-        static int render_count = 0;
-        render_count++;
-        if (!dumped && render_count > 3) {
-            xil_printf("[VRAM] Dump after %d renders:\r\n", render_count);
-            /* Dump first bytes at candidate strides */
-            for (int s = 0; s < 7; s++) {
-                int off;
-                switch(s) {
-                    case 0: off = 0; break;
-                    case 1: off = 280; break;
-                    case 2: off = 288; break;
-                    case 3: off = 560; break;
-                    case 4: off = 576; break;
-                    case 5: off = 2048; break;
-                    case 6: off = 4096; break;
-                }
-                xil_printf("[VRAM] @%5d: %02X %02X %02X %02X  %02X %02X %02X %02X\r\n",
-                           off,
-                           vram[off], vram[off+1], vram[off+2], vram[off+3],
-                           vram[off+4], vram[off+5], vram[off+6], vram[off+7]);
-            }
-            /* The NeXT dark grey background is 0xAA (2bpp: 10101010 = all dark grey).
-             * Find where constant 0xAA data starts */
-            int aa_start = -1;
-            for (int i = 0; i < 0x10000; i++) {
-                if (vram[i] == 0xAA && vram[i+1] == 0xAA && vram[i+2] == 0xAA && vram[i+3] == 0xAA) {
-                    aa_start = i;
-                    break;
-                }
-            }
-            xil_printf("[VRAM] First 0xAA fill at offset %d ($%06X)\r\n",
-                       aa_start, aa_start >= 0 ? aa_start : 0);
 
-            /* Scan for stride by looking for matching line starts */
-            if (aa_start >= 0) {
-                for (int try_stride = 270; try_stride <= 300; try_stride++) {
-                    int match = 1;
-                    for (int chk = 0; chk < 8 && match; chk++) {
-                        if (vram[aa_start + chk] != vram[aa_start + try_stride + chk])
-                            match = 0;
-                    }
-                    if (match)
-                        xil_printf("[VRAM] Stride=%d matches at offset %d\r\n", try_stride, aa_start);
-                }
-            }
-            dumped = 1;
-        }
-    }
 
     /* Render up to 720 scanlines (the NeXT has 832, we crop the bottom).
      * Each VRAM byte contains 4 pixels at 2bpp, MSB first. */

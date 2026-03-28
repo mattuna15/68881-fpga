@@ -63,10 +63,8 @@ void next_video_render(void)
     int max_y = (NEXT_VIDEO_H < OUT_H) ? NEXT_VIDEO_H : OUT_H;
 
     for (int y = 0; y < max_y; y++) {
-        /* Try both strides: top half=280, bottom half=288 for debugging */
-        int stride = (y < 360) ? NEXT_VIDEO_NBPL_TURBO : NEXT_VIDEO_NBPL_NONTURBO;
-        const uint8_t *src = &vram[y * stride];
-        uint32_t *dst = &pbuf[y * OUT_W + OFS_X];
+        const uint8_t *src = &vram[(uint32_t)y * NEXT_VIDEO_NBPL];
+        uint32_t *dst = &pbuf[(uint32_t)y * OUT_W + OFS_X];
 
         /* Decode 1120 pixels (280 bytes of visible data per line) */
         int visible_bytes = NEXT_VIDEO_W / 4;  /* 1120/4 = 280 */

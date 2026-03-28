@@ -283,14 +283,20 @@ static void next_boot(void)
             int need_refresh = 0;
 
             if (next_vram_is_dirty()) {
+                static int vram_refresh_count = 0;
                 if (!next_vram_active) {
                     xil_printf("[VIDEO] NeXT VRAM active, stride=%d bytes/line\r\n",
                                NEXT_VIDEO_NBPL);
                 }
                 next_vram_active = 1;
-                next_video_render();
                 next_vram_mark_clean();
-                need_refresh = 1;
+                /* Throttle: only render every 200 ticks (~1 second) to
+                 * avoid partial-frame artifacts during ROM init */
+                if (++vram_refresh_count >= 200) {
+                    vram_refresh_count = 0;
+                    next_video_render();
+                    need_refresh = 1;
+                }
             } else if (!next_vram_active && text_fb_is_dirty()) {
                 text_fb_render();
                 text_fb_mark_clean();

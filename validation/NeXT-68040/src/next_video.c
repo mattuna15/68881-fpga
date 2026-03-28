@@ -58,6 +58,50 @@ void next_video_render(void)
     if (!pbuf || !vram)
         return;
 
+    /* One-shot: dump VRAM layout to determine actual stride */
+    {
+        static int dumped = 0;
+        if (!dumped) {
+            /* Find first non-zero byte to locate image start */
+            int first_nz = -1;
+            for (int i = 0; i < 0x10000 && first_nz < 0; i++)
+                if (vram[i] != 0 && vram[i] != 0xFF) first_nz = i;
+
+            xil_printf("[VRAM] First non-trivial byte at offset $%06X\r\n",
+                       first_nz >= 0 ? first_nz : 0);
+
+            /* Dump first 16 bytes at offsets 0, 280, 288, 560, 576 */
+            for (int s = 0; s < 5; s++) {
+                int off;
+                switch(s) {
+                    case 0: off = 0; break;
+                    case 1: off = 280; break;
+                    case 2: off = 288; break;
+                    case 3: off = 560; break;
+                    case 4: off = 576; break;
+                }
+                xil_printf("[VRAM] @%4d: %02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+                           off,
+                           vram[off], vram[off+1], vram[off+2], vram[off+3],
+                           vram[off+4], vram[off+5], vram[off+6], vram[off+7]);
+            }
+
+            /* Find stride: look for the pattern where line 0 and line 1
+             * both start with the same fill value (likely 0xAA = dark grey) */
+            uint8_t line0_val = vram[0];
+            xil_printf("[VRAM] line0[0]=$%02X, scanning for repeat...\r\n", line0_val);
+            for (int try_stride = 270; try_stride <= 300; try_stride++) {
+                if (vram[try_stride] == line0_val &&
+                    vram[try_stride+1] == vram[1] &&
+                    vram[try_stride+2] == vram[2] &&
+                    vram[try_stride+3] == vram[3]) {
+                    xil_printf("[VRAM] Possible stride=%d (matches 4 bytes)\r\n", try_stride);
+                }
+            }
+            dumped = 1;
+        }
+    }
+
     /* Render up to 720 scanlines (the NeXT has 832, we crop the bottom).
      * Each VRAM byte contains 4 pixels at 2bpp, MSB first. */
     int max_y = (NEXT_VIDEO_H < OUT_H) ? NEXT_VIDEO_H : OUT_H;

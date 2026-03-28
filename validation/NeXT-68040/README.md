@@ -58,12 +58,23 @@ The ROM loops at `$010024E2` calling a subroutine at `$0100A1A8` (likely SCC
 serial poll), testing D3, and looping while no input. This is the ROM's
 command-line prompt waiting for serial console keystrokes.
 
+The ROM renders its output (including "System test failed") to the NeXT mono
+framebuffer in VRAM via its bitmap console `mg_putc` function at `$010081C8`.
+The instruction hook intercepts each `mg_putc` call and echoes the character
+to the ARM UART, making ROM output visible under QEMU.
+
+Key findings:
+- `mon_global` structure at `$0B03F800` (VRAM), ROM keeps pointer in A3
+- `mg_putc = $010081C8` (bitmap console), `mg_getc = $01008140`
+- ROM version: `mg_seq = 74` (Rev 3.3 v74), confirmed via mon_global scan
+- ROM always uses bitmap console for POST output, even with `ni_alt_cons=1`
+
 ### Next Steps
 
-1. Verify SCC RX path works — type commands and check if the ROM responds
-2. Get the ROM monitor to echo characters or print its prompt banner
-3. Boot a kernel via the ROM's `bsd` or `en` boot commands
-4. Cross-compile standalone boot code from mk-108.1 sources
+1. Wire up serial input so typed characters reach the ROM monitor via `mg_getc`
+2. Boot a kernel via the ROM's `bsd` or `en` boot commands
+3. Cross-compile standalone boot code from mk-108.1 sources
+4. On real hardware: ROM output goes to DP via VRAM → text_fb → dp_video
 
 ## Memory Map
 

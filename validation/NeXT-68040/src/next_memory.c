@@ -308,22 +308,6 @@ unsigned int m68k_read_memory_32(unsigned int address)
 
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
-    /* Debug: log first write with high bit set before normalisation */
-    {
-        static int hi_logged = 0;
-        if (!hi_logged && (address & 0x80000000)) {
-            xil_printf("[MEM] First hi-bit W32: raw=$%08X norm=$%08X val=$%08X\r\n",
-                       address, address & 0x7FFFFFFF, value);
-            hi_logged = 1;
-        }
-        static int oc_logged = 0;
-        uint32_t norm = address & 0x7FFFFFFF;
-        if (!oc_logged && norm >= 0x0C000000 && norm < 0x0C040000) {
-            xil_printf("[MEM] First $0C W32: raw=$%08X norm=$%08X val=$%08X\r\n",
-                       address, norm, value);
-            oc_logged = 1;
-        }
-    }
     address = addr_normalise(address);
     /* Fast path: RAM */
     if (in_ram(address) && in_ram(address + 3)) {

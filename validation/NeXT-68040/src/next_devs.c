@@ -30,6 +30,9 @@
 static uint32_t scr1_value;
 static uint32_t scr2_value;
 
+/* P_MON register: the ROM stores its mon_global pointer here */
+static uint32_t p_mon_value;
+
 /* ------------------------------------------------------------------ */
 /* Interrupt controller                                                */
 /* ------------------------------------------------------------------ */
@@ -95,6 +98,9 @@ void next_devs_init(void)
 
     /* SCR2: zeroed at power-on, 4x1M DRAM banks */
     scr2_value = (0x0F << 16);  /* s_dram_1M = 4 banks */
+
+    /* P_MON: ROM stores mon_global pointer here */
+    p_mon_value = 0;
 
     /* Interrupts: all masked */
     intr_mask = 0;
@@ -329,6 +335,10 @@ uint32_t next_io_read_32(uint32_t address)
     if (address == P_INTRMASK)
         return intr_mask;
 
+    /* P_MON: mon_global pointer */
+    if (address == P_MON)
+        return p_mon_value;
+
     /* Slot ID */
     if (address == P_SID)
         return 0;
@@ -468,6 +478,13 @@ void next_io_write_32(uint32_t address, uint32_t value)
         }
     }
 
+    /* P_MON: ROM stores its mon_global pointer here */
+    if (address == P_MON) {
+        p_mon_value = value;
+        xil_printf("[NEXT] P_MON (mon_global) = $%08X\r\n", value);
+        return;
+    }
+
     /* Timer CSR via 32-bit write */
     if (address == P_TIMER_CSR) {
         timer_csr = (value >> 24) & 0xFF;
@@ -484,3 +501,5 @@ void next_io_write_32(uint32_t address, uint32_t value)
     xil_printf("[NEXT] W32 @%08X = %08X\r\n", address, value);
 #endif
 }
+
+uint32_t next_get_mon_global(void) { return p_mon_value; }

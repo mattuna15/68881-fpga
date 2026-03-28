@@ -59,4 +59,7 @@ static inline uint32_t next_io_canon(uint32_t addr)
     return addr;
 }
 
+/* Get the ROM's mon_global pointer (written to P_MON during boot) */
+uint32_t next_get_mon_global(void);
+
 #endif /* NEXT_DEVS_H */

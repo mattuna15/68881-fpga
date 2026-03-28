@@ -35,17 +35,27 @@
 #define TRACE_LIMIT  0  /* Disabled */
 static int trace_count = 0;
 
+/* Intercept ROM's mg_putc to mirror bitmap console output to serial.
+ * mg_putc is at $010081C8; character is at SP+7 on entry (low byte
+ * of the 4-byte argument after the return address). */
+#define ROM_PUTC_ADDR  0x010081C8
+
 void emu_instr_hook(unsigned int pc)
 {
-    /* Start tracing when we reach the second DSP poll at $C4E0 */
-    static int trace_armed = 0;
-    static int seen_c474 = 0;
-    if (pc == 0x0100C474) seen_c474++;
-    if (!trace_armed && pc == 0x0100C4E0 && seen_c474 > 0) {
-        trace_armed = 1;
-        trace_count = 0;
+    /* Mirror ROM's bitmap console output to serial.
+     * The ROM's mg_putc renders to VRAM (bitmap framebuffer).
+     * We intercept each call and echo the character to the ARM UART
+     * so console output is visible under QEMU (no video display). */
+    if (pc == ROM_PUTC_ADDR) {
+        uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
+        uint8_t ch = m68k_read_memory_8(sp + 7);
+        if (ch >= 0x20 && ch < 0x7F)
+            xil_printf("%c", ch);
+        else if (ch == '\r' || ch == '\n' || ch == '\t' || ch == '\b')
+            xil_printf("%c", ch);
     }
-    if (trace_armed && trace_count < TRACE_LIMIT) {
+
+    if (trace_count < TRACE_LIMIT) {
         uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
         uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
         uint16_t opword = m68k_read_memory_16(pc);
@@ -207,6 +217,30 @@ static void next_boot(void)
 
         int ipl = next_intr_pending_ipl();
         m68k_set_irq(ipl);
+
+        /* After ROM settles, find mon_global and dump key fields (one-shot).
+         * The ROM may store mg pointer at P_MON, or we can find it via A5
+         * (the ROM monitor typically keeps mg in A5). */
+        {
+            static int mg_dumped = 0;
+            if (!mg_dumped) {
+                uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+                if (pc >= 0x01002000 && pc <= 0x01003000) {
+                    /* Find mon_global: ROM keeps it in A3, stored in VRAM */
+                    uint32_t mg = next_get_mon_global();
+                    if (mg == 0)
+                        mg = m68k_get_reg(NULL, M68K_REG_A3);
+
+                    /* Validate by checking mg_pagesize at MG offset 10 */
+                    uint32_t pgsz = m68k_read_memory_32(mg + 10);
+                    if (pgsz == 8192 || pgsz == 4096) {
+                        uint16_t mg_seq = m68k_read_memory_16(mg + 780);
+                        xil_printf("[MG] mon_global=$%08X seq=%d\r\n", mg, mg_seq);
+                    }
+                    mg_dumped = 1;
+                }
+            }
+        }
 
         /* PC trace (debug: print every ~2 seconds) */
         {

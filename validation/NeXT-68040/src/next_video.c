@@ -58,20 +58,15 @@ void next_video_render(void)
     if (!pbuf || !vram)
         return;
 
-    /* One-shot: dump VRAM layout to determine actual stride */
+    /* Deferred VRAM dump: wait for render_count > 200 (after ROM settles) */
     {
         static int dumped = 0;
-        if (!dumped) {
-            /* Find first non-zero byte to locate image start */
-            int first_nz = -1;
-            for (int i = 0; i < 0x10000 && first_nz < 0; i++)
-                if (vram[i] != 0 && vram[i] != 0xFF) first_nz = i;
-
-            xil_printf("[VRAM] First non-trivial byte at offset $%06X\r\n",
-                       first_nz >= 0 ? first_nz : 0);
-
-            /* Dump first 16 bytes at offsets 0, 280, 288, 560, 576 */
-            for (int s = 0; s < 5; s++) {
+        static int render_count = 0;
+        render_count++;
+        if (!dumped && render_count > 200) {
+            xil_printf("[VRAM] Dump after %d renders:\r\n", render_count);
+            /* Dump first bytes at candidate strides */
+            for (int s = 0; s < 7; s++) {
                 int off;
                 switch(s) {
                     case 0: off = 0; break;
@@ -79,23 +74,36 @@ void next_video_render(void)
                     case 2: off = 288; break;
                     case 3: off = 560; break;
                     case 4: off = 576; break;
+                    case 5: off = 2048; break;
+                    case 6: off = 4096; break;
                 }
-                xil_printf("[VRAM] @%4d: %02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+                xil_printf("[VRAM] @%5d: %02X %02X %02X %02X  %02X %02X %02X %02X\r\n",
                            off,
                            vram[off], vram[off+1], vram[off+2], vram[off+3],
                            vram[off+4], vram[off+5], vram[off+6], vram[off+7]);
             }
+            /* The NeXT dark grey background is 0xAA (2bpp: 10101010 = all dark grey).
+             * Find where constant 0xAA data starts */
+            int aa_start = -1;
+            for (int i = 0; i < 0x10000; i++) {
+                if (vram[i] == 0xAA && vram[i+1] == 0xAA && vram[i+2] == 0xAA && vram[i+3] == 0xAA) {
+                    aa_start = i;
+                    break;
+                }
+            }
+            xil_printf("[VRAM] First 0xAA fill at offset %d ($%06X)\r\n",
+                       aa_start, aa_start >= 0 ? aa_start : 0);
 
-            /* Find stride: look for the pattern where line 0 and line 1
-             * both start with the same fill value (likely 0xAA = dark grey) */
-            uint8_t line0_val = vram[0];
-            xil_printf("[VRAM] line0[0]=$%02X, scanning for repeat...\r\n", line0_val);
-            for (int try_stride = 270; try_stride <= 300; try_stride++) {
-                if (vram[try_stride] == line0_val &&
-                    vram[try_stride+1] == vram[1] &&
-                    vram[try_stride+2] == vram[2] &&
-                    vram[try_stride+3] == vram[3]) {
-                    xil_printf("[VRAM] Possible stride=%d (matches 4 bytes)\r\n", try_stride);
+            /* Scan for stride by looking for matching line starts */
+            if (aa_start >= 0) {
+                for (int try_stride = 270; try_stride <= 300; try_stride++) {
+                    int match = 1;
+                    for (int chk = 0; chk < 8 && match; chk++) {
+                        if (vram[aa_start + chk] != vram[aa_start + try_stride + chk])
+                            match = 0;
+                    }
+                    if (match)
+                        xil_printf("[VRAM] Stride=%d matches at offset %d\r\n", try_stride, aa_start);
                 }
             }
             dumped = 1;

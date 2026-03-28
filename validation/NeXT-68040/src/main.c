@@ -276,24 +276,30 @@ static void next_boot(void)
             }
         }
 
-        /* Refresh display: render NeXT VRAM (2bpp mono) to pixel buffer.
-         * Falls back to text_fb if VRAM has no content yet. */
-        if (next_vram_is_dirty()) {
-            next_video_render();
-            next_vram_mark_clean();
+        /* Refresh display: once NeXT VRAM has content, use it exclusively.
+         * Before that, fall back to text_fb for boot messages. */
+        {
+            static int next_vram_active = 0;
+            int need_refresh = 0;
+
+            if (next_vram_is_dirty()) {
+                next_vram_active = 1;
+                next_video_render();
+                next_vram_mark_clean();
+                need_refresh = 1;
+            } else if (!next_vram_active && text_fb_is_dirty()) {
+                text_fb_render();
+                text_fb_mark_clean();
+                need_refresh = 1;
+            }
+
 #ifndef QEMU_MODE
-            Xil_DCacheFlushRange((UINTPTR)pixel_buf, 1280*720*4);
-            if (dp_ok)
-                dp_video_refresh();
+            if (need_refresh) {
+                Xil_DCacheFlushRange((UINTPTR)pixel_buf, 1280*720*4);
+                if (dp_ok)
+                    dp_video_refresh();
+            }
 #endif
-        } else if (text_fb_is_dirty()) {
-            text_fb_render();
-#ifndef QEMU_MODE
-            Xil_DCacheFlushRange((UINTPTR)pixel_buf, 1280*720*4);
-            if (dp_ok)
-                dp_video_refresh();
-#endif
-            text_fb_mark_clean();
         }
 
         /* Feed ARM UART RX into SCC RX buffer */

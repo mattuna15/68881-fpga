@@ -198,7 +198,11 @@ void next_rtc_init(void)
          * ni_vol_l=0(6b), ni_spkren=1(1b), ni_lowpass=0(1b),
          * ni_boot_any=0(1b), ni_any_cmd=0(1b) */
         uint32_t bf = (9u << 28) |        /* ni_reset = 9 */
-                      (0u << 27) |        /* ni_alt_cons */
+#ifdef QEMU_MODE
+                      (1u << 27) |        /* ni_alt_cons = 1 → serial console */
+#else
+                      (0u << 27) |        /* ni_alt_cons = 0 → video console */
+#endif
                       (0u << 26) |        /* ni_allow_eject */
                       (0u << 20) |        /* ni_vol_r */
                       (20u << 14) |       /* ni_brightness = 20 */

@@ -162,6 +162,18 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
     if (in_vram(address)) {
         next_vram[vram_offset(address)] = value & 0xFF;
         vram_dirty = 1;
+        /* One-shot: log first VRAM write in each range */
+        {
+            static int logged_0b = 0, logged_0c = 0;
+            if (!logged_0b && address >= 0x0B000000 && address < 0x0B040000) {
+                xil_printf("[VRAM] First write to $0B region: $%08X = $%02X\r\n", address, value & 0xFF);
+                logged_0b = 1;
+            }
+            if (!logged_0c && address >= 0x0C000000 && address < 0x0C040000) {
+                xil_printf("[VRAM] First write to $0C region: $%08X = $%02X\r\n", address, value & 0xFF);
+                logged_0c = 1;
+            }
+        }
         return;
     }
 
@@ -314,6 +326,16 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
         next_vram[off + 3] =  value        & 0xFF;
         vram_dirty = 1;
         return;
+    }
+
+    /* Catch writes to unknown high addresses to find Turbo VRAM */
+    {
+        static int unk_logged = 0;
+        uint8_t top = (address >> 24) & 0xFF;
+        if (top >= 0x05 && top != 0x0B && top != 0x0C && unk_logged < 5) {
+            xil_printf("[MEM] W32 unmapped $%08X = $%08X\r\n", address, value);
+            unk_logged++;
+        }
     }
 
     /* Fallback */

@@ -63,7 +63,7 @@ void next_video_render(void)
         static int dumped = 0;
         static int render_count = 0;
         render_count++;
-        if (!dumped && render_count > 200) {
+        if (!dumped && render_count > 3) {
             xil_printf("[VRAM] Dump after %d renders:\r\n", render_count);
             /* Dump first bytes at candidate strides */
             for (int s = 0; s < 7; s++) {

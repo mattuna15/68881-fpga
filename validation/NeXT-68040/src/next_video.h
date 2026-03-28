@@ -25,7 +25,7 @@
  * Source: Previous emulator src/fast_screen.c blitBW(). */
 #define NEXT_VIDEO_NBPL_TURBO    (NEXT_VIDEO_W >> 2)     /* 280 bytes/line */
 #define NEXT_VIDEO_NBPL_NONTURBO (NEXT_VIDEO_MW >> 2)    /* 288 bytes/line */
-#define NEXT_VIDEO_NBPL          NEXT_VIDEO_NBPL_TURBO   /* Turbo = default */
+#define NEXT_VIDEO_NBPL          NEXT_VIDEO_NBPL_NONTURBO  /* Try 288 — ROM may use padded stride */
 
 /* 2bpp greyscale values → ARGB8888 */
 #define NEXT_WHITE    0xFFFFFFFF   /* 00 */

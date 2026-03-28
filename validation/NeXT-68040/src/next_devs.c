@@ -361,8 +361,13 @@ void next_io_write_8(uint32_t address, uint8_t value)
             /* Console TX: send to ARM UART */
             if (value >= 0x20 && value < 0x7F)
                 xil_printf("%c", value);
-            else if (value == '\r' || value == '\n')
+            else if (value == '\r' || value == '\n' ||
+                     value == '\t' || value == '\b')
                 xil_printf("%c", value);
+            else if (value == 0x07)
+                { /* BEL: ignore */ }
+            else if (value == 0x1B)
+                { /* ESC: ignore (part of ANSI sequences) */ }
             else
                 xil_printf("[SCC:$%02X]", value);
             break;

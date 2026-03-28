@@ -223,8 +223,13 @@ static void next_boot(void)
                 static int stuck = 0;
                 if (pc == prev_pc) {
                     if (++stuck >= 10) {
-                        xil_printf("[HALT] PC stuck at $%08X - stopping\r\n", pc);
-                        return;
+                        /* Don't halt if PC is in the ROM monitor input
+                         * poll — that's normal idle behaviour. */
+                        if (pc < 0x01002000 || pc > 0x01003000) {
+                            xil_printf("[HALT] PC stuck at $%08X - stopping\r\n", pc);
+                            return;
+                        }
+                        stuck = 0;  /* reset — it's the monitor loop */
                     }
                 } else {
                     stuck = 0;
@@ -254,10 +259,13 @@ static void next_boot(void)
 static void poll_uart_rx(void)
 {
 #ifdef XPAR_XUARTPS_0_BASEADDR
-    extern u8 XUartPs_RecvByte(u32 BaseAddress);
-    volatile u32 *uart_sr = (volatile u32 *)(XPAR_XUARTPS_0_BASEADDR + 0x2C);
-    while (!((*uart_sr) & 0x02)) {
-        u8 ch = XUartPs_RecvByte(XPAR_XUARTPS_0_BASEADDR);
+    /* ZynqMP UART status register: bit 1 = RXEMPTY.
+     * Poll while RX FIFO has data and push bytes into SCC RX buffer.
+     * Works on both real hardware and QEMU's ZynqMP UART model. */
+    volatile uint32_t *uart_sr   = (volatile uint32_t *)(XPAR_XUARTPS_0_BASEADDR + 0x2C);
+    volatile uint32_t *uart_fifo = (volatile uint32_t *)(XPAR_XUARTPS_0_BASEADDR + 0x30);
+    while (!((*uart_sr) & 0x02)) {  /* while RXEMPTY == 0 */
+        uint8_t ch = (uint8_t)(*uart_fifo & 0xFF);
         next_scc_rx_push(ch);
     }
 #endif

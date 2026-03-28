@@ -37,17 +37,31 @@
 static int trace_count = 0;
 
 /* Intercept ROM's mg_putc to mirror bitmap console output to serial.
- * mg_putc is at $010081C8; character is at SP+7 on entry (low byte
- * of the 4-byte argument after the return address). */
-#define ROM_PUTC_ADDR  0x010081C8
+ * Address is ROM-version-specific; set to 0 to auto-detect from mon_global.
+ * Rev 3.3 v74 (Turbo): $010081C8
+ * Rev 2.5 v66 (68040):  discovered at runtime from mg_putc field */
+static uint32_t rom_putc_addr = 0;  /* 0 = not yet discovered */
 
 void emu_instr_hook(unsigned int pc)
 {
     /* Mirror ROM's bitmap console output to serial.
-     * The ROM's mg_putc renders to VRAM (bitmap framebuffer).
-     * We intercept each call and echo the character to the ARM UART
-     * so console output is visible under QEMU (no video display). */
-    if (pc == ROM_PUTC_ADDR) {
+     * Auto-discover mg_putc address from mon_global (A3 register). */
+    if (rom_putc_addr == 0) {
+        /* Try to find mg_putc once the ROM has set up mon_global */
+        uint32_t mg = m68k_get_reg(NULL, M68K_REG_A3);
+        if (mg >= 0x0B000000 && mg < 0x0C000000) {
+            uint32_t pgsz = m68k_read_memory_32(mg + 10);
+            if (pgsz == 8192 || pgsz == 4096) {
+                rom_putc_addr = m68k_read_memory_32(mg + 734);
+                if (rom_putc_addr >= 0x01000000 && rom_putc_addr < 0x01020000) {
+                    xil_printf("[MG] mg_putc=$%08X (auto-detected)\r\n", rom_putc_addr);
+                } else {
+                    rom_putc_addr = 0;  /* invalid, keep searching */
+                }
+            }
+        }
+    }
+    if (rom_putc_addr != 0 && pc == rom_putc_addr) {
         uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
         uint8_t ch = m68k_read_memory_8(sp + 7);
         if (ch >= 0x20 && ch < 0x7F)
@@ -154,7 +168,7 @@ static void next_boot(void)
      * ROM is mapped at both 0x00000000 and 0x01000000 (BMAP).
      * The ROM's vectors: SSP=0x04000400, PC=0x0100001E */
     next_rom_load(next_rom_data, next_rom_data_len);
-    xil_printf("[NEXT] ROM loaded: %u bytes (Rev 3.3 v74 Turbo)\r\n",
+    xil_printf("[NEXT] ROM loaded: %u bytes (Rev 2.5 v66 68040)\r\n",
                next_rom_data_len);
 
     /* Vectors come directly from the ROM image (first 8 bytes).
@@ -261,9 +275,9 @@ static void next_boot(void)
                 static int stuck = 0;
                 if (pc == prev_pc) {
                     if (++stuck >= 10) {
-                        /* Don't halt if PC is in the ROM monitor input
-                         * poll — that's normal idle behaviour. */
-                        if (pc < 0x01002000 || pc > 0x01003000) {
+                        /* Don't halt if PC is in ROM address space
+                         * (ROM monitor input poll or other loops). */
+                        if (pc < 0x01000000 || pc > 0x01020000) {
                             xil_printf("[HALT] PC stuck at $%08X - stopping\r\n", pc);
                             return;
                         }

@@ -30,6 +30,20 @@ unsigned char next_rom[NEXT_ROM_SIZE];
 unsigned char next_vram[NEXT_VRAM_SIZE];
 
 /* ------------------------------------------------------------------ */
+/* Address normalisation                                               */
+/* ------------------------------------------------------------------ */
+
+/* The 68040 ROM uses Transparent Translation (TT) registers to create
+ * a 1:1 mapping with caching disabled for the upper 2GB ($80000000+).
+ * Since we don't implement the MMU, mask off bit 31 so that addresses
+ * like $820C0020 map to $020C0020 (I/O) and $8B000000 maps to
+ * $0B000000 (VRAM).  This matches the TT0/TT1 identity mapping. */
+static inline uint32_t addr_normalise(uint32_t addr)
+{
+    return addr & 0x7FFFFFFF;
+}
+
+/* ------------------------------------------------------------------ */
 /* Address classification helpers                                      */
 /* ------------------------------------------------------------------ */
 
@@ -137,6 +151,7 @@ void next_mem_set_vectors(uint32_t ssp, uint32_t pc)
 
 unsigned int m68k_read_memory_8(unsigned int address)
 {
+    address = addr_normalise(address);
     if (in_rom(address))
         return next_rom[rom_offset(address)];
 
@@ -154,6 +169,7 @@ unsigned int m68k_read_memory_8(unsigned int address)
 
 void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
+    address = addr_normalise(address);
     if (in_ram(address)) {
         next_ram[address - NEXT_RAM_BASE] = value & 0xFF;
         return;
@@ -162,18 +178,6 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
     if (in_vram(address)) {
         next_vram[vram_offset(address)] = value & 0xFF;
         vram_dirty = 1;
-        /* One-shot: log first VRAM write in each range */
-        {
-            static int logged_0b = 0, logged_0c = 0;
-            if (!logged_0b && address >= 0x0B000000 && address < 0x0B040000) {
-                xil_printf("[VRAM] First write to $0B region: $%08X = $%02X\r\n", address, value & 0xFF);
-                logged_0b = 1;
-            }
-            if (!logged_0c && address >= 0x0C000000 && address < 0x0C040000) {
-                xil_printf("[VRAM] First write to $0C region: $%08X = $%02X\r\n", address, value & 0xFF);
-                logged_0c = 1;
-            }
-        }
         return;
     }
 
@@ -194,6 +198,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 
 unsigned int m68k_read_memory_16(unsigned int address)
 {
+    address = addr_normalise(address);
     /* Fast path: RAM */
     if (in_ram(address) && in_ram(address + 1)) {
         uint32_t off = address - NEXT_RAM_BASE;
@@ -228,6 +233,7 @@ unsigned int m68k_read_memory_16(unsigned int address)
 
 void m68k_write_memory_16(unsigned int address, unsigned int value)
 {
+    address = addr_normalise(address);
     if (in_ram(address) && in_ram(address + 1)) {
         uint32_t off = address - NEXT_RAM_BASE;
         next_ram[off]     = (value >> 8) & 0xFF;
@@ -259,6 +265,7 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
 
 unsigned int m68k_read_memory_32(unsigned int address)
 {
+    address = addr_normalise(address);
     /* Fast path: RAM */
     if (in_ram(address) && in_ram(address + 3)) {
         uint32_t off = address - NEXT_RAM_BASE;
@@ -301,6 +308,7 @@ unsigned int m68k_read_memory_32(unsigned int address)
 
 void m68k_write_memory_32(unsigned int address, unsigned int value)
 {
+    address = addr_normalise(address);
     /* Fast path: RAM */
     if (in_ram(address) && in_ram(address + 3)) {
         uint32_t off = address - NEXT_RAM_BASE;
@@ -328,15 +336,6 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
         return;
     }
 
-    /* Catch writes to unknown high addresses to find Turbo VRAM */
-    {
-        static int unk_logged = 0;
-        uint8_t top = (address >> 24) & 0xFF;
-        if (top >= 0x05 && top != 0x0B && top != 0x0C && unk_logged < 5) {
-            xil_printf("[MEM] W32 unmapped $%08X = $%08X\r\n", address, value);
-            unk_logged++;
-        }
-    }
 
     /* Fallback */
     m68k_write_memory_8(address,     (value >> 24) & 0xFF);

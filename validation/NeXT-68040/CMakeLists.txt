@@ -21,6 +21,7 @@ set(SOURCES
     src/next_memory.c
     src/next_devs.c
     src/next_rtc.c
+    src/next_dsp.c
     src/next_mon_stub.c
     src/fline_handler.c
     src/fpu_periph.c

@@ -22,6 +22,7 @@
 #include "next_rom_image.h"
 #include "fline_handler.h"
 #include "next_rtc.h"
+#include "next_dsp.h"
 #include "text_fb.h"
 #include "dp_video.h"
 
@@ -31,20 +32,28 @@
 /* ------------------------------------------------------------------ */
 /* Early instruction trace (first N instructions for boot debugging)   */
 /* ------------------------------------------------------------------ */
-#define TRACE_LIMIT  0  /* Disabled — early boot trace complete */
+#define TRACE_LIMIT  0  /* Disabled */
 static int trace_count = 0;
 
 void emu_instr_hook(unsigned int pc)
 {
-    if (trace_count < TRACE_LIMIT) {
+    /* Start tracing when we reach the second DSP poll at $C4E0 */
+    static int trace_armed = 0;
+    static int seen_c474 = 0;
+    if (pc == 0x0100C474) seen_c474++;
+    if (!trace_armed && pc == 0x0100C4E0 && seen_c474 > 0) {
+        trace_armed = 1;
+        trace_count = 0;
+    }
+    if (trace_armed && trace_count < TRACE_LIMIT) {
         uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
         uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
         uint16_t opword = m68k_read_memory_16(pc);
         uint32_t a0 = m68k_get_reg(NULL, M68K_REG_A0);
+        uint32_t a1 = m68k_get_reg(NULL, M68K_REG_A1);
         uint32_t d0 = m68k_get_reg(NULL, M68K_REG_D0);
-        uint32_t vbr = m68k_get_reg(NULL, M68K_REG_VBR);
-        xil_printf("[T%03d] PC=$%08X SR=$%04X SP=$%08X op=$%04X A0=$%08X D0=$%08X VBR=$%08X\r\n",
-                   trace_count, pc, sr, sp, opword, a0, d0, vbr);
+        xil_printf("[T%03d] PC=$%08X SR=$%04X SP=$%08X op=$%04X A0=$%08X A1=$%08X D0=$%08X\r\n",
+                   trace_count, pc, sr, sp, opword, a0, a1, d0);
         /* On exception: dump stacked frame */
         if (trace_count > 0 && pc < 0x00001000 && sp < 0x04000400) {
             xil_printf("  [EXC] frame@SP: %08X %08X\r\n",
@@ -120,6 +129,7 @@ static void next_boot(void)
     /* Initialise NeXT hardware stubs */
     next_devs_init();
     next_rtc_init();
+    next_dsp_init();
     xil_printf("[NEXT] Device stubs: SCR1=%08X (WARP9/040)\r\n",
                SCR1_VALUE(NeXT_WARP9, 0));
 

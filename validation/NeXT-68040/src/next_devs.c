@@ -14,8 +14,15 @@
 #include "next_devs.h"
 #include "next_hw.h"
 #include "next_rtc.h"
+#include "next_dsp.h"
 #include "xil_printf.h"
 #include <string.h>
+
+/* DSP register block at P_DSP (0x02008000 canonical).
+ * The NeXT maps the DSP56001 host interface (8 bytes) plus
+ * the DSP's external program/data memory space (up to 4K). */
+#define P_DSP_BASE  0x02008000
+#define P_DSP_SIZE  0x1000  /* 4K covers host regs + mapped memory */
 
 /* ------------------------------------------------------------------ */
 /* System control registers                                            */
@@ -241,6 +248,10 @@ uint8_t next_io_read_8(uint32_t address)
         }
     }
 
+    /* DSP registers (byte-wide) */
+    if (address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE)
+        return next_dsp_read(address - P_DSP_BASE);
+
     /* Brightness (byte-wide) */
     if (address == P_BRIGHTNESS)
         return 0x3D;  /* max brightness */
@@ -318,6 +329,10 @@ uint32_t next_io_read_32(uint32_t address)
             return dma_csr[ch];
     }
 
+    /* DSP registers (32-bit) */
+    if (address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE)
+        return next_dsp_read32(address - P_DSP_BASE);
+
     /* Unknown 32-bit I/O read */
 #ifdef NEXT_IO_DEBUG
     xil_printf("[NEXT] R32 @%08X → 0\r\n", address);
@@ -355,6 +370,12 @@ void next_io_write_8(uint32_t address, uint8_t value)
         case SCC_CHAN_B_DATA:
             break;  /* channel B: accept silently */
         }
+        return;
+    }
+
+    /* DSP registers (byte-wide) */
+    if (address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE) {
+        next_dsp_write(address - P_DSP_BASE, value);
         return;
     }
 
@@ -430,6 +451,12 @@ void next_io_write_32(uint32_t address, uint32_t value)
     /* Timer CSR via 32-bit write */
     if (address == P_TIMER_CSR) {
         timer_csr = (value >> 24) & 0xFF;
+        return;
+    }
+
+    /* DSP registers (32-bit) */
+    if (address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE) {
+        next_dsp_write32(address - P_DSP_BASE, value);
         return;
     }
 

@@ -168,7 +168,7 @@ static void next_boot(void)
      * ROM is mapped at both 0x00000000 and 0x01000000 (BMAP).
      * The ROM's vectors: SSP=0x04000400, PC=0x0100001E */
     next_rom_load(next_rom_data, next_rom_data_len);
-    xil_printf("[NEXT] ROM loaded: %u bytes (Rev 3.3 v74 Turbo)\r\n",
+    xil_printf("[NEXT] ROM loaded: %u bytes\r\n",
                next_rom_data_len);
 
     /* Vectors come directly from the ROM image (first 8 bytes).

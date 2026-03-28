@@ -189,44 +189,38 @@ void next_rtc_init(void)
      *   [30-31] ni_cksum (ones-complement checksum)
      */
     {
-        /* Start with all zeros */
-        memset(rtc_regs, 0, 32);
+        /* Use the Previous emulator's proven NVRAM defaults
+         * (from previous/src/rtcnvram.c nvram_default[]).
+         * These are known to work for both Turbo and non-Turbo ROMs. */
+        static const uint8_t nvram_default[32] = {
+            0x94, 0x0f, 0x40, 0x00,             /* byte 0-3:   volume/brightness/reset=9 */
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 4-9:   hw password/ethernet */
+            0x00, 0x00,                          /* byte 10-11: SIMM config */
+            0x00, 0x00,                          /* byte 12-13: adobe */
+            0x4b, 0x00, 0x00,                    /* byte 14-16: POT=0x4B (ON|EXT|VERBOSE|TEST_MON) */
+            0x00,                                /* byte 17:    clock chip flags */
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 18-29: boot command */
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
+            0x00, 0x00                           /* byte 30-31: checksum (recomputed below) */
+        };
+        memcpy(rtc_regs, nvram_default, 32);
 
-        /* Byte 0-3: bitfield word (big-endian)
-         * ni_reset=9(4b), ni_alt_cons=0(1b), ni_allow_eject=0(1b),
-         * ni_vol_r=0(6b), ni_brightness=20(6b), ni_hw_pwd=0(4b),
-         * ni_vol_l=0(6b), ni_spkren=1(1b), ni_lowpass=0(1b),
-         * ni_boot_any=0(1b), ni_any_cmd=0(1b) */
-        uint32_t bf = (9u << 28) |        /* ni_reset = 9 */
+        /* Set ni_new_clock_chip for MCS1850 (Turbo RTC) */
+        rtc_regs[17] |= 0x80;
+
 #ifdef QEMU_MODE
-                      (1u << 27) |        /* ni_alt_cons = 1 → serial console */
-#else
-                      (0u << 27) |        /* ni_alt_cons = 0 → video console */
+        /* Set ni_alt_cons for serial console under QEMU */
+        rtc_regs[0] |= 0x08;  /* bit 27 = ni_alt_cons in big-endian bitfield byte 0 */
 #endif
-                      (0u << 26) |        /* ni_allow_eject */
-                      (0u << 20) |        /* ni_vol_r */
-                      (20u << 14) |       /* ni_brightness = 20 */
-                      (0u << 10) |        /* ni_hw_pwd */
-                      (0u << 4) |         /* ni_vol_l */
-                      (1u << 3) |         /* ni_spkren = 1 */
-                      (0u << 2) |         /* ni_lowpass */
-                      (0u << 1) |         /* ni_boot_any */
-                      (0u << 0);          /* ni_any_cmd */
-        rtc_regs[0] = (bf >> 24) & 0xFF;
-        rtc_regs[1] = (bf >> 16) & 0xFF;
-        rtc_regs[2] = (bf >>  8) & 0xFF;
-        rtc_regs[3] = (bf >>  0) & 0xFF;
 
-        /* Byte 17: ni_new_clock_chip=1 (bit 7) */
-        rtc_regs[17] = 0x80;
-
-        /* Compute ones-complement checksum over 16 big-endian words */
+        /* Recompute ones-complement checksum */
+        rtc_regs[30] = 0;
+        rtc_regs[31] = 0;
         uint32_t sum = 0;
         for (int i = 0; i < 32; i += 2) {
             uint16_t w = ((uint16_t)rtc_regs[i] << 8) | rtc_regs[i + 1];
             sum += w;
         }
-        /* Fold carry */
         while (sum > 0xFFFF)
             sum = (sum & 0xFFFF) + (sum >> 16);
         uint16_t cksum = ~((uint16_t)sum);

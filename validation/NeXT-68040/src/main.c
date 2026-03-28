@@ -168,7 +168,7 @@ static void next_boot(void)
      * ROM is mapped at both 0x00000000 and 0x01000000 (BMAP).
      * The ROM's vectors: SSP=0x04000400, PC=0x0100001E */
     next_rom_load(next_rom_data, next_rom_data_len);
-    xil_printf("[NEXT] ROM loaded: %u bytes (Rev 2.5 v66 68040)\r\n",
+    xil_printf("[NEXT] ROM loaded: %u bytes (Rev 3.3 v74 Turbo)\r\n",
                next_rom_data_len);
 
     /* Vectors come directly from the ROM image (first 8 bytes).
@@ -255,6 +255,25 @@ static void next_boot(void)
                         uint16_t mg_seq = m68k_read_memory_16(mg + 780);
                         xil_printf("[MG] mon_global=$%08X seq=%d\r\n", mg, mg_seq);
                     }
+                    /* Dump VRAM content stats */
+                    int zeros = 0, ffs = 0, aas = 0, other = 0;
+                    for (int i = 0; i < 239616; i++) {
+                        uint8_t v = next_vram[i];
+                        if (v == 0x00) zeros++;
+                        else if (v == 0xFF) ffs++;
+                        else if (v == 0xAA) aas++;
+                        else other++;
+                    }
+                    xil_printf("[VRAM] zeros=%d FF=%d AA=%d other=%d\r\n",
+                               zeros, ffs, aas, other);
+                    /* Force one render + refresh */
+                    next_video_render();
+#ifndef QEMU_MODE
+                    Xil_DCacheFlushRange((UINTPTR)pixel_buf, SCREEN_W*SCREEN_H*4);
+                    if (dp_ok) dp_video_refresh();
+#endif
+                    xil_printf("[VRAM] Forced render complete\r\n");
+
                     mg_dumped = 1;
                 }
             }

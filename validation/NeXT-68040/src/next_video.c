@@ -60,30 +60,8 @@ void next_video_render(void)
     if (!pbuf || !vram)
         return;
 
-    /* Debug: one-shot dump of VRAM content to verify it has real display data */
-    {
-        static int dumped = 0;
-        static int call_count = 0;
-        call_count++;
-        if (!dumped && call_count > 10) {
-            /* Check what's actually in VRAM */
-            int zeros = 0, ffs = 0, aas = 0, other = 0;
-            for (int i = 0; i < 232960; i++) {
-                if (vram[i] == 0x00) zeros++;
-                else if (vram[i] == 0xFF) ffs++;
-                else if (vram[i] == 0xAA) aas++;
-                else other++;
-            }
-            xil_printf("[VRAM] Content: zeros=%d ffs=%d AAs=%d other=%d (of 232960)\r\n",
-                       zeros, ffs, aas, other);
-            /* Dump a few bytes from middle of screen */
-            int mid = 288 * 400;  /* line 400 */
-            xil_printf("[VRAM] @line400: %02X %02X %02X %02X %02X %02X %02X %02X\r\n",
-                       vram[mid], vram[mid+1], vram[mid+2], vram[mid+3],
-                       vram[mid+4], vram[mid+5], vram[mid+6], vram[mid+7]);
-            dumped = 1;
-        }
-    }
+
+
 
 
 

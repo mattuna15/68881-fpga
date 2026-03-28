@@ -23,9 +23,9 @@
 #define GFX_IO_BASE   0xFD0040
 #define GFX_IO_SIZE   0x10
 
-/* Screen dimensions */
-#define GFX_SCREEN_W  1280
-#define GFX_SCREEN_H  720
+/* Screen dimensions — must match SCREEN_W/SCREEN_H in text_fb.h */
+#define GFX_SCREEN_W  1920
+#define GFX_SCREEN_H  1080
 
 /* Initialize graphics subsystem with pointer to shared pixel buffer */
 void gfx_init(uint32_t *pixel_buf);

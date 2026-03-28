@@ -190,7 +190,7 @@ int dp_video_init(uint32_t *pixel_buf)
     /* MSA configuration — BitsPerColor must be set first */
     XDpPsu_SetColorEncode(&dp_inst, XDPPSU_CENC_RGB);
     XDpPsu_CfgMsaSetBpc(&dp_inst, 8);
-    XDpPsu_CfgMsaUseStandardVideoMode(&dp_inst, XVIDC_VM_1280x720_60_P);
+    XDpPsu_CfgMsaUseStandardVideoMode(&dp_inst, XVIDC_VM_1920x1080_60_P);
 
     /* Set pixel clock from the MSA-derived value */
     XAVBuf_SetPixelClock(dp_inst.MsaConfig.PixelClockHz);
@@ -223,7 +223,7 @@ int dp_video_init(uint32_t *pixel_buf)
     /* Enable main link */
     XDpPsu_EnableMainLink(&dp_inst, 1);
 
-    xil_printf("[DP] Video output active (1280x720@60 RGBA8888)\r\n");
+    xil_printf("[DP] Video output active (1920x1080@60 RGBA8888)\r\n");
     return 0;
 }
 

@@ -304,7 +304,7 @@ static void next_boot(void)
 
 #ifndef QEMU_MODE
             if (need_refresh) {
-                Xil_DCacheFlushRange((UINTPTR)pixel_buf, 1280*720*4);
+                Xil_DCacheFlushRange((UINTPTR)pixel_buf, SCREEN_W*SCREEN_H*4);
                 if (dp_ok)
                     dp_video_refresh();
             }

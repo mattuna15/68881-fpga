@@ -19,6 +19,7 @@
  */
 
 #include "next_video.h"
+#include "text_fb.h"
 #include <string.h>
 
 static uint32_t *pbuf;
@@ -34,11 +35,12 @@ static const uint32_t palette[4] = {
 };
 
 /* Output display dimensions */
-#define OUT_W  1280
-#define OUT_H  720
+#define OUT_W  SCREEN_W
+#define OUT_H  SCREEN_H
 
-/* Horizontal centering: (1280 - 1120) / 2 = 80 pixels */
-#define OFS_X  ((OUT_W - NEXT_VIDEO_W) / 2)
+/* Centering offsets */
+#define OFS_X  ((OUT_W - NEXT_VIDEO_W) / 2)   /* (1920-1120)/2 = 400 */
+#define OFS_Y  ((OUT_H - NEXT_VIDEO_H) / 2)   /* (1080-832)/2  = 124 */
 
 void next_video_init(uint32_t *pixel_buf, const uint8_t *next_vram)
 {
@@ -66,7 +68,7 @@ void next_video_render(void)
 
     for (int y = 0; y < max_y; y++) {
         const uint8_t *src = &vram[(uint32_t)y * NEXT_VIDEO_NBPL];
-        uint32_t *dst = &pbuf[(uint32_t)y * OUT_W + OFS_X];
+        uint32_t *dst = &pbuf[(uint32_t)(y + OFS_Y) * OUT_W + OFS_X];
 
         /* Decode 1120 pixels (280 bytes of visible data per line) */
         int visible_bytes = NEXT_VIDEO_W / 4;  /* 1120/4 = 280 */
@@ -81,17 +83,23 @@ void next_video_render(void)
         }
     }
 
-    /* Clear the left/right borders (in case of prior content) */
-    for (int y = 0; y < max_y; y++) {
+    /* Clear borders around the centred NeXT display */
+    /* Top border */
+    for (int y = 0; y < OFS_Y; y++) {
         uint32_t *row = &pbuf[y * OUT_W];
+        for (int x = 0; x < OUT_W; x++)
+            row[x] = 0xFF000000;
+    }
+    /* Left/right borders */
+    for (int y = 0; y < max_y; y++) {
+        uint32_t *row = &pbuf[(y + OFS_Y) * OUT_W];
         for (int x = 0; x < OFS_X; x++)
             row[x] = 0xFF000000;
         for (int x = OFS_X + NEXT_VIDEO_W; x < OUT_W; x++)
             row[x] = 0xFF000000;
     }
-
-    /* Clear bottom rows if NeXT image is shorter than 720 */
-    for (int y = max_y; y < OUT_H; y++) {
+    /* Bottom border */
+    for (int y = OFS_Y + max_y; y < OUT_H; y++) {
         uint32_t *row = &pbuf[y * OUT_W];
         for (int x = 0; x < OUT_W; x++)
             row[x] = 0xFF000000;

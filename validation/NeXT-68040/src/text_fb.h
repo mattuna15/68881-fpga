@@ -17,9 +17,9 @@
 #define TEXT_COLS    80
 #define TEXT_ROWS    30
 
-/* Pixel buffer dimensions (720p) */
-#define SCREEN_W     1280
-#define SCREEN_H     720
+/* Pixel buffer dimensions (1080p) */
+#define SCREEN_W     1920
+#define SCREEN_H     1080
 
 /* Font cell size */
 #define FONT_W       8

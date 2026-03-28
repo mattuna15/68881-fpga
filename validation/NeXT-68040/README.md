@@ -76,29 +76,83 @@ Key findings:
 3. Cross-compile standalone boot code from mk-108.1 sources
 4. On real hardware: ROM output goes to DP via VRAM → text_fb → dp_video
 
-## Memory Map
+## Memory Map (Turbo 68040)
+
+Derived from analysis of the [Previous NeXT emulator](https://github.com/previous-emulator/previous)
+(`previous/src/cpu/memory.c`). The Turbo has a different layout from the
+standard 68030/68040 systems.
 
 | Range | Size | Description |
 |-------|------|-------------|
 | `0x00000000` | 128 KB | EPROM (exception vectors, ROM monitor) |
 | `0x01000000` | 128 KB | EPROM BMAP mirror (68040 execution address) |
-| `0x02000000` | 2 MB | NeXT device I/O space (includes SLOT_ID_BMAP mirror at +1 MB) |
-| `0x04000000` | 16 MB | Main RAM (kernel loads here) |
-| `0x0B000000` | 256 KB | Video RAM (mono framebuffer) |
+| `0x02000000` | 128 KB | I/O space (device registers) |
+| `0x020C0000` | 64 B | BMAP chip (memory controller / Ethernet) |
+| `0x02200000` | 128 KB | TMC (Turbo Memory Controller — video config, ADB) |
+| `0x04000000` | 128 MB | Main RAM (4 banks × 32 MB on Turbo) |
+| `0x0B000000` | — | **NOT VRAM on Turbo** — falls in RAM bank 3 ($0A-$0B) |
+| `0x0C000000` | 256 KB | **VRAM (Turbo display)** — 2bpp mono framebuffer |
+| `0x80000000+` | — | Non-cached mirror via TT (bit 31 = same physical addr) |
 
-## NeXT Hardware Stubs
+**Important:** The 68040 ROM accesses I/O and VRAM through `$8xxxxxxx`
+addresses (e.g., `$820C0020` = `$020C0020`, `$8C000000` = `$0C000000`).
+All memory callbacks mask bit 31 via `addr_normalise()`.
 
-| Register | Address | Status |
-|----------|---------|--------|
-| SCR1 (machine type) | `0x0200C000` | Returns NeXT_WARP9 (68040 Turbo) |
-| SCR2 (system control) | `0x0200D000` | Read/write, DRAM config |
-| INTRMASK | `0x02007800` | Read/write |
-| INTRSTAT | `0x02007000` | Read-only |
-| SCC channel A | `0x02018000` | TX to UART, RX buffer |
-| Timer | `0x02016000` | 16-bit counter at ~1 MHz |
-| Event counter | `0x0201A000` | Microsecond counter |
-| DMA CSRs | `0x020000xx` | Stub: return COMPLETE |
-| All other I/O | `0x02xxxxxx` | Accept writes, reads return 0 |
+### Non-Turbo vs Turbo VRAM
+
+| | Non-Turbo | Turbo |
+|---|---|---|
+| VRAM address | `$0B000000` | `$0C000000` |
+| Stride | 288 bytes/line (1152px padded) | 280 bytes/line (1120px, no pad) |
+| RAM banks | 4 × 16 MB | 4 × 32 MB |
+| `$0B000000` is | VRAM | RAM bank 3 |
+| `$0C000000` is | VRAM MWF mirror | VRAM (primary) |
+
+## Peripheral Register Map (Turbo)
+
+Source: Previous emulator `src/ioMemTabTurbo.c`, `src/tmc.c`, `src/sysReg.c`.
+
+### I/O Space (`$02000000-$0201FFFF`)
+
+| Address | Device | Notes |
+|---------|--------|-------|
+| `$02000010-$020001D0` | DMA CSRs | 7 channels, Motorola controller |
+| `$02004xxx` | DMA address regs | Next/Limit/Start/Stop per channel |
+| `$02006000-$0200600F` | Ethernet (AT&T 7213) | Status/mask/mode/node ID |
+| `$02006010-$02006014` | Memory timing | 5 bytes |
+| `$02007000` | Interrupt status | 32-bit, read-only |
+| `$02007800` | Interrupt mask | 32-bit, read/write |
+| `$02008000-$02008007` | DSP56001 | ICR/CVR/ISR/IVR + 24-bit data |
+| `$0200C000-$0200C003` | SCR1 | Machine type, read-only |
+| `$0200D000-$0200D003` | SCR2 | RTC bit-bang, DSP, LED |
+| `$0200E000-$0200E00F` | KMS | Keyboard/mouse/sound (NOT mon_global) |
+| `$02010000` | Brightness | 32-bit |
+| `$02012000-$02012003` | GPIO | Turbo only (replaces MO drive) |
+| `$02014000-$0201400B` | SCSI (NCR53C90A) | + DMA ctrl at $02014020 |
+| `$02014100-$02014108` | Floppy (82077AA) | |
+| `$02016000-$02016004` | Hardclock/Timer | Counter + CSR |
+| `$02018000-$02018003` | SCC (Z8530) | Ctrl B/A, Data B/A |
+| `$0201A000-$0201A003` | Event counter | Microsecond timer |
+| `$0201C000-$0201C003` | RAMDAC (Turbo) | Moved from $02018100 |
+
+### TMC Space (`$02200000`, Turbo only)
+
+| Offset | Register | Value |
+|--------|----------|-------|
+| `$0000` | TMC SCR1 | Turbo-format system control |
+| `$0010` | TMC Control | Default $0D17038F |
+| `$0080` | Horizontal config | HFPORCH=24, HSYNC=32, HBPORCH=72, HDISCNT=280 |
+| `$0090` | Vertical config | VFPORCH=8, VSYNC=8, VBPORCH=48, VDISCNT=832 |
+| `$0100` | Video interrupt | Bit 0=status, bit 1=mask |
+| `$0208` | ADB | Apple Desktop Bus |
+
+### Video Parameters (Turbo BW)
+
+- Resolution: 1120 × 832, 2bpp (4 pixels/byte), MSB = leftmost
+- Stride: 280 bytes/line (no padding)
+- Palette: 00=white(255), 01=light grey(170), 10=dark grey(85), 11=black(0)
+- VBL: 68 Hz
+- Total VRAM used: 280 × 832 = 232,960 bytes
 
 ## Building
 

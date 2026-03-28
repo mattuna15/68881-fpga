@@ -283,6 +283,10 @@ static void next_boot(void)
             int need_refresh = 0;
 
             if (next_vram_is_dirty()) {
+                if (!next_vram_active) {
+                    xil_printf("[VIDEO] NeXT VRAM active, stride=%d bytes/line\r\n",
+                               NEXT_VIDEO_NBPL);
+                }
                 next_vram_active = 1;
                 next_video_render();
                 next_vram_mark_clean();

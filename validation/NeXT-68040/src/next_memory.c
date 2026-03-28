@@ -304,14 +304,6 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
         next_vram[off + 2] = (value >>  8) & 0xFF;
         next_vram[off + 3] =  value        & 0xFF;
         vram_dirty = 1;
-        /* One-shot: log first few VRAM writes to determine stride */
-        {
-            static int vw_count = 0;
-            if (vw_count < 8) {
-                xil_printf("[VRAM-W32] off=$%06X val=$%08X\r\n", off, value);
-                vw_count++;
-            }
-        }
         return;
     }
 

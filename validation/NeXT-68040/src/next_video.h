@@ -17,9 +17,15 @@
 
 /* NeXT mono display parameters (from mk-108.1 nextdev/video.h) */
 #define NEXT_VIDEO_W     1120   /* visible pixels per scanline */
-#define NEXT_VIDEO_MW    1152   /* actual pixels per scanline (with padding) */
+#define NEXT_VIDEO_MW    1152   /* actual pixels per scanline (non-Turbo, with 32px pad) */
 #define NEXT_VIDEO_H     832    /* visible scanlines */
-#define NEXT_VIDEO_NBPL  (NEXT_VIDEO_MW >> 2)  /* bytes per line = 288 */
+
+/* Stride: Turbo models have NO padding (280 bytes/line).
+ * Non-Turbo models pad to 1152 pixels (288 bytes/line).
+ * Source: Previous emulator src/fast_screen.c blitBW(). */
+#define NEXT_VIDEO_NBPL_TURBO    (NEXT_VIDEO_W >> 2)     /* 280 bytes/line */
+#define NEXT_VIDEO_NBPL_NONTURBO (NEXT_VIDEO_MW >> 2)    /* 288 bytes/line */
+#define NEXT_VIDEO_NBPL          NEXT_VIDEO_NBPL_TURBO   /* Turbo = default */
 
 /* 2bpp greyscale values → ARGB8888 */
 #define NEXT_WHITE    0xFFFFFFFF   /* 00 */

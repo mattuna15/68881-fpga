@@ -268,6 +268,10 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
 
     /* CE rising edge: start new transaction */
     if (ce && !old_ce) {
+        static int rtc_trans_count = 0;
+        if (rtc_trans_count < 3)
+            xil_printf("[RTC] CE rise — transaction #%d\r\n", rtc_trans_count);
+        rtc_trans_count++;
         rtc_phase     = RTC_ADDR_PHASE;
         rtc_bit_count = 0;
         rtc_shift_in  = 0;
@@ -327,10 +331,13 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
                     rtc_shift_out = rtc_reg_read(rtc_address);
                     /* Pre-load first bit (MSB) */
                     rtc_data_bit = (rtc_shift_out >> 7) & 1;
-#ifdef NEXT_IO_DEBUG
-                    xil_printf("[RTC] read reg $%02X → $%02X\r\n",
-                               rtc_address & 0x3F, rtc_shift_out);
-#endif
+                    {
+                        static int rtc_read_log = 0;
+                        if (rtc_read_log < 5)
+                            xil_printf("[RTC] read reg $%02X → $%02X\r\n",
+                                       rtc_address & 0x3F, rtc_shift_out);
+                        rtc_read_log++;
+                    }
                 }
             }
         }

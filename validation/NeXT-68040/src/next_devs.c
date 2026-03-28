@@ -455,6 +455,15 @@ void next_io_write_32(uint32_t address, uint32_t value)
 
     /* SCR2 — feed RTC bit-bang state machine before updating */
     if (address == P_SCR2) {
+        static int scr2_log_count = 0;
+        if (scr2_log_count < 3) {
+            xil_printf("[SCR2] W32 $%08X (RTCE=%d RTCLK=%d RTDATA=%d)\r\n",
+                       value,
+                       (value >> 8) & 1,   /* SCR2_RTCE */
+                       (value >> 9) & 1,   /* SCR2_RTCLK */
+                       (value >> 10) & 1); /* SCR2_RTDATA */
+            scr2_log_count++;
+        }
         next_rtc_scr2_write(value, scr2_value);
         scr2_value = value;
         return;

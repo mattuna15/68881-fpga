@@ -35,10 +35,10 @@ ARM Cortex-A53 (bare-metal on ZU3EG)
 - ROM loaded at 0x00000000 with BMAP mirror at 0x01000000
 - Instruction trace hook (configurable TRACE_LIMIT in main.c) for boot debugging
 
-### ROM Boot - In Progress
+### ROM Boot — Monitor Reached
 
-The 68040 Turbo ROM (Rev 3.3 v74, 128 KB) boots successfully through early
-hardware init:
+The 68040 Turbo ROM (Rev 3.3 v74, 128 KB) boots successfully through
+all hardware init stages and reaches the ROM monitor serial input poll:
 
 1. Sets VBR to ROM exception table at `0x010145B0`
 2. Configures 68040 CACR, TT0/TT1/DTT0/DTT1 registers
@@ -48,18 +48,22 @@ hardware init:
 6. Reads event counter (microsecond timer) for timing calibration
 7. Reads RTC via SCR2 bit-bang protocol — NVRAM checksum validates
 8. Reads NVRAM a second time (readback verify)
-9. Enters peripheral hardware probe (`$0100C474`)
+9. DSP56001 probe: writes ICR_INIT, polls ISR.HF2, loads DSP program memory
+10. Second DSP handshake: polls IVR bit 2 after host command
+11. SCSI/Ethernet/video init (writes to various device registers)
+12. Relocates VBR to VRAM at `0x0B03FC00`
+13. **Reaches serial console input poll at `$010024E2`** — the ROM monitor prompt
 
-The ROM currently polls a device register at `0x02208000` (likely DSP,
-`P_DSP = SLOT_ID_BMAP + 0x02008000`) waiting for bit 3 to be set.
-This is part of the DSP or SCSI initialisation sequence.
+The ROM loops at `$010024E2` calling a subroutine at `$0100A1A8` (likely SCC
+serial poll), testing D3, and looping while no input. This is the ROM's
+command-line prompt waiting for serial console keystrokes.
 
 ### Next Steps
 
-1. Stub DSP register at `0x02008000` (mapped via SLOT_ID_BMAP to `0x02108000`/`0x02208000`) to return bit 3 set
-2. Continue stubbing peripherals until the ROM monitor reaches its serial console prompt
-3. Add keyboard/mouse stub (if ROM polls for input devices)
-4. Cross-compile standalone boot code from mk-108.1 sources (MIT syntax assembly needs translation)
+1. Verify SCC RX path works — type commands and check if the ROM responds
+2. Get the ROM monitor to echo characters or print its prompt banner
+3. Boot a kernel via the ROM's `bsd` or `en` boot commands
+4. Cross-compile standalone boot code from mk-108.1 sources
 
 ## Memory Map
 
@@ -128,6 +132,7 @@ The Turbo ROM (Rev 3.3) is currently loaded. Its vectors:
 | `src/next_memory.c/h` | Musashi memory callbacks, sparse 32-bit address map |
 | `src/next_devs.c/h` | NeXT hardware register emulation stubs + SLOT_ID_BMAP remapping |
 | `src/next_rtc.c/h` | MC68HC68T1 RTC emulation (SCR2 bit-bang, QEMU/hardware backends) |
+| `src/next_dsp.c/h` | DSP56001 host interface stub (ICR/CVR/ISR/IVR + 4K memory) |
 | `src/next_hw.h` | NeXT hardware address definitions (from mk-108.1) |
 | `src/next_mon_stub.c/h` | Fake ROM monitor (mon_global) for kernel boot |
 | `src/next_rom_image.h` | Rev 3.3 ROM binary as C header (128 KB) |

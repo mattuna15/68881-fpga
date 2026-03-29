@@ -203,7 +203,7 @@ void next_rtc_init(void)
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 4-9:   hw password/ethernet */
             0x00, 0x00,                          /* byte 10-11: SIMM config */
             0x00, 0x00,                          /* byte 12-13: adobe */
-            0x4b, 0x00, 0x00,                    /* byte 14-16: POT=0x4B (ON|EXT|VERBOSE|TEST_MON) */
+            0x00, 0x00, 0x00,                    /* byte 14-16: POT=0x00 (all tests disabled) */
             0x00,                                /* byte 17:    clock chip flags */
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 18-29: boot command */
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00,

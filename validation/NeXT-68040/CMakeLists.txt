@@ -22,6 +22,7 @@ set(SOURCES
     src/next_devs.c
     src/next_rtc.c
     src/next_dsp.c
+    src/next_kms.c
     src/next_video.c
     src/next_mon_stub.c
     src/fline_handler.c

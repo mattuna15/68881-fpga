@@ -15,6 +15,7 @@
 #include "next_hw.h"
 #include "next_rtc.h"
 #include "next_dsp.h"
+#include "next_kms.h"
 #include "xil_printf.h"
 #include <string.h>
 
@@ -334,9 +335,14 @@ uint32_t next_io_read_32(uint32_t address)
     if (address == P_INTRMASK)
         return intr_mask;
 
-    /* P_MON: mon_global pointer */
-    if (address == P_MON)
-        return p_mon_value;
+    /* P_MON / KMS: $0200E000-$0200E00F is the keyboard/mouse/sound chip. */
+    if (address >= P_MON && address < P_MON + 16) {
+        static int pmon_log = 0;
+        if (pmon_log < 5)
+            xil_printf("[PMON] R32 @%08X → KMS offset %X\r\n", address, address - P_MON);
+        pmon_log++;
+        return next_kms_read(address - P_MON);
+    }
 
     /* Slot ID */
     if (address == P_SID)
@@ -358,9 +364,12 @@ uint32_t next_io_read_32(uint32_t address)
         return next_dsp_read32(address - P_DSP_BASE);
 
     /* Unknown 32-bit I/O read */
-#ifdef NEXT_IO_DEBUG
-    xil_printf("[NEXT] R32 @%08X → 0\r\n", address);
-#endif
+    {
+        static int unk_log = 0;
+        if (unk_log < 20)
+            xil_printf("[IO?] R32 @%08X → 0\r\n", address);
+        unk_log++;
+    }
     return 0;
 }
 
@@ -486,10 +495,15 @@ void next_io_write_32(uint32_t address, uint32_t value)
         }
     }
 
-    /* P_MON: ROM stores its mon_global pointer here */
-    if (address == P_MON) {
-        p_mon_value = value;
-        xil_printf("[NEXT] P_MON (mon_global) = $%08X\r\n", value);
+    /* P_MON / KMS: the ROM uses this for both mon_global storage and
+     * KMS commands.  First write is typically the mon_global pointer. */
+    if (address >= P_MON && address < P_MON + 16) {
+        if (address == P_MON && p_mon_value == 0 && value >= 0x0B000000) {
+            /* First write: ROM storing mon_global pointer */
+            p_mon_value = value;
+            xil_printf("[NEXT] P_MON (mon_global) = $%08X\r\n", value);
+        }
+        next_kms_write(address - P_MON, value);
         return;
     }
 

@@ -23,6 +23,7 @@
 #include "fline_handler.h"
 #include "next_rtc.h"
 #include "next_dsp.h"
+#include "next_kms.h"
 #include "next_video.h"
 #include "text_fb.h"
 #include "dp_video.h"
@@ -83,18 +84,12 @@ void emu_instr_hook(unsigned int pc)
             xil_printf("%c", ch);
     }
 
-    /* Intercept mg_getc ($01008140): if SCC RX has data, return it
-     * directly instead of letting the ROM poll the keyboard hardware.
-     * This redirects ROM monitor input from keyboard to serial. */
-    if (pc == 0x01008140 && next_scc_rx_available()) {
-        uint8_t ch = next_scc_rx_pop();
-        m68k_set_reg(M68K_REG_D0, (uint32_t)ch);
-        /* Skip the function body — set PC to the RTS at the end.
-         * mg_getc returns the character in D0. */
-        uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
-        uint32_t ret = m68k_read_memory_32(sp);
-        m68k_set_reg(M68K_REG_A7, sp + 4);
-        m68k_set_reg(M68K_REG_PC, ret);
+    /* The ROM gets stuck in an event/animation loop at $010024E2
+     * that calls $0100A1A8 and loops while D3 != 0.  Force D3=0
+     * when keyboard input is available to break out of the loop. */
+    if (pc == 0x010024E8 && next_scc_rx_available()) {
+        /* $010024E8 is TST.L D3 after the BSR — force D3=0 to exit */
+        m68k_set_reg(M68K_REG_D3, 0);
     }
 
     if (trace_count < TRACE_LIMIT) {
@@ -182,6 +177,7 @@ static void next_boot(void)
     next_devs_init();
     next_rtc_init();
     next_dsp_init();
+    next_kms_init();
     xil_printf("[NEXT] Device stubs: SCR1=%08X (WARP9/040)\r\n",
                SCR1_VALUE(NeXT_WARP9, 0));
 
@@ -397,7 +393,8 @@ static void poll_uart_rx(void)
     volatile uint32_t *uart_fifo = (volatile uint32_t *)(XPAR_XUARTPS_0_BASEADDR + 0x30);
     while (!((*uart_sr) & 0x02)) {  /* while RXEMPTY == 0 */
         uint8_t ch = (uint8_t)(*uart_fifo & 0xFF);
-        next_scc_rx_push(ch);
+        next_scc_rx_push(ch);    /* SCC serial path */
+        next_kms_push_ascii(ch); /* KMS keyboard path (ROM monitor) */
     }
 #endif
 }

@@ -23,6 +23,7 @@ set(USER_COMPILE_SOURCES
 "next_devs.c"
 "next_rtc.c"
 "next_dsp.c"
+"next_kms.c"
 "next_mon_stub.c"
 "next_video.c"
 "fline_handler.c"

@@ -1027,10 +1027,12 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
 #define FMT_68040_UNIMP  0x40280000u
 #define FMT_68040_BUSY   0x40600000u
 
-#define FMT_68882_NULL   0x0000u
-#define FMT_68882_IDLE   0x0018u  /* same for 68881 and 68882 */
-#define FMT_68882_BUSY   0x00D4u  /* 68882: 212 bytes data */
+#define FMT_68881_NULL   0x0000u
+#define FMT_68881_IDLE   0x0018u  /* 68881: 24 bytes data */
 #define FMT_68881_BUSY   0x00B4u  /* 68881: 180 bytes data */
+#define FMT_68882_NULL   0x0000u
+#define FMT_68882_IDLE   0x0038u  /* 68882: 56 bytes data */
+#define FMT_68882_BUSY   0x00D4u  /* 68882: 212 bytes data */
 
 static void handle_fsave(unsigned int opword, unsigned int pc)
 {
@@ -1074,18 +1076,18 @@ static void handle_fsave(unsigned int opword, unsigned int pc)
     u32 frame_040;
     int frame_040_data_bytes;
 
-    if (format_word == FMT_68882_NULL) {
+    if (format_word == FMT_68881_NULL) {
         /* NULL → NULL: identical (no data) */
         frame_040 = FMT_68040_NULL;
         frame_040_data_bytes = 0;
-    } else if (format_word == FMT_68882_IDLE) {
-        /* IDLE: 68882 has 24 bytes data, 68040 has 0 bytes data.
-         * We discard the 68882 internal state — it's not compatible
-         * with 68040 format anyway.  The FPU is idle so there's no
-         * in-progress computation to preserve. */
+    } else if (format_word == FMT_68881_IDLE || format_word == FMT_68882_IDLE) {
+        /* IDLE: 68881 has 24 bytes, 68882 has 56 bytes, 68040 has 0 bytes.
+         * We discard the internal state — it's not compatible with 68040
+         * format anyway.  The FPU is idle so there's no in-progress
+         * computation to preserve. */
         frame_040 = FMT_68040_IDLE;
         frame_040_data_bytes = 0;
-    } else if (format_word == FMT_68882_BUSY || format_word == FMT_68881_BUSY) {
+    } else if (format_word == FMT_68881_BUSY || format_word == FMT_68882_BUSY) {
         /* BUSY: 68881/68882 has in-progress computation.
          * Map to 68040 IDLE — we can't translate the internal state
          * between different FPU architectures.  The computation is

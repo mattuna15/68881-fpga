@@ -15,8 +15,10 @@
 /* Initialise all NeXT device stubs */
 void next_devs_init(void);
 
-/* SCC serial: push a byte into the RX buffer (from ARM UART) */
+/* SCC serial RX buffer (fed from ARM UART) */
 int next_scc_rx_push(uint8_t ch);
+int next_scc_rx_available(void);
+uint8_t next_scc_rx_pop(void);
 
 /* Timer: advance by the given number of emulated CPU cycles.
  * Returns 1 if the timer interrupt should fire. */

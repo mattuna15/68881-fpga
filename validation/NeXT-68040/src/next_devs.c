@@ -52,7 +52,7 @@ static uint8_t scc_wr_reg_ptr;  /* WR register pointer (set by ctrl write) */
 /* ------------------------------------------------------------------ */
 static uint16_t timer_counter;
 static uint8_t  timer_csr;
-static uint32_t event_counter;  /* microsecond counter */
+static uint32_t event_counter;      /* microsecond counter (base, updated per tick) */
 
 /* Accumulated fractional cycles for timer (1 MHz from 25 MHz CPU) */
 static int timer_accum;
@@ -136,14 +136,14 @@ int next_scc_rx_push(uint8_t ch)
     return 0;
 }
 
-static int scc_rx_available(void)
+int next_scc_rx_available(void)
 {
     return scc_rx_head != scc_rx_tail;
 }
 
-static uint8_t scc_rx_pop(void)
+uint8_t next_scc_rx_pop(void)
 {
-    if (!scc_rx_available())
+    if (!next_scc_rx_available())
         return 0;
     uint8_t ch = scc_rxbuf[scc_rx_tail];
     scc_rx_tail = (scc_rx_tail + 1) % SCC_RXBUF_SIZE;
@@ -244,7 +244,7 @@ uint8_t next_io_read_8(uint32_t address)
             switch (scc_wr_reg_ptr) {
             case 0: /* RR0: TX/RX status */
                 val = SCC_RR0_TX_EMPTY | SCC_RR0_DCD | SCC_RR0_CTS;
-                if (scc_rx_available())
+                if (next_scc_rx_available())
                     val |= SCC_RR0_RX_AVAIL;
                 break;
             case 1: /* RR1: special receive conditions — all bits clear = OK */
@@ -261,7 +261,7 @@ uint8_t next_io_read_8(uint32_t address)
             return val;
         }
         case SCC_CHAN_A_DATA:
-            return scc_rx_pop();
+            return next_scc_rx_pop();
         case SCC_CHAN_B_CTRL:
             return SCC_RR0_TX_EMPTY;  /* channel B: TX ready, no RX */
         case SCC_CHAN_B_DATA:
@@ -277,11 +277,10 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == P_BRIGHTNESS)
         return 0x3D;  /* max brightness */
 
-    /* Fall through: decompose wider registers to byte reads */
+    /* Event counter (byte reads, big-endian) */
     if (address >= P_EVENTC && address < P_EVENTC + 4) {
-        uint32_t val = event_counter;
         int byte_off = address - P_EVENTC;
-        return (val >> (8 * (3 - byte_off))) & 0xFF;
+        return (event_counter >> (8 * (3 - byte_off))) & 0xFF;
     }
 
     /* SCR1 (byte-level access) */

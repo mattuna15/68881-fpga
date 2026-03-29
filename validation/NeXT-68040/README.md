@@ -35,10 +35,11 @@ ARM Cortex-A53 (bare-metal on ZU3EG)
 - ROM loaded at 0x00000000 with BMAP mirror at 0x01000000
 - Instruction trace hook (configurable TRACE_LIMIT in main.c) for boot debugging
 
-### ROM Boot — Monitor Reached
+### ROM Boot — Monitor Reached (QEMU)
 
 The 68040 Turbo ROM (Rev 3.3 v74, 128 KB) boots successfully through
-all hardware init stages and reaches the ROM monitor serial input poll:
+all hardware init stages under QEMU and reaches the ROM monitor serial
+input poll:
 
 1. Sets VBR to ROM exception table at `0x010145B0`
 2. Configures 68040 CACR, TT0/TT1/DTT0/DTT1 registers
@@ -69,12 +70,87 @@ Key findings:
 - ROM version: `mg_seq = 74` (Rev 3.3 v74), confirmed via mon_global scan
 - ROM always uses bitmap console for POST output, even with `ni_alt_cons=1`
 
+### Hardware Boot — In Progress
+
+Two issues were diagnosed and fixed by comparing QEMU (working) with
+ZynqMP hardware (failing):
+
+**1. FPU frame format mismatch (fixed)**
+
+The Turbo ROM's POST includes FPU testing (FSAVE/FRESTORE) between the
+event counter calibration and RTC access.  On QEMU, `fline_init()` is
+not called, so F-line instructions trap as exceptions and the ROM detects
+"no FPU" — it skips the test.  On hardware, `fline_init()` routes F-line
+instructions to the MC68882 FPGA, which responds with **68882 frame
+formats** instead of the 68040 formats the Turbo ROM expects.  The ROM
+detected a wrong FPU type and entered a blink error loop before reaching
+RTC.
+
+Fix: disabled `fline_init()` on hardware (temporary `#if 0` in `main.c`).
+The ROM now skips the FPU test and proceeds through RTC.  Proper fix:
+add FSAVE/FRESTORE frame translation (68882 ↔ 68040) in `fline_handler.c`.
+
+**2. RTC counter value mismatch (fixed)**
+
+The ZynqMP PS RTC returned an unexpected counter value (0 or small Unix
+timestamp) in registers `$20-$23`.  The ROM's timing calibration uses
+the RTC counter alongside the event counter, and the wrong value sent
+it down a failing code path (error code 4, blink loop at `$01004104`).
+
+Fix: use a fixed epoch value (`NEXT_EPOCH_DEFAULT = 3,913,401,600`,
+matching QEMU's `NEXT_EPOCH_2024`) instead of reading the ZynqMP PS
+RTC.  The ROM now boots through all POST stages on real hardware and
+reaches the monitor prompt at `$010024E2`.
+
+### Hardware Boot — Monitor Reached
+
+With both fixes applied, the Turbo ROM boots on ZynqMP hardware:
+
+1. All POST stages pass (memory, timing calibration, RTC, DSP probe)
+2. VRAM renders to DisplayPort via dp_video (1920x1080, NeXT mono centred)
+3. ROM displays "System test failed" on the NeXT bitmap console
+4. **Reaches serial console input poll at `$010024E2`** — the ROM monitor prompt
+
+### ROM Monitor Input — KMS Keyboard
+
+The ROM monitor prompt at `$010024E2` does NOT use SCC serial for input.
+It polls the **KMS (Keyboard/Mouse/Sound) chip** at `P_MON` (`$0200E000`):
+
+- `$0200E000`: `mon_csr` — status register; bit 22 (`KM_DAV`) = keyboard data available
+- `$0200E008`: `mon_km_data` — keyboard event data
+
+The `mg_getc` function at `$01008140` is `kmgetc()` (from `nextdev/km.c`),
+which polls `mon_csr.km_dav` and reads `mon_km_data`.  The keyboard data
+is a 32-bit `union kybd_event` (from `nextdev/kmreg.h`):
+
+```
+bits 31-16: device address (0 for keyboard)
+bit 15:     valid (must be 1)
+bits 14-8:  modifier flags (alt, command, shift, control)
+bit 8:      up_down (0=down, 1=up)
+bits 7-1:   key_code (7-bit NeXT scan code)
+```
+
+Key codes map through `ascii[]` table in `nextdev/keycodes.h`.  The ROM
+processes key-down events (ignores key-up).
+
+To inject serial input: when ARM UART has data, convert ASCII to NeXT
+key_code (reverse lookup in `ascii[]`), build a `kybd_event` with
+`valid=1, up_down=0`, and make `mon_csr` return `KM_DAV=1` with the
+event in `mon_km_data`.
+
+Current workaround: `mg_getc` intercept in `main.c` instruction hook
+(pops SCC RX data and returns directly).  Not yet working because the
+ROM's tight poll loop at `$010024E2` calls `$0100A1A8` which reads
+`mon_csr` directly, not through `mg_getc`.
+
 ### Next Steps
 
-1. Wire up serial input so typed characters reach the ROM monitor via `mg_getc`
-2. Boot a kernel via the ROM's `bsd` or `en` boot commands
-3. Cross-compile standalone boot code from mk-108.1 sources
-4. On real hardware: ROM output goes to DP via VRAM → text_fb → dp_video
+1. Implement KMS keyboard emulation: ASCII→keycode reverse table, inject
+   events via `$0200E000`/`$0200E008` when UART RX has data
+2. Re-enable FPU: add FSAVE/FRESTORE frame translation (68882 → 68040) in `fline_handler.c`
+3. Boot a kernel via the ROM's `bsd` or `en` boot commands
+4. Implement MCS1850 protocol support (bit 7 inversion for new clock chip reads/writes)
 
 ## Memory Map (Turbo 68040)
 

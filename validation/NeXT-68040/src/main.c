@@ -54,7 +54,20 @@ void emu_instr_hook(unsigned int pc)
             if (pgsz == 8192 || pgsz == 4096) {
                 rom_putc_addr = m68k_read_memory_32(mg + 734);
                 if (rom_putc_addr >= 0x01000000 && rom_putc_addr < 0x01020000) {
-                    xil_printf("[MG] mg_putc=$%08X (auto-detected)\r\n", rom_putc_addr);
+                    /* mg_getc at offset 726, mg_try_getc at 730 */
+                    uint32_t getc_addr = m68k_read_memory_32(mg + 726);
+                    uint32_t try_getc = m68k_read_memory_32(mg + 730);
+                    xil_printf("[MG] mg_putc=$%08X mg_getc=$%08X mg_try_getc=$%08X\r\n",
+                               rom_putc_addr, getc_addr, try_getc);
+                    /* mg_console_i is at mg+792, mg_console_o at mg+796.
+                     * ROM sets these to CONS_I_KBD(0) / CONS_O_BITMAP(0).
+                     * Patch mg_console_i to CONS_I_SCC_A(1) so the ROM
+                     * monitor polls SCC serial instead of the keyboard. */
+                    uint32_t cons_i = m68k_read_memory_32(mg + 792);
+                    if (cons_i == 0) {
+                        m68k_write_memory_32(mg + 792, 1); /* CONS_I_SCC_A */
+                        xil_printf("[MG] patched mg_console_i: KBD→SCC_A\r\n");
+                    }
                 } else {
                     rom_putc_addr = 0;  /* invalid, keep searching */
                 }
@@ -68,6 +81,20 @@ void emu_instr_hook(unsigned int pc)
             xil_printf("%c", ch);
         else if (ch == '\r' || ch == '\n' || ch == '\t' || ch == '\b')
             xil_printf("%c", ch);
+    }
+
+    /* Intercept mg_getc ($01008140): if SCC RX has data, return it
+     * directly instead of letting the ROM poll the keyboard hardware.
+     * This redirects ROM monitor input from keyboard to serial. */
+    if (pc == 0x01008140 && next_scc_rx_available()) {
+        uint8_t ch = next_scc_rx_pop();
+        m68k_set_reg(M68K_REG_D0, (uint32_t)ch);
+        /* Skip the function body — set PC to the RTS at the end.
+         * mg_getc returns the character in D0. */
+        uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
+        uint32_t ret = m68k_read_memory_32(sp);
+        m68k_set_reg(M68K_REG_A7, sp + 4);
+        m68k_set_reg(M68K_REG_PC, ret);
     }
 
     if (trace_count < TRACE_LIMIT) {
@@ -198,8 +225,14 @@ static void next_boot(void)
                m68k_read_memory_16(0x0100002A),
                m68k_read_memory_16(0x0100002C));
 
-    /* Initialise F-line handler (hardware FPU via AXI-Lite) */
-#ifndef QEMU_MODE
+    /* Initialise F-line handler (hardware FPU via AXI-Lite).
+     * DISABLED: The Turbo ROM's POST does FSAVE and expects 68040 FPU
+     * frame formats.  The MC68882 returns 68882 frames, causing the ROM
+     * to detect a wrong FPU and enter a blink error loop before RTC.
+     * With fline disabled, F-line instructions trap as exceptions and
+     * the ROM skips FPU testing (same as QEMU behaviour).
+     * TODO: add FSAVE/FRESTORE frame translation (68882 ↔ 68040). */
+#if 0 /* disabled — see comment above */
     if (fline_init() != 0)
         xil_printf("[NEXT] WARNING: F-line handler init failed\r\n");
 #endif
@@ -287,7 +320,8 @@ static void next_boot(void)
                 uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
                 uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
                 uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
-                xil_printf("[PC] $%08X SR=$%04X SP=$%08X\r\n", pc, sr, sp);
+                uint32_t d3 = m68k_get_reg(NULL, M68K_REG_D3);
+                xil_printf("[PC] $%08X SR=$%04X SP=$%08X D3=$%08X\r\n", pc, sr, sp, d3);
 
                 /* Detect stuck PC */
                 static uint32_t prev_pc = 0;

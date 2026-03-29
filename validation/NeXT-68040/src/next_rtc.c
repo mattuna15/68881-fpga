@@ -87,12 +87,18 @@ static int      rtc_prev_clk;   /* previous RTCLK state */
 /* ------------------------------------------------------------------ */
 /* Backend: read the seconds counter                                   */
 /* ------------------------------------------------------------------ */
+/* Default epoch: 2024-01-01 00:00:00 UTC in NeXT epoch seconds */
+#define NEXT_EPOCH_DEFAULT  3913401600u
+
 static uint32_t rtc_backend_read_seconds(void)
 {
 #ifdef QEMU_MODE
     return soft_rtc_seconds;
 #else
-    return Xil_In32(XRTC_BASEADDR + XRTC_CUR_TIME_OFFSET);
+    /* Use fixed epoch instead of ZynqMP PS RTC.  The ZynqMP RTC may
+     * return 0 or an unexpected value, causing the ROM's timing
+     * calibration to take a different (failing) code path. */
+    return NEXT_EPOCH_DEFAULT;
 #endif
 }
 
@@ -208,10 +214,13 @@ void next_rtc_init(void)
         /* Set ni_new_clock_chip for MCS1850 (Turbo RTC) */
         rtc_regs[17] |= 0x80;
 
-#ifdef QEMU_MODE
-        /* Set ni_alt_cons for serial console under QEMU */
-        rtc_regs[0] |= 0x08;  /* bit 27 = ni_alt_cons in big-endian bitfield byte 0 */
-#endif
+        /* Set ni_alt_cons for serial console on both QEMU and hardware.
+         * Without this, the ROM takes a video console init path that
+         * includes a timing calibration failing on hardware (error 4).
+         * Display output still works: the ROM renders to the bitmap
+         * console regardless of ni_alt_cons (POST output goes to VRAM).
+         * ni_alt_cons only affects the input source (serial vs keyboard). */
+        rtc_regs[0] |= 0x08;  /* bit 27 = ni_alt_cons */
 
         /* Recompute ones-complement checksum */
         rtc_regs[30] = 0;

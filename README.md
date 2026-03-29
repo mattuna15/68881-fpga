@@ -509,14 +509,16 @@ All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
 ### Project documentation
 | File | Description |
 |------|-------------|
-| [`docs/fpu-progress-checklist.md`](docs/fpu-progress-checklist.md) | Master checklist: implementation status, open/closed defects |
 | [`docs/history.md`](docs/history.md) | Development history and changelog |
 | [`docs/merlin2_bios.md`](docs/merlin2_bios.md) | Merlin2 BIOS monitor user guide |
 | [`docs/trig_design.md`](docs/trig_design.md) | Transcendental engine architecture and algorithm design |
-| [`docs/fmovecr_qemu_summary.md`](docs/fmovecr_qemu_summary.md) | FMOVECR ROM constant cross-reference (QEMU vs MC68881) |
-| [`docs/68881-programming.txt`](docs/68881-programming.txt) | MC68881 programming reference notes |
-| [`docs/tests.txt`](docs/tests.txt) | GHDL test results (349+ tests) |
-| [`docs/qmtech_constraints_verification.md`](docs/qmtech_constraints_verification.md) | XDC constraints verification for QMTECH Artix-7 board |
+| [`docs/fpsp_comparison_checklist.md`](docs/fpsp_comparison_checklist.md) | FPSP (68040 FP software package) comparison checklist |
+| [`docs/next68040_defect_checklist.md`](docs/next68040_defect_checklist.md) | NeXT 68040LC emulator defect/TODO tracker |
+| [`docs/nextmach_boot_checklist.md`](docs/nextmach_boot_checklist.md) | NeXTMach kernel boot checklist |
+| [`docs/merlin2_tasklist.md`](docs/merlin2_tasklist.md) | Merlin2 BIOS task list |
+| [`docs/archive/fpu-progress-checklist.md`](docs/archive/fpu-progress-checklist.md) | Master checklist: implementation status (archived) |
+| [`docs/archive/fmovecr_qemu_summary.md`](docs/archive/fmovecr_qemu_summary.md) | FMOVECR ROM constant cross-reference (archived) |
+| [`docs/archive/qmtech_constraints_verification.md`](docs/archive/qmtech_constraints_verification.md) | XDC constraints verification for QMTECH board (archived) |
 
 ### Motorola / Atari reference manuals
 | File | Description |

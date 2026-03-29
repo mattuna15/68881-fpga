@@ -148,6 +148,7 @@ instances per consumer.
   - `mc68881_smoke_test.c` — Register read/write connectivity test (FPCR, FPIAR)
   - `mc68881_fsin_test.c` — FSIN computation test (sin(1.0), sin(0.0))
   - `mc68881_e2e_test.c` — End-to-end test with 15 vectors from GHDL testbench
+- `validation/NeXT-68040/` — NeXT 68040LC system emulator (Turbo ROM boot, interactive `NeXT>` monitor, hardware FPU via FSAVE/FRESTORE frame translation, DisplayPort output)
 - `validation/hello_world/` — M68K emulator + hardware FPU validation (Musashi, F-line trapping, ROM boot, USB keyboard)
 - `validation/kicad/` — Validation PCB: MC68SEC000 + QMTECH Artix-7 + original MC68881FN (KiCad 8, Gerbers in `output/`)
 - `src/vitis/roms/` — 68000 BIOS ROM source (assembler, disassembler, monitor with FPU support)
@@ -544,6 +545,7 @@ All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
 ### READMEs
 | File | Description |
 |------|-------------|
+| [`validation/NeXT-68040/README.md`](validation/NeXT-68040/README.md) | NeXT 68040LC emulator: Turbo ROM boot, interactive monitor, hardware FPU on ZynqMP |
 | [`validation/hello_world/src/README.md`](validation/hello_world/src/README.md) | Validation firmware: peripheral + CIR protocol, SFP004 benchmark |
 | [`toolchain/README.md`](toolchain/README.md) | M68K GCC cross-compilation toolchain |
 | [`toolchain/merlin-68k-toolchain/README.md`](toolchain/merlin-68k-toolchain/README.md) | Merlin2 68K toolchain (newlib, BSP) |

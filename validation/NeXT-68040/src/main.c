@@ -309,6 +309,7 @@ static void next_boot(void)
         }
 
         /* PC trace (debug: print every ~2 seconds) */
+#if 0
         {
             static int sample_count = 0;
             if (++sample_count >= 500) {
@@ -338,6 +339,7 @@ static void next_boot(void)
                 prev_pc = pc;
             }
         }
+#endif
 
         /* Refresh display: once NeXT VRAM has content, use it exclusively.
          * Before that, fall back to text_fb for boot messages. */

@@ -523,18 +523,21 @@ All checklist items complete. See `docs/fpu-progress-checklist.md` for history.
 ### Motorola / Atari reference manuals
 | File | Description |
 |------|-------------|
-| `docs/MC68881UM.pdf` | MC68881/MC68882 User Manual (Motorola) |
-| `docs/68881-tech-summary.pdf` | MC68881 Technical Summary |
-| `docs/AN-0947_MC68881...pdf` | AN-947: MC68881 as Peripheral in M68000 System |
-| `docs/atari_sfp_en.pdf` | Atari SFP-004 programming by example |
-| `docs/atari_68881_co-processor.pdf` | Atari MC68881 coprocessor board reference |
+| `docs/datasheets/MC68881UM.pdf` | MC68881/MC68882 User Manual (Motorola) |
+| `docs/datasheets/MC68881.PDF` | MC68881 datasheet |
+| `docs/datasheets/MC68040UM.pdf` | MC68040 User Manual (Motorola) |
+| `docs/datasheets/68881-tech-summary.pdf` | MC68881 Technical Summary |
+| `docs/datasheets/AN-0947_MC68881...pdf` | AN-947: MC68881 as Peripheral in M68000 System |
+| `docs/datasheets/68881-programming.txt` | MC68881 programming reference notes |
+| `docs/datasheets/atari_sfp_en.pdf` | Atari SFP-004 programming by example |
+| `docs/datasheets/atari_68881_co-processor.pdf` | Atari MC68881 coprocessor board reference |
 
 ### Hardware reference
 | File | Description |
 |------|-------------|
-| `docs/AXU3EG_User_Manual.pdf` | Alinx AXU3EG (Zynq UltraScale+ ZU3EG) board manual |
-| `docs/QMTECH_XC7A200T-CORE-BOARD-V01-*.pdf` | QMTECH Artix-7 200T core board manual |
-| `docs/MecbManual.pdf` | MECB 68000 educational board manual |
+| `docs/datasheets/AXU3EG_User_Manual.pdf` | Alinx AXU3EG (Zynq UltraScale+ ZU3EG) board manual |
+| `docs/datasheets/QMTECH_XC7A200T-CORE-BOARD-V01-*.pdf` | QMTECH Artix-7 200T core board manual |
+| `docs/datasheets/MecbManual.pdf` | MECB 68000 educational board manual |
 
 ### Design plans
 | File | Description |

@@ -130,8 +130,13 @@ void next_devs_init(void)
 int next_scc_rx_push(uint8_t ch)
 {
     int next = (scc_rx_head + 1) % SCC_RXBUF_SIZE;
-    if (next == scc_rx_tail)
-        return -1;  /* buffer full */
+    if (next == scc_rx_tail) {
+        static int drop_count = 0;
+        if (drop_count < 5)
+            xil_printf("[SCC] WARNING: RX buffer full, byte $%02X dropped\r\n", ch);
+        drop_count++;
+        return -1;
+    }
     scc_rxbuf[scc_rx_head] = ch;
     scc_rx_head = next;
     return 0;

@@ -133,6 +133,8 @@ void next_dsp_write(uint32_t offset, uint8_t value)
         }
         break;
 
+    case 2: break; /* ISR — read-only, ignore writes */
+
     case 3: /* IVR */
         dsp_ivr = value | 0x04;  /* keep bit 2 set — ROM polls this */
         break;

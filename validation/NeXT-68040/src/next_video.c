@@ -1,6 +1,6 @@
 /*
  * next_video.c
- * NeXT 2bpp mono framebuffer → 1280x720 ARGB8888 converter.
+ * NeXT 2bpp mono framebuffer → ARGB8888 converter.
  *
  * The NeXT mono display is 1120x832 at 2 bits per pixel.
  * Each byte encodes 4 pixels, MSB first:
@@ -10,9 +10,8 @@
  * Stride: VIDEO_MW (1152) pixels / 4 = 288 bytes per scanline.
  * Only 1120 of 1152 pixels per line are visible.
  *
- * We render into a 1280x720 ARGB8888 buffer.  The NeXT image is
- * scaled down to fit: 1120x832 → 1120x720 (crop bottom 112 lines)
- * then centred horizontally with 80px black bars on each side.
+ * We render into a 1920x1080 ARGB8888 buffer (SCREEN_W x SCREEN_H
+ * from text_fb.h).  The NeXT image is centred with black borders.
  *
  * For DPDMA: the ARGB pixel is stored as ABGR in memory (R/B swap).
  * Since our greyscale palette has R=G=B, no swap is needed.
@@ -37,6 +36,10 @@ static const uint32_t palette[4] = {
 /* Output display dimensions */
 #define OUT_W  SCREEN_W
 #define OUT_H  SCREEN_H
+
+#if SCREEN_W < NEXT_VIDEO_W || SCREEN_H < NEXT_VIDEO_H
+#error "SCREEN_W/H must be >= NEXT_VIDEO_W/H for NeXT video render"
+#endif
 
 /* Centering offsets */
 #define OFS_X  ((OUT_W - NEXT_VIDEO_W) / 2)   /* (1920-1120)/2 = 400 */

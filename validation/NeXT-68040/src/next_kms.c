@@ -113,8 +113,13 @@ static int kms_queue_empty(void)
 static void kms_queue_push(uint32_t event)
 {
     int next = (kms_head + 1) % KMS_QUEUE_SIZE;
-    if (next == kms_tail)
-        return; /* full, drop */
+    if (next == kms_tail) {
+        static int drop_count = 0;
+        if (drop_count < 5)
+            xil_printf("[KMS] WARNING: event queue full, key dropped\r\n");
+        drop_count++;
+        return;
+    }
     kms_queue[kms_head] = event;
     kms_head = next;
 }
@@ -198,8 +203,9 @@ void next_kms_push_ascii(uint8_t ch)
         return;
     }
 
-    /* Key-down event */
+    /* Key-down then key-up — ROM expects both for each keystroke */
     kms_queue_push(build_kybd_event(m->key_code, m->shift, 0));
+    kms_queue_push(build_kybd_event(m->key_code, m->shift, 1));
 }
 
 uint32_t next_kms_read(int offset)

@@ -3,8 +3,8 @@
  * NeXT mono framebuffer → ARGB8888 pixel buffer converter.
  *
  * Converts the NeXT 2bpp mono framebuffer (1120x832 at 0x0B000000)
- * into the 1280x720 ARGB8888 pixel buffer used by the DP/DPDMA display.
- * The NeXT image is scaled to fit within the 1280x720 frame.
+ * into the ARGB8888 pixel buffer used by the DP/DPDMA display.
+ * The NeXT image is centred within the output frame (1920x1080).
  *
  * On real hardware: pixel_buf feeds DPDMA → DisplayPort.
  * On QEMU: no display, but the conversion still runs (can be disabled).

@@ -111,6 +111,31 @@ With both fixes applied, the Turbo ROM boots on ZynqMP hardware:
 3. ROM displays "System test failed" on the NeXT bitmap console
 4. **Reaches serial console input poll at `$010024E2`** — the ROM monitor prompt
 
+### ROM Monitor Commands
+
+The `NeXT>` prompt accepts these commands (Copyright 1988-1990 NeXT Inc.):
+
+| Command | Description |
+|---------|-------------|
+| `p` | Inspect/modify configuration parameters (NVRAM) |
+| `a [n]` | Open address register |
+| `m` | Print memory configuration |
+| `d [n]` | Open data register |
+| `r [regname]` | Open processor register |
+| `s [systemreg]` | Open system register |
+| `e [lwb] [alist] [format]` | Examine memory (long/word/byte) |
+| `ec` | Print recorded system error codes |
+| `ej [drive#]` | Eject optical disk (default=0) |
+| `eo` | Same as `ej` |
+| `ef [drive#]` | Eject floppy disk (default=0) |
+| `c` | Continue execution at last PC |
+| `b [device[(ctrl,unit,part)] [filename] [flags]]` | Boot from device |
+| `S [fcode]` | Open function code (address space) |
+| `R [radix]` | Set input radix |
+
+Notes: `[lwb]` selects long/word/byte length (default=long). `[alist]` is a
+starting address or list of addresses to cyclically examine.
+
 ### ROM Monitor Input — KMS Keyboard
 
 The ROM monitor prompt at `$010024E2` does NOT use SCC serial for input.

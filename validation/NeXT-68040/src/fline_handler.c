@@ -1008,6 +1008,32 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
 /* context switching.                                                  */
 /* ------------------------------------------------------------------ */
 
+/* 68040 FSAVE frame format longwords (from NeXTMach fpsp/fpsp.sa):
+ *   NULL:  $00000000 (4 bytes, no data)
+ *   IDLE:  $40000000 (4 bytes, no data)
+ *   UNIMP: $40280000 (48 bytes = 4 header + 44 data)
+ *   BUSY:  $40600000 (104 bytes = 4 header + 100 data)
+ *
+ * 68882 FSAVE format word (upper 16 bits of first longword):
+ *   NULL:  $0000 (4 bytes, no data)
+ *   IDLE:  $0018 (28 bytes = 4 header + 24 data)
+ *   BUSY:  $00D4 (216 bytes = 4 header + 212 data)
+ *
+ * We read the 68882 frame from hardware and translate to 68040 format
+ * for the 68K memory, since the Turbo ROM expects 68040 frames.
+ */
+#define FMT_68040_NULL   0x00000000u
+#define FMT_68040_IDLE   0x40000000u
+#define FMT_68040_UNIMP  0x40280000u
+#define FMT_68040_BUSY   0x40600000u
+
+#define FMT_68881_NULL   0x0000u
+#define FMT_68881_IDLE   0x0018u  /* 68881: 24 bytes data */
+#define FMT_68881_BUSY   0x00B4u  /* 68881: 180 bytes data */
+#define FMT_68882_NULL   0x0000u
+#define FMT_68882_IDLE   0x0038u  /* 68882: 56 bytes data */
+#define FMT_68882_BUSY   0x00D4u  /* 68882: 212 bytes data */
+
 static void handle_fsave(unsigned int opword, unsigned int pc)
 {
     int ea_mode = EA_MODE(opword);
@@ -1046,8 +1072,38 @@ static void handle_fsave(unsigned int opword, unsigned int pc)
     /* Switch back to peripheral mode */
     fpu_wr(OFF_CIR_MODE, 0);
 
-    /* --- Write frame to 68K memory --- */
-    int total_frame_size = 4 + n_words * 4;  /* format longword + data */
+    /* --- Translate 68882 frame → 68040 frame --- */
+    u32 frame_040;
+    int frame_040_data_bytes;
+
+    if (format_word == FMT_68881_NULL) {
+        /* NULL → NULL: identical (no data) */
+        frame_040 = FMT_68040_NULL;
+        frame_040_data_bytes = 0;
+    } else if (format_word == FMT_68881_IDLE || format_word == FMT_68882_IDLE) {
+        /* IDLE: 68881 has 24 bytes, 68882 has 56 bytes, 68040 has 0 bytes.
+         * We discard the internal state — it's not compatible with 68040
+         * format anyway.  The FPU is idle so there's no in-progress
+         * computation to preserve. */
+        frame_040 = FMT_68040_IDLE;
+        frame_040_data_bytes = 0;
+    } else if (format_word == FMT_68881_BUSY || format_word == FMT_68882_BUSY) {
+        /* BUSY: 68881/68882 has in-progress computation.
+         * Map to 68040 IDLE — we can't translate the internal state
+         * between different FPU architectures.  The computation is
+         * lost but the FPU is left in a safe idle state. */
+        frame_040 = FMT_68040_IDLE;
+        frame_040_data_bytes = 0;
+    } else {
+        /* Unknown format word — map to 68040 IDLE as safe fallback */
+        xil_printf("[FLINE] FSAVE: unknown 68881/2 format $%04X → 68040 IDLE\r\n",
+                   format_word);
+        frame_040 = FMT_68040_IDLE;
+        frame_040_data_bytes = 0;
+    }
+
+    /* --- Write 68040 frame to 68K memory --- */
+    int total_frame_size = 4 + frame_040_data_bytes;
     unsigned int ea_addr;
 
     if (ea_mode == 4) {
@@ -1060,12 +1116,8 @@ static void handle_fsave(unsigned int opword, unsigned int pc)
         ea_addr = eval_ea(ea_mode, ea_reg, &pc);
     }
 
-    /* Format word in upper 16 bits of first longword */
-    m68k_write_memory_32(ea_addr, (u32)format_word << 16);
-
-    /* Data words follow */
-    for (int i = 0; i < n_words; i++)
-        m68k_write_memory_32(ea_addr + 4 + i * 4, frame_data[i]);
+    /* 68040 frame: full 32-bit format longword */
+    m68k_write_memory_32(ea_addr, frame_040);
 
     m68k_set_reg(M68K_REG_PC, pc);
 }
@@ -1075,7 +1127,7 @@ static void handle_frestore(unsigned int opword, unsigned int pc)
     int ea_mode = EA_MODE(opword);
     int ea_reg  = EA_REG(opword);
 
-    /* --- Read frame from 68K memory --- */
+    /* --- Read 68040 frame from 68K memory --- */
     unsigned int ea_addr;
 
     if (ea_mode == 3) {
@@ -1085,21 +1137,55 @@ static void handle_frestore(unsigned int opword, unsigned int pc)
         ea_addr = eval_ea(ea_mode, ea_reg, &pc);
     }
 
-    /* Format word is upper 16 bits of first longword */
-    u16 format_word = (u16)(m68k_read_memory_32(ea_addr) >> 16);
+    /* 68040 frame: full 32-bit format longword */
+    u32 frame_040 = m68k_read_memory_32(ea_addr);
 
-    /* Read data words */
-    int n_words = (format_word & 0xFF) / 4;
-    if (n_words > 56) n_words = 56;  /* clamp to buffer size */
-    u32 frame_data[56];
-    for (int i = 0; i < n_words; i++)
-        frame_data[i] = m68k_read_memory_32(ea_addr + 4 + i * 4);
+    /* Determine 68040 frame size for postincrement */
+    int frame_040_data_bytes = 0;
+    if (frame_040 == FMT_68040_NULL) {
+        frame_040_data_bytes = 0;
+    } else if (frame_040 == FMT_68040_IDLE) {
+        frame_040_data_bytes = 0;
+    } else if (frame_040 == FMT_68040_UNIMP) {
+        frame_040_data_bytes = 44;
+    } else if (frame_040 == FMT_68040_BUSY) {
+        frame_040_data_bytes = 100;
+    } else {
+        /* Unknown format — treat as 68881/68882 format word for compatibility.
+         * The upper 16 bits are the format, lower byte = data size. */
+        u16 legacy_fmt = (u16)(frame_040 >> 16);
+        frame_040_data_bytes = (legacy_fmt & 0xFF);
+    }
 
     /* Advance An for postincrement */
     if (ea_mode == 3) {
-        int total_frame_size = 4 + n_words * 4;
+        int total_frame_size = 4 + frame_040_data_bytes;
         unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
         m68k_set_reg(M68K_REG_A0 + ea_reg, an + total_frame_size);
+    }
+
+    /* --- Translate 68040 frame → 68882 frame for hardware FPU --- */
+    u16 format_882;
+
+    if (frame_040 == FMT_68040_NULL) {
+        /* NULL → NULL */
+        format_882 = FMT_68882_NULL;
+    } else if (frame_040 == FMT_68040_IDLE || frame_040 == FMT_68040_UNIMP) {
+        /* IDLE/UNIMP → IDLE (reset FPU to idle state).
+         * We send a 68882 NULL frame which resets the FPU — the 68882
+         * IDLE frame requires specific internal state data that we can't
+         * synthesise from the 68040 frame. NULL is safe: it initialises
+         * the FPU to a known-good idle state. */
+        format_882 = FMT_68882_NULL;
+    } else if (frame_040 == FMT_68040_BUSY) {
+        /* BUSY → NULL (best-effort: can't translate internal state).
+         * This loses in-progress computation but prevents corruption. */
+        format_882 = FMT_68882_NULL;
+    } else {
+        /* Unknown — assume 68881/68882 native format (legacy compatibility).
+         * This handles frames written by our own FSAVE in 68882 format
+         * (e.g. from hello_world/Atari context). */
+        format_882 = (u16)(frame_040 >> 16);
     }
 
     /* --- CIR cpRESTORE dialog --- */
@@ -1108,12 +1194,19 @@ static void handle_frestore(unsigned int opword, unsigned int pc)
     /* Write cpRESTORE opword */
     cir_wr(OFF_CIR_OPWORD, CIR_OPWORD_CPRESTORE);
 
-    /* Write format word to Restore CIR register */
-    cir_wr(OFF_CIR_RESTORE, (u32)format_word);
+    /* Write 68882 format word to Restore CIR register */
+    cir_wr(OFF_CIR_RESTORE, (u32)format_882);
 
-    /* Write data words to Operand CIR (skip for null frame) */
-    for (int i = 0; i < n_words; i++)
-        cir_wr(OFF_CIR_OPERAND, frame_data[i]);
+    /* For NULL restore, no data words needed.
+     * For legacy 68882 format, send the original data words. */
+    if (format_882 != FMT_68882_NULL) {
+        int n_words = (format_882 & 0xFF) / 4;
+        if (n_words > 56) n_words = 56;
+        for (int i = 0; i < n_words; i++) {
+            u32 data = m68k_read_memory_32(ea_addr + 4 + i * 4);
+            cir_wr(OFF_CIR_OPERAND, data);
+        }
+    }
 
     /* Wait for CIR to return to idle */
     {

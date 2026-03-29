@@ -169,13 +169,35 @@ Current workaround: `mg_getc` intercept in `main.c` instruction hook
 ROM's tight poll loop at `$010024E2` calls `$0100A1A8` which reads
 `mon_csr` directly, not through `mg_getc`.
 
+### Hardware FPU Verified
+
+The MC68881 FPGA handles FPU instructions via F-line trapping with
+FSAVE/FRESTORE frame translation (68881/68882 ↔ 68040).  Verified
+from the ROM monitor:
+
+```
+NeXT> e 4001000
+4001000: ? F23C4000       ; FMOVE.L #42, FP0
+4001004: ? 0000002A       ;   (immediate: 42)
+4001008: ? F2000023       ; FMUL.X FP0, FP0
+400100C: ? F2006000       ; FMOVE.L FP0, D0
+4001010: ? 4E404E71       ; TRAP #0 (return to monitor)
+NeXT> r pc
+pc: ? 4001000
+NeXT> c
+Exception #32 (0x80) at pc 0x4001012 sp 0x4fff72a
+NeXT> d 0
+d0: 000006E4              ; 1764 = 42 × 42 ✓
+```
+
+Full stack: serial keystroke → KMS → ROM monitor → 68K code → F-line
+trap → ARM fline_handler → AXI-Lite → MC68881 FPGA → result to D0.
+
 ### Next Steps
 
-1. Implement KMS keyboard emulation: ASCII→keycode reverse table, inject
-   events via `$0200E000`/`$0200E008` when UART RX has data
-2. Re-enable FPU: add FSAVE/FRESTORE frame translation (68882 → 68040) in `fline_handler.c`
-3. Boot a kernel via the ROM's `bsd` or `en` boot commands
-4. Implement MCS1850 protocol support (bit 7 inversion for new clock chip reads/writes)
+1. Boot a kernel via the ROM's `b` command
+2. Implement MCS1850 protocol support (bit 7 inversion for new clock chip reads/writes)
+3. USB HID keyboard integration (from hello_world project)
 
 ## Memory Map (Turbo 68040)
 

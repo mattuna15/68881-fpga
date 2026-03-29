@@ -222,13 +222,9 @@ static void next_boot(void)
                m68k_read_memory_16(0x0100002C));
 
     /* Initialise F-line handler (hardware FPU via AXI-Lite).
-     * DISABLED: The Turbo ROM's POST does FSAVE and expects 68040 FPU
-     * frame formats.  The MC68882 returns 68882 frames, causing the ROM
-     * to detect a wrong FPU and enter a blink error loop before RTC.
-     * With fline disabled, F-line instructions trap as exceptions and
-     * the ROM skips FPU testing (same as QEMU behaviour).
-     * TODO: add FSAVE/FRESTORE frame translation (68882 ↔ 68040). */
-#if 0 /* disabled — see comment above */
+     * FSAVE/FRESTORE translate between 68882 and 68040 frame formats
+     * so the Turbo ROM's POST accepts the FPU. */
+#ifndef QEMU_MODE
     if (fline_init() != 0)
         xil_printf("[NEXT] WARNING: F-line handler init failed\r\n");
 #endif

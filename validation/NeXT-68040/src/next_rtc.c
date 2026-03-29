@@ -201,7 +201,7 @@ void next_rtc_init(void)
         static const uint8_t nvram_default[32] = {
             0x94, 0x0f, 0x40, 0x00,             /* byte 0-3:   volume/brightness/reset=9 */
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 4-9:   hw password/ethernet */
-            0x00, 0x00,                          /* byte 10-11: SIMM config */
+            0xFD, 0xB6,                          /* byte 10-11: SIMM config (4x4MB page-mode) */
             0x00, 0x00,                          /* byte 12-13: adobe */
             0x00, 0x00, 0x00,                    /* byte 14-16: POT=0x00 (all tests disabled) */
             0x00,                                /* byte 17:    clock chip flags */

@@ -1,3 +1,6 @@
 [submodule "toolchain/merlin-68k-toolchain"]
 	path = toolchain/merlin-68k-toolchain
 	url = https://github.com/mattuna15/merlin-68k-toolchain.git
+[submodule "NeXTMach"]
+	path = NeXTMach
+	url = https://github.com/johnsonjh/NeXTMach.git

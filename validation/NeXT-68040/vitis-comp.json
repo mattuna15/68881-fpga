@@ -1,0 +1,18 @@
+{
+  "name": "NeXT-68040",
+  "type": "HOST",
+  "platform": "platform-68-linux",
+  "domain": "standalone_psu_cortexa53_0",
+  "cpuInstance": "psu_cortexa53_0",
+  "cpuType": "cortex-a53",
+  "os": "standalone",
+  "configuration": {
+    "componentType": "HOST",
+    "hostToolchainConfigurations": []
+  },
+  "domainRealName": "standalone_psu_cortexa53_0",
+  "useSysrootToolchain": false,
+  "applicationFlow": "EMBEDDED",
+  "template": "empty_application",
+  "templateFlow": "VITIS"
+}

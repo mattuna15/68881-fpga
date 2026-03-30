@@ -15,6 +15,7 @@ set(USER_UNDEFINED_SYMBOLS
 set(USER_INCLUDE_DIRECTORIES
 "${CMAKE_SOURCE_DIR}"
 "${CMAKE_SOURCE_DIR}/musashi"
+"${CMAKE_SOURCE_DIR}/fatfs"
 )
 
 set(USER_COMPILE_SOURCES
@@ -37,6 +38,13 @@ set(USER_COMPILE_SOURCES
 "musashi/m68kcpu.c"
 "musashi/m68kops.c"
 "musashi/softfloat/softfloat.c"
+"next_esp.c"
+"next_scsi.c"
+"next_scsi_dma.c"
+"fatfs/ff.c"
+"fatfs/diskio.c"
+"fatfs/ffsystem.c"
+"fatfs/ffunicode.c"
 )
 
 set(USER_COMPILE_WARNINGS_ALL -Wall)

@@ -2,15 +2,17 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include "m68kcpu.h"
-
-extern void exit(int);
+#include "xil_printf.h"
 
 static void fatalerror(const char *format, ...) {
+      /* Use vsnprintf + xil_printf for bare-metal (no stderr). */
+      char buf[256];
       va_list ap;
-      va_start(ap,format);
-      vfprintf(stderr,format,ap);  // JFF: fixed. Was using fprintf and arguments were wrong
+      va_start(ap, format);
+      vsnprintf(buf, sizeof(buf), format, ap);
       va_end(ap);
-      exit(1);
+      xil_printf("[FATAL] %s\r\n", buf);
+      for(;;) {}  /* halt */
 }
 
 #define FPCC_N			0x08000000

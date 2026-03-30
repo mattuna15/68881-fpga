@@ -7,10 +7,12 @@
     Visit http://mamedev.org for licensing and usage restrictions.
 */
 
+#include "xil_printf.h"
+
 /*
 	pmmu_translate_addr: perform 68851/68030-style PMMU address translation
 */
-uint pmmu_translate_addr(uint addr_in)
+uint pmmu_translate_addr_030(uint addr_in)
 {
 	uint32 addr_out, tbl_entry = 0, tbl_entry2, tamode = 0, tbmode = 0, tcmode = 0;
 	uint root_aptr, root_limit, tofs, is, abits, bbits, cbits;
@@ -37,7 +39,7 @@ uint pmmu_translate_addr(uint addr_in)
 	bbits = (m68ki_cpu.mmu_tc>>8)&0xf;
 	cbits = (m68ki_cpu.mmu_tc>>4)&0xf;
 
-//	fprintf(stderr,"PMMU: tcr %08x limit %08x aptr %08x is %x abits %d bbits %d cbits %d\n", m68ki_cpu.mmu_tc, root_limit, root_aptr, is, abits, bbits, cbits);
+//	xil_printf("PMMU: tcr %08x limit %08x aptr %08x is %x abits %d bbits %d cbits %d\n", m68ki_cpu.mmu_tc, root_limit, root_aptr, is, abits, bbits, cbits);
 
 	// get table A offset
 	tofs = (addr_in<<is)>>(32-abits);
@@ -52,19 +54,19 @@ uint pmmu_translate_addr(uint addr_in)
 
 		case 2:	// valid 4 byte descriptors
 			tofs *= 4;
-//			fprintf(stderr,"PMMU: reading table A entry at %08x\n", tofs + (root_aptr & 0xfffffffc));
+//			xil_printf("PMMU: reading table A entry at %08x\n", tofs + (root_aptr & 0xfffffffc));
 			tbl_entry = m68k_read_memory_32( tofs + (root_aptr & 0xfffffffc));
 			tamode = tbl_entry & 3;
-//			fprintf(stderr,"PMMU: addr %08x entry %08x mode %x tofs %x\n", addr_in, tbl_entry, tamode, tofs);
+//			xil_printf("PMMU: addr %08x entry %08x mode %x tofs %x\n", addr_in, tbl_entry, tamode, tofs);
 			break;
 
 		case 3: // valid 8 byte descriptors
 			tofs *= 8;
-//			fprintf(stderr,"PMMU: reading table A entries at %08x\n", tofs + (root_aptr & 0xfffffffc));
+//			xil_printf("PMMU: reading table A entries at %08x\n", tofs + (root_aptr & 0xfffffffc));
 			tbl_entry2 = m68k_read_memory_32( tofs + (root_aptr & 0xfffffffc));
 			tbl_entry = m68k_read_memory_32( tofs + (root_aptr & 0xfffffffc)+4);
 			tamode = tbl_entry2 & 3;
-//			fprintf(stderr,"PMMU: addr %08x entry %08x entry2 %08x mode %x tofs %x\n", addr_in, tbl_entry, tbl_entry2, tamode, tofs);
+//			xil_printf("PMMU: addr %08x entry %08x entry2 %08x mode %x tofs %x\n", addr_in, tbl_entry, tbl_entry2, tamode, tofs);
 			break;
 	}
 
@@ -81,19 +83,19 @@ uint pmmu_translate_addr(uint addr_in)
 
 		case 2: // 4-byte table B descriptor
 			tofs *= 4;
-//			fprintf(stderr,"PMMU: reading table B entry at %08x\n", tofs + tptr);
+//			xil_printf("PMMU: reading table B entry at %08x\n", tofs + tptr);
 			tbl_entry = m68k_read_memory_32( tofs + tptr);
 			tbmode = tbl_entry & 3;
-//			fprintf(stderr,"PMMU: addr %08x entry %08x mode %x tofs %x\n", addr_in, tbl_entry, tbmode, tofs);
+//			xil_printf("PMMU: addr %08x entry %08x mode %x tofs %x\n", addr_in, tbl_entry, tbmode, tofs);
 			break;
 
 		case 3: // 8-byte table B descriptor
 			tofs *= 8;
-//			fprintf(stderr,"PMMU: reading table B entries at %08x\n", tofs + tptr);
+//			xil_printf("PMMU: reading table B entries at %08x\n", tofs + tptr);
 			tbl_entry2 = m68k_read_memory_32( tofs + tptr);
 			tbl_entry = m68k_read_memory_32( tofs + tptr + 4);
 			tbmode = tbl_entry2 & 3;
-//			fprintf(stderr,"PMMU: addr %08x entry %08x entry2 %08x mode %x tofs %x\n", addr_in, tbl_entry, tbl_entry2, tbmode, tofs);
+//			xil_printf("PMMU: addr %08x entry %08x entry2 %08x mode %x tofs %x\n", addr_in, tbl_entry, tbl_entry2, tbmode, tofs);
 			break;
 
 		case 1:	// early termination descriptor
@@ -120,19 +122,19 @@ uint pmmu_translate_addr(uint addr_in)
 
 			case 2: // 4-byte table C descriptor
 				tofs *= 4;
-//				fprintf(stderr,"PMMU: reading table C entry at %08x\n", tofs + tptr);
+//				xil_printf("PMMU: reading table C entry at %08x\n", tofs + tptr);
 				tbl_entry = m68k_read_memory_32(tofs + tptr);
 				tcmode = tbl_entry & 3;
-//				fprintf(stderr,"PMMU: addr %08x entry %08x mode %x tofs %x\n", addr_in, tbl_entry, tbmode, tofs);
+//				xil_printf("PMMU: addr %08x entry %08x mode %x tofs %x\n", addr_in, tbl_entry, tbmode, tofs);
 				break;
 
 			case 3: // 8-byte table C descriptor
 				tofs *= 8;
-//				fprintf(stderr,"PMMU: reading table C entries at %08x\n", tofs + tptr);
+//				xil_printf("PMMU: reading table C entries at %08x\n", tofs + tptr);
 				tbl_entry2 = m68k_read_memory_32(tofs + tptr);
 				tbl_entry = m68k_read_memory_32(tofs + tptr + 4);
 				tcmode = tbl_entry2 & 3;
-//				fprintf(stderr,"PMMU: addr %08x entry %08x entry2 %08x mode %x tofs %x\n", addr_in, tbl_entry, tbl_entry2, tbmode, tofs);
+//				xil_printf("PMMU: addr %08x entry %08x entry2 %08x mode %x tofs %x\n", addr_in, tbl_entry, tbl_entry2, tbmode, tofs);
 				break;
 
 			case 1: // termination descriptor
@@ -166,9 +168,171 @@ uint pmmu_translate_addr(uint addr_in)
 	}
 
 
-//	fprintf(stderr,"PMMU: [%08x] => [%08x]\n", addr_in, addr_out);
+//	xil_printf("PMMU: [%08x] => [%08x]\n", addr_in, addr_out);
 
 	return addr_out;
+}
+
+/*
+	pmmu_translate_addr_040: 68040 MMU address translation
+
+	68040 MMU uses:
+	- TC register: bit 15 = enable, bit 14 = 8K page size (else 4K)
+	- SRP (supervisor root pointer, 32-bit)
+	- URP (user root pointer, 32-bit)
+	- ITT0/ITT1 (instruction transparent translation)
+	- DTT0/DTT1 (data transparent translation)
+
+	Page table: 3-level
+	  Root table: 128 entries × 4 bytes (VA bits 31-25)
+	  Pointer table: 128 entries × 4 bytes (VA bits 24-18)
+	  Page table: 32 entries × 4 bytes for 8K pages (VA bits 17-13)
+	              64 entries × 4 bytes for 4K pages (VA bits 17-12)
+
+	Descriptor types (bits 1-0):
+	  00 = invalid
+	  01 = page descriptor (resident)
+	  10 = indirect (pointer to another descriptor)
+	  11 = page descriptor (resident, used+modified)
+*/
+
+/* Check if a 68040 TT register matches the address */
+static int tt040_match(uint tt, uint addr, int supervisor)
+{
+	if (!(tt & 0x8000))		/* bit 15: E (enable) */
+		return 0;
+
+	/* Check supervisor mode: bits 14-13: 00=both, 01=user only, 10=super only */
+	int sfield = (tt >> 13) & 3;
+	if (sfield == 1 && supervisor)
+		return 0;	/* user-only TT, but we're in supervisor mode */
+	if (sfield == 2 && !supervisor)
+		return 0;	/* supervisor-only TT, but we're in user mode */
+
+	/* Address match: upper 8 bits of address must match base, masked */
+	uint lbase = (tt >> 24) & 0xFF;
+	uint lmask = (tt >> 16) & 0xFF;
+	uint abase = (addr >> 24) & 0xFF;
+
+	if ((abase & ~lmask) != (lbase & ~lmask))
+		return 0;
+
+	return 1;	/* match — use physical = logical (transparent) */
+}
+
+static int mmu040_log_count = 0;
+
+uint pmmu_translate_addr_040(uint addr_in)
+{
+	uint tc = m68ki_cpu.mmu_040_tc;
+
+	/* If MMU disabled, return address unchanged */
+	if (!(tc & 0x8000))
+		return addr_in;
+
+	if (mmu040_log_count < 20) {
+		xil_printf( "[MMU040] translate $%08X TC=$%04X SRP=$%08X\n", addr_in, tc, m68ki_cpu.mmu_040_srp);
+		mmu040_log_count++;
+		if (mmu040_log_count == 20)
+			xil_printf("[MMU040] Further translation logging suppressed\n");
+	}
+
+	int supervisor = (m68ki_get_sr() & 0x2000) ? 1 : 0;
+
+	/* Check Transparent Translation registers first */
+	if (tt040_match(m68ki_cpu.mmu_040_dtt0, addr_in, supervisor))
+		return addr_in;
+	if (tt040_match(m68ki_cpu.mmu_040_dtt1, addr_in, supervisor))
+		return addr_in;
+	if (tt040_match(m68ki_cpu.mmu_040_itt0, addr_in, supervisor))
+		return addr_in;
+	if (tt040_match(m68ki_cpu.mmu_040_itt1, addr_in, supervisor))
+		return addr_in;
+
+	/* Select root pointer */
+	uint root_ptr = supervisor ? m68ki_cpu.mmu_040_srp : m68ki_cpu.mmu_040_urp;
+
+	/* Determine page size */
+	int page_8k = (tc & 0x4000) ? 1 : 0;
+
+	/* Level 1: Root table — bits 31-25 (7 bits, 128 entries) */
+	uint l1_idx = (addr_in >> 25) & 0x7F;
+	uint l1_desc = m68k_read_memory_32(root_ptr + l1_idx * 4);
+
+	if ((l1_desc & 3) == 0) {
+		/* Invalid descriptor — should be bus error.
+		 * TODO: raise bus error exception on m68k CPU.
+		 * For now return identity mapping and log. */
+		static int l1_fault_log = 0;
+		if (l1_fault_log < 10) {
+			xil_printf("[MMU040] L1 FAULT: VA=$%08X root=$%08X idx=%d\r\n",
+			           addr_in, root_ptr, l1_idx);
+			l1_fault_log++;
+		}
+		return addr_in;
+	}
+
+	/* Level 2: Pointer table — bits 24-18 (7 bits, 128 entries) */
+	/* L1 descriptor: pointer table address in bits 31-9 (4K) or 31-8 (8K) */
+	uint l2_base = page_8k ? (l1_desc & 0xFFFFFF00) : (l1_desc & 0xFFFFFE00);
+	uint l2_idx = (addr_in >> 18) & 0x7F;
+	uint l2_desc = m68k_read_memory_32(l2_base + l2_idx * 4);
+
+	if ((l2_desc & 3) == 0) {
+		static int l2_fault_log = 0;
+		if (l2_fault_log < 10) {
+			xil_printf("[MMU040] L2 FAULT: VA=$%08X l2_base=$%08X idx=%d\r\n",
+			           addr_in, l2_base, l2_idx);
+			l2_fault_log++;
+		}
+		return addr_in;
+	}
+
+	/* Level 3: Page table */
+	uint l3_base, l3_idx, l3_desc, page_addr, page_offset;
+
+	if (page_8k) {
+		/* 8K pages: bits 17-13 (5 bits, 32 entries) */
+		l3_base = l2_desc & 0xFFFFFF80;  /* bits 31-7 */
+		l3_idx = (addr_in >> 13) & 0x1F;
+		l3_desc = m68k_read_memory_32(l3_base + l3_idx * 4);
+		page_offset = addr_in & 0x1FFF;  /* 13 bits */
+	} else {
+		/* 4K pages: bits 17-12 (6 bits, 64 entries) */
+		l3_base = l2_desc & 0xFFFFFF00;  /* bits 31-8 */
+		l3_idx = (addr_in >> 12) & 0x3F;
+		l3_desc = m68k_read_memory_32(l3_base + l3_idx * 4);
+		page_offset = addr_in & 0xFFF;   /* 12 bits */
+	}
+
+	if ((l3_desc & 3) == 0) {
+		static int l3_fault_log = 0;
+		if (l3_fault_log < 10) {
+			xil_printf("[MMU040] L3 FAULT: VA=$%08X l3_base=$%08X idx=%d\r\n",
+			           addr_in, l3_base, l3_idx);
+			l3_fault_log++;
+		}
+		return addr_in;
+	}
+
+	/* Extract physical page address */
+	if (page_8k) {
+		page_addr = l3_desc & 0xFFFFE000;
+	} else {
+		page_addr = l3_desc & 0xFFFFF000;
+	}
+
+	return page_addr | page_offset;
+}
+
+/* Dispatch to correct MMU translation based on CPU type.
+ * For 68040: use 3-level page table with TT registers.
+ * NOTE: temporarily return identity for debugging boot issues. */
+uint pmmu_translate_addr(uint addr_in)
+{
+	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
+		return pmmu_translate_addr_040(addr_in);
+	return pmmu_translate_addr_030(addr_in);
 }
 
 /*
@@ -186,12 +350,12 @@ void m68881_mmu_ops(void)
 	// catch the 2 "weird" encodings up front (PBcc)
 	if ((m68ki_cpu.ir & 0xffc0) == 0xf0c0)
 	{
-		fprintf(stderr,"680x0: unhandled PBcc\n");
+		xil_printf("680x0: unhandled PBcc\n");
 		return;
 	}
 	else if ((m68ki_cpu.ir & 0xffc0) == 0xf080)
 	{
-		fprintf(stderr,"680x0: unhandled PBcc\n");
+		xil_printf("680x0: unhandled PBcc\n");
 		return;
 	}
 	else	// the rest are 1111000xxxXXXXXX where xxx is the instruction family
@@ -203,32 +367,32 @@ void m68881_mmu_ops(void)
 
 				if ((modes & 0xfde0) == 0x2000)	// PLOAD
 				{
-					fprintf(stderr,"680x0: unhandled PLOAD\n");
+					xil_printf("680x0: unhandled PLOAD\n");
 					return;
 				}
 				else if ((modes & 0xe200) == 0x2000)	// PFLUSH
 				{
-					fprintf(stderr,"680x0: unhandled PFLUSH PC=%x\n", REG_PC);
+					xil_printf("680x0: unhandled PFLUSH PC=%x\n", REG_PC);
 					return;
 				}
 				else if (modes == 0xa000)	// PFLUSHR
 				{
-					fprintf(stderr,"680x0: unhandled PFLUSHR\n");
+					xil_printf("680x0: unhandled PFLUSHR\n");
 					return;
 				}
 				else if (modes == 0x2800)	// PVALID (FORMAT 1)
 				{
-					fprintf(stderr,"680x0: unhandled PVALID1\n");
+					xil_printf("680x0: unhandled PVALID1\n");
 					return;
 				}
 				else if ((modes & 0xfff8) == 0x2c00)	// PVALID (FORMAT 2)
 				{
-					fprintf(stderr,"680x0: unhandled PVALID2\n");
+					xil_printf("680x0: unhandled PVALID2\n");
 					return;
 				}
 				else if ((modes & 0xe000) == 0x8000)	// PTEST
 				{
-					fprintf(stderr,"680x0: unhandled PTEST\n");
+					xil_printf("680x0: unhandled PTEST\n");
 					return;
 				}
 				else
@@ -254,7 +418,7 @@ void m68881_mmu_ops(void)
 										break;
 
 									default:
-										fprintf(stderr,"680x0: PMOVE from unknown MMU register %x, PC %x\n", (modes>>10) & 7, REG_PC);
+										xil_printf("680x0: PMOVE from unknown MMU register %x, PC %x\n", (modes>>10) & 7, REG_PC);
 										break;
 								}
 							}
@@ -288,7 +452,7 @@ void m68881_mmu_ops(void)
 										break;
 
 									default:
-										fprintf(stderr,"680x0: PMOVE to unknown MMU register %x, PC %x\n", (modes>>10) & 7, REG_PC);
+										xil_printf("680x0: PMOVE to unknown MMU register %x, PC %x\n", (modes>>10) & 7, REG_PC);
 										break;
 								}
 							}
@@ -306,14 +470,14 @@ void m68881_mmu_ops(void)
 							break;
 
 						default:
-							fprintf(stderr,"680x0: unknown PMOVE mode %x (modes %04x) (PC %x)\n", (modes>>13) & 0x7, modes, REG_PC);
+							xil_printf("680x0: unknown PMOVE mode %x (modes %04x) (PC %x)\n", (modes>>13) & 0x7, modes, REG_PC);
 							break;
 					}
 				}
 				break;
 
 			default:
-				fprintf(stderr,"680x0: unknown PMMU instruction group %d\n", (m68ki_cpu.ir>>9) & 0x7);
+				xil_printf("680x0: unknown PMMU instruction group %d\n", (m68ki_cpu.ir>>9) & 0x7);
 				break;
 		}
 	}

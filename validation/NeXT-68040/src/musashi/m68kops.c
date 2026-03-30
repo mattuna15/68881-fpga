@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include "m68kcpu.h"
+#include "xil_printf.h"
 extern void m68040_fpu_op0(void);
 extern void m68040_fpu_op1(void);
 extern void m68881_mmu_ops(void);
@@ -23,7 +24,8 @@ static void m68k_op_1111(void)
 
 static void m68k_op_040fpu0_32(void)
 {
-	if(CPU_TYPE_IS_030_PLUS(CPU_TYPE))
+	/* LC040 has no internal FPU — all FP ops trap via F-line */
+	if(CPU_TYPE_IS_030_PLUS(CPU_TYPE) && CPU_TYPE != CPU_TYPE_LC040)
 	{
 		m68040_fpu_op0();
 		return;
@@ -34,7 +36,8 @@ static void m68k_op_040fpu0_32(void)
 
 static void m68k_op_040fpu1_32(void)
 {
-	if(CPU_TYPE_IS_030_PLUS(CPU_TYPE))
+	/* LC040 has no internal FPU — all FP ops trap via F-line */
+	if(CPU_TYPE_IS_030_PLUS(CPU_TYPE) && CPU_TYPE != CPU_TYPE_LC040)
 	{
 		m68040_fpu_op1();
 		return;
@@ -21858,66 +21861,66 @@ static void m68k_op_movec_32_cr(void)
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x003:				/* TC */
+			case 0x003:				/* TC (040) */
 				if(CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					REG_DA[(word2 >> 12) & 15] = m68ki_cpu.mmu_040_tc;
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x004:				/* ITT0 */
+			case 0x004:				/* ITT0 (040) */
 				if(CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					REG_DA[(word2 >> 12) & 15] = m68ki_cpu.mmu_040_itt0;
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x005:				/* ITT1 */
+			case 0x005:				/* ITT1 (040) */
 				if(CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					REG_DA[(word2 >> 12) & 15] = m68ki_cpu.mmu_040_itt1;
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x006:				/* DTT0 */
+			case 0x006:				/* DTT0 (040) */
 				if(CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					REG_DA[(word2 >> 12) & 15] = m68ki_cpu.mmu_040_dtt0;
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x007:				/* DTT1 */
+			case 0x007:				/* DTT1 (040) */
 				if(CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					REG_DA[(word2 >> 12) & 15] = m68ki_cpu.mmu_040_dtt1;
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x805:				/* MMUSR */
+			case 0x805:				/* MMUSR (040) */
 				if(CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					REG_DA[(word2 >> 12) & 15] = m68ki_cpu.mmu_040_mmusr;
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x806:				/* URP */
+			case 0x806:				/* URP (040) */
 				if(CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					REG_DA[(word2 >> 12) & 15] = m68ki_cpu.mmu_040_urp;
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x807:				/* SRP */
+			case 0x807:				/* SRP (040) */
 				if(CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					REG_DA[(word2 >> 12) & 15] = m68ki_cpu.mmu_040_srp;
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22013,66 +22016,74 @@ static void m68k_op_movec_32_rc(void)
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x003:			/* TC */
+			case 0x003:			/* TC (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					m68ki_cpu.mmu_040_tc = REG_DA[(word2 >> 12) & 15];
+					if (m68ki_cpu.mmu_040_tc & 0x8000) {
+						m68ki_cpu.pmmu_enabled = 1;
+						xil_printf( "[MMU040] TC=$%04X ENABLE at PC=$%08X\n", m68ki_cpu.mmu_040_tc, REG_PC);
+					} else {
+						m68ki_cpu.pmmu_enabled = 0;
+						xil_printf( "[MMU040] TC=$%04X DISABLE at PC=$%08X\n", m68ki_cpu.mmu_040_tc, REG_PC);
+					}
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x004:			/* ITT0 */
+			case 0x004:			/* ITT0 (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					m68ki_cpu.mmu_040_itt0 = REG_DA[(word2 >> 12) & 15];
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x005:			/* ITT1 */
+			case 0x005:			/* ITT1 (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					m68ki_cpu.mmu_040_itt1 = REG_DA[(word2 >> 12) & 15];
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x006:			/* DTT0 */
+			case 0x006:			/* DTT0 (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					m68ki_cpu.mmu_040_dtt0 = REG_DA[(word2 >> 12) & 15];
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x007:			/* DTT1 */
+			case 0x007:			/* DTT1 (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					m68ki_cpu.mmu_040_dtt1 = REG_DA[(word2 >> 12) & 15];
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x805:			/* MMUSR */
+			case 0x805:			/* MMUSR (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					m68ki_cpu.mmu_040_mmusr = REG_DA[(word2 >> 12) & 15];
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x806:			/* URP */
+			case 0x806:			/* URP (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					m68ki_cpu.mmu_040_urp = REG_DA[(word2 >> 12) & 15];
 					return;
 				}
 				m68ki_exception_illegal();
 				return;
-			case 0x807:			/* SRP */
+			case 0x807:			/* SRP (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					m68ki_cpu.mmu_040_srp = REG_DA[(word2 >> 12) & 15];
+					xil_printf( "[MMU040] SRP=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_srp, REG_PC);
 					return;
 				}
 				m68ki_exception_illegal();
@@ -28145,9 +28156,38 @@ static void m68k_op_pea_32_pcix(void)
 
 static void m68k_op_pflush_32(void)
 {
+	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
+	{
+		/* 68040 PFLUSH/PFLUSHA/PFLUSHN — no-op (no TLB cache to flush) */
+		static int pflush_log = 0;
+		if (pflush_log < 5) { xil_printf( "[MMU040] PFLUSH at PC=$%08X\n", REG_PC); pflush_log++; }
+		return;
+	}
 	if ((CPU_TYPE_IS_EC020_PLUS(CPU_TYPE)) && (HAS_PMMU))
 	{
-		fprintf(stderr,"68040: unhandled PFLUSH\n");
+		xil_printf("68040: unhandled PFLUSH\n");
+		return;
+	}
+	m68ki_exception_1111();
+}
+
+/* 68040 CINV (Cache Invalidate) — no-op for emulator (no cache) */
+static void m68k_op_cinv_32(void)
+{
+	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
+	{
+		static int cinv_log = 0;
+		if (cinv_log < 5) { xil_printf( "[MMU040] CINV $%04X at PC=$%08X\n", REG_IR, REG_PC); cinv_log++; }
+		return;
+	}
+	m68ki_exception_1111();
+}
+
+/* 68040 CPUSH (Cache Push) — no-op for emulator (no cache) */
+static void m68k_op_cpush_32(void)
+{
+	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
+	{
 		return;
 	}
 	m68ki_exception_1111();
@@ -34403,6 +34443,9 @@ static const opcode_handler_struct m68k_opcode_handler_table[] =
 	{m68k_op_cpgen_32            , 0xf1c0, 0xf000, {  0,   0,   4,   4,   0}},
 	{m68k_op_cpscc_32            , 0xf1c0, 0xf040, {  0,   0,   4,   4,   0}},
 	{m68k_op_pmmu_32             , 0xfe00, 0xf000, {  0,   0,   8,   8,   8}},
+	{m68k_op_cinv_32             , 0xff20, 0xf400, {  0,   0,   0,   0,   4}},
+	{m68k_op_cpush_32            , 0xff20, 0xf420, {  0,   0,   0,   0,   4}},
+	{m68k_op_pflush_32           , 0xffe0, 0xf500, {  0,   0,   0,   0,   4}},
 	{m68k_op_bra_8               , 0xff00, 0x6000, { 10,  10,  10,  10,  10}},
 	{m68k_op_bsr_8               , 0xff00, 0x6100, { 18,  18,   7,   7,   7}},
 	{m68k_op_bhi_8               , 0xff00, 0x6200, { 10,  10,   6,   6,   6}},

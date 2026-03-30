@@ -152,32 +152,40 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
         while (*esp_counter > 0 && dma.next < dma.limit) {
             /* Get data from SCSI */
             int avail = next_scsi_get_buffer_remaining();
-            if (avail <= 0) {
-                /* No more data from SCSI side (phase changed to ST) */
+            if (avail <= 0)
                 break;
-            }
 
-            /* Calculate how many bytes we can transfer in this chunk */
+            /* Calculate chunk size — all unsigned to avoid sign issues */
             uint32_t dma_remain = dma.limit - dma.next;
-            int chunk = avail;
-            if ((uint32_t)chunk > dma_remain) chunk = (int)dma_remain;
-            if ((uint32_t)chunk > *esp_counter) chunk = (int)*esp_counter;
+            uint32_t chunk = (uint32_t)avail;
+            if (chunk > dma_remain) chunk = dma_remain;
+            if (chunk > *esp_counter) chunk = *esp_counter;
+            if (chunk == 0) break;
 
             /* Resolve destination address (strip bit 31 for TT mapping) */
             uint32_t phys = dma.next & 0x7FFFFFFF;
-            if (phys >= NEXT_RAM_BASE && phys + chunk <= NEXT_RAM_BASE + NEXT_RAM_SIZE) {
+
+            /* Overflow-safe bounds check: phys in [RAM_BASE, RAM_BASE+RAM_SIZE) */
+            if (phys >= NEXT_RAM_BASE && phys < NEXT_RAM_BASE + NEXT_RAM_SIZE) {
+                uint32_t ram_avail = (NEXT_RAM_BASE + NEXT_RAM_SIZE) - phys;
+                if (chunk > ram_avail) chunk = ram_avail;
                 uint8_t *src = next_scsi_get_buffer_ptr();
                 if (src) {
                     memcpy(&next_ram[phys - NEXT_RAM_BASE], src, chunk);
+                } else {
+                    xil_printf("[DMA] NULL src at phys=$%08X\r\n", phys);
+                    break;
                 }
             } else {
-                xil_printf("[DMA] Write outside RAM: $%08X\r\n", phys);
+                xil_printf("[DMA] Bus error: write outside RAM $%08X\r\n", phys);
+                dma.csr |= DMA_BUSEXC;
+                break;
             }
 
-            next_scsi_consume_bytes(chunk);
+            next_scsi_consume_bytes((int)chunk);
             dma.next += chunk;
             *esp_counter -= chunk;
-            total += chunk;
+            total += (int)chunk;
         }
 
         /* Check for chaining */
@@ -188,8 +196,9 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
             xil_printf("[DMA] Chain: next=$%08X limit=$%08X\r\n", dma.next, dma.limit);
         }
     } else {
-        /* Memory to device (68K RAM → SCSI write) — stub */
+        /* Memory to device (68K RAM → SCSI write) — not implemented */
         xil_printf("[DMA] Mem→SCSI transfer not implemented\r\n");
+        return 0;
     }
 
     /* Signal completion */

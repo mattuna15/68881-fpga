@@ -210,7 +210,14 @@ static void scsi_inquiry(uint8_t *cdb)
 
 static void scsi_read_capacity(void)
 {
-    uint32_t last_lba = (uint32_t)(disk.size / SCSI_BLOCKSIZE) - 1;
+    uint32_t sectors = (uint32_t)(disk.size / SCSI_BLOCKSIZE);
+    if (sectors == 0) {
+        disk.status = STAT_CHECK_COND;
+        disk.sense.code = SC_NOT_READY;
+        disk.phase = SCSI_PHASE_ST;
+        return;
+    }
+    uint32_t last_lba = sectors - 1;
 
     scsi_buf.data[0] = (last_lba >> 24) & 0xFF;
     scsi_buf.data[1] = (last_lba >> 16) & 0xFF;
@@ -232,7 +239,7 @@ static void scsi_read_capacity(void)
 
 static void scsi_request_sense(uint8_t *cdb)
 {
-    int len = scsi_get_count(cdb[0], cdb);
+    int len = scsi_get_transfer_length(cdb[0], cdb);
     if (len <= 0) len = 4;
     if (len > 22)  len = 22;
 
@@ -281,7 +288,7 @@ static void scsi_mode_sense(uint8_t *cdb)
     retbuf[0] = 0x00; /* length (filled later) */
     retbuf[1] = 0x00; /* medium type */
     retbuf[2] = 0x80; /* read-only */
-    retbuf[3] = 0x08; /* block descriptor length */
+    retbuf[3] = dbd ? 0x00 : 0x08; /* block descriptor length (0 when DBD set) */
 
     uint8_t hdr_size = 4;
     if (!dbd) {
@@ -572,6 +579,7 @@ int next_scsi_get_buffer_remaining(void)
 
 void next_scsi_consume_bytes(int n)
 {
+    if (n > scsi_buf.size) n = scsi_buf.size;
     scsi_buf.size -= n;
     if (scsi_buf.size <= 0) {
         scsi_buf.size = 0;

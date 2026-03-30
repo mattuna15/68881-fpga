@@ -233,6 +233,8 @@ uint pmmu_translate_addr_040(uint addr_in)
 	if (mmu040_log_count < 20) {
 		xil_printf( "[MMU040] translate $%08X TC=$%04X SRP=$%08X\n", addr_in, tc, m68ki_cpu.mmu_040_srp);
 		mmu040_log_count++;
+		if (mmu040_log_count == 20)
+			xil_printf("[MMU040] Further translation logging suppressed\n");
 	}
 
 	int supervisor = (m68ki_get_sr() & 0x2000) ? 1 : 0;
@@ -258,16 +260,31 @@ uint pmmu_translate_addr_040(uint addr_in)
 	uint l1_desc = m68k_read_memory_32(root_ptr + l1_idx * 4);
 
 	if ((l1_desc & 3) == 0) {
-		/* Invalid — bus error. For now return addr unchanged to avoid crash. */
+		/* Invalid descriptor — should be bus error.
+		 * TODO: raise bus error exception on m68k CPU.
+		 * For now return identity mapping and log. */
+		static int l1_fault_log = 0;
+		if (l1_fault_log < 10) {
+			xil_printf("[MMU040] L1 FAULT: VA=$%08X root=$%08X idx=%d\r\n",
+			           addr_in, root_ptr, l1_idx);
+			l1_fault_log++;
+		}
 		return addr_in;
 	}
 
 	/* Level 2: Pointer table — bits 24-18 (7 bits, 128 entries) */
-	uint l2_base = l1_desc & 0xFFFFFE00;  /* bits 31-9 */
+	/* L1 descriptor: pointer table address in bits 31-9 (4K) or 31-8 (8K) */
+	uint l2_base = page_8k ? (l1_desc & 0xFFFFFF00) : (l1_desc & 0xFFFFFE00);
 	uint l2_idx = (addr_in >> 18) & 0x7F;
 	uint l2_desc = m68k_read_memory_32(l2_base + l2_idx * 4);
 
 	if ((l2_desc & 3) == 0) {
+		static int l2_fault_log = 0;
+		if (l2_fault_log < 10) {
+			xil_printf("[MMU040] L2 FAULT: VA=$%08X l2_base=$%08X idx=%d\r\n",
+			           addr_in, l2_base, l2_idx);
+			l2_fault_log++;
+		}
 		return addr_in;
 	}
 
@@ -289,6 +306,12 @@ uint pmmu_translate_addr_040(uint addr_in)
 	}
 
 	if ((l3_desc & 3) == 0) {
+		static int l3_fault_log = 0;
+		if (l3_fault_log < 10) {
+			xil_printf("[MMU040] L3 FAULT: VA=$%08X l3_base=$%08X idx=%d\r\n",
+			           addr_in, l3_base, l3_idx);
+			l3_fault_log++;
+		}
 		return addr_in;
 	}
 

@@ -5,12 +5,13 @@
 #include "xil_printf.h"
 
 static void fatalerror(const char *format, ...) {
-      /* Use xil_printf for bare-metal (no stderr).
-       * Print format string directly — xil_printf doesn't support va_list,
-       * so we just print the fixed part and the PC for context. */
-      xil_printf("[FATAL] FPU error at PC=$%08X: ", REG_PC);
-      xil_printf(format);  /* works for literal strings, args won't expand */
-      xil_printf("\r\n");
+      /* Use vsnprintf + xil_printf for bare-metal (no stderr). */
+      char buf[256];
+      va_list ap;
+      va_start(ap, format);
+      vsnprintf(buf, sizeof(buf), format, ap);
+      va_end(ap);
+      xil_printf("[FATAL] %s\r\n", buf);
       for(;;) {}  /* halt */
 }
 

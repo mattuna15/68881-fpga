@@ -2,15 +2,16 @@
 #include <stdio.h>
 #include <stdarg.h>
 #include "m68kcpu.h"
-
-extern void exit(int);
+#include "xil_printf.h"
 
 static void fatalerror(const char *format, ...) {
-      va_list ap;
-      va_start(ap,format);
-      vfprintf(stderr,format,ap);  // JFF: fixed. Was using fprintf and arguments were wrong
-      va_end(ap);
-      exit(1);
+      /* Use xil_printf for bare-metal (no stderr).
+       * Print format string directly — xil_printf doesn't support va_list,
+       * so we just print the fixed part and the PC for context. */
+      xil_printf("[FATAL] FPU error at PC=$%08X: ", REG_PC);
+      xil_printf(format);  /* works for literal strings, args won't expand */
+      xil_printf("\r\n");
+      for(;;) {}  /* halt */
 }
 
 #define FPCC_N			0x08000000

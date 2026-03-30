@@ -65,8 +65,8 @@ extern void emu_instr_hook(unsigned int pc);
 #define M68K_LOG_1010_1111          M68K_OPT_OFF
 #define M68K_LOG_TRAP               M68K_OPT_OFF
 
-/* No PMMU initially (flat memory). Enable if kernel requires MMU. */
-#define M68K_EMULATE_PMMU           M68K_OPT_OFF
+/* Enable PMMU for 68040 MMU (kernel requires it for virtual memory). */
+#define M68K_EMULATE_PMMU           M68K_OPT_ON
 
 /* Use 64-bit integers for speed */
 #define M68K_USE_64_BIT             M68K_OPT_ON

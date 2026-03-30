@@ -24,6 +24,7 @@
 #include "next_rtc.h"
 #include "next_dsp.h"
 #include "next_kms.h"
+#include "next_scsi.h"
 #include "next_video.h"
 #include "text_fb.h"
 #include "dp_video.h"
@@ -178,6 +179,10 @@ static void next_boot(void)
     next_rtc_init();
     next_dsp_init();
     next_kms_init();
+    if (next_scsi_init() == 0)
+        xil_printf("[NEXT] SCSI disk: mounted from SD card\r\n");
+    else
+        xil_printf("[NEXT] SCSI disk: no disk image found\r\n");
     xil_printf("[NEXT] Device stubs: SCR1=%08X (WARP9/040)\r\n",
                SCR1_VALUE(NeXT_WARP9, 0));
 

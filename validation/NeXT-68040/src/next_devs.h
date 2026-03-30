@@ -64,4 +64,8 @@ static inline uint32_t next_io_canon(uint32_t addr)
 /* Get the ROM's mon_global pointer (written to P_MON during boot) */
 uint32_t next_get_mon_global(void);
 
+/* Set/clear interrupt status bits (used by ESP and DMA modules) */
+void next_intr_set(uint32_t bit);
+void next_intr_clear(uint32_t bit);
+
 #endif /* NEXT_DEVS_H */

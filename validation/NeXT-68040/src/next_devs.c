@@ -16,6 +16,8 @@
 #include "next_rtc.h"
 #include "next_dsp.h"
 #include "next_kms.h"
+#include "next_esp.h"
+#include "next_scsi_dma.h"
 #include "xil_printf.h"
 #include <string.h>
 
@@ -121,6 +123,10 @@ void next_devs_init(void)
     memset(dma_csr, 0, sizeof(dma_csr));
     for (int i = 0; i < NUM_DMA_CHANNELS; i++)
         dma_csr[i] = DMACSR_COMPLETE;
+
+    /* ESP (NCR53C90) SCSI controller */
+    next_esp_init();
+    next_scsi_dma_init();
 }
 
 /* ------------------------------------------------------------------ */
@@ -233,6 +239,13 @@ int next_intr_acknowledge(int level)
 }
 
 /* ------------------------------------------------------------------ */
+/* Interrupt set/clear (used by ESP and DMA modules)                    */
+/* ------------------------------------------------------------------ */
+
+void next_intr_set(uint32_t bit)   { intr_status |= bit; }
+void next_intr_clear(uint32_t bit) { intr_status &= ~bit; }
+
+/* ------------------------------------------------------------------ */
 /* I/O read handlers                                                   */
 /* ------------------------------------------------------------------ */
 
@@ -274,6 +287,16 @@ uint8_t next_io_read_8(uint32_t address)
             return 0;
         }
     }
+
+    /* ESP/SCSI registers (byte-wide): 0x02014000-0x0201400F */
+    if (address >= P_SCSI && address < P_SCSI + 0x10)
+        return next_esp_read(address - P_SCSI);
+
+    /* ESP DMA control/status: 0x02014020-0x02014021 */
+    if (address == 0x02014020)
+        return next_esp_dma_ctrl_read();
+    if (address == 0x02014021)
+        return next_esp_dma_status_read();
 
     /* DSP registers (byte-wide) */
     if (address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE)
@@ -357,11 +380,19 @@ uint32_t next_io_read_32(uint32_t address)
     if (address == P_EVENTC)
         return event_counter;
 
+    /* DMA SCSI data registers: 0x02004010-0x0200401F */
+    if (address >= 0x02004010 && address <= 0x0200401C)
+        return next_scsi_dma_reg_read(address);
+
     /* DMA CSRs: return idle + complete */
     {
         int ch = dma_channel_for_addr(address);
-        if (ch >= 0)
+        if (ch >= 0) {
+            /* SCSI channel: use dedicated DMA module */
+            if (ch == 0)
+                return next_scsi_dma_csr_read();
             return dma_csr[ch];
+        }
     }
 
     /* DSP registers (32-bit) */
@@ -413,6 +444,22 @@ void next_io_write_8(uint32_t address, uint8_t value)
         case SCC_CHAN_B_DATA:
             break;  /* channel B: accept silently */
         }
+        return;
+    }
+
+    /* ESP/SCSI registers (byte-wide): 0x02014000-0x0201400F */
+    if (address >= P_SCSI && address < P_SCSI + 0x10) {
+        next_esp_write(address - P_SCSI, value);
+        return;
+    }
+
+    /* ESP DMA control/status: 0x02014020-0x02014021 */
+    if (address == 0x02014020) {
+        next_esp_dma_ctrl_write(value);
+        return;
+    }
+    if (address == 0x02014021) {
+        next_esp_dma_status_write(value);
         return;
     }
 
@@ -488,10 +535,21 @@ void next_io_write_32(uint32_t address, uint32_t value)
         return;
     }
 
+    /* DMA SCSI data registers: 0x02004010-0x0200401F */
+    if (address >= 0x02004010 && address <= 0x0200401C) {
+        next_scsi_dma_reg_write(address, value);
+        return;
+    }
+
     /* DMA CSRs: handle reset + enable commands */
     {
         int ch = dma_channel_for_addr(address);
         if (ch >= 0) {
+            /* SCSI channel: use dedicated DMA module */
+            if (ch == 0) {
+                next_scsi_dma_csr_write(value);
+                return;
+            }
             if (value & DMACSR_RESET)
                 dma_csr[ch] = DMACSR_COMPLETE;
             else if (value & 0x00080000)  /* CLRCOMPLETE */

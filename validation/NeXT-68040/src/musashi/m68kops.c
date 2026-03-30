@@ -23,7 +23,8 @@ static void m68k_op_1111(void)
 
 static void m68k_op_040fpu0_32(void)
 {
-	if(CPU_TYPE_IS_030_PLUS(CPU_TYPE))
+	/* LC040 has no internal FPU — all FP ops trap via F-line */
+	if(CPU_TYPE_IS_030_PLUS(CPU_TYPE) && CPU_TYPE != CPU_TYPE_LC040)
 	{
 		m68040_fpu_op0();
 		return;
@@ -34,7 +35,8 @@ static void m68k_op_040fpu0_32(void)
 
 static void m68k_op_040fpu1_32(void)
 {
-	if(CPU_TYPE_IS_030_PLUS(CPU_TYPE))
+	/* LC040 has no internal FPU — all FP ops trap via F-line */
+	if(CPU_TYPE_IS_030_PLUS(CPU_TYPE) && CPU_TYPE != CPU_TYPE_LC040)
 	{
 		m68040_fpu_op1();
 		return;

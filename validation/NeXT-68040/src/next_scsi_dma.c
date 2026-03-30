@@ -1,0 +1,202 @@
+/*
+ * next_scsi_dma.c
+ * DMA data registers and transfer engine for SCSI channel (channel 0).
+ * Adapted from Previous emulator (previous/src/dma.c).
+ *
+ * Simplified: synchronous transfer, no burst buffer, direct memory access.
+ * Uses 68040 Turbo DMA CSR bit format.
+ */
+
+#include "next_scsi_dma.h"
+#include "next_scsi.h"
+#include "next_memory.h"
+#include "next_hw.h"
+#include "next_devs.h"
+#include "xil_printf.h"
+#include <string.h>
+
+/* ------------------------------------------------------------------ */
+/* Turbo DMA CSR bits (68040 format)                                   */
+/* ------------------------------------------------------------------ */
+/* Read bits (upper byte) */
+#define TDMA_ENABLE         0x01000000
+#define TDMA_SUPDATE        0x02000000
+#define TDMA_COMPLETE       0x08000000
+#define TDMA_BUSEXC         0x10000000
+
+/* Write bits (bits 16-23) */
+#define TDMA_SETENABLE      0x00010000
+#define TDMA_SETSUPDATE     0x00020000
+#define TDMA_DEV2M          0x00040000
+#define TDMA_CLRCOMPLETE    0x00080000
+#define TDMA_RESET          0x00100000
+
+/* ------------------------------------------------------------------ */
+/* DMA channel state                                                   */
+/* ------------------------------------------------------------------ */
+static struct {
+    uint32_t next;      /* current DMA address pointer */
+    uint32_t limit;     /* DMA transfer end address */
+    uint32_t start;     /* chained: next buffer start */
+    uint32_t stop;      /* chained: next buffer limit */
+    uint32_t csr;       /* internal CSR (using 68030-style low bits for convenience) */
+    uint8_t  direction; /* 0 = mem→dev, non-zero = dev→mem */
+} dma;
+
+/* Internal CSR bits (68030-style, for state tracking) */
+#define DMA_ENABLE      0x01
+#define DMA_SUPDATE     0x02
+#define DMA_COMPLETE    0x08
+#define DMA_BUSEXC      0x10
+#define DMA_DEV2M       0x04
+
+/* ------------------------------------------------------------------ */
+/* Init                                                                */
+/* ------------------------------------------------------------------ */
+
+void next_scsi_dma_init(void)
+{
+    memset(&dma, 0, sizeof(dma));
+    dma.csr = DMA_COMPLETE;
+}
+
+/* ------------------------------------------------------------------ */
+/* DMA data register read/write (0x02004010-0x0200401F)                */
+/* ------------------------------------------------------------------ */
+
+uint32_t next_scsi_dma_reg_read(uint32_t addr)
+{
+    uint32_t off = addr & 0x1FFFF; /* mask to I/O segment */
+    switch (off) {
+    case 0x4010: return dma.next;
+    case 0x4014: return dma.limit;
+    case 0x4018: return dma.start;
+    case 0x401C: return dma.stop;
+    default:
+        xil_printf("[DMA] Unknown read at $%08X\r\n", addr);
+        return 0;
+    }
+}
+
+void next_scsi_dma_reg_write(uint32_t addr, uint32_t value)
+{
+    uint32_t off = addr & 0x1FFFF;
+    switch (off) {
+    case 0x4010:
+        dma.next = value;
+        xil_printf("[DMA] next=$%08X\r\n", value);
+        break;
+    case 0x4014:
+        dma.limit = value;
+        xil_printf("[DMA] limit=$%08X\r\n", value);
+        break;
+    case 0x4018:
+        dma.start = value;
+        break;
+    case 0x401C:
+        dma.stop = value;
+        break;
+    default:
+        xil_printf("[DMA] Unknown write $%08X at $%08X\r\n", value, addr);
+        break;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* DMA CSR (Turbo 68040 format) at 0x02000010                         */
+/* ------------------------------------------------------------------ */
+
+uint32_t next_scsi_dma_csr_read(void)
+{
+    /* Convert internal 68030-style CSR to 68040 Turbo format (upper byte) */
+    return (uint32_t)dma.csr << 24;
+}
+
+void next_scsi_dma_csr_write(uint32_t value)
+{
+    xil_printf("[DMA] CSR write=$%08X\r\n", value);
+
+    dma.direction = (value & TDMA_DEV2M) ? DMA_DEV2M : 0;
+
+    if (value & TDMA_RESET) {
+        dma.csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE);
+        xil_printf("[DMA] reset\r\n");
+    }
+    if (value & TDMA_SETSUPDATE) {
+        dma.csr |= DMA_SUPDATE;
+    }
+    if (value & TDMA_SETENABLE) {
+        dma.csr |= DMA_ENABLE;
+    }
+    if (value & TDMA_CLRCOMPLETE) {
+        dma.csr &= ~DMA_COMPLETE;
+        next_intr_clear(I_IPL6_SCSI_DMA);
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* DMA transfer: move data between SCSI buffer and 68K memory          */
+/* ------------------------------------------------------------------ */
+
+int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
+{
+    int total = 0;
+
+    if (!(dma.csr & DMA_ENABLE)) {
+        xil_printf("[DMA] Transfer requested but DMA not enabled\r\n");
+        return 0;
+    }
+
+    if (direction) {
+        /* Device to memory (SCSI read → 68K RAM) */
+        while (*esp_counter > 0 && dma.next < dma.limit) {
+            /* Get data from SCSI */
+            int avail = next_scsi_get_buffer_remaining();
+            if (avail <= 0) {
+                /* No more data from SCSI side (phase changed to ST) */
+                break;
+            }
+
+            /* Calculate how many bytes we can transfer in this chunk */
+            uint32_t dma_remain = dma.limit - dma.next;
+            int chunk = avail;
+            if ((uint32_t)chunk > dma_remain) chunk = (int)dma_remain;
+            if ((uint32_t)chunk > *esp_counter) chunk = (int)*esp_counter;
+
+            /* Resolve destination address (strip bit 31 for TT mapping) */
+            uint32_t phys = dma.next & 0x7FFFFFFF;
+            if (phys >= NEXT_RAM_BASE && phys + chunk <= NEXT_RAM_BASE + NEXT_RAM_SIZE) {
+                uint8_t *src = next_scsi_get_buffer_ptr();
+                if (src) {
+                    memcpy(&next_ram[phys - NEXT_RAM_BASE], src, chunk);
+                }
+            } else {
+                xil_printf("[DMA] Write outside RAM: $%08X\r\n", phys);
+            }
+
+            next_scsi_consume_bytes(chunk);
+            dma.next += chunk;
+            *esp_counter -= chunk;
+            total += chunk;
+        }
+
+        /* Check for chaining */
+        if (dma.next >= dma.limit && (dma.csr & DMA_SUPDATE)) {
+            dma.next = dma.start;
+            dma.limit = dma.stop;
+            dma.csr &= ~DMA_SUPDATE;
+            xil_printf("[DMA] Chain: next=$%08X limit=$%08X\r\n", dma.next, dma.limit);
+        }
+    } else {
+        /* Memory to device (68K RAM → SCSI write) — stub */
+        xil_printf("[DMA] Mem→SCSI transfer not implemented\r\n");
+    }
+
+    /* Signal completion */
+    dma.csr |= DMA_COMPLETE;
+    dma.csr &= ~DMA_ENABLE;
+    next_intr_set(I_IPL6_SCSI_DMA);
+
+    xil_printf("[DMA] Transfer done: %d bytes, next=$%08X\r\n", total, dma.next);
+    return total;
+}

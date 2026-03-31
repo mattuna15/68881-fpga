@@ -223,45 +223,36 @@ static int tt040_match(uint tt, uint addr, int supervisor)
 
 static int mmu040_log_count = 0;
 
-uint pmmu_translate_addr_040(uint addr_in)
+/* ------------------------------------------------------------------ */
+/* TLB — caches page translations to avoid page table walks            */
+/* ------------------------------------------------------------------ */
+
+/* Full-page TLB: caches final VA→PA translation.
+ * Direct-mapped, indexed by virtual page number bits.
+ * Entries include supervisor bit in tag to separate S/U spaces. */
+#define PAGE_TLB_BITS  8
+#define PAGE_TLB_SIZE  (1 << PAGE_TLB_BITS)  /* 256 entries */
+
+static struct {
+	uint32_t tag;    /* (supervisor << 31) | virtual_page_number */
+	uint32_t phys;   /* physical page base address, or 0xFFFFFFFF = identity */
+	uint8_t  valid;
+} page_tlb[PAGE_TLB_SIZE];
+
+void tlb040_flush(void)
 {
-	uint tc = m68ki_cpu.mmu_040_tc;
+	for (int i = 0; i < PAGE_TLB_SIZE; i++)
+		page_tlb[i].valid = 0;
+}
 
-	/* If MMU disabled, return address unchanged */
-	if (!(tc & 0x8000))
-		return addr_in;
-
-	if (mmu040_log_count < 20) {
-		xil_printf( "[MMU040] translate $%08X TC=$%04X SRP=$%08X\n", addr_in, tc, m68ki_cpu.mmu_040_srp);
-		mmu040_log_count++;
-		if (mmu040_log_count == 20)
-			xil_printf("[MMU040] Further translation logging suppressed\n");
-	}
-
-	int supervisor = (m68ki_get_sr() & 0x2000) ? 1 : 0;
-
-	/* Check Transparent Translation registers first */
-	if (tt040_match(m68ki_cpu.mmu_040_dtt0, addr_in, supervisor))
-		return addr_in;
-	if (tt040_match(m68ki_cpu.mmu_040_dtt1, addr_in, supervisor))
-		return addr_in;
-	if (tt040_match(m68ki_cpu.mmu_040_itt0, addr_in, supervisor))
-		return addr_in;
-	if (tt040_match(m68ki_cpu.mmu_040_itt1, addr_in, supervisor))
-		return addr_in;
-
-	/* Select root pointer */
-	uint root_ptr = supervisor ? m68ki_cpu.mmu_040_srp : m68ki_cpu.mmu_040_urp;
-
-	/* Determine page size */
-	int page_8k = (tc & 0x4000) ? 1 : 0;
-
+/* Full page table walk — called on TLB miss */
+static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k)
+{
 	/* Level 1: Root table — bits 31-25 (7 bits, 128 entries) */
 	uint l1_idx = (addr_in >> 25) & 0x7F;
 	uint l1_desc = next_phys_read_32(root_ptr + l1_idx * 4);
 
 	if ((l1_desc & 3) == 0) {
-		/* Invalid descriptor — identity map as fallback */
 		static int l1_fault_log = 0;
 		if (l1_fault_log < 10) {
 			xil_printf("[MMU040] L1 FAULT: VA=$%08X root=$%08X idx=%d desc=$%08X\r\n",
@@ -272,7 +263,6 @@ uint pmmu_translate_addr_040(uint addr_in)
 	}
 
 	/* Level 2: Pointer table — bits 24-18 (7 bits, 128 entries) */
-	/* L1 descriptor: pointer table address in bits 31-9 (4K) or 31-8 (8K) */
 	uint l2_base = l1_desc & 0xFFFFFE00;
 	uint l2_idx = (addr_in >> 18) & 0x7F;
 	uint l2_desc = next_phys_read_32(l2_base + l2_idx * 4);
@@ -291,17 +281,15 @@ uint pmmu_translate_addr_040(uint addr_in)
 	uint l3_base, l3_idx, l3_desc, page_addr, page_offset;
 
 	if (page_8k) {
-		/* 8K pages: bits 17-13 (5 bits, 32 entries) */
-		l3_base = l2_desc & 0xFFFFFF80;  /* bits 31-7 */
+		l3_base = l2_desc & 0xFFFFFF80;
 		l3_idx = (addr_in >> 13) & 0x1F;
 		l3_desc = next_phys_read_32(l3_base + l3_idx * 4);
-		page_offset = addr_in & 0x1FFF;  /* 13 bits */
+		page_offset = addr_in & 0x1FFF;
 	} else {
-		/* 4K pages: bits 17-12 (6 bits, 64 entries) */
-		l3_base = l2_desc & 0xFFFFFF00;  /* bits 31-8 */
+		l3_base = l2_desc & 0xFFFFFF00;
 		l3_idx = (addr_in >> 12) & 0x3F;
 		l3_desc = next_phys_read_32(l3_base + l3_idx * 4);
-		page_offset = addr_in & 0xFFF;   /* 12 bits */
+		page_offset = addr_in & 0xFFF;
 	}
 
 	if ((l3_desc & 3) == 0) {
@@ -314,14 +302,73 @@ uint pmmu_translate_addr_040(uint addr_in)
 		return addr_in;
 	}
 
-	/* Extract physical page address */
-	if (page_8k) {
+	if (page_8k)
 		page_addr = l3_desc & 0xFFFFE000;
-	} else {
+	else
 		page_addr = l3_desc & 0xFFFFF000;
-	}
 
 	return page_addr | page_offset;
+}
+
+uint pmmu_translate_addr_040(uint addr_in)
+{
+	uint tc = m68ki_cpu.mmu_040_tc;
+
+	/* If MMU disabled, return address unchanged */
+	if (!(tc & 0x8000))
+		return addr_in;
+
+	if (mmu040_log_count < 20) {
+		xil_printf("[MMU040] translate $%08X TC=$%04X SRP=$%08X\n",
+		           addr_in, tc, m68ki_cpu.mmu_040_srp);
+		mmu040_log_count++;
+		if (mmu040_log_count == 20)
+			xil_printf("[MMU040] Further translation logging suppressed\n");
+	}
+
+	int supervisor = (m68ki_get_sr() & 0x2000) ? 1 : 0;
+	int page_8k = (tc & 0x4000) ? 1 : 0;
+	uint page_shift = page_8k ? 13 : 12;
+	uint page_mask = (1u << page_shift) - 1;
+
+	/* Check Transparent Translation registers first */
+	if (tt040_match(m68ki_cpu.mmu_040_dtt0, addr_in, supervisor))
+		return addr_in;
+	if (tt040_match(m68ki_cpu.mmu_040_dtt1, addr_in, supervisor))
+		return addr_in;
+	if (tt040_match(m68ki_cpu.mmu_040_itt0, addr_in, supervisor))
+		return addr_in;
+	if (tt040_match(m68ki_cpu.mmu_040_itt1, addr_in, supervisor))
+		return addr_in;
+
+	/* TLB lookup — check cached translation first */
+	uint vpn = addr_in >> page_shift;
+	uint tag = (supervisor ? 0x80000000 : 0) | vpn;
+	uint tlb_idx = vpn & (PAGE_TLB_SIZE - 1);
+
+	if (page_tlb[tlb_idx].valid && page_tlb[tlb_idx].tag == tag) {
+		/* TLB hit */
+		uint phys = page_tlb[tlb_idx].phys;
+		if (phys == 0xFFFFFFFF)
+			return addr_in;  /* cached identity-map (L1/L2/L3 fault) */
+		return phys | (addr_in & page_mask);
+	}
+
+	/* TLB miss — full page table walk */
+	uint root_ptr = supervisor ? m68ki_cpu.mmu_040_srp : m68ki_cpu.mmu_040_urp;
+	uint result = pmmu_walk_040(addr_in, root_ptr, page_8k);
+
+	/* Fill TLB */
+	page_tlb[tlb_idx].tag = tag;
+	if (result == addr_in) {
+		/* Identity-mapped (fault) — cache as special marker */
+		page_tlb[tlb_idx].phys = 0xFFFFFFFF;
+	} else {
+		page_tlb[tlb_idx].phys = result & ~page_mask;
+	}
+	page_tlb[tlb_idx].valid = 1;
+
+	return result;
 }
 
 /* Dispatch to correct MMU translation based on CPU type.

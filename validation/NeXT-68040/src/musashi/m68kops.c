@@ -22019,6 +22019,7 @@ static void m68k_op_movec_32_rc(void)
 			case 0x003:			/* TC (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
+					{ extern void tlb040_flush(void); tlb040_flush(); }
 					m68ki_cpu.mmu_040_tc = REG_DA[(word2 >> 12) & 15];
 					if (m68ki_cpu.mmu_040_tc & 0x8000) {
 						m68ki_cpu.pmmu_enabled = 1;
@@ -22078,6 +22079,7 @@ static void m68k_op_movec_32_rc(void)
 			case 0x806:			/* URP (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
+					{ extern void tlb040_flush(void); tlb040_flush(); }
 					m68ki_cpu.mmu_040_urp = REG_DA[(word2 >> 12) & 15];
 					return;
 				}
@@ -22086,6 +22088,7 @@ static void m68k_op_movec_32_rc(void)
 			case 0x807:			/* SRP (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
+					{ extern void tlb040_flush(void); tlb040_flush(); }
 					m68ki_cpu.mmu_040_srp = REG_DA[(word2 >> 12) & 15];
 					xil_printf( "[MMU040] SRP=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_srp, REG_PC);
 					return;
@@ -28162,7 +28165,9 @@ static void m68k_op_pflush_32(void)
 {
 	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 	{
-		/* 68040 PFLUSH/PFLUSHA/PFLUSHN — no-op (no TLB cache to flush) */
+		/* 68040 PFLUSH/PFLUSHA/PFLUSHN — flush TLB */
+		extern void tlb040_flush(void);
+		tlb040_flush();
 		static int pflush_log = 0;
 		if (pflush_log < 5) { xil_printf( "[MMU040] PFLUSH at PC=$%08X\n", REG_PC); pflush_log++; }
 		return;

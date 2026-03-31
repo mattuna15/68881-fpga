@@ -41,6 +41,14 @@ static struct {
     uint32_t stop;      /* chained: next buffer limit */
     uint32_t csr;       /* internal CSR (using 68030-style low bits for convenience) */
     uint8_t  direction; /* 0 = mem→dev, non-zero = dev→mem */
+    /* Saved/scratchpad registers (0x02004000-0x0200400F) — the kernel's
+     * DMA_W macro writes these and retries until readback matches. */
+    uint32_t saved_next;
+    uint32_t saved_limit;
+    uint32_t saved_start;
+    uint32_t saved_stop;
+    /* Init buffer register (0x02004210) — also read/write scratchpad */
+    uint32_t initbuf;
 } dma;
 
 /* Internal CSR bits (68030-style, for state tracking) */
@@ -68,12 +76,19 @@ uint32_t next_scsi_dma_reg_read(uint32_t addr)
 {
     uint32_t off = addr & 0x1FFFF; /* mask to I/O segment */
     switch (off) {
+    /* Saved/scratchpad registers (kernel DMA_W retries until readback matches) */
+    case 0x4000: return dma.saved_next;
+    case 0x4004: return dma.saved_limit;
+    case 0x4008: return dma.saved_start;
+    case 0x400C: return dma.saved_stop;
+    /* Active DMA registers */
     case 0x4010: return dma.next;
     case 0x4014: return dma.limit;
     case 0x4018: return dma.start;
     case 0x401C: return dma.stop;
+    /* DMA Init register (read/write scratchpad) */
+    case 0x4210: return dma.initbuf;
     default:
-        xil_printf("[DMA] Unknown read at $%08X\r\n", addr);
         return 0;
     }
 }
@@ -82,6 +97,12 @@ void next_scsi_dma_reg_write(uint32_t addr, uint32_t value)
 {
     uint32_t off = addr & 0x1FFFF;
     switch (off) {
+    /* Saved/scratchpad registers */
+    case 0x4000: dma.saved_next = value; break;
+    case 0x4004: dma.saved_limit = value; break;
+    case 0x4008: dma.saved_start = value; break;
+    case 0x400C: dma.saved_stop = value; break;
+    /* Active DMA registers */
     case 0x4010:
         dma.next = value;
         xil_printf("[DMA] next=$%08X\r\n", value);
@@ -96,8 +117,12 @@ void next_scsi_dma_reg_write(uint32_t addr, uint32_t value)
     case 0x401C:
         dma.stop = value;
         break;
+    /* DMA Init register — writing sets dma.next AND initializes buffer */
+    case 0x4210:
+        dma.next = value;
+        dma.initbuf = value;
+        break;
     default:
-        xil_printf("[DMA] Unknown write $%08X at $%08X\r\n", value, addr);
         break;
     }
 }
@@ -120,6 +145,7 @@ void next_scsi_dma_csr_write(uint32_t value)
 
     if (value & TDMA_RESET) {
         dma.csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE);
+        next_intr_clear(I_IPL6_SCSI_DMA);
         xil_printf("[DMA] reset\r\n");
     }
     if (value & TDMA_SETSUPDATE) {

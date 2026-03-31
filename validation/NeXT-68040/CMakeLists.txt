@@ -11,6 +11,12 @@ set(LINKER_SCRIPT "${CMAKE_CURRENT_SOURCE_DIR}/src/lscript.ld")
 
 # Compile flags: QEMU_MODE + debug
 add_definitions(-DQEMU_MODE -DNEXT_IO_DEBUG)
+# Add -DTEST_ROM to use the timer test ROM instead of the NeXT ROM
+# cmake -DTEST_ROM=ON ...
+option(TEST_ROM "Use timer/interrupt test ROM instead of NeXT ROM" OFF)
+if(TEST_ROM)
+    add_definitions(-DTEST_ROM)
+endif()
 add_compile_options(-Wall -O0 -g3)
 include_directories(${BSP_INCLUDE})
 
@@ -33,6 +39,13 @@ set(SOURCES
     src/dp_video.c
     src/gfx_fb.c
     src/platform.c
+    src/next_esp.c
+    src/next_scsi.c
+    src/next_scsi_dma.c
+    src/fatfs/ff.c
+    src/fatfs/ffsystem.c
+    src/fatfs/ffunicode.c
+    src/fatfs/diskio.c
     src/musashi/m68kcpu.c
     src/musashi/m68kops.c
     src/musashi/softfloat/softfloat.c
@@ -43,6 +56,7 @@ add_library(next68040 STATIC ${SOURCES})
 target_include_directories(next68040 PUBLIC
     ${CMAKE_CURRENT_SOURCE_DIR}/src
     ${CMAKE_CURRENT_SOURCE_DIR}/src/musashi
+    ${CMAKE_CURRENT_SOURCE_DIR}/src/fatfs
     ${BSP_INCLUDE}
 )
 

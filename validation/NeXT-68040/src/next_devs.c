@@ -19,6 +19,7 @@
 #include "next_esp.h"
 #include "next_scsi_dma.h"
 #include "xil_printf.h"
+#include "xiltimer.h"
 #include <string.h>
 
 /* DSP register block at P_DSP (0x02008000 canonical).
@@ -51,15 +52,44 @@ static volatile int scc_rx_head, scc_rx_tail;
 static uint8_t scc_wr_reg_ptr;  /* WR register pointer (set by ctrl write) */
 
 /* ------------------------------------------------------------------ */
-/* Timer                                                               */
+/* Hardclock timer (matches Previous's sysReg.c model)                 */
 /* ------------------------------------------------------------------ */
-static uint16_t timer_counter;
-static uint8_t  timer_csr;
-static uint32_t event_counter;      /* microsecond counter (base, updated per tick) */
+static uint8_t  hardclock0;         /* staging high byte (written at P_TIMER)   */
+static uint8_t  hardclock1;         /* staging low byte  (written at P_TIMER+1) */
+static uint8_t  hardclock_csr;      /* CSR: bit 7=ENABLE, bit 6=LATCH          */
+static int      latch_hardclock;    /* latched period in microseconds           */
+static int      hardclock_accum;    /* accumulated microseconds toward next IRQ */
 
-/* Accumulated fractional cycles for timer (1 MHz from 25 MHz CPU) */
+/* Accumulated fractional cycles for hardclock (1 MHz from 25 MHz CPU) */
 static int timer_accum;
 #define TIMER_PRESCALE  25  /* 25 MHz / 25 = 1 MHz timer tick */
+
+#define HARDCLOCK_ENABLE 0x80
+#define HARDCLOCK_LATCH  0x40
+
+/* Event counter — real-time microseconds via ARM hardware timer.
+ * Like Previous's host_time_us(), this advances continuously
+ * regardless of emulation batch boundaries. */
+static XTime eventc_epoch;          /* ARM timer value at emulator start        */
+static uint32_t event_latch;        /* snapshot taken when eventc_latch is read */
+
+static uint32_t host_time_us(void)
+{
+    XTime now;
+    XTime_GetTime(&now);
+    /* COUNTS_PER_SECOND = 33333000, so divide by ~33.333 for microseconds */
+    return (uint32_t)((now - eventc_epoch) / (COUNTS_PER_SECOND / 1000000));
+}
+
+/* ------------------------------------------------------------------ */
+/* DMA register scratchpad — generic read/write backing for all DMA    */
+/* channel registers (0x02004000-0x020042FF).  The kernel's DMA_W      */
+/* macro retries writes until readback matches, so all DMA addresses   */
+/* must be read/write.  SCSI channel (0x0200400x-0x0200421x) has       */
+/* dedicated handling; all others use this scratchpad.                  */
+/* ------------------------------------------------------------------ */
+#define DMA_SCRATCH_SIZE  0x400  /* covers 0x02004000-0x020043FF */
+static uint32_t dma_scratch[DMA_SCRATCH_SIZE / 4];
 
 /* ------------------------------------------------------------------ */
 /* DMA CSR shadow (per-channel, just tracks enable/complete)           */
@@ -113,11 +143,17 @@ void next_devs_init(void)
     scc_rx_head = scc_rx_tail = 0;
     scc_wr_reg_ptr = 0;
 
-    /* Timer */
-    timer_counter = 0;
-    timer_csr = 0;
+    /* Hardclock timer */
+    hardclock0 = 0;
+    hardclock1 = 0;
+    hardclock_csr = 0;
+    latch_hardclock = 0;
+    hardclock_accum = 0;
     timer_accum = 0;
-    event_counter = 0;
+
+    /* Event counter: capture ARM timer epoch */
+    XTime_GetTime(&eventc_epoch);
+    event_latch = 0;
 
     /* DMA: all channels idle + complete */
     memset(dma_csr, 0, sizeof(dma_csr));
@@ -168,25 +204,24 @@ uint8_t next_scc_rx_pop(void)
 
 int next_timer_tick(int cycles)
 {
-    /* Advance event counter (microseconds at 25 MHz) */
-    event_counter += cycles / 25;
+    /* Convert CPU cycles to microseconds (25 MHz → 1 MHz) */
+    timer_accum += cycles;
+    int usecs = timer_accum / TIMER_PRESCALE;
+    timer_accum %= TIMER_PRESCALE;
 
-    if (!(timer_csr & TIMER_ENABLE))
+    if (usecs == 0)
         return 0;
 
-    timer_accum += cycles;
-    int fired = 0;
-    while (timer_accum >= TIMER_PRESCALE) {
-        timer_accum -= TIMER_PRESCALE;
-        if (timer_counter == 0) {
-            timer_counter = TIMER_MAX;
-            fired = 1;
+    /* Periodic hardclock interrupt */
+    if ((hardclock_csr & HARDCLOCK_ENABLE) && latch_hardclock > 0) {
+        hardclock_accum += usecs;
+        if (hardclock_accum >= latch_hardclock) {
+            hardclock_accum %= latch_hardclock;
             intr_status |= I_IPL6_TIMER;
-        } else {
-            timer_counter--;
+            return 1;
         }
     }
-    return fired;
+    return 0;
 }
 
 /* ------------------------------------------------------------------ */
@@ -244,6 +279,8 @@ int next_intr_acknowledge(int level)
 
 void next_intr_set(uint32_t bit)   { intr_status |= bit; }
 void next_intr_clear(uint32_t bit) { intr_status &= ~bit; }
+uint32_t next_intr_get_status(void) { return intr_status; }
+uint32_t next_intr_get_mask(void) { return intr_mask; }
 
 /* ------------------------------------------------------------------ */
 /* I/O read handlers                                                   */
@@ -306,11 +343,32 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == P_BRIGHTNESS)
         return 0x3D;  /* max brightness */
 
-    /* Event counter (byte reads, big-endian) */
-    if (address >= P_EVENTC && address < P_EVENTC + 4) {
-        int byte_off = address - P_EVENTC;
-        return (event_counter >> (8 * (3 - byte_off))) & 0xFF;
+    /* Hardclock timer byte reads */
+    if (address == P_TIMER)
+        return hardclock0;
+    if (address == P_TIMER + 1)
+        return hardclock1;
+    if (address == P_TIMER_CSR) {
+        /* Reading CSR clears timer interrupt (kernel does this in us_timer_int) */
+        uint8_t val = hardclock_csr;
+        intr_status &= ~I_IPL6_TIMER;
+        return val;
     }
+
+    /* Event counter (byte reads): reading byte 0 latches the counter.
+     * Kernel reads: latch=byte0, then (byte1<<16)|(byte2<<8)|byte3.
+     * Previous stores as big-endian 32-bit with 20-bit value. */
+    if (address == P_EVENTC) {
+        /* Latch current event counter from ARM hardware timer */
+        event_latch = host_time_us() & 0xFFFFF;
+        return 0;  /* byte 0 is just the latch trigger, top bits always 0 */
+    }
+    if (address == P_EVENTC + 1)
+        return (event_latch >> 16) & 0x0F;  /* eventc_h: bits 19-16 */
+    if (address == P_EVENTC + 2)
+        return (event_latch >> 8) & 0xFF;   /* eventc_m: bits 15-8 */
+    if (address == P_EVENTC + 3)
+        return event_latch & 0xFF;           /* eventc_l: bits 7-0 */
 
     /* SCR1 (byte-level access) */
     if (address >= P_SCR1 && address < P_SCR1 + 4) {
@@ -331,9 +389,9 @@ uint16_t next_io_read_16(uint32_t address)
 {
     address = next_io_canon(address);
 
-    /* Timer counter (16-bit) */
+    /* Hardclock timer (16-bit read returns latched period) */
     if (address == P_TIMER)
-        return timer_counter;
+        return (uint16_t)latch_hardclock;
 
     /* SCC: decompose to byte reads */
     if (address >= P_SCC && address < P_SCC + 4)
@@ -376,13 +434,19 @@ uint32_t next_io_read_32(uint32_t address)
     if (address == P_SID)
         return 0;
 
-    /* Event counter (microseconds) */
+    /* Event counter (microseconds, 20-bit) — 32-bit read latches + returns */
     if (address == P_EVENTC)
-        return event_counter;
+        return host_time_us() & 0xFFFFF;
 
-    /* DMA SCSI data registers: 0x02004010-0x0200401F */
-    if (address >= 0x02004010 && address <= 0x0200401C)
-        return next_scsi_dma_reg_read(address);
+    /* DMA registers: 0x02004000-0x020043FF — all channels */
+    if (address >= 0x02004000 && address < 0x02004400) {
+        uint32_t off = address & 0x3FF;
+        /* SCSI channel: dedicated handler for active regs + init */
+        if (off <= 0x01C || off == 0x210)
+            return next_scsi_dma_reg_read(address);
+        /* All other channels: generic scratchpad */
+        return dma_scratch[off >> 2];
+    }
 
     /* DMA CSRs: return idle + complete */
     {
@@ -473,12 +537,27 @@ void next_io_write_8(uint32_t address, uint8_t value)
     if (address == P_BRIGHTNESS)
         return;
 
-    /* Timer CSR (byte-wide) */
-    if (address == P_TIMER_CSR || address == (P_TIMER_CSR + 1)) {
-        timer_csr = value;
-        if (value & TIMER_UPDATE) {
-            /* Latch → counter update: no-op in emulation */
+    /* Hardclock timer byte writes */
+    if (address == P_TIMER) {
+        hardclock0 = value;
+        return;
+    }
+    if (address == P_TIMER + 1) {
+        hardclock1 = value;
+        return;
+    }
+    if (address == P_TIMER_CSR) {
+        hardclock_csr = value;
+        if (hardclock_csr & HARDCLOCK_LATCH) {
+            hardclock_csr &= ~HARDCLOCK_LATCH;
+            latch_hardclock = (hardclock0 << 8) | hardclock1;
+            hardclock_accum = 0;
         }
+        if ((hardclock_csr & HARDCLOCK_ENABLE) && latch_hardclock > 0) {
+            xil_printf("[TIMER] enable periodic IRQ every %d us\r\n", latch_hardclock);
+        }
+        /* Writing CSR clears timer interrupt */
+        intr_status &= ~I_IPL6_TIMER;
         return;
     }
 
@@ -491,9 +570,10 @@ void next_io_write_16(uint32_t address, uint16_t value)
 {
     address = next_io_canon(address);
 
-    /* Timer counter (16-bit) */
+    /* Hardclock timer (16-bit write: high/low bytes) */
     if (address == P_TIMER) {
-        timer_counter = value;
+        hardclock0 = (value >> 8) & 0xFF;
+        hardclock1 = value & 0xFF;
         return;
     }
 
@@ -535,8 +615,15 @@ void next_io_write_32(uint32_t address, uint32_t value)
         return;
     }
 
-    /* DMA SCSI data registers: 0x02004010-0x0200401F */
-    if (address >= 0x02004010 && address <= 0x0200401C) {
+    /* DMA registers: 0x02004000-0x020043FF — all channels */
+    if (address >= 0x02004000 && address < 0x02004400) {
+        uint32_t off = address & 0x3FF;
+        /* Non-SCSI channels: generic scratchpad */
+        if (off > 0x01C && off != 0x210) {
+            dma_scratch[off >> 2] = value;
+            return;
+        }
+        /* SCSI channel: dedicated handler */
         next_scsi_dma_reg_write(address, value);
         return;
     }
@@ -572,7 +659,8 @@ void next_io_write_32(uint32_t address, uint32_t value)
 
     /* Timer CSR via 32-bit write */
     if (address == P_TIMER_CSR) {
-        timer_csr = (value >> 24) & 0xFF;
+        /* Treat as byte write of high byte */
+        next_io_write_8(P_TIMER_CSR, (value >> 24) & 0xFF);
         return;
     }
 

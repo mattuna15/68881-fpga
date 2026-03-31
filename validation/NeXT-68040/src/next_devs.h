@@ -68,4 +68,9 @@ uint32_t next_get_mon_global(void);
 void next_intr_set(uint32_t bit);
 void next_intr_clear(uint32_t bit);
 
+/* Debug accessors for interrupt state */
+uint32_t next_intr_get_status(void);
+uint32_t next_intr_get_mask(void);
+
+
 #endif /* NEXT_DEVS_H */

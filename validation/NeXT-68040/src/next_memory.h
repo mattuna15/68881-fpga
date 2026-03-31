@@ -62,6 +62,27 @@ void         m68k_write_memory_8(unsigned int address, unsigned int value);
 void         m68k_write_memory_16(unsigned int address, unsigned int value);
 void         m68k_write_memory_32(unsigned int address, unsigned int value);
 
+/* Physical memory read — bypasses MMU translation.
+ * Used by the 68040 page table walker to read descriptors. */
+static inline uint32_t next_phys_read_32(uint32_t addr)
+{
+    addr &= 0x7FFFFFFF;  /* strip TT bit 31 */
+    if (addr >= NEXT_RAM_BASE && addr < NEXT_RAM_BASE + NEXT_RAM_SIZE) {
+        uint32_t off = addr - NEXT_RAM_BASE;
+        return ((uint32_t)next_ram[off] << 24) |
+               ((uint32_t)next_ram[off+1] << 16) |
+               ((uint32_t)next_ram[off+2] << 8) |
+                (uint32_t)next_ram[off+3];
+    }
+    if (addr < NEXT_ROM_SIZE) {
+        return ((uint32_t)next_rom[addr] << 24) |
+               ((uint32_t)next_rom[addr+1] << 16) |
+               ((uint32_t)next_rom[addr+2] << 8) |
+                (uint32_t)next_rom[addr+3];
+    }
+    return 0;
+}
+
 /* VRAM dirty tracking for display refresh */
 int  next_vram_is_dirty(void);
 void next_vram_mark_clean(void);

@@ -8,6 +8,7 @@
 */
 
 #include "xil_printf.h"
+#include "next_memory.h"
 
 /*
 	pmmu_translate_addr: perform 68851/68030-style PMMU address translation
@@ -257,16 +258,14 @@ uint pmmu_translate_addr_040(uint addr_in)
 
 	/* Level 1: Root table — bits 31-25 (7 bits, 128 entries) */
 	uint l1_idx = (addr_in >> 25) & 0x7F;
-	uint l1_desc = m68k_read_memory_32(root_ptr + l1_idx * 4);
+	uint l1_desc = next_phys_read_32(root_ptr + l1_idx * 4);
 
 	if ((l1_desc & 3) == 0) {
-		/* Invalid descriptor — should be bus error.
-		 * TODO: raise bus error exception on m68k CPU.
-		 * For now return identity mapping and log. */
+		/* Invalid descriptor — identity map as fallback */
 		static int l1_fault_log = 0;
 		if (l1_fault_log < 10) {
-			xil_printf("[MMU040] L1 FAULT: VA=$%08X root=$%08X idx=%d\r\n",
-			           addr_in, root_ptr, l1_idx);
+			xil_printf("[MMU040] L1 FAULT: VA=$%08X root=$%08X idx=%d desc=$%08X\r\n",
+			           addr_in, root_ptr, l1_idx, l1_desc);
 			l1_fault_log++;
 		}
 		return addr_in;
@@ -274,9 +273,9 @@ uint pmmu_translate_addr_040(uint addr_in)
 
 	/* Level 2: Pointer table — bits 24-18 (7 bits, 128 entries) */
 	/* L1 descriptor: pointer table address in bits 31-9 (4K) or 31-8 (8K) */
-	uint l2_base = page_8k ? (l1_desc & 0xFFFFFF00) : (l1_desc & 0xFFFFFE00);
+	uint l2_base = l1_desc & 0xFFFFFE00;
 	uint l2_idx = (addr_in >> 18) & 0x7F;
-	uint l2_desc = m68k_read_memory_32(l2_base + l2_idx * 4);
+	uint l2_desc = next_phys_read_32(l2_base + l2_idx * 4);
 
 	if ((l2_desc & 3) == 0) {
 		static int l2_fault_log = 0;
@@ -295,13 +294,13 @@ uint pmmu_translate_addr_040(uint addr_in)
 		/* 8K pages: bits 17-13 (5 bits, 32 entries) */
 		l3_base = l2_desc & 0xFFFFFF80;  /* bits 31-7 */
 		l3_idx = (addr_in >> 13) & 0x1F;
-		l3_desc = m68k_read_memory_32(l3_base + l3_idx * 4);
+		l3_desc = next_phys_read_32(l3_base + l3_idx * 4);
 		page_offset = addr_in & 0x1FFF;  /* 13 bits */
 	} else {
 		/* 4K pages: bits 17-12 (6 bits, 64 entries) */
 		l3_base = l2_desc & 0xFFFFFF00;  /* bits 31-8 */
 		l3_idx = (addr_in >> 12) & 0x3F;
-		l3_desc = m68k_read_memory_32(l3_base + l3_idx * 4);
+		l3_desc = next_phys_read_32(l3_base + l3_idx * 4);
 		page_offset = addr_in & 0xFFF;   /* 12 bits */
 	}
 

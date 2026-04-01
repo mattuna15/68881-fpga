@@ -42,6 +42,7 @@ set(SOURCES
     src/next_esp.c
     src/next_scsi.c
     src/next_scsi_dma.c
+    src/render_core1.c
     src/fatfs/ff.c
     src/fatfs/ffsystem.c
     src/fatfs/ffunicode.c

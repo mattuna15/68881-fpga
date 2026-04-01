@@ -32,6 +32,7 @@
 #include "next_video.h"
 #include "text_fb.h"
 #include "dp_video.h"
+#include "render_core1.h"
 
 /* Number of M68K instructions to execute per main-loop tick */
 #define EMU_CYCLES_PER_TICK  10000
@@ -253,6 +254,9 @@ static void next_boot(void)
         int status = dp_video_init(pixel_buf);
         if (status == 0) dp_ok = 1;
     }
+
+    /* Start core 1 for display rendering (non-blocking) */
+    render_core1_start(pixel_buf, dp_ok);
 #endif
 
     /* Initialise Musashi as 68LC040 (68040 without internal FPU) */
@@ -307,13 +311,16 @@ static void next_boot(void)
                     xil_printf("[VRAM] zeros=%d FF=%d AA=%d other=%d\r\n",
                                zeros, ffs, aas, other);
                     /* Force one render + refresh */
-                    next_video_render();
+                    /* Force render (use core 1 if available) */
 #ifndef QEMU_MODE
-                    {
+                    if (render_core1_is_active()) {
+                        render_core1_request(1);
+                    } else {
+                        next_video_render();
                         UINTPTR fs = (UINTPTR)pixel_buf + (124 * SCREEN_W * 4);
                         Xil_DCacheFlushRange(fs, 832 * SCREEN_W * 4);
+                        if (dp_ok) dp_video_refresh();
                     }
-                    if (dp_ok) dp_video_refresh();
 #endif
                     xil_printf("[VRAM] Forced render complete\r\n");
 
@@ -355,44 +362,48 @@ static void next_boot(void)
         }
 #endif
 
-        /* Refresh display: once NeXT VRAM has content, use it exclusively.
-         * Before that, fall back to text_fb for boot messages. */
+        /* Request display refresh on core 1 (non-blocking).
+         * Core 1 handles rendering + cache flush + DP refresh. */
         {
             static int next_vram_active = 0;
-            int need_refresh = 0;
+            static int refresh_count = 0;
 
             if (next_vram_is_dirty()) {
-                static int vram_refresh_count = 0;
                 if (!next_vram_active) {
                     xil_printf("[VIDEO] NeXT VRAM active, stride=%d bytes/line\r\n",
                                NEXT_VIDEO_NBPL);
+                    next_vram_active = 1;
                 }
-                next_vram_active = 1;
                 next_vram_mark_clean();
-                /* Throttle: render every 50 ticks */
-                if (++vram_refresh_count >= 50) {
-                    vram_refresh_count = 0;
-                    next_video_render();
-                    need_refresh = 1;
-                }
-            } else if (!next_vram_active && text_fb_is_dirty()) {
-                text_fb_render();
-                text_fb_mark_clean();
-                need_refresh = 1;
-            }
-
+                if (++refresh_count >= 50) {
+                    refresh_count = 0;
 #ifndef QEMU_MODE
-            if (need_refresh) {
-                /* Flush only the NeXT display area, not the full 8MB buffer.
-                 * NeXT display: 1120×832 centered at (400,124) in 1920×1080.
-                 * Flush from row 124 to row 956, each row is 1920×4 bytes. */
-                UINTPTR flush_start = (UINTPTR)pixel_buf + (124 * SCREEN_W * 4);
-                UINTPTR flush_size = 832 * SCREEN_W * 4;  /* ~6.4MB vs 8MB */
-                Xil_DCacheFlushRange(flush_start, flush_size);
-                if (dp_ok)
-                    dp_video_refresh();
-            }
+                    if (render_core1_is_active()) {
+                        render_core1_request(1);  /* 1 = next_vram mode */
+                    } else {
+                        /* Fallback: render on core 0 if core 1 didn't start */
+                        next_video_render();
+                        Xil_DCacheFlushRange(
+                            (UINTPTR)pixel_buf + (124 * SCREEN_W * 4),
+                            832 * SCREEN_W * 4);
+                        if (dp_ok) dp_video_refresh();
+                    }
 #endif
+                }
+            } else if (!next_vram_active) {
+#ifndef QEMU_MODE
+                if (render_core1_is_active()) {
+                    render_core1_request(0);  /* 0 = text_fb mode */
+                } else if (text_fb_is_dirty()) {
+                    text_fb_render();
+                    text_fb_mark_clean();
+                    Xil_DCacheFlushRange(
+                        (UINTPTR)pixel_buf + (124 * SCREEN_W * 4),
+                        832 * SCREEN_W * 4);
+                    if (dp_ok) dp_video_refresh();
+                }
+#endif
+            }
         }
 
         /* Feed ARM UART RX into SCC RX buffer */

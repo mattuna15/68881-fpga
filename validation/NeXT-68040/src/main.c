@@ -393,13 +393,14 @@ static void next_boot(void)
             } else if (!next_vram_active) {
 #ifndef QEMU_MODE
                 if (render_core1_is_active()) {
-                    render_core1_request(0);  /* 0 = text_fb mode */
+                    if (text_fb_is_dirty())
+                        render_core1_request(0);  /* 0 = text_fb mode */
                 } else if (text_fb_is_dirty()) {
                     text_fb_render();
                     text_fb_mark_clean();
                     Xil_DCacheFlushRange(
-                        (UINTPTR)pixel_buf + (124 * SCREEN_W * 4),
-                        832 * SCREEN_W * 4);
+                        (UINTPTR)pixel_buf + (TEXT_OFS_Y * SCREEN_W * 4),
+                        (SCREEN_H - TEXT_OFS_Y) * SCREEN_W * 4);
                     if (dp_ok) dp_video_refresh();
                 }
 #endif

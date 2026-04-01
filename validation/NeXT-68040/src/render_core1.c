@@ -81,9 +81,15 @@ void __attribute__((noreturn)) core1_main(void)
         /* Flush pixel buffer and refresh display */
 #ifndef QEMU_MODE
         if (render_dp_ok && render_pixel_buf) {
-            /* Flush only the NeXT display area (rows 124-956) */
-            UINTPTR flush_start = (UINTPTR)render_pixel_buf + (124 * SCREEN_W * 4);
-            Xil_DCacheFlushRange(flush_start, 832 * SCREEN_W * 4);
+            if (render_mode) {
+                /* NeXT VRAM: flush display area (rows 124-956) */
+                UINTPTR flush_start = (UINTPTR)render_pixel_buf + (124 * SCREEN_W * 4);
+                Xil_DCacheFlushRange(flush_start, 832 * SCREEN_W * 4);
+            } else {
+                /* Text mode: flush from TEXT_OFS_Y (row 120) through text area */
+                UINTPTR flush_start = (UINTPTR)render_pixel_buf + (TEXT_OFS_Y * SCREEN_W * 4);
+                Xil_DCacheFlushRange(flush_start, (SCREEN_H - TEXT_OFS_Y) * SCREEN_W * 4);
+            }
             dp_video_refresh();
         }
 #endif

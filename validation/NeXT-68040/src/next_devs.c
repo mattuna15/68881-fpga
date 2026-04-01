@@ -126,6 +126,17 @@ static int dma_channel_for_addr(uint32_t addr)
 }
 
 /* ------------------------------------------------------------------ */
+/* BMAP chip — 16-register array at P_BMAP (0x020C0000)               */
+/* Used for ethernet transceiver control.  The ROM reads several       */
+/* registers during POST; returning 0 for all causes a test failure.   */
+/* ------------------------------------------------------------------ */
+#define BMAP_REG_COUNT      16
+static uint32_t bmap_regs[BMAP_REG_COUNT];
+
+#define BMAP_DATA_RW        0xD     /* register index for ethernet data */
+#define BMAP_HEARTBEAT      0x20000000
+
+/* ------------------------------------------------------------------ */
 /* Initialisation                                                      */
 /* ------------------------------------------------------------------ */
 
@@ -165,6 +176,12 @@ void next_devs_init(void)
     memset(dma_csr, 0, sizeof(dma_csr));
     for (int i = 0; i < NUM_DMA_CHANNELS; i++)
         dma_csr[i] = DMACSR_COMPLETE;
+
+    /* BMAP chip */
+    memset(bmap_regs, 0, sizeof(bmap_regs));
+    /* Set HEARTBEAT in data register — indicates thin-wire ethernet
+     * is connected (no twisted pair). Without this, ROM POST fails. */
+    bmap_regs[BMAP_DATA_RW] = BMAP_HEARTBEAT;
 
     /* ESP (NCR53C90) SCSI controller */
     next_esp_init();
@@ -413,6 +430,13 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == P_EVENTC + 3)
         return event_latch & 0xFF;           /* eventc_l: bits 7-0 */
 
+    /* BMAP chip (byte-level access) */
+    if (address >= P_BMAP && address < P_BMAP + BMAP_REG_COUNT * 4) {
+        uint32_t reg = (address - P_BMAP) >> 2;
+        int shift = (3 - (int)((address - P_BMAP) & 3)) * 8;
+        return (bmap_regs[reg] >> shift) & 0xFF;
+    }
+
     /* SCR1 (byte-level access) */
     if (address >= P_SCR1 && address < P_SCR1 + 4) {
         int byte_off = address - P_SCR1;
@@ -516,6 +540,12 @@ uint32_t next_io_read_32(uint32_t address)
     /* DSP registers (32-bit) */
     if (address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE)
         return next_dsp_read32(address - P_DSP_BASE);
+
+    /* BMAP chip (32-bit register array) */
+    if (address >= P_BMAP && address < P_BMAP + BMAP_REG_COUNT * 4) {
+        uint32_t reg = (address - P_BMAP) >> 2;
+        return bmap_regs[reg];
+    }
 
     /* Unknown 32-bit I/O read */
     {
@@ -726,6 +756,13 @@ void next_io_write_32(uint32_t address, uint32_t value)
     /* DSP registers (32-bit) */
     if (address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE) {
         next_dsp_write32(address - P_DSP_BASE, value);
+        return;
+    }
+
+    /* BMAP chip (32-bit register array) */
+    if (address >= P_BMAP && address < P_BMAP + BMAP_REG_COUNT * 4) {
+        uint32_t reg = (address - P_BMAP) >> 2;
+        bmap_regs[reg] = value;
         return;
     }
 

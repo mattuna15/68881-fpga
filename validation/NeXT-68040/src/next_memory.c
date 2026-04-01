@@ -16,11 +16,35 @@
 #include "xil_printf.h"
 #include <string.h>
 
-/* Track VRAM writes for display refresh */
+/* Track VRAM writes for display refresh — per-scanline dirty bitmap.
+ * Each bit in vram_dirty_lines[] represents one scanline (832 lines max).
+ * The VRAM write paths set the appropriate bit based on the byte offset
+ * and the scanline stride (NEXT_VIDEO_NBPL = 288 bytes/line). */
 static int vram_dirty;
+static uint32_t vram_dirty_lines[26];  /* 832 bits = 26 × 32 */
 
 int next_vram_is_dirty(void)  { return vram_dirty; }
 void next_vram_mark_clean(void) { vram_dirty = 0; }
+
+void next_vram_get_dirty_lines(uint32_t *out)
+{
+    memcpy(out, vram_dirty_lines, sizeof(vram_dirty_lines));
+    memset(vram_dirty_lines, 0, sizeof(vram_dirty_lines));
+}
+
+void next_vram_mark_all_dirty(void)
+{
+    memset(vram_dirty_lines, 0xFF, sizeof(vram_dirty_lines));
+    vram_dirty = 1;
+}
+
+static inline void vram_set_line_dirty(uint32_t offset)
+{
+    uint32_t line = offset / NEXT_VIDEO_NBPL;
+    if (line < 832) {
+        vram_dirty_lines[line >> 5] |= (1u << (line & 31));
+    }
+}
 
 /* ------------------------------------------------------------------ */
 /* Static memory arrays (in DDR on the ZU3EG)                          */
@@ -176,7 +200,9 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
     }
 
     if (in_vram(address)) {
-        next_vram[vram_offset(address)] = value & 0xFF;
+        uint32_t off = vram_offset(address);
+        next_vram[off] = value & 0xFF;
+        vram_set_line_dirty(off);
         vram_dirty = 1;
         return;
     }
@@ -250,6 +276,7 @@ void m68k_write_memory_16(unsigned int address, unsigned int value)
         uint32_t off = vram_offset(address);
         next_vram[off]     = (value >> 8) & 0xFF;
         next_vram[off + 1] =  value       & 0xFF;
+        vram_set_line_dirty(off);
         vram_dirty = 1;
         return;
     }
@@ -332,6 +359,7 @@ void m68k_write_memory_32(unsigned int address, unsigned int value)
         next_vram[off + 1] = (value >> 16) & 0xFF;
         next_vram[off + 2] = (value >>  8) & 0xFF;
         next_vram[off + 3] =  value        & 0xFF;
+        vram_set_line_dirty(off);
         vram_dirty = 1;
         return;
     }

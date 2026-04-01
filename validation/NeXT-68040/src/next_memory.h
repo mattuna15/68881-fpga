@@ -96,4 +96,11 @@ static inline uint32_t next_phys_read_32(uint32_t addr)
 int  next_vram_is_dirty(void);
 void next_vram_mark_clean(void);
 
+/* Per-scanline dirty bitmap: copies 26 uint32_t words (832 bits) to out,
+ * then clears internal bitmap. Each bit = one scanline. */
+void next_vram_get_dirty_lines(uint32_t *out);
+
+/* Mark all scanlines dirty (e.g. first render) */
+void next_vram_mark_all_dirty(void);
+
 #endif /* NEXT_MEMORY_H */

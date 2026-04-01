@@ -310,16 +310,19 @@ static void next_boot(void)
                     }
                     xil_printf("[VRAM] zeros=%d FF=%d AA=%d other=%d\r\n",
                                zeros, ffs, aas, other);
-                    /* Force one render + refresh */
-                    /* Force render (use core 1 if available) */
+                    /* Force full render + refresh */
 #ifndef QEMU_MODE
+                    next_vram_mark_all_dirty();
                     if (render_core1_is_active()) {
                         render_core1_request(1);
                     } else {
-                        next_video_render();
-                        UINTPTR fs = (UINTPTR)pixel_buf + (124 * SCREEN_W * 4);
-                        Xil_DCacheFlushRange(fs, 832 * SCREEN_W * 4);
-                        if (dp_ok) dp_video_refresh();
+                        int min_y, max_y;
+                        if (next_video_render_dirty(&min_y, &max_y)) {
+                            Xil_DCacheFlushRange(
+                                (UINTPTR)pixel_buf + ((UINTPTR)min_y * SCREEN_W * 4),
+                                (UINTPTR)(max_y - min_y + 1) * SCREEN_W * 4);
+                            if (dp_ok) dp_video_refresh();
+                        }
                     }
 #endif
                     xil_printf("[VRAM] Forced render complete\r\n");
@@ -375,18 +378,20 @@ static void next_boot(void)
                     next_vram_active = 1;
                 }
                 next_vram_mark_clean();
-                if (++refresh_count >= 5) {
+                if (++refresh_count >= 2) {
                     refresh_count = 0;
 #ifndef QEMU_MODE
                     if (render_core1_is_active()) {
                         render_core1_request(1);  /* 1 = next_vram mode */
                     } else {
                         /* Fallback: render on core 0 if core 1 didn't start */
-                        next_video_render();
-                        Xil_DCacheFlushRange(
-                            (UINTPTR)pixel_buf + (124 * SCREEN_W * 4),
-                            832 * SCREEN_W * 4);
-                        if (dp_ok) dp_video_refresh();
+                        int min_y, max_y;
+                        if (next_video_render_dirty(&min_y, &max_y)) {
+                            Xil_DCacheFlushRange(
+                                (UINTPTR)pixel_buf + ((UINTPTR)min_y * SCREEN_W * 4),
+                                (UINTPTR)(max_y - min_y + 1) * SCREEN_W * 4);
+                            if (dp_ok) dp_video_refresh();
+                        }
                     }
 #endif
                 }

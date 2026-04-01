@@ -1,6 +1,6 @@
 /*
  * next_video.c
- * NeXT 2bpp mono framebuffer → ARGB8888 converter.
+ * NeXT 2bpp mono framebuffer → ABGR8888 converter.
  *
  * The NeXT mono display is 1120x832 at 2 bits per pixel.
  * Each byte encodes 4 pixels, MSB first:
@@ -10,14 +10,19 @@
  * Stride: VIDEO_MW (1152) pixels / 4 = 288 bytes per scanline.
  * Only 1120 of 1152 pixels per line are visible.
  *
- * We render into a 1920x1080 ARGB8888 buffer (SCREEN_W x SCREEN_H
+ * We render into a 1920x1080 ABGR8888 buffer (SCREEN_W x SCREEN_H
  * from text_fb.h).  The NeXT image is centred with black borders.
  *
  * For DPDMA: the ARGB pixel is stored as ABGR in memory (R/B swap).
  * Since our greyscale palette has R=G=B, no swap is needed.
+ *
+ * Performance: uses per-scanline dirty tracking to avoid re-rendering
+ * unchanged lines, and a 256-entry byte→4-pixel LUT to eliminate
+ * per-pixel shift/mask operations.
  */
 
 #include "next_video.h"
+#include "next_memory.h"
 #include "text_fb.h"
 #include <string.h>
 
@@ -32,6 +37,20 @@ static const uint32_t palette[4] = {
     0xFF555555,   /* 10 = dark grey */
     0xFF000000    /* 11 = black */
 };
+
+/* Byte → 4-pixel LUT: decode_lut[byte][0..3] = 4 ARGB pixels.
+ * Eliminates per-pixel shift/mask in the inner loop. */
+static uint32_t decode_lut[256][4];
+
+static void build_decode_lut(void)
+{
+    for (int b = 0; b < 256; b++) {
+        decode_lut[b][0] = palette[(b >> 6) & 3];
+        decode_lut[b][1] = palette[(b >> 4) & 3];
+        decode_lut[b][2] = palette[(b >> 2) & 3];
+        decode_lut[b][3] = palette[(b >> 0) & 3];
+    }
+}
 
 /* Output display dimensions */
 #define OUT_W  SCREEN_W
@@ -51,6 +70,8 @@ void next_video_init(uint32_t *pixel_buf, const uint8_t *next_vram)
     vram = next_vram;
     dirty_flag = 0;
 
+    build_decode_lut();
+
     /* Clear pixel buffer to black */
     if (pbuf) {
         for (int i = 0; i < OUT_W * OUT_H; i++)
@@ -58,33 +79,45 @@ void next_video_init(uint32_t *pixel_buf, const uint8_t *next_vram)
     }
 }
 
-void next_video_render(void)
+/* Render only dirty scanlines.  Returns 1 if any lines were rendered,
+ * 0 if nothing changed.  *out_min_y / *out_max_y are the screen-space
+ * row range (inclusive) that was updated — callers can limit cache flush
+ * to this range. */
+int next_video_render_dirty(int *out_min_y, int *out_max_y)
 {
     static int borders_done = 0;
 
     if (!pbuf || !vram)
-        return;
+        return 0;
 
+    /* Get dirty-line bitmap and clear it atomically */
+    uint32_t dirty_lines[26];
+    next_vram_get_dirty_lines(dirty_lines);
 
-    /* Render all visible scanlines (up to 832, centred in 1080p output).
-     * Each VRAM byte contains 4 pixels at 2bpp, MSB first. */
     int max_y = (NEXT_VIDEO_H < OUT_H) ? NEXT_VIDEO_H : OUT_H;
+    int visible_bytes = NEXT_VIDEO_W / 4;  /* 1120/4 = 280 */
+    int rmin = max_y, rmax = -1;
 
     for (int y = 0; y < max_y; y++) {
+        /* Check dirty bit for this scanline */
+        if (!(dirty_lines[y >> 5] & (1u << (y & 31))))
+            continue;
+
         const uint8_t *src = &vram[(uint32_t)y * NEXT_VIDEO_NBPL];
         uint32_t *dst = &pbuf[(uint32_t)(y + OFS_Y) * OUT_W + OFS_X];
 
-        /* Decode 1120 pixels (280 bytes of visible data per line) */
-        int visible_bytes = NEXT_VIDEO_W / 4;  /* 1120/4 = 280 */
+        /* Decode 1120 pixels via LUT (280 bytes → 1120 pixels) */
         for (int bx = 0; bx < visible_bytes; bx++) {
-            uint8_t byte = src[bx];
-            /* 4 pixels per byte, MSB = leftmost */
-            dst[0] = palette[(byte >> 6) & 3];
-            dst[1] = palette[(byte >> 4) & 3];
-            dst[2] = palette[(byte >> 2) & 3];
-            dst[3] = palette[(byte >> 0) & 3];
+            const uint32_t *px = decode_lut[src[bx]];
+            dst[0] = px[0];
+            dst[1] = px[1];
+            dst[2] = px[2];
+            dst[3] = px[3];
             dst += 4;
         }
+
+        if (y < rmin) rmin = y;
+        if (y > rmax) rmax = y;
     }
 
     /* Clear borders only on first render (they never change) */
@@ -110,9 +143,28 @@ void next_video_render(void)
             for (int x = 0; x < OUT_W; x++)
                 row[x] = 0xFF000000;
         }
+        /* First render: flush everything */
+        rmin = 0;
+        rmax = max_y - 1;
     }
 
     dirty_flag = 0;
+
+    if (rmax < 0)
+        return 0;
+
+    /* Convert from VRAM-space to screen-space */
+    *out_min_y = rmin + OFS_Y;
+    *out_max_y = rmax + OFS_Y;
+    return 1;
+}
+
+/* Legacy: render all lines (marks everything dirty first) */
+void next_video_render(void)
+{
+    int dummy_min, dummy_max;
+    next_vram_mark_all_dirty();
+    next_video_render_dirty(&dummy_min, &dummy_max);
 }
 
 int next_video_is_dirty(void)

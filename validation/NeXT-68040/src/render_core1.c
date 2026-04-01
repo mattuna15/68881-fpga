@@ -68,31 +68,32 @@ void __attribute__((noreturn)) core1_main(void)
         render_request = 0;
         __asm__ volatile ("dsb sy" ::: "memory");
 
-        /* Render */
+        /* Render + targeted cache flush */
         if (render_mode) {
-            next_video_render();
+            int min_y, max_y;
+            int rendered = next_video_render_dirty(&min_y, &max_y);
+#ifndef QEMU_MODE
+            if (rendered && render_dp_ok && render_pixel_buf) {
+                /* Flush only the rows that were actually re-rendered */
+                UINTPTR flush_start = (UINTPTR)render_pixel_buf + ((UINTPTR)min_y * SCREEN_W * 4);
+                UINTPTR flush_len = (UINTPTR)(max_y - min_y + 1) * SCREEN_W * 4;
+                Xil_DCacheFlushRange(flush_start, flush_len);
+                dp_video_refresh();
+            }
+#endif
         } else {
             if (text_fb_is_dirty()) {
                 text_fb_render();
                 text_fb_mark_clean();
-            }
-        }
-
-        /* Flush pixel buffer and refresh display */
 #ifndef QEMU_MODE
-        if (render_dp_ok && render_pixel_buf) {
-            if (render_mode) {
-                /* NeXT VRAM: flush display area (rows 124-955) */
-                UINTPTR flush_start = (UINTPTR)render_pixel_buf + (124 * SCREEN_W * 4);
-                Xil_DCacheFlushRange(flush_start, 832 * SCREEN_W * 4);
-            } else {
-                /* Text mode: flush from TEXT_OFS_Y (row 120) through text area */
-                UINTPTR flush_start = (UINTPTR)render_pixel_buf + (TEXT_OFS_Y * SCREEN_W * 4);
-                Xil_DCacheFlushRange(flush_start, (SCREEN_H - TEXT_OFS_Y) * SCREEN_W * 4);
-            }
-            dp_video_refresh();
-        }
+                if (render_dp_ok && render_pixel_buf) {
+                    UINTPTR flush_start = (UINTPTR)render_pixel_buf + (TEXT_OFS_Y * SCREEN_W * 4);
+                    Xil_DCacheFlushRange(flush_start, (SCREEN_H - TEXT_OFS_Y) * SCREEN_W * 4);
+                    dp_video_refresh();
+                }
 #endif
+            }
+        }
     }
 }
 

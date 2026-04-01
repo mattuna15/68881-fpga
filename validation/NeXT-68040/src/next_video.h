@@ -38,8 +38,13 @@
  * vram: the NeXT emulated VRAM (256 KB at 0x0B000000). */
 void next_video_init(uint32_t *pixel_buf, const uint8_t *vram);
 
-/* Render the NeXT VRAM into the pixel buffer.
- * Converts 2bpp mono → ARGB8888, scales/centres within 1280x720. */
+/* Render dirty NeXT VRAM scanlines into the pixel buffer.
+ * Converts 2bpp mono → ABGR8888, centred within 1920x1080.
+ * Sets *min_y/*max_y to the screen-space row range that was updated
+ * (for targeted cache flush). Returns 0 if nothing was rendered. */
+int next_video_render_dirty(int *min_y, int *max_y);
+
+/* Render all scanlines (legacy, calls mark_all_dirty + render_dirty). */
 void next_video_render(void);
 
 /* Check if VRAM has been written to since last render */

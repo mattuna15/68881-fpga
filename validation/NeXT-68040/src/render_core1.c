@@ -26,12 +26,12 @@ static volatile int render_mode = 0;      /* 0 = text_fb, 1 = next_vram */
 static uint32_t *render_pixel_buf = 0;
 static int render_dp_ok = 0;
 
-/* Core 1 stack (16KB, aligned) */
-static uint8_t core1_stack[16384] __attribute__((aligned(64)));
+/* Core 1 stack (16KB, aligned) — referenced by core1_boot.S */
+uint8_t core1_stack[16384] __attribute__((aligned(64)));
 
 /* ZynqMP APU registers for core release */
-#define RVBAR1_L        0xFD5C0044  /* Reset Vector Base Address Register core 1 low */
-#define RVBAR1_H        0xFD5C0048  /* Reset Vector Base Address Register core 1 high */
+#define RVBAR1_L        0xFD5C0048  /* Reset Vector Base Address Register core 1 low */
+#define RVBAR1_H        0xFD5C004C  /* Reset Vector Base Address Register core 1 high */
 #define RST_FPD_APU     0xFD1A0104  /* APU reset control */
 #define RST_ACPU1       (1u << 1)   /* Core 1 reset bit */
 #define RST_ACPU1_PWRON (1u << 11)  /* Core 1 power-on reset bit */
@@ -47,27 +47,13 @@ static inline uint32_t mmio_read32(uintptr_t addr)
 }
 
 /* ------------------------------------------------------------------ */
-/* Core 1 entry point — called after release from reset                */
+/* Core 1 entry + main — core1_boot.S does EL3 init then branches here */
 /* ------------------------------------------------------------------ */
 
-static void __attribute__((noreturn, naked)) core1_entry_asm(void);
-static void __attribute__((noreturn)) core1_main(void);
+/* Assembly entry point in core1_boot.S */
+extern void core1_entry(void);
 
-/*
- * Minimal AArch64 startup for core 1:
- * - Set stack pointer
- * - Jump to C code
- */
-static void __attribute__((noreturn, naked)) core1_entry_asm(void)
-{
-    __asm__ volatile (
-        "ldr x0, =core1_stack + 16384\n"   /* top of stack */
-        "mov sp, x0\n"
-        "b core1_main\n"
-    );
-}
-
-static void __attribute__((noreturn)) core1_main(void)
+void __attribute__((noreturn)) core1_main(void)
 {
     render_active = 1;
     __asm__ volatile ("dsb sy" ::: "memory");
@@ -120,7 +106,7 @@ void render_core1_start(uint32_t *pixel_buf, int dp_ok)
     render_dp_ok = dp_ok;
     render_mode = 0;  /* start in text mode */
 
-    uintptr_t entry = (uintptr_t)core1_entry_asm;
+    uintptr_t entry = (uintptr_t)core1_entry;
 
     xil_printf("[CORE1] Entry point: 0x%08X\r\n", (uint32_t)entry);
     xil_printf("[CORE1] Stack: 0x%08X (16KB)\r\n", (uint32_t)(uintptr_t)core1_stack);

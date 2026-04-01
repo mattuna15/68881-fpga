@@ -375,7 +375,7 @@ static void next_boot(void)
                     next_vram_active = 1;
                 }
                 next_vram_mark_clean();
-                if (++refresh_count >= 50) {
+                if (++refresh_count >= 5) {
                     refresh_count = 0;
 #ifndef QEMU_MODE
                     if (render_core1_is_active()) {

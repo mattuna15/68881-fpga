@@ -60,12 +60,10 @@ void next_video_init(uint32_t *pixel_buf, const uint8_t *next_vram)
 
 void next_video_render(void)
 {
+    static int borders_done = 0;
+
     if (!pbuf || !vram)
         return;
-
-
-
-
 
 
     /* Render up to 720 scanlines (the NeXT has 832, we crop the bottom).
@@ -89,26 +87,29 @@ void next_video_render(void)
         }
     }
 
-    /* Clear borders around the centred NeXT display */
-    /* Top border */
-    for (int y = 0; y < OFS_Y; y++) {
-        uint32_t *row = &pbuf[y * OUT_W];
-        for (int x = 0; x < OUT_W; x++)
-            row[x] = 0xFF000000;
-    }
-    /* Left/right borders */
-    for (int y = 0; y < max_y; y++) {
-        uint32_t *row = &pbuf[(y + OFS_Y) * OUT_W];
-        for (int x = 0; x < OFS_X; x++)
-            row[x] = 0xFF000000;
-        for (int x = OFS_X + NEXT_VIDEO_W; x < OUT_W; x++)
-            row[x] = 0xFF000000;
-    }
-    /* Bottom border */
-    for (int y = OFS_Y + max_y; y < OUT_H; y++) {
-        uint32_t *row = &pbuf[y * OUT_W];
-        for (int x = 0; x < OUT_W; x++)
-            row[x] = 0xFF000000;
+    /* Clear borders only on first render (they never change) */
+    if (!borders_done) {
+        borders_done = 1;
+        /* Top border */
+        for (int y = 0; y < OFS_Y; y++) {
+            uint32_t *row = &pbuf[y * OUT_W];
+            for (int x = 0; x < OUT_W; x++)
+                row[x] = 0xFF000000;
+        }
+        /* Left/right borders */
+        for (int y = 0; y < max_y; y++) {
+            uint32_t *row = &pbuf[(y + OFS_Y) * OUT_W];
+            for (int x = 0; x < OFS_X; x++)
+                row[x] = 0xFF000000;
+            for (int x = OFS_X + NEXT_VIDEO_W; x < OUT_W; x++)
+                row[x] = 0xFF000000;
+        }
+        /* Bottom border */
+        for (int y = OFS_Y + max_y; y < OUT_H; y++) {
+            uint32_t *row = &pbuf[y * OUT_W];
+            for (int x = 0; x < OUT_W; x++)
+                row[x] = 0xFF000000;
+        }
     }
 
     dirty_flag = 0;

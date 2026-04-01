@@ -226,8 +226,10 @@ static void esp_command_clear(void)
 
 static void esp_command_write(uint8_t cmd)
 {
-    /* Only log SELECT and non-trivial commands to reduce UART noise */
-    if ((cmd & 0x1F) >= 0x02)  /* skip NOP($00) and FLUSH($01) */
+    /* Log all commands — SELECT prominently */
+    if ((cmd & 0x7F) == 0x42 || (cmd & 0x7F) == 0x41)
+        xil_printf("\r\n*** SELECT $%02X ***\r\n", cmd);
+    else
         xil_printf("[ESP] Cmd $%02X\r\n", cmd);
 
     if ((esp.command[1] & CMD_CMD) == CMD_RESET && (cmd & CMD_CMD) != CMD_NOP) {

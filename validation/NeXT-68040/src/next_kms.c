@@ -218,9 +218,15 @@ uint32_t next_kms_read(int offset)
 
     switch (offset) {
     case 0x00: /* mon_csr */
+    {
+        uint32_t csr = 0;
         if (!kms_queue_empty())
-            return 0x00400000; /* KM_DAV bit 22 */
-        return 0;
+            csr |= 0x00400000; /* KM_DAV: keyboard data available */
+        /* DTX + CTX: command/data transmitted (sound driver polls these) */
+        csr |= 0x00004000;    /* DTX: data transmit done */
+        csr |= 0x00001000;    /* CTX: command transmit done */
+        return csr;
+    }
 
     case 0x08: /* mon_km_data */
         return kms_queue_pop();
@@ -236,5 +242,5 @@ void next_kms_write(int offset, uint32_t value)
 {
     (void)offset;
     (void)value;
-    /* Accept ROM commands silently (MON_KM_POLL, etc.) */
+    /* Accept all commands silently (sound init, keyboard poll, etc.) */
 }

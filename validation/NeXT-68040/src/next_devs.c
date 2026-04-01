@@ -335,6 +335,10 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == 0x02014021)
         return next_esp_dma_status_read();
 
+    /* Printer (NeXTlaser): 0x0200F000-0x0200F003 (byte CSRs) */
+    if (address >= 0x0200F000 && address <= 0x0200F003)
+        return 0;
+
     /* Floppy controller (Intel 82077AA): 0x02014100-0x02014108
      * Return "no floppy, controller ready" so the driver doesn't hang
      * waiting for hardware that doesn't exist. */
@@ -371,14 +375,28 @@ uint8_t next_io_read_8(uint32_t address)
 
     /* Event counter (byte reads): reading byte 0 latches the counter.
      * Kernel reads: latch=byte0, then (byte1<<16)|(byte2<<8)|byte3.
-     * Previous stores as big-endian 32-bit with 20-bit value. */
+     *
+     * The kernel's event_get() masks to 20 bits (EVENT_MASK=0xFFFFF) and
+     * extends to 32 bits via software (event_sync in timer interrupt).
+     * At IPL=7 (no timer interrupts), event_sync can't run and the 20-bit
+     * counter wrapping after ~1 second causes event_get() to malfunction.
+     *
+     * Fix: store the full 32-bit microsecond count. Byte 0 gets the top
+     * byte (bits 31-24). The kernel's event_get reads bytes 1-3 giving
+     * 24 bits, masks to 20. But the kernel's *event_middle variable
+     * (updated by event_sync) tracks bits 31-20. When event_sync runs
+     * (IPL<7), it reads byte 0 as the latch and sees the hardware advance.
+     * When it can't run (IPL=7), the delay is typically short enough
+     * (<1 second) that the 20-bit window doesn't wrap.
+     *
+     * Previous also returns & 0xFFFFF, but on Previous the emulated CPU
+     * is fast enough that DELAY loops complete before wrapping. */
     if (address == P_EVENTC) {
-        /* Latch current event counter from ARM hardware timer */
-        event_latch = host_time_us() & 0xFFFFF;
-        return 0;  /* byte 0 is just the latch trigger, top bits always 0 */
+        event_latch = host_time_us();
+        return (event_latch >> 24) & 0xFF;  /* byte 0: bits 31-24 */
     }
     if (address == P_EVENTC + 1)
-        return (event_latch >> 16) & 0x0F;  /* eventc_h: bits 19-16 */
+        return (event_latch >> 16) & 0xFF;  /* eventc_h: bits 23-16 */
     if (address == P_EVENTC + 2)
         return (event_latch >> 8) & 0xFF;   /* eventc_m: bits 15-8 */
     if (address == P_EVENTC + 3)
@@ -435,6 +453,10 @@ uint32_t next_io_read_32(uint32_t address)
     if (address == P_INTRMASK)
         return intr_mask;
 
+    /* Printer data register (32-bit) */
+    if (address == 0x0200F004)
+        return 0;
+
     /* P_MON / KMS: $0200E000-$0200E00F is the keyboard/mouse/sound chip. */
     if (address >= P_MON && address < P_MON + 16) {
         static int pmon_log = 0;
@@ -448,9 +470,9 @@ uint32_t next_io_read_32(uint32_t address)
     if (address == P_SID)
         return 0;
 
-    /* Event counter (microseconds, 20-bit) — 32-bit read latches + returns */
+    /* Event counter (microseconds) — 32-bit read latches + returns full value */
     if (address == P_EVENTC)
-        return host_time_us() & 0xFFFFF;
+        return host_time_us();
 
     /* DMA registers: 0x02004000-0x020043FF — all channels */
     if (address >= 0x02004000 && address < 0x02004400) {
@@ -655,6 +677,11 @@ void next_io_write_32(uint32_t address, uint32_t value)
                 dma_csr[ch] = DMACSR_COMPLETE;
             else if (value & 0x00080000)  /* CLRCOMPLETE */
                 dma_csr[ch] &= ~DMACSR_COMPLETE;
+            /* Auto-complete: when DMA is enabled on non-SCSI channels,
+             * immediately set COMPLETE since no real transfer occurs.
+             * Without this, the sound driver polls forever for DMA done. */
+            if (value & 0x00010000)  /* SETENABLE */
+                dma_csr[ch] |= DMACSR_COMPLETE;
             return;
         }
     }

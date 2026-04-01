@@ -274,18 +274,6 @@ static void next_boot(void)
         int ipl = next_intr_pending_ipl();
         m68k_set_irq(ipl);
 
-        /* PC sample: print every 500,000 ticks after kernel starts */
-        {
-            static int sample = 0;
-            if (++sample >= 500000) {
-                sample = 0;
-                uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
-                uint16_t sr = m68k_get_reg(NULL, M68K_REG_SR);
-                if (pc >= 0x04000000) {
-                    xil_printf("[PC] $%08X SR=$%04X ipl=%d\r\n", pc, sr, ipl);
-                }
-            }
-        }
 
 
         /* After ROM settles, find mon_global and dump key fields (one-shot).
@@ -321,7 +309,10 @@ static void next_boot(void)
                     /* Force one render + refresh */
                     next_video_render();
 #ifndef QEMU_MODE
-                    Xil_DCacheFlushRange((UINTPTR)pixel_buf, SCREEN_W*SCREEN_H*4);
+                    {
+                        UINTPTR fs = (UINTPTR)pixel_buf + (124 * SCREEN_W * 4);
+                        Xil_DCacheFlushRange(fs, 832 * SCREEN_W * 4);
+                    }
                     if (dp_ok) dp_video_refresh();
 #endif
                     xil_printf("[VRAM] Forced render complete\r\n");
@@ -378,8 +369,8 @@ static void next_boot(void)
                 }
                 next_vram_active = 1;
                 next_vram_mark_clean();
-                /* Throttle: render every 250 ticks (~100ms = 10fps) */
-                if (++vram_refresh_count >= 250) {
+                /* Throttle: render every 50 ticks */
+                if (++vram_refresh_count >= 50) {
                     vram_refresh_count = 0;
                     next_video_render();
                     need_refresh = 1;
@@ -392,7 +383,12 @@ static void next_boot(void)
 
 #ifndef QEMU_MODE
             if (need_refresh) {
-                Xil_DCacheFlushRange((UINTPTR)pixel_buf, SCREEN_W*SCREEN_H*4);
+                /* Flush only the NeXT display area, not the full 8MB buffer.
+                 * NeXT display: 1120×832 centered at (400,124) in 1920×1080.
+                 * Flush from row 124 to row 956, each row is 1920×4 bytes. */
+                UINTPTR flush_start = (UINTPTR)pixel_buf + (124 * SCREEN_W * 4);
+                UINTPTR flush_size = 832 * SCREEN_W * 4;  /* ~6.4MB vs 8MB */
+                Xil_DCacheFlushRange(flush_start, flush_size);
                 if (dp_ok)
                     dp_video_refresh();
             }
@@ -418,6 +414,34 @@ static void poll_uart_rx(void)
     volatile uint32_t *uart_fifo = (volatile uint32_t *)(XPAR_XUARTPS_0_BASEADDR + 0x30);
     while (!((*uart_sr) & 0x02)) {  /* while RXEMPTY == 0 */
         uint8_t ch = (uint8_t)(*uart_fifo & 0xFF);
+        if (ch == 'X') {
+            /* Debug dump on 'X' keypress */
+            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+            uint16_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+            uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
+            xil_printf("\r\n[DUMP] PC=$%08X SR=$%04X SP=$%08X\r\n", pc, sr, sp);
+            xil_printf("[DUMP] D0=$%08X D1=$%08X D2=$%08X D3=$%08X\r\n",
+                m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
+                m68k_get_reg(NULL, M68K_REG_D2), m68k_get_reg(NULL, M68K_REG_D3));
+            xil_printf("[DUMP] A0=$%08X A1=$%08X A2=$%08X A3=$%08X\r\n",
+                m68k_get_reg(NULL, M68K_REG_A0), m68k_get_reg(NULL, M68K_REG_A1),
+                m68k_get_reg(NULL, M68K_REG_A2), m68k_get_reg(NULL, M68K_REG_A3));
+            xil_printf("[DUMP] A4=$%08X A5=$%08X A6=$%08X A7=$%08X\r\n",
+                m68k_get_reg(NULL, M68K_REG_A4), m68k_get_reg(NULL, M68K_REG_A5),
+                m68k_get_reg(NULL, M68K_REG_A6), m68k_get_reg(NULL, M68K_REG_A7));
+            xil_printf("[DUMP] Stack (phys):\r\n");
+            for (int i = 0; i < 16; i++) {
+                uint32_t val = next_phys_read_32(sp + i*4);
+                xil_printf("  SP+%02X: $%08X\r\n", i*4, val);
+            }
+            xil_printf("[DUMP] Code at PC (phys):\r\n  ");
+            for (int i = 0; i < 8; i++) {
+                uint32_t val = next_phys_read_32(pc + i*4);
+                xil_printf("%08X ", val);
+            }
+            xil_printf("\r\n");
+            continue;  /* don't forward 'X' to SCC */
+        }
         next_scc_rx_push(ch);    /* SCC serial path */
         next_kms_push_ascii(ch); /* KMS keyboard path (ROM monitor) */
     }

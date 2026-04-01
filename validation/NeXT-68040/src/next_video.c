@@ -66,7 +66,7 @@ void next_video_render(void)
         return;
 
 
-    /* Render up to 720 scanlines (the NeXT has 832, we crop the bottom).
+    /* Render all visible scanlines (up to 832, centred in 1080p output).
      * Each VRAM byte contains 4 pixels at 2bpp, MSB first. */
     int max_y = (NEXT_VIDEO_H < OUT_H) ? NEXT_VIDEO_H : OUT_H;
 

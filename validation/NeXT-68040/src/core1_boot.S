@@ -60,12 +60,12 @@ core1_entry:
     msr     TTBR0_EL3, x1
 
     /*
-     * Memory attributes — same as boot.S:
-     *   0 = Normal, Inner/Outer Non-Cacheable
-     *   1 = Normal, Inner/Outer WB/WA/RA
-     *   2 = Device-nGnRnE
-     *   3 = Device-nGnRE
-     *   4 = Normal, Inner/Outer WT/WA/RA
+     * Memory attributes — same as boot.S (MAIR = 0x000000BB0400FF44):
+     *   0 = Normal, Inner/Outer Write-Through Transient, Read-Allocate (0x44)
+     *   1 = Normal, Inner/Outer WB/WA/RA (0xFF)
+     *   2 = Device-nGnRE (0x04)
+     *   3 = Device-nGnRnE (0x00)
+     *   4 = Normal, Inner/Outer WB/WA/RA (0xBB)
      */
     ldr     x1, =0x000000BB0400FF44
     msr     MAIR_EL3, x1

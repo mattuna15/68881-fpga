@@ -83,7 +83,7 @@ static uint32_t host_time_us(void)
 
 /* ------------------------------------------------------------------ */
 /* DMA register scratchpad — generic read/write backing for all DMA    */
-/* channel registers (0x02004000-0x020042FF).  The kernel's DMA_W      */
+/* channel registers (0x02004000-0x020043FF).  The kernel's DMA_W      */
 /* macro retries writes until readback matches, so all DMA addresses   */
 /* must be read/write.  SCSI channel (0x0200400x-0x0200421x) has       */
 /* dedicated handling; all others use this scratchpad.                  */
@@ -414,6 +414,13 @@ uint8_t next_io_read_8(uint32_t address)
         return (scr2_value >> (8 * (3 - byte_off))) & 0xFF;
     }
 
+    {
+        static int unknown8_log = 0;
+        if (unknown8_log < 20) {
+            xil_printf("[IO] Unknown read8 $%08X\r\n", address);
+            unknown8_log++;
+        }
+    }
     return 0;
 }
 

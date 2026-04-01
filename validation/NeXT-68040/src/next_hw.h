@@ -109,11 +109,6 @@
 #define DMACSR_ENABLE    0x01000000
 #define DMACSR_RESET     0x00100000
 
-/* Timer */
-#define TIMER_ENABLE    0x80
-#define TIMER_UPDATE    0x40
-#define TIMER_MAX       0xFFFF
-
 /* SCC (Zilog 8530) register offsets */
 #define SCC_CHAN_A_CTRL  1   /* Channel A control (byte offset from P_SCC) */
 #define SCC_CHAN_A_DATA  3   /* Channel A data */

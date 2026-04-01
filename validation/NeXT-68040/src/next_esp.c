@@ -155,12 +155,16 @@ static uint8_t esp_fifo_read(void)
     return 0;
 }
 
+static void esp_raise_irq(void);
+
 static void esp_fifo_write(uint8_t val)
 {
     if (esp.fifoflags >= ESP_FIFO_SIZE) {
         xil_printf("[ESP] FIFO write: overflow!\r\n");
         esp.fifo[ESP_FIFO_SIZE - 1] = val;
         esp.status |= STAT_GE;
+        esp_raise_irq();
+        return;
     } else {
         esp.fifo[esp.fifoflags] = val;
         esp.fifoflags++;

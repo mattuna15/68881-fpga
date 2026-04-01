@@ -9,7 +9,7 @@
 #include <stdint.h>
 
 /* Start core 1 render loop. Call once from main() after display init.
- * pixel_buf: the ARGB8888 pixel buffer
+ * pixel_buf: the ABGR8888 pixel buffer (DPDMA byte order)
  * dp_ok: 1 if DisplayPort is initialized */
 void render_core1_start(uint32_t *pixel_buf, int dp_ok);
 

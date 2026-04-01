@@ -235,7 +235,7 @@ static int mmu040_log_count = 0;
 
 static struct {
 	uint32_t tag;    /* (supervisor << 31) | virtual_page_number */
-	uint32_t phys;   /* physical page base address, or 0xFFFFFFFF = identity */
+	uint32_t phys;   /* physical page base address */
 	uint8_t  valid;
 } page_tlb[PAGE_TLB_SIZE];
 
@@ -347,26 +347,23 @@ uint pmmu_translate_addr_040(uint addr_in)
 	uint tlb_idx = vpn & (PAGE_TLB_SIZE - 1);
 
 	if (page_tlb[tlb_idx].valid && page_tlb[tlb_idx].tag == tag) {
-		/* TLB hit */
-		uint phys = page_tlb[tlb_idx].phys;
-		if (phys == 0xFFFFFFFF)
-			return addr_in;  /* cached identity-map (L1/L2/L3 fault) */
-		return phys | (addr_in & page_mask);
+		/* TLB hit — only successful translations are cached */
+		return page_tlb[tlb_idx].phys | (addr_in & page_mask);
 	}
 
 	/* TLB miss — full page table walk */
 	uint root_ptr = supervisor ? m68ki_cpu.mmu_040_srp : m68ki_cpu.mmu_040_urp;
 	uint result = pmmu_walk_040(addr_in, root_ptr, page_8k);
 
-	/* Fill TLB */
-	page_tlb[tlb_idx].tag = tag;
-	if (result == addr_in) {
-		/* Identity-mapped (fault) — cache as special marker */
-		page_tlb[tlb_idx].phys = 0xFFFFFFFF;
-	} else {
+	/* Fill TLB — only cache successful translations.
+	 * Page faults return addr_in unchanged; do NOT cache these because
+	 * the kernel populates page tables incrementally and a cached fault
+	 * would mask a later valid mapping until the next PFLUSH. */
+	if (result != addr_in) {
+		page_tlb[tlb_idx].tag = tag;
 		page_tlb[tlb_idx].phys = result & ~page_mask;
+		page_tlb[tlb_idx].valid = 1;
 	}
-	page_tlb[tlb_idx].valid = 1;
 
 	return result;
 }
@@ -418,12 +415,12 @@ void m68881_mmu_ops(void)
 				}
 				else if ((modes & 0xe200) == 0x2000)	// PFLUSH
 				{
-					xil_printf("680x0: unhandled PFLUSH PC=%x\n", REG_PC);
+					tlb040_flush();
 					return;
 				}
 				else if (modes == 0xa000)	// PFLUSHR
 				{
-					xil_printf("680x0: unhandled PFLUSHR\n");
+					tlb040_flush();
 					return;
 				}
 				else if (modes == 0x2800)	// PVALID (FORMAT 1)

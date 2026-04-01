@@ -16,6 +16,7 @@
 #define NEXT_MEMORY_H
 
 #include "musashi/m68k.h"
+#include "xil_printf.h"
 #include <stdint.h>
 
 /* Main RAM: 16 MB at 0x04000000 */
@@ -79,6 +80,14 @@ static inline uint32_t next_phys_read_32(uint32_t addr)
                ((uint32_t)next_rom[addr+1] << 16) |
                ((uint32_t)next_rom[addr+2] << 8) |
                 (uint32_t)next_rom[addr+3];
+    }
+    /* Unmapped address — log first few occurrences to aid debugging */
+    {
+        static int unmapped_log = 0;
+        if (unmapped_log < 10) {
+            xil_printf("[PHYS] WARNING: read from unmapped $%08X\r\n", addr);
+            unmapped_log++;
+        }
     }
     return 0;
 }

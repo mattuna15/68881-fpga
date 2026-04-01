@@ -3,7 +3,7 @@
  * Display rendering on Cortex-A53 core 1.
  *
  * Core 0 runs the 68K emulator. Core 1 runs this render loop which
- * continuously converts NeXT 2bpp VRAM to the ARGB8888 pixel buffer
+ * continuously converts NeXT 2bpp VRAM to the ABGR8888 pixel buffer
  * and triggers DisplayPort refresh.
  *
  * Communication: core 0 sets render_request = 1 when VRAM is dirty.
@@ -82,7 +82,7 @@ void __attribute__((noreturn)) core1_main(void)
 #ifndef QEMU_MODE
         if (render_dp_ok && render_pixel_buf) {
             if (render_mode) {
-                /* NeXT VRAM: flush display area (rows 124-956) */
+                /* NeXT VRAM: flush display area (rows 124-955) */
                 UINTPTR flush_start = (UINTPTR)render_pixel_buf + (124 * SCREEN_W * 4);
                 Xil_DCacheFlushRange(flush_start, 832 * SCREEN_W * 4);
             } else {
@@ -111,6 +111,9 @@ void render_core1_start(uint32_t *pixel_buf, int dp_ok)
     render_pixel_buf = pixel_buf;
     render_dp_ok = dp_ok;
     render_mode = 0;  /* start in text mode */
+
+    /* Ensure shared state is visible to core 1 before release */
+    __asm__ volatile ("dsb sy" ::: "memory");
 
     uintptr_t entry = (uintptr_t)core1_entry;
 

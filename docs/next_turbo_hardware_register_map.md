@@ -40,24 +40,33 @@ The ROM configures a slot ID bitmap that offsets device registers. Before BMAP c
 |-----|---------------|-----|-------------------------------|
 | 0   | `0x00000001`  | 1   | Software interrupt 0          |
 | 1   | `0x00000002`  | 2   | Software interrupt 1          |
-| 2   | `0x00000004`  | 3   | Phone (floppy drive)          |
-| 3   | `0x00000008`  | 3   | Sound out underrun            |
-| 4   | `0x00000010`  | 3   | Disk (optical/MO)             |
-| 5   | `0x00000020`  | 3   | Sound out DMA                 |
-| 6   | `0x00000040`  | 3   | Sound in DMA                  |
-| 7   | `0x00000080`  | 3   | Printer DMA                   |
-| 8   | `0x00000100`  | 3   | SCC DMA                       |
-| 9   | `0x00000200`  | 3   | DSP DMA                       |
-| 10  | `0x00000400`  | 3   | Floppy (fd)                   |
-| 11  | `0x00000800`  | 3   | Ethernet transmit DMA         |
+| 2   | `0x00000004`  | 3   | Power button                  |
+| 3   | `0x00000008`  | 3   | Keyboard/Mouse                |
+| 4   | `0x00000010`  | 3   | Monitor                       |
+| 5   | `0x00000020`  | 3   | Video                         |
+| 6   | `0x00000040`  | 3   | DSP                           |
+| 7   | `0x00000080`  | 3   | Phone                         |
+| 8   | `0x00000100`  | 3   | Sound overrun                 |
+| 9   | `0x00000200`  | 3   | Ethernet receive              |
+| 10  | `0x00000400`  | 3   | Ethernet transmit             |
+| 11  | `0x00000800`  | 3   | Printer                       |
 | 12  | `0x00001000`  | 3   | SCSI                          |
-| 13  | `0x00002000`  | 3   | Ethernet receive DMA          |
-| 18  | `0x00040000`  | 6   | SCSI DMA                      |
-| 19  | `0x00080000`  | 6   | Disk/MO DMA                   |
-| 20  | `0x00100000`  | 6   | DSP                           |
-| 21  | `0x00200000`  | 6   | Bus (NeXTbus timeout)         |
-| 22  | `0x00400000`  | 5   | Remote (network)              |
-| 23  | `0x00800000`  | 5   | SCC                           |
+| 13  | `0x00002000`  | 3   | Disk (optical/MO)             |
+| 14  | `0x00004000`  | 4   | DSP (IPL4)                    |
+| 15  | `0x00008000`  | 5   | Bus (NeXTbus timeout)         |
+| 16  | `0x00010000`  | 5   | Remote (network)              |
+| 17  | `0x00020000`  | 5   | SCC                           |
+| 18  | `0x00040000`  | 6   | R2M DMA                       |
+| 19  | `0x00080000`  | 6   | M2R DMA                       |
+| 20  | `0x00100000`  | 6   | DSP DMA                       |
+| 21  | `0x00200000`  | 6   | SCC DMA                       |
+| 22  | `0x00400000`  | 6   | Sound RX DMA                  |
+| 23  | `0x00800000`  | 6   | Sound TX DMA                  |
+| 24  | `0x01000000`  | 6   | Printer DMA                   |
+| 25  | `0x02000000`  | 6   | Disk DMA                      |
+| 26  | `0x04000000`  | 6   | SCSI DMA                      |
+| 27  | `0x08000000`  | 6   | Ethernet receive DMA          |
+| 28  | `0x10000000`  | 6   | Ethernet transmit DMA         |
 | 29  | `0x20000000`  | 6   | Timer (hardclock)             |
 | 30  | `0x40000000`  | 7   | Power fail                    |
 | 31  | `0x80000000`  | 7   | NMI                           |
@@ -92,9 +101,9 @@ Timer interrupt can be routed to IPL7 via SCR2 `TIMERIPL7` bit.
 | 1    | `0x00000002`  | `LEDR`         | Power LED red                        |
 | 4    | `0x00000010`  | `DSP_RESET`    | Reset the DSP                        |
 | 5    | `0x00000020`  | `DSP_BG`       | DSP bus grant                        |
-| 8    | `0x00000100`  | `RTDATA`       | RTC serial data line                 |
+| 8    | `0x00000100`  | `RTCE`         | RTC chip enable                      |
 | 9    | `0x00000200`  | `RTCLK`        | RTC serial clock                     |
-| 10   | `0x00000400`  | `RTCE`         | RTC chip enable                      |
+| 10   | `0x00000400`  | `RTDATA`       | RTC serial data line                 |
 | 15   | `0x00008000`  | `TIMERIPL7`    | Route timer interrupt to IPL7        |
 | 19–16| `0x000F0000`  | `s_dram_*`     | DRAM bank configuration              |
 
@@ -167,7 +176,7 @@ Each channel has a block of data registers at `0x02004xxx`. The offset from `0x0
 | Sound Out    | `0x02004040`    | `0x02004050`     | `0x02004240`   |
 | Disk (MO)    | (implied)       | (implied)        | (implied)      |
 | Sound In     | `0x02004080`    | `0x02004090`     | `0x02004280`   |
-| Printer      | `0x02004090`    | `0x020040A0`     | `0x02004290`   |
+| Printer      | `0x020040A0`    | `0x020040B0`     | `0x02004290`   |
 | DSP          | `0x020040D0`    | `0x020040E0`     | `0x020042D0`   |
 | Ethernet TX  | `0x02004110`    | `0x02004120`     | `0x02004310`   |
 | Ethernet RX  | `0x02004150`    | `0x02004160`     | `0x02004350`   |

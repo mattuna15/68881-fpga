@@ -227,10 +227,12 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
         return 0;
     }
 
-    /* Signal completion */
-    dma.csr |= DMA_COMPLETE;
-    dma.csr &= ~DMA_ENABLE;
-    next_intr_set(I_IPL6_SCSI_DMA);
+    /* Signal completion only if data was actually transferred without error */
+    if (total > 0 && !(dma.csr & DMA_BUSEXC)) {
+        dma.csr |= DMA_COMPLETE;
+        dma.csr &= ~DMA_ENABLE;
+        next_intr_set(I_IPL6_SCSI_DMA);
+    }
 
     xil_printf("[DMA] Transfer done: %d bytes, next=$%08X\r\n", total, dma.next);
     return total;

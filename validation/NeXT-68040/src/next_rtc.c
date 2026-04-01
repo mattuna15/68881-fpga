@@ -12,6 +12,10 @@
  * Address bit 7 (RTC_WRITE = 0x80) selects write mode.
  * Address bits 5:0 select the register (0x00-0x3F).
  *
+ * Note: the MCS1850 (new clock chip) uses inverted bit 7 in the KERNEL
+ * (compiled with NCC), but the ROM firmware uses the SAME convention as
+ * the old chip (bit 7 = 1 → write). We follow the ROM convention here.
+ *
  * Register map (MCS1850 "new clock chip"):
  *   0x00-0x1F  NVRAM (32 bytes)
  *   0x20-0x23  RTC_CNTR0-3 (32-bit seconds counter, big-endian)
@@ -125,8 +129,18 @@ static uint8_t rtc_reg_read(uint8_t addr)
     if (addr == RTC_CNTR0)
         rtc_snapshot_counter();
 
-    if (addr < RTC_REG_COUNT)
+    if (addr < RTC_REG_COUNT) {
+        /* Log reads of POT flags (ni_pot[0] at offset 14) */
+        if (addr == 14) {
+            static int pot_read_log = 0;
+            if (pot_read_log < 3) {
+                xil_printf("[RTC] ni_pot[0] read → $%02X (POT_ON=%d)\r\n",
+                           rtc_regs[addr], rtc_regs[addr] & 0x01);
+                pot_read_log++;
+            }
+        }
         return rtc_regs[addr];
+    }
 
     return 0;
 }
@@ -165,8 +179,13 @@ static void rtc_reg_write(uint8_t addr, uint8_t val)
     }
 
     /* NVRAM and other registers */
-    if (addr < RTC_REG_COUNT)
+    if (addr < RTC_REG_COUNT) {
+        /* Log POST error code writes (ni_pot[1]=oldest, ni_pot[2]=newest) */
+        if (addr == 15 || addr == 16)
+            xil_printf("[RTC] POST error code: ni_pot[%d] ← $%02X\r\n",
+                       addr - 14, val);
         rtc_regs[addr] = val;
+    }
 }
 
 /* ------------------------------------------------------------------ */

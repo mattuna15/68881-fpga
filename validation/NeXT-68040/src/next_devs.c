@@ -60,6 +60,11 @@ static uint8_t  hardclock_csr;      /* CSR: bit 7=ENABLE, bit 6=LATCH          *
 static int      latch_hardclock;    /* latched period in microseconds           */
 static int      hardclock_accum;    /* accumulated microseconds toward next IRQ */
 
+/* Live 16-bit counter: counts up at 1 MHz (1 µs per tick).
+ * The ROM reads this during POST calibration to verify the clock works.
+ * We derive it from the host timer so it advances in real time. */
+static uint16_t timer_counter;      /* current counter value */
+
 /* Accumulated fractional cycles for hardclock (1 MHz from 25 MHz CPU) */
 static int timer_accum;
 #define TIMER_PRESCALE  25  /* 25 MHz / 25 = 1 MHz timer tick */
@@ -150,6 +155,7 @@ void next_devs_init(void)
     latch_hardclock = 0;
     hardclock_accum = 0;
     timer_accum = 0;
+    timer_counter = 0;
 
     /* Event counter: capture ARM timer epoch */
     XTime_GetTime(&eventc_epoch);
@@ -211,6 +217,9 @@ int next_timer_tick(int cycles)
 
     if (usecs == 0)
         return 0;
+
+    /* Advance the live 16-bit counter (1 µs per tick) */
+    timer_counter += (uint16_t)usecs;
 
     /* Periodic hardclock interrupt */
     if ((hardclock_csr & HARDCLOCK_ENABLE) && latch_hardclock > 0) {
@@ -361,11 +370,13 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == P_BRIGHTNESS)
         return 0x3D;  /* max brightness */
 
-    /* Hardclock timer byte reads */
+    /* Hardclock timer byte reads — return live counter value.
+     * The 16-bit counter counts up at 1 MHz. The ROM reads this
+     * during POST calibration to verify the timer is running. */
     if (address == P_TIMER)
-        return hardclock0;
+        return (timer_counter >> 8) & 0xFF;
     if (address == P_TIMER + 1)
-        return hardclock1;
+        return timer_counter & 0xFF;
     if (address == P_TIMER_CSR) {
         /* Reading CSR clears timer interrupt (kernel does this in us_timer_int) */
         uint8_t val = hardclock_csr;
@@ -428,9 +439,9 @@ uint16_t next_io_read_16(uint32_t address)
 {
     address = next_io_canon(address);
 
-    /* Hardclock timer (16-bit read returns latched period) */
+    /* Hardclock timer (16-bit read returns live counter value) */
     if (address == P_TIMER)
-        return (uint16_t)latch_hardclock;
+        return timer_counter;
 
     /* SCC: decompose to byte reads */
     if (address >= P_SCC && address < P_SCC + 4)

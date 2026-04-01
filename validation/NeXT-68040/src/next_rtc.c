@@ -205,7 +205,7 @@ void next_rtc_init(void)
             0x00, 0x00,                          /* byte 12-13: adobe */
             0x00, 0x00, 0x00,                    /* byte 14-16: POT=0x00 (all tests disabled) */
             0x00,                                /* byte 17:    clock chip flags */
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 18-29: boot command */
+            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 18-29: boot command (empty) */
             0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
             0x00, 0x00                           /* byte 30-31: checksum (recomputed below) */
         };

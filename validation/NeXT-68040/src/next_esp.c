@@ -226,15 +226,9 @@ static void esp_command_clear(void)
 
 static void esp_command_write(uint8_t cmd)
 {
-    /* Log commands — reset counter on BUSRESET so kernel commands are visible */
-    static int cmdlog = 0;
-    if ((cmd & 0x1F) == 0x02) cmdlog = 0;  /* BUSRESET resets log */
-    if (cmdlog < 40) {
-        xil_printf("[ESP] Cmd $%02X (inprog=%d wait=%d)\r\n",
-                   cmd, (esp.cmd_state & ESP_CMD_INPROGRESS) ? 1 : 0,
-                   (esp.cmd_state & ESP_CMD_WAITING) ? 1 : 0);
-        cmdlog++;
-    }
+    /* Only log SELECT and non-trivial commands to reduce UART noise */
+    if ((cmd & 0x1F) >= 0x02)  /* skip NOP($00) and FLUSH($01) */
+        xil_printf("[ESP] Cmd $%02X\r\n", cmd);
 
     if ((esp.command[1] & CMD_CMD) == CMD_RESET && (cmd & CMD_CMD) != CMD_NOP) {
         xil_printf("[ESP] Chip reset in command register, ignoring command $%02X\r\n", cmd);

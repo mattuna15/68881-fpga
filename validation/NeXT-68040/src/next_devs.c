@@ -335,6 +335,20 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == 0x02014021)
         return next_esp_dma_status_read();
 
+    /* Floppy controller (Intel 82077AA): 0x02014100-0x02014108
+     * Return "no floppy, controller ready" so the driver doesn't hang
+     * waiting for hardware that doesn't exist. */
+    if (address >= 0x02014100 && address <= 0x02014108) {
+        static int flp_log = 0;
+        if (flp_log < 10) {
+            xil_printf("[FLP] R8 @%08X → 0\r\n", address);
+            flp_log++;
+        }
+        if (address == 0x02014104)
+            return 0x80;  /* MSR: RQM=1 (ready), no data direction */
+        return 0;
+    }
+
     /* DSP registers (byte-wide) */
     if (address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE)
         return next_dsp_read(address - P_DSP_BASE);

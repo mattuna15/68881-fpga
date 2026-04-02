@@ -450,6 +450,7 @@ bool next_scsi_select(uint8_t target)
 {
     if (target != SCSI_TARGET_ID || !disk.mounted) {
         xil_printf("[SCSI] Select target %d: timeout\r\n", target);
+        disk.phase = SCSI_PHASE_ST;  /* bus free — match Previous behavior */
         return true; /* timeout */
     }
     disk.target = target;

@@ -108,10 +108,10 @@ static uint32_t eventc_synced(void)
 static uint32_t dma_scratch[DMA_SCRATCH_SIZE / 4];
 
 /* ------------------------------------------------------------------ */
-/* DMA CSR shadow (per-channel, just tracks enable/complete)           */
+/* DMA CSR state (per-channel, internal 8-bit state like SCSI DMA)     */
 /* ------------------------------------------------------------------ */
 #define NUM_DMA_CHANNELS  16
-static uint32_t dma_csr[NUM_DMA_CHANNELS];
+static uint8_t dma_csr[NUM_DMA_CHANNELS];
 
 /* Map DMA CSR address to channel index (0-15), or -1 if not a DMA CSR */
 static int dma_channel_for_addr(uint32_t addr)
@@ -184,10 +184,10 @@ void next_devs_init(void)
     eventc_accum = 0;
     event_latch = 0;
 
-    /* DMA: all channels idle + complete */
+    /* DMA: all channels idle + complete (internal 8-bit state) */
     memset(dma_csr, 0, sizeof(dma_csr));
     for (int i = 0; i < NUM_DMA_CHANNELS; i++)
-        dma_csr[i] = DMACSR_COMPLETE;
+        dma_csr[i] = 0x08;  /* DMA_COMPLETE */
 
     /* BMAP chip */
     memset(bmap_regs, 0, sizeof(bmap_regs));
@@ -311,7 +311,15 @@ int next_intr_pending_ipl(void)
 
 int next_intr_acknowledge(int level)
 {
-    (void)level;
+    /* Log IPL3 and IPL6 acknowledges to trace interrupt delivery */
+    if (level == 3) {
+        static int ack3_count = 0;
+        if (++ack3_count > 40)
+            xil_printf("[ACK] IPL3 #%d status=$%08X\r\n", ack3_count, intr_status);
+    }
+    if (level == 6 && (intr_status & I_IPL3_SCSI)) {
+        xil_printf("[ACK] IPL6 with SCSI pending! status=$%08X\r\n", intr_status);
+    }
     return -1;  /* autovector */
 }
 
@@ -322,6 +330,17 @@ int next_intr_acknowledge(int level)
 void next_intr_set(uint32_t bit)
 {
     extern int next_debug_scsi;
+    /* Unconditional trap: log every I_IPL3_SCSI set with PC */
+    if (bit == I_IPL3_SCSI) {
+        static int scsi_irq_count = 0;
+        scsi_irq_count++;
+        /* After enough commands, start logging to catch the stray */
+        if (scsi_irq_count > 50) {
+            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+            xil_printf("[SCSI-IRQ#%d] SET at PC=$%08X status_was=$%08X\r\n",
+                       scsi_irq_count, pc, intr_status);
+        }
+    }
     intr_status |= bit;
     int ipl = next_intr_pending_ipl();
     if (next_debug_scsi && bit != I_IPL6_TIMER)
@@ -538,8 +557,18 @@ uint32_t next_io_read_32(uint32_t address)
         return next_rtc_scr2_read(scr2_value);
 
     /* Interrupt status */
-    if (address == P_INTRSTAT)
+    if (address == P_INTRSTAT) {
+        /* Log when the SCSI bit is set during the kernel phase */
+        if (intr_status & I_IPL3_SCSI) {
+            static int intrstat_scsi_count = 0;
+            if (++intrstat_scsi_count > 200) {
+                uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+                xil_printf("[INTRSTAT-RD] SCSI bit! #%d status=$%08X PC=$%08X\r\n",
+                           intrstat_scsi_count, intr_status, pc);
+            }
+        }
         return intr_status;
+    }
 
     /* Interrupt mask */
     if (address == P_INTRMASK)
@@ -576,14 +605,14 @@ uint32_t next_io_read_32(uint32_t address)
         return dma_scratch[off >> 2];
     }
 
-    /* DMA CSRs: return idle + complete */
+    /* DMA CSRs: return state in Turbo read format (bits 24-31) */
     {
         int ch = dma_channel_for_addr(address);
         if (ch >= 0) {
             /* SCSI channel: use dedicated DMA module */
             if (ch == 0)
                 return next_scsi_dma_csr_read();
-            return dma_csr[ch];
+            return (uint32_t)dma_csr[ch] << 24;
         }
     }
 
@@ -781,9 +810,16 @@ void next_io_write_32(uint32_t address, uint32_t value)
                 next_scsi_dma_csr_write(value);
                 return;
             }
-            /* Shadow the written value for DMA_W readback check.
-             * Turbo kernel: DMA_W(r,v) do { r=v; } while (r!=v) */
-            dma_csr[ch] = value;
+            /* Decode Turbo write bits and update internal state,
+             * same logic as SCSI DMA CSR write */
+            if (value & 0x00100000)  /* TDMA_RESET */
+                dma_csr[ch] &= ~(0x08 | 0x02 | 0x01);
+            if (value & 0x00020000)  /* TDMA_SETSUPDATE */
+                dma_csr[ch] |= 0x02;
+            if (value & 0x00010000)  /* TDMA_SETENABLE */
+                dma_csr[ch] |= 0x01;
+            if (value & 0x00080000)  /* TDMA_CLRCOMPLETE */
+                dma_csr[ch] &= ~0x08;
             return;
         }
     }

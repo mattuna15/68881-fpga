@@ -469,6 +469,11 @@ static void poll_uart_rx(void)
             xil_printf("[DEBUG] intr_status=$%08X intr_mask=$%08X pending_ipl=%d\r\n",
                        next_intr_get_status(), next_intr_get_mask(),
                        next_intr_pending_ipl());
+            /* Dump ESP IRQ event ring buffer */
+            {
+                extern void esp_dump_irq_log(void);
+                esp_dump_irq_log();
+            }
             continue;
         }
         next_scc_rx_push(ch);    /* SCC serial path */

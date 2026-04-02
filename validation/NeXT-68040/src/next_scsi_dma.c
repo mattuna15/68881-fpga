@@ -50,8 +50,6 @@ static struct {
     uint32_t saved_stop;
     /* Init buffer register (0x02004210) — also read/write scratchpad */
     uint32_t initbuf;
-    /* Turbo CSR shadow: last value written, returned on read for DMA_W */
-    uint32_t csr_shadow;
 } dma;
 
 /* Internal CSR bits (68030-style, for state tracking) */
@@ -136,12 +134,16 @@ void next_scsi_dma_reg_write(uint32_t addr, uint32_t value)
 
 uint32_t next_scsi_dma_csr_read(void)
 {
+    /* Turbo CSR read format: internal state bits shifted to upper byte.
+     * The kernel's get_dma_state() masks with DMASTATE_MASK (0x1B000000)
+     * to extract ENABLE/SUPDATE/COMPLETE/BUSEXC from bits 24-31. */
+    uint32_t val = (uint32_t)dma.csr << 24;
     extern int next_debug_scsi;
     if (next_debug_scsi) {
         uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
-        xil_printf("[DMA] CSR read → $%08X PC=$%08X\r\n", dma.csr_shadow, pc);
+        xil_printf("[DMA] CSR read → $%08X (csr=$%02X) PC=$%08X\r\n", val, dma.csr, pc);
     }
-    return dma.csr_shadow;
+    return val;
 }
 
 void next_scsi_dma_csr_write(uint32_t value)
@@ -150,14 +152,25 @@ void next_scsi_dma_csr_write(uint32_t value)
     if (next_debug_scsi) {
         uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
         xil_printf("[DMA] CSR write=$%08X PC=$%08X\r\n", value, pc);
-        /* Dump code around PC on first debug hit */
-        static int code_dumped = 0;
-        if (!code_dumped) {
-            code_dumped = 1;
-            xil_printf("[DMA] Code near PC=$%08X:\r\n  ", pc);
-            for (int i = -4; i < 8; i++) {
-                uint32_t w = next_phys_read_32(pc + i*4);
-                xil_printf("%08X ", w);
+        /* Trace caller chain via A6 frame pointer */
+        static int call_traced = 0;
+        if (!call_traced) {
+            call_traced = 1;
+            uint32_t a6 = m68k_get_reg(NULL, M68K_REG_A6);
+            xil_printf("[DMA] Call chain: ");
+            for (int i = 0; i < 6 && a6 >= 0x04000000 && a6 < 0x08000000; i++) {
+                uint32_t ret = next_phys_read_32(a6 + 4);
+                xil_printf("$%08X ", ret);
+                a6 = next_phys_read_32(a6);
+            }
+            xil_printf("\r\n");
+            /* Dump code at first caller */
+            a6 = m68k_get_reg(NULL, M68K_REG_A6);
+            uint32_t caller = next_phys_read_32(a6 + 4);
+            xil_printf("[DMA] Code at caller $%08X:\r\n  ", caller);
+            for (int i = -8; i < 8; i++) {
+                uint32_t w = next_phys_read_32(caller + i*2);
+                xil_printf("%04X ", w >> 16);
             }
             xil_printf("\r\n");
         }
@@ -165,7 +178,6 @@ void next_scsi_dma_csr_write(uint32_t value)
         xil_printf("[DMA] CSR write=$%08X\r\n", value);
     }
 
-    dma.csr_shadow = value;  /* echo back for DMA_W readback check */
     dma.direction = (value & TDMA_DEV2M) ? DMA_DEV2M : 0;
 
     if (value & TDMA_RESET) {

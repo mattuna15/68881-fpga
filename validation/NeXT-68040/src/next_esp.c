@@ -183,20 +183,54 @@ static void esp_fifo_clear(void)
 
 static void esp_finish_command(void);
 
+/* Ring buffer to capture last ESP IRQ events */
+#define ESP_IRQ_LOG_SIZE 8
+static struct {
+    uint8_t intstatus;
+    uint8_t cmd;
+    uint8_t dma_ctrl;
+    uint8_t raised;  /* 1=raised, 0=suppressed */
+} esp_irq_log[ESP_IRQ_LOG_SIZE];
+static int esp_irq_log_idx = 0;
+
+void esp_dump_irq_log(void)
+{
+    xil_printf("[ESP-IRQ] Last %d events:\r\n", ESP_IRQ_LOG_SIZE);
+    for (int i = 0; i < ESP_IRQ_LOG_SIZE; i++) {
+        int idx = (esp_irq_log_idx + i) % ESP_IRQ_LOG_SIZE;
+        if (esp_irq_log[idx].intstatus || esp_irq_log[idx].cmd)
+            xil_printf("  [%d] cmd=$%02X intstatus=$%02X dma_ctrl=$%02X %s\r\n",
+                       i, esp_irq_log[idx].cmd, esp_irq_log[idx].intstatus,
+                       esp_irq_log[idx].dma_ctrl,
+                       esp_irq_log[idx].raised ? "RAISED" : "SUPPRESSED");
+    }
+}
+
 static void esp_raise_irq(void)
 {
     extern int next_debug_scsi;
+    /* Log every IRQ attempt to ring buffer */
+    esp_irq_log[esp_irq_log_idx].intstatus = esp.intstatus;
+    esp_irq_log[esp_irq_log_idx].cmd = esp.command[0];
+    esp_irq_log[esp_irq_log_idx].dma_ctrl = esp.dma_control;
+
     if (!(esp.status & STAT_INT)) {
         esp.status |= STAT_INT;
         if (esp.dma_control & ESPCTRL_ENABLE_INT) {
+            esp_irq_log[esp_irq_log_idx].raised = 1;
             if (next_debug_scsi)
                 xil_printf("[ESP-IRQ] RAISE: intstatus=$%02X status=$%02X dma_ctrl=$%02X\r\n",
                            esp.intstatus, esp.status, esp.dma_control);
             next_intr_set(I_IPL3_SCSI);
-        } else if (next_debug_scsi) {
-            xil_printf("[ESP-IRQ] SUPPRESS (INT disabled): intstatus=$%02X\r\n", esp.intstatus);
+        } else {
+            esp_irq_log[esp_irq_log_idx].raised = 0;
+            if (next_debug_scsi)
+                xil_printf("[ESP-IRQ] SUPPRESS (INT disabled): intstatus=$%02X\r\n", esp.intstatus);
         }
+    } else {
+        esp_irq_log[esp_irq_log_idx].raised = 0;
     }
+    esp_irq_log_idx = (esp_irq_log_idx + 1) % ESP_IRQ_LOG_SIZE;
 }
 
 static void esp_lower_irq(void)
@@ -665,18 +699,23 @@ uint8_t next_esp_dma_ctrl_read(void)
 
 void next_esp_dma_ctrl_write(uint8_t value)
 {
+    uint8_t old_ctrl = esp.dma_control;
     esp.dma_control = value;
 
     if (value & ESPCTRL_FLUSH) {
-        xil_printf("[ESP] DMA flush\r\n");
+        /* DMA flush — no action needed in our synchronous model */
     }
     if (value & ESPCTRL_RESET) {
         xil_printf("[ESP] DMA reset → chip reset\r\n");
         esp_reset_hard();
     }
     if (value & ESPCTRL_ENABLE_INT) {
-        if (esp.status & STAT_INT) {
-            next_intr_set(I_IPL3_SCSI);
+        /* Only raise system interrupt on 0→1 transition of INT enable,
+         * not when already enabled (avoids spurious re-raise during
+         * DMA flush writes while scintr is processing). */
+        if (!(old_ctrl & ESPCTRL_ENABLE_INT)) {
+            if (esp.status & STAT_INT)
+                next_intr_set(I_IPL3_SCSI);
         }
     } else {
         next_intr_clear(I_IPL3_SCSI);

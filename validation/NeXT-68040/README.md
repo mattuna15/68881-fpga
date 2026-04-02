@@ -193,9 +193,40 @@ d0: 000006E4              ; 1764 = 42 × 42 ✓
 Full stack: serial keystroke → KMS → ROM monitor → 68K code → F-line
 trap → ARM fline_handler → AXI-Lite → MC68881 FPGA → result to D0.
 
+### Mach Kernel Boot — SCSI Disk Loaded, Autoconfiguration In Progress
+
+The Mach kernel (NEXTSTEP 3.3) loads from a SCSI disk image on SD card
+and reaches the autoconfiguration phase. The kernel loads ~800 KB of
+code from disk and begins device probing.
+
+**Boot sequence completed:**
+1. ROM monitor: `b sd` → probes SCSI targets 0-7, finds disk at target 6
+2. ROM reads boot blocks, disk label, kernel binary from SCSI disk
+3. Kernel starts: MMU enabled, timer configured at 500 µs, ESP reset
+4. Kernel SCSI probe: targets 0-5 timeout, target 6 found (INQUIRY)
+5. Disk attach: START/STOP, TEST UNIT READY, READ CAPACITY (730016 sectors)
+6. Disk I/O: reads boot sectors, kernel text from LBAs 380512-414688
+7. LUN probe: INQUIRY for LUNs 0-7 on target 6 (LUNs 1-7 return 0x7F)
+
+**Current hang point:** After LUN probing completes, the kernel's final
+SELECT timeout (target 0, wrapping from target 7) triggers a `screset`
+loop. The IPL 3 interrupt fires correctly via Musashi's `MOVE to SR`
+handler, but a batch-boundary timing interaction between the IPL 3 SCSI
+handler and the IPL 6 timer causes the SCSI controller state machine
+to enter "bad reselection" error recovery.
+
+**Fixes applied (this session):**
+- DMA CSR read format: returns `csr << 24` (Turbo format), not write echo
+- ESP DMA ctrl INT enable: edge detection prevents spurious re-raise
+- SELECT timeout phase: set to STATUS on timeout (matches Previous emulator)
+- Generic DMA CSR: proper 8-bit state tracking with Turbo write-bit decoding
+
+**Expected next display text:** `en0 at 0x2006000`, `dsp0`, `sound0`,
+`root on sd0` — these are the device probes AFTER SCSI completes.
+
 ### Next Steps
 
-1. Boot a kernel via the ROM's `b` command
+1. Fix batch-boundary timer pre-emption of IPL 3 SCSI handler
 2. Implement MCS1850 protocol support (bit 7 inversion for new clock chip reads/writes)
 3. USB HID keyboard integration (from hello_world project)
 

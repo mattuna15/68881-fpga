@@ -2182,7 +2182,15 @@ static inline void m68ki_check_interrupts(void)
 		m68ki_exception_interrupt(7);
 	}
 	else if(CPU_INT_LEVEL > FLAG_INT_MASK)
+	{
+		/* Debug: log IPL3 interrupt delivery */
+		if ((CPU_INT_LEVEL >> 8) == 3) {
+			extern void xil_printf(const char *fmt, ...);
+			xil_printf("[M68K] IPL3 FIRE! level=$%04X mask=$%04X PC=$%08X\r\n",
+			           CPU_INT_LEVEL, FLAG_INT_MASK, REG_PC);
+		}
 		m68ki_exception_interrupt(CPU_INT_LEVEL>>8);
+	}
 }
 
 /* Helper to load a bitfield from EA */

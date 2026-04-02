@@ -21,4 +21,7 @@ void    next_esp_dma_ctrl_write(uint8_t value);
 uint8_t next_esp_dma_status_read(void);
 void    next_esp_dma_status_write(uint8_t value);
 
+/* Debug: dump last ESP IRQ events */
+void esp_dump_irq_log(void);
+
 #endif /* NEXT_ESP_H */

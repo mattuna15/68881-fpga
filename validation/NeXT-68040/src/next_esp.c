@@ -185,17 +185,26 @@ static void esp_finish_command(void);
 
 static void esp_raise_irq(void)
 {
+    extern int next_debug_scsi;
     if (!(esp.status & STAT_INT)) {
         esp.status |= STAT_INT;
         if (esp.dma_control & ESPCTRL_ENABLE_INT) {
+            if (next_debug_scsi)
+                xil_printf("[ESP-IRQ] RAISE: intstatus=$%02X status=$%02X dma_ctrl=$%02X\r\n",
+                           esp.intstatus, esp.status, esp.dma_control);
             next_intr_set(I_IPL3_SCSI);
+        } else if (next_debug_scsi) {
+            xil_printf("[ESP-IRQ] SUPPRESS (INT disabled): intstatus=$%02X\r\n", esp.intstatus);
         }
     }
 }
 
 static void esp_lower_irq(void)
 {
+    extern int next_debug_scsi;
     if (esp.status & STAT_INT) {
+        if (next_debug_scsi)
+            xil_printf("[ESP-IRQ] LOWER: was intstatus=$%02X\r\n", esp.intstatus);
         esp.status &= ~STAT_INT;
         next_intr_clear(I_IPL3_SCSI);
         esp_finish_command();
@@ -575,7 +584,11 @@ uint8_t next_esp_read(uint32_t offset)
         return (esp.status & ~STAT_PHASE) | (next_scsi_get_phase() & STAT_PHASE);
     case 0x05: /* Interrupt Status — reading clears interrupt */
     {
+        extern int next_debug_scsi;
         uint8_t val = esp.intstatus;
+        if (next_debug_scsi)
+            xil_printf("[ESP] R intrstat=$%02X stat=$%02X (INT=%d)\r\n",
+                       val, esp.status, !!(esp.status & STAT_INT));
         if (esp.status & STAT_INT) {
             esp.intstatus = 0;
             esp.status &= ~(STAT_VGC | STAT_PE | STAT_GE);

@@ -444,9 +444,11 @@ int next_scsi_init(void)
     return -1;
 }
 
+#define SCSI_TARGET_ID  6   /* NeXT boot disk is always target 6 */
+
 bool next_scsi_select(uint8_t target)
 {
-    if (target != 0 || !disk.mounted) {
+    if (target != SCSI_TARGET_ID || !disk.mounted) {
         xil_printf("[SCSI] Select target %d: timeout\r\n", target);
         return true; /* timeout */
     }

@@ -13,12 +13,16 @@
 
 #include "next_devs.h"
 #include "next_hw.h"
+#include "musashi/m68k.h"
 #include "next_rtc.h"
 #include "next_dsp.h"
 #include "next_kms.h"
 #include "next_esp.h"
 #include "next_scsi_dma.h"
 #include "xil_printf.h"
+
+/* Debug toggle — toggled by 'D' keypress in main loop */
+int next_debug_scsi = 0;
 #include "xiltimer.h"
 #include <string.h>
 
@@ -72,18 +76,25 @@ static int timer_accum;
 #define HARDCLOCK_ENABLE 0x80
 #define HARDCLOCK_LATCH  0x40
 
-/* Event counter — real-time microseconds via ARM hardware timer.
- * Like Previous's host_time_us(), this advances continuously
- * regardless of emulation batch boundaries. */
-static XTime eventc_epoch;          /* ARM timer value at emulator start        */
-static uint32_t event_latch;        /* snapshot taken when eventc_latch is read */
+/* Event counter — emulated microseconds derived from CPU cycles.
+ * The kernel's DELAY() and event_get() use this to measure time.
+ * Must advance with emulated CPU time (25 MHz → 1 µs per 25 cycles),
+ * NOT wall time, because the emulated CPU runs much faster than real time. */
+static uint32_t eventc_us;           /* emulated microseconds counter           */
+static uint32_t event_latch;         /* snapshot taken when eventc_latch is read */
+static int      eventc_accum;        /* fractional cycle accumulator             */
+static int      eventc_batch_base;   /* cycles_run snapshot at last sync         */
+#define EVENTC_PRESCALE  25          /* 25 MHz / 25 = 1 MHz (1 µs per tick)     */
 
-static uint32_t host_time_us(void)
+/* Sync event counter from within m68k_execute() — call before reading eventc.
+ * Uses m68k_cycles_run() to account for cycles elapsed within the current batch
+ * that next_timer_tick() hasn't seen yet. */
+static uint32_t eventc_synced(void)
 {
-    XTime now;
-    XTime_GetTime(&now);
-    /* COUNTS_PER_SECOND = 33333000, so divide by ~33.333 for microseconds */
-    return (uint32_t)((now - eventc_epoch) / (COUNTS_PER_SECOND / 1000000));
+    int run = m68k_cycles_run();
+    int delta = run - eventc_batch_base;
+    if (delta < 0) delta = 0;  /* safety: handle batch boundary */
+    return eventc_us + (uint32_t)(delta / EVENTC_PRESCALE);
 }
 
 /* ------------------------------------------------------------------ */
@@ -168,8 +179,9 @@ void next_devs_init(void)
     timer_accum = 0;
     timer_counter = 0;
 
-    /* Event counter: capture ARM timer epoch */
-    XTime_GetTime(&eventc_epoch);
+    /* Event counter */
+    eventc_us = 0;
+    eventc_accum = 0;
     event_latch = 0;
 
     /* DMA: all channels idle + complete */
@@ -238,12 +250,16 @@ int next_timer_tick(int cycles)
     /* Advance the live 16-bit counter (1 µs per tick) */
     timer_counter += (uint16_t)usecs;
 
+    /* Advance the event counter (used by kernel DELAY/event_get) */
+    eventc_us += usecs;
+    eventc_batch_base = 0;  /* reset: next batch starts from 0 */
+
     /* Periodic hardclock interrupt */
     if ((hardclock_csr & HARDCLOCK_ENABLE) && latch_hardclock > 0) {
         hardclock_accum += usecs;
         if (hardclock_accum >= latch_hardclock) {
             hardclock_accum %= latch_hardclock;
-            intr_status |= I_IPL6_TIMER;
+            next_intr_set(I_IPL6_TIMER);
             return 1;
         }
     }
@@ -303,8 +319,27 @@ int next_intr_acknowledge(int level)
 /* Interrupt set/clear (used by ESP and DMA modules)                    */
 /* ------------------------------------------------------------------ */
 
-void next_intr_set(uint32_t bit)   { intr_status |= bit; }
-void next_intr_clear(uint32_t bit) { intr_status &= ~bit; }
+void next_intr_set(uint32_t bit)
+{
+    extern int next_debug_scsi;
+    intr_status |= bit;
+    int ipl = next_intr_pending_ipl();
+    if (next_debug_scsi && bit != I_IPL6_TIMER)
+        xil_printf("[IRQ+] set $%08X → status=$%08X ipl=%d\r\n",
+                   bit, intr_status, ipl);
+    m68k_set_irq(ipl);
+}
+
+void next_intr_clear(uint32_t bit)
+{
+    extern int next_debug_scsi;
+    intr_status &= ~bit;
+    int ipl = next_intr_pending_ipl();
+    if (next_debug_scsi && bit != I_IPL6_TIMER)
+        xil_printf("[IRQ-] clr $%08X → status=$%08X ipl=%d\r\n",
+                   bit, intr_status, ipl);
+    m68k_set_irq(ipl);
+}
 uint32_t next_intr_get_status(void) { return intr_status; }
 uint32_t next_intr_get_mask(void) { return intr_mask; }
 
@@ -361,6 +396,10 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == 0x02014021)
         return next_esp_dma_status_read();
 
+    /* Ethernet (MB8795): 0x02006000-0x0200600F — return 0 (no ethernet) */
+    if (address >= 0x02006000 && address < 0x02006010)
+        return 0;
+
     /* Printer (NeXTlaser): 0x0200F000-0x0200F003 (byte CSRs) */
     if (address >= 0x0200F000 && address <= 0x0200F003)
         return 0;
@@ -383,6 +422,17 @@ uint8_t next_io_read_8(uint32_t address)
     if (address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE)
         return next_dsp_read(address - P_DSP_BASE);
 
+    /* P_MON / KMS byte reads — monitor.s reads individual bytes of mon_csr.
+     * Byte 0 = bits 31-24 (dmaout/dmain enables, dav, ovr)
+     * Byte 1 = bits 23-16 (km_int/dav, control_int/dav)
+     * Byte 2 = bits 15-8  (dtx_pend, dtx, ctx_pend, ctx, rtx_pend, rtx, reset, txloop)
+     * Byte 3 = bits 7-0   (cmd) */
+    if (address >= P_MON && address < P_MON + 16) {
+        uint32_t val32 = next_kms_read((address - P_MON) & ~3);
+        int shift = (3 - (int)(address & 3)) * 8;
+        return (val32 >> shift) & 0xFF;
+    }
+
     /* Brightness (byte-wide) */
     if (address == P_BRIGHTNESS)
         return 0x3D;  /* max brightness */
@@ -397,7 +447,7 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == P_TIMER_CSR) {
         /* Reading CSR clears timer interrupt (kernel does this in us_timer_int) */
         uint8_t val = hardclock_csr;
-        intr_status &= ~I_IPL6_TIMER;
+        next_intr_clear(I_IPL6_TIMER);
         return val;
     }
 
@@ -420,7 +470,7 @@ uint8_t next_io_read_8(uint32_t address)
      * Previous also returns & 0xFFFFF, but on Previous the emulated CPU
      * is fast enough that DELAY loops complete before wrapping. */
     if (address == P_EVENTC) {
-        event_latch = host_time_us();
+        event_latch = eventc_synced();
         return (event_latch >> 24) & 0xFF;  /* byte 0: bits 31-24 */
     }
     if (address == P_EVENTC + 1)
@@ -514,7 +564,7 @@ uint32_t next_io_read_32(uint32_t address)
 
     /* Event counter (microseconds) — 32-bit read latches + returns full value */
     if (address == P_EVENTC)
-        return host_time_us();
+        return eventc_synced();
 
     /* DMA registers: 0x02004000-0x020043FF — all channels */
     if (address >= 0x02004000 && address < 0x02004400) {
@@ -611,6 +661,13 @@ void next_io_write_8(uint32_t address, uint8_t value)
         return;
     }
 
+    /* P_MON / KMS byte writes — mon_csr_and/mon_csr_or in monitor.s do
+     * byte read-modify-write at P_MON+0 (sound DMA enable/ovr bits). */
+    if (address >= P_MON && address < P_MON + 16) {
+        next_kms_write((address - P_MON) & ~3, (uint32_t)value);
+        return;
+    }
+
     /* DSP registers (byte-wide) */
     if (address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE) {
         next_dsp_write(address - P_DSP_BASE, value);
@@ -641,7 +698,7 @@ void next_io_write_8(uint32_t address, uint8_t value)
             xil_printf("[TIMER] enable periodic IRQ every %d us\r\n", latch_hardclock);
         }
         /* Writing CSR clears timer interrupt */
-        intr_status &= ~I_IPL6_TIMER;
+        next_intr_clear(I_IPL6_TIMER);
         return;
     }
 
@@ -695,6 +752,9 @@ void next_io_write_32(uint32_t address, uint32_t value)
 
     /* Interrupt mask */
     if (address == P_INTRMASK) {
+        if (next_debug_scsi && value != intr_mask)
+            xil_printf("[IRQ] mask $%08X → $%08X (delta=$%08X)\r\n",
+                       intr_mask, value, value ^ intr_mask);
         intr_mask = value;
         return;
     }
@@ -721,15 +781,9 @@ void next_io_write_32(uint32_t address, uint32_t value)
                 next_scsi_dma_csr_write(value);
                 return;
             }
-            if (value & DMACSR_RESET)
-                dma_csr[ch] = DMACSR_COMPLETE;
-            else if (value & 0x00080000)  /* CLRCOMPLETE */
-                dma_csr[ch] &= ~DMACSR_COMPLETE;
-            /* Auto-complete: when DMA is enabled on non-SCSI channels,
-             * immediately set COMPLETE since no real transfer occurs.
-             * Without this, the sound driver polls forever for DMA done. */
-            if (value & 0x00010000)  /* SETENABLE */
-                dma_csr[ch] |= DMACSR_COMPLETE;
+            /* Shadow the written value for DMA_W readback check.
+             * Turbo kernel: DMA_W(r,v) do { r=v; } while (r!=v) */
+            dma_csr[ch] = value;
             return;
         }
     }

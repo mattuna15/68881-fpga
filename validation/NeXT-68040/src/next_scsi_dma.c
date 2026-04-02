@@ -9,6 +9,7 @@
 
 #include "next_scsi_dma.h"
 #include "next_scsi.h"
+#include "musashi/m68k.h"
 #include "next_memory.h"
 #include "next_hw.h"
 #include "next_devs.h"
@@ -49,6 +50,8 @@ static struct {
     uint32_t saved_stop;
     /* Init buffer register (0x02004210) — also read/write scratchpad */
     uint32_t initbuf;
+    /* Turbo CSR shadow: last value written, returned on read for DMA_W */
+    uint32_t csr_shadow;
 } dma;
 
 /* Internal CSR bits (68030-style, for state tracking) */
@@ -133,14 +136,36 @@ void next_scsi_dma_reg_write(uint32_t addr, uint32_t value)
 
 uint32_t next_scsi_dma_csr_read(void)
 {
-    /* Convert internal 68030-style CSR to 68040 Turbo format (upper byte) */
-    return (uint32_t)dma.csr << 24;
+    extern int next_debug_scsi;
+    if (next_debug_scsi) {
+        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+        xil_printf("[DMA] CSR read → $%08X PC=$%08X\r\n", dma.csr_shadow, pc);
+    }
+    return dma.csr_shadow;
 }
 
 void next_scsi_dma_csr_write(uint32_t value)
 {
-    xil_printf("[DMA] CSR write=$%08X\r\n", value);
+    extern int next_debug_scsi;
+    if (next_debug_scsi) {
+        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+        xil_printf("[DMA] CSR write=$%08X PC=$%08X\r\n", value, pc);
+        /* Dump code around PC on first debug hit */
+        static int code_dumped = 0;
+        if (!code_dumped) {
+            code_dumped = 1;
+            xil_printf("[DMA] Code near PC=$%08X:\r\n  ", pc);
+            for (int i = -4; i < 8; i++) {
+                uint32_t w = next_phys_read_32(pc + i*4);
+                xil_printf("%08X ", w);
+            }
+            xil_printf("\r\n");
+        }
+    } else {
+        xil_printf("[DMA] CSR write=$%08X\r\n", value);
+    }
 
+    dma.csr_shadow = value;  /* echo back for DMA_W readback check */
     dma.direction = (value & TDMA_DEV2M) ? DMA_DEV2M : 0;
 
     if (value & TDMA_RESET) {

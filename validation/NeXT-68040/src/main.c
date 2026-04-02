@@ -459,6 +459,18 @@ static void poll_uart_rx(void)
             xil_printf("\r\n");
             continue;  /* don't forward 'X' to SCC */
         }
+        if (ch == 'D') {
+            /* Toggle SCSI/DMA/interrupt debug logging */
+            extern int next_debug_scsi;
+            next_debug_scsi = !next_debug_scsi;
+            xil_printf("\r\n[DEBUG] SCSI/DMA/IRQ logging %s\r\n",
+                       next_debug_scsi ? "ON" : "OFF");
+            /* Snapshot interrupt state */
+            xil_printf("[DEBUG] intr_status=$%08X intr_mask=$%08X pending_ipl=%d\r\n",
+                       next_intr_get_status(), next_intr_get_mask(),
+                       next_intr_pending_ipl());
+            continue;
+        }
         next_scc_rx_push(ch);    /* SCC serial path */
         next_kms_push_ascii(ch); /* KMS keyboard path (ROM monitor) */
     }

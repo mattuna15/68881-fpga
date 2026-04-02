@@ -98,6 +98,27 @@ static void build_reverse_map(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* KMS command transmit state                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The NeXT monitor chip has CTX (command transmit) and DTX (data transmit)
+ * status bits.  mon_send_nodma() in the kernel spins:
+ *     while (mon->mon_csr.ctx) ;
+ * waiting for CTX to go LOW, then writes cmd+data.
+ *
+ * CTX HIGH = command shift register is busy (still shifting out).
+ * CTX LOW  = command shift register is idle (ready for new command).
+ *
+ * Since we don't have real serial shift hardware, we just:
+ *   - Return CTX=0 (idle) on reads so mon_send_nodma doesn't spin.
+ *   - Accept writes silently (command is "instantly transmitted").
+ *
+ * DTX works the same way for data; return 0 = idle.
+ * CTX_PEND/DTX_PEND likewise return 0 = nothing pending.
+ */
+
+/* ------------------------------------------------------------------ */
 /* Keyboard event queue                                                */
 /* ------------------------------------------------------------------ */
 
@@ -222,9 +243,10 @@ uint32_t next_kms_read(int offset)
         uint32_t csr = 0;
         if (!kms_queue_empty())
             csr |= 0x00400000; /* KM_DAV: keyboard data available */
-        /* DTX + CTX: command/data transmitted (sound driver polls these) */
-        csr |= 0x00004000;    /* DTX: data transmit done */
-        csr |= 0x00001000;    /* CTX: command transmit done */
+        /* CTX=0 and DTX=0: shift registers idle (ready for new command).
+         * mon_send_nodma() spins while(ctx), so CTX must be 0.
+         * mon_send() assembly checks ctx_pend/ctx at byte offset 2:
+         * bit 5=ctx_pend, bit 4=ctx — both 0 means "ready". */
         return csr;
     }
 

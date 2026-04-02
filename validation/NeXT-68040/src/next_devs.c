@@ -113,6 +113,53 @@ static uint32_t dma_scratch[DMA_SCRATCH_SIZE / 4];
 #define NUM_DMA_CHANNELS  16
 static uint8_t dma_csr[NUM_DMA_CHANNELS];
 
+/* ------------------------------------------------------------------ */
+/* ADB (Apple Desktop Bus) stub — Turbo machines use ADB for keyboard  */
+/* and mouse via the TMC at $02208xxx.  Without this stub, the kernel  */
+/* hangs polling ADB_INTSTATUS waiting for command completion.          */
+/* ------------------------------------------------------------------ */
+#define ADB_INTSTATUS   0x00
+#define ADB_INTMASK     0x08
+#define ADB_CMD         0x30
+#define ADB_INT_REJECT  0x01  /* no device responded */
+static uint32_t adb_intstatus = 0;
+static uint32_t adb_intmask = 0;
+
+/* ------------------------------------------------------------------ */
+/* Live I/O activity tracker — dump with 'D' to see what CPU accesses  */
+/* ------------------------------------------------------------------ */
+static struct {
+    uint32_t last_addr;
+    uint32_t count;
+} io_activity[8];
+static int io_act_idx = 0;
+
+void io_track(uint32_t addr) {
+    for (int i = 0; i < 8; i++) {
+        if (io_activity[i].last_addr == addr) {
+            io_activity[i].count++;
+            return;
+        }
+    }
+    io_activity[io_act_idx].last_addr = addr;
+    io_activity[io_act_idx].count = 1;
+    io_act_idx = (io_act_idx + 1) % 8;
+}
+
+void io_activity_dump(void) {
+    xil_printf("[IO-ACT] Recent I/O addresses:\r\n");
+    for (int i = 0; i < 8; i++) {
+        if (io_activity[i].count > 0)
+            xil_printf("  $%08X  (%u times)\r\n",
+                       io_activity[i].last_addr, io_activity[i].count);
+    }
+    /* Reset after dump */
+    for (int i = 0; i < 8; i++) {
+        io_activity[i].last_addr = 0;
+        io_activity[i].count = 0;
+    }
+}
+
 /* Map DMA CSR address to channel index (0-15), or -1 if not a DMA CSR */
 static int dma_channel_for_addr(uint32_t addr)
 {
@@ -311,15 +358,6 @@ int next_intr_pending_ipl(void)
 
 int next_intr_acknowledge(int level)
 {
-    /* Log IPL3 and IPL6 acknowledges to trace interrupt delivery */
-    if (level == 3) {
-        static int ack3_count = 0;
-        if (++ack3_count > 40)
-            xil_printf("[ACK] IPL3 #%d status=$%08X\r\n", ack3_count, intr_status);
-    }
-    if (level == 6 && (intr_status & I_IPL3_SCSI)) {
-        xil_printf("[ACK] IPL6 with SCSI pending! status=$%08X\r\n", intr_status);
-    }
     return -1;  /* autovector */
 }
 
@@ -330,16 +368,10 @@ int next_intr_acknowledge(int level)
 void next_intr_set(uint32_t bit)
 {
     extern int next_debug_scsi;
-    /* Unconditional trap: log every I_IPL3_SCSI set with PC */
+    /* Track SCSI IRQ count (dump available via 'D' key) */
     if (bit == I_IPL3_SCSI) {
         static int scsi_irq_count = 0;
         scsi_irq_count++;
-        /* After enough commands, start logging to catch the stray */
-        if (scsi_irq_count > 50) {
-            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
-            xil_printf("[SCSI-IRQ#%d] SET at PC=$%08X status_was=$%08X\r\n",
-                       scsi_irq_count, pc, intr_status);
-        }
     }
     intr_status |= bit;
     int ipl = next_intr_pending_ipl();
@@ -423,9 +455,7 @@ uint8_t next_io_read_8(uint32_t address)
     if (address >= 0x0200F000 && address <= 0x0200F003)
         return 0;
 
-    /* Floppy controller (Intel 82077AA): 0x02014100-0x02014108
-     * Return "no floppy, controller ready" so the driver doesn't hang
-     * waiting for hardware that doesn't exist. */
+    /* Floppy controller (Intel 82077AA): 0x02014100-0x02014108 */
     if (address >= 0x02014100 && address <= 0x02014108) {
         static int flp_log = 0;
         if (flp_log < 10) {
@@ -434,6 +464,8 @@ uint8_t next_io_read_8(uint32_t address)
         }
         if (address == 0x02014104)
             return 0x80;  /* MSR: RQM=1 (ready), no data direction */
+        if (address == 0x02014108)
+            return 0;     /* FLPCTL: bit 6 clear = SCSI selected */
         return 0;
     }
 
@@ -547,6 +579,7 @@ uint16_t next_io_read_16(uint32_t address)
 uint32_t next_io_read_32(uint32_t address)
 {
     address = next_io_canon(address);
+    io_track(address);
 
     /* SCR1 — the first thing the kernel reads */
     if (address == P_SCR1)
@@ -558,14 +591,13 @@ uint32_t next_io_read_32(uint32_t address)
 
     /* Interrupt status */
     if (address == P_INTRSTAT) {
-        /* Log when the SCSI bit is set during the kernel phase */
-        if (intr_status & I_IPL3_SCSI) {
-            static int intrstat_scsi_count = 0;
-            if (++intrstat_scsi_count > 200) {
-                uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
-                xil_printf("[INTRSTAT-RD] SCSI bit! #%d status=$%08X PC=$%08X\r\n",
-                           intrstat_scsi_count, intr_status, pc);
-            }
+        /* Log scintr's goto-again check at line 1325 */
+        static int intrstat_total = 0;
+        if (++intrstat_total > 500) {
+            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+            if (pc == 0x0408A45E)  /* scintr *intrstat check */
+                xil_printf("[SCINTR-CHK] status=$%08X scsi=%d\r\n",
+                           intr_status, !!(intr_status & I_IPL3_SCSI));
         }
         return intr_status;
     }
@@ -624,6 +656,27 @@ uint32_t next_io_read_32(uint32_t address)
     if (address >= P_BMAP && address < P_BMAP + BMAP_REG_COUNT * 4) {
         uint32_t reg = (address - P_BMAP) >> 2;
         return bmap_regs[reg];
+    }
+
+    /* TMC space: $02200000-$0220FFFF */
+    if (address >= 0x02200000 && address < 0x02210000) {
+        uint32_t tmc_off = address - 0x02200000;
+        /* TMC SCR1 at $02200000 — same as P_SCR1 */
+        if (tmc_off < 4)
+            return scr1_value;
+        /* ADB registers at TMC+$8000-$803F (mapped via $02208xxx) */
+        if (tmc_off >= 0x8000 && tmc_off < 0x8040) {
+            uint32_t adb_reg = tmc_off - 0x8000;
+            switch (adb_reg) {
+            case ADB_INTSTATUS:
+                return adb_intstatus;
+            case ADB_INTMASK:
+                return adb_intmask;
+            default:
+                return 0;
+            }
+        }
+        return 0;  /* other TMC registers */
     }
 
     /* Unknown 32-bit I/O read */
@@ -853,6 +906,30 @@ void next_io_write_32(uint32_t address, uint32_t value)
     if (address >= P_BMAP && address < P_BMAP + BMAP_REG_COUNT * 4) {
         uint32_t reg = (address - P_BMAP) >> 2;
         bmap_regs[reg] = value;
+        return;
+    }
+
+    /* TMC space: $02200000-$0220FFFF */
+    if (address >= 0x02200000 && address < 0x02210000) {
+        uint32_t tmc_off = address - 0x02200000;
+        /* ADB registers at TMC+$8000-$803F */
+        if (tmc_off >= 0x8000 && tmc_off < 0x8040) {
+            uint32_t adb_reg = tmc_off - 0x8000;
+            switch (adb_reg) {
+            case ADB_INTSTATUS:
+                adb_intstatus &= ~value;  /* write-1-to-clear */
+                break;
+            case ADB_INTMASK:
+                adb_intmask = value;
+                break;
+            case ADB_CMD:
+                /* Any ADB command → immediately reject (no devices) */
+                adb_intstatus |= ADB_INT_REJECT;
+                break;
+            default:
+                break;
+            }
+        }
         return;
     }
 

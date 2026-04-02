@@ -1010,6 +1010,12 @@ int m68k_execute(int num_cycles)
 
 			/* Trace m68k_exception, if necessary */
 			m68ki_exception_if_trace(); /* auto-disable (see m68kcpu.h) */
+
+			/* Check for low-priority interrupts (IPL 1-5) between instructions.
+			 * IPL 6-7 (timer/NMI) are only checked at batch boundaries and
+			 * MOVE-to-SR to prevent pre-emption of lower-priority handlers. */
+			if(CPU_INT_LEVEL > FLAG_INT_MASK && (CPU_INT_LEVEL>>8) <= 5)
+				m68ki_exception_interrupt(CPU_INT_LEVEL>>8);
 		} while(GET_CYCLES() > 0);
 
 		/* set previous PC to current PC for the next entry into the loop */

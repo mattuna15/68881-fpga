@@ -16,6 +16,9 @@
 #include <string.h>
 #include <stdbool.h>
 
+extern int next_debug_scsi;
+#define DPRINTF(...) do { if (next_debug_scsi) xil_printf(__VA_ARGS__); } while(0)
+
 /* ------------------------------------------------------------------ */
 /* ESP command byte encoding                                           */
 /* ------------------------------------------------------------------ */
@@ -127,6 +130,7 @@ static struct {
     uint8_t  configuration;
     uint8_t  clockconv;
     uint8_t  esptest;
+    uint8_t  config2;
     /* Internal counter */
     uint32_t counter;
     uint8_t  mode_dma;
@@ -151,7 +155,7 @@ static uint8_t esp_fifo_read(void)
         esp.fifoflags--;
         return val;
     }
-    xil_printf("[ESP] FIFO read: empty!\r\n");
+    DPRINTF("[ESP] FIFO read: empty!\r\n");
     return 0;
 }
 
@@ -160,7 +164,7 @@ static void esp_raise_irq(void);
 static void esp_fifo_write(uint8_t val)
 {
     if (esp.fifoflags >= ESP_FIFO_SIZE) {
-        xil_printf("[ESP] FIFO write: overflow!\r\n");
+        DPRINTF("[ESP] FIFO write: overflow!\r\n");
         esp.fifo[ESP_FIFO_SIZE - 1] = val;
         esp.status |= STAT_GE;
         esp_raise_irq();
@@ -275,19 +279,19 @@ static void esp_command_write(uint8_t cmd)
 {
     /* Log all commands — SELECT prominently */
     if ((cmd & 0x7F) == 0x42 || (cmd & 0x7F) == 0x41)
-        xil_printf("\r\n*** SELECT $%02X ***\r\n", cmd);
+        DPRINTF("\r\n*** SELECT $%02X ***\r\n", cmd);
     else
-        xil_printf("[ESP] Cmd $%02X\r\n", cmd);
+        DPRINTF("[ESP] Cmd $%02X\r\n", cmd);
 
     if ((esp.command[1] & CMD_CMD) == CMD_RESET && (cmd & CMD_CMD) != CMD_NOP) {
-        xil_printf("[ESP] Chip reset in command register, ignoring command $%02X\r\n", cmd);
+        DPRINTF("[ESP] Chip reset in command register, ignoring command $%02X\r\n", cmd);
         return;
     }
 
     esp.command[1] = cmd;
 
     if (esp.cmd_state & ESP_CMD_WAITING) {
-        xil_printf("[ESP] Command overwritten!\r\n");
+        DPRINTF("[ESP] Command overwritten!\r\n");
         esp.status |= STAT_GE;
     }
 
@@ -298,7 +302,7 @@ static void esp_command_write(uint8_t cmd)
 
     if (esp.cmd_state & ESP_CMD_INPROGRESS) {
         esp.cmd_state |= ESP_CMD_WAITING;
-        xil_printf("[ESP] Cmd $%02X QUEUED (inprog)\r\n", cmd);
+        DPRINTF("[ESP] Cmd $%02X QUEUED (inprog)\r\n", cmd);
     } else {
         esp.command[0] = esp.command[1];
         esp.command[1] = 0;
@@ -324,7 +328,7 @@ static void esp_reset_soft(void)
 
 static void esp_reset_hard(void)
 {
-    xil_printf("[ESP] Hard reset\r\n");
+    DPRINTF("[ESP] Hard reset\r\n");
     esp.clockconv = 0x02;
     esp.configuration &= ~0xF8;
     esp_fifo_clear();
@@ -344,7 +348,7 @@ static void esp_reset_hard(void)
 
 static void esp_bus_reset(void)
 {
-    xil_printf("[ESP] Bus reset\r\n");
+    DPRINTF("[ESP] Bus reset\r\n");
     esp_reset_soft();
     if (!(esp.configuration & CFG1_RESREPT)) {
         esp.intstatus = INTR_RST;
@@ -364,13 +368,19 @@ static void esp_select(bool atn)
     esp.seqstep = 0;
 
     uint8_t target = esp.selectbusid & BUSID_DID;
+    /* Unconditional: track every SELECT to see if scsi_pollcmd's command executes */
+    {
+        static int sel_count = 0;
+        if (++sel_count > 60)
+            xil_printf("[SEL#%d] target=%d\r\n", sel_count, target);
+    }
     bool timeout = next_scsi_select(target);
 
     if (timeout) {
         esp.intstatus = INTR_DC;
         esp_command_clear();
         esp.state = ESP_DISCONNECTED;
-        xil_printf("[ESP] Select target %d: timeout\r\n", target);
+        DPRINTF("[ESP] Select target %d: timeout\r\n", target);
         esp_raise_irq();
         return;
     }
@@ -384,7 +394,7 @@ static void esp_select(bool atn)
         next_scsi_set_phase(SCSI_PHASE_MO);
         esp.seqstep = 1;
         identify_msg = esp_fifo_read();
-        xil_printf("[ESP] Select: IDENTIFY=$%02X\r\n", identify_msg);
+        DPRINTF("[ESP] Select: IDENTIFY=$%02X\r\n", identify_msg);
     }
 
     next_scsi_set_phase(SCSI_PHASE_CD);
@@ -392,7 +402,7 @@ static void esp_select(bool atn)
     for (cmd_size = 0; cmd_size < SCSI_CDB_MAX_SIZE && esp.fifoflags > 0; cmd_size++) {
         commandbuf[cmd_size] = esp_fifo_read();
     }
-    xil_printf("[ESP] Select: target=%d, CDB size=%d, opcode=$%02X\r\n",
+    DPRINTF("[ESP] Select: target=%d, CDB size=%d, opcode=$%02X\r\n",
                target, cmd_size, cmd_size > 0 ? commandbuf[0] : 0xFF);
 
     next_scsi_receive_command(commandbuf, cmd_size, identify_msg);
@@ -417,7 +427,7 @@ static void esp_transfer_info(void)
         int direction = (phase == SCSI_PHASE_DI) ? 1 : 0;
         int transferred = next_scsi_dma_transfer(direction, &esp.counter);
 
-        xil_printf("[ESP] TI DMA: phase=%d, transferred=%d, counter=%u\r\n",
+        DPRINTF("[ESP] TI DMA: phase=%d, transferred=%d, counter=%u\r\n",
                    phase, transferred, esp.counter);
 
         if (esp.counter == 0) {
@@ -443,12 +453,12 @@ static void esp_transfer_info(void)
             esp_raise_irq();
             break;
         case SCSI_PHASE_ST:
-            xil_printf("[ESP] TI PIO: status phase (unexpected)\r\n");
+            DPRINTF("[ESP] TI PIO: status phase (unexpected)\r\n");
             esp.intstatus = INTR_FC;
             esp_raise_irq();
             break;
         default:
-            xil_printf("[ESP] TI PIO: unhandled phase %d\r\n", phase);
+            DPRINTF("[ESP] TI PIO: unhandled phase %d\r\n", phase);
             esp.intstatus = INTR_FC;
             esp_raise_irq();
             break;
@@ -479,7 +489,7 @@ static void esp_initiator_command_complete(void)
 
     esp.intstatus = INTR_FC;
     esp_raise_irq();
-    xil_printf("[ESP] ICCS: status=$%02X msg=$%02X\r\n", st, msg);
+    DPRINTF("[ESP] ICCS: status=$%02X msg=$%02X\r\n", st, msg);
 }
 
 /* ------------------------------------------------------------------ */
@@ -501,7 +511,7 @@ static void esp_message_accepted(void)
 static void esp_transfer_pad(void)
 {
     uint8_t phase = next_scsi_get_phase();
-    xil_printf("[ESP] Transfer pad: phase=%d counter=%u\r\n", phase, esp.counter);
+    DPRINTF("[ESP] Transfer pad: phase=%d counter=%u\r\n", phase, esp.counter);
 
     if (phase == SCSI_PHASE_DI) {
         while (next_scsi_get_phase() == SCSI_PHASE_DI && esp.counter > 0) {
@@ -544,7 +554,7 @@ static void esp_start_command(uint8_t cmd)
         esp_finish_command();
         break;
     case CMD_FLUSH:
-        xil_printf("[ESP] Flush FIFO\r\n");
+        DPRINTF("[ESP] Flush FIFO\r\n");
         esp_fifo_clear();
         esp_finish_command();
         break;
@@ -555,11 +565,11 @@ static void esp_start_command(uint8_t cmd)
         esp_bus_reset();
         break;
     case CMD_SEL:
-        xil_printf("[ESP] Select without ATN\r\n");
+        DPRINTF("[ESP] Select without ATN\r\n");
         esp_select(false);
         break;
     case CMD_SELATN:
-        xil_printf("[ESP] Select with ATN\r\n");
+        DPRINTF("[ESP] Select with ATN\r\n");
         esp_select(true);
         break;
     case CMD_TI:
@@ -582,7 +592,7 @@ static void esp_start_command(uint8_t cmd)
         esp_finish_command();
         break;
     default:
-        xil_printf("[ESP] Unknown command $%02X\r\n", cmd & CMD_CMD);
+        DPRINTF("[ESP] Unknown command $%02X\r\n", cmd & CMD_CMD);
         esp_command_clear();
         esp.intstatus |= INTR_ILL;
         esp_raise_irq();
@@ -600,7 +610,7 @@ void next_esp_init(void)
     esp.clockconv = 0x02;
     esp.syncperiod = 0x05;
     esp.state = ESP_DISCONNECTED;
-    xil_printf("[ESP] NCR53C90 initialised\r\n");
+    DPRINTF("[ESP] NCR53C90 initialised\r\n");
 }
 
 uint8_t next_esp_read(uint32_t offset)
@@ -621,7 +631,7 @@ uint8_t next_esp_read(uint32_t offset)
         extern int next_debug_scsi;
         uint8_t val = esp.intstatus;
         if (next_debug_scsi)
-            xil_printf("[ESP] R intrstat=$%02X stat=$%02X (INT=%d)\r\n",
+            DPRINTF("[ESP] R intrstat=$%02X stat=$%02X (INT=%d)\r\n",
                        val, esp.status, !!(esp.status & STAT_INT));
         if (esp.status & STAT_INT) {
             esp.intstatus = 0;
@@ -640,8 +650,8 @@ uint8_t next_esp_read(uint32_t offset)
         return 0;
     case 0x0A: /* Test (write-only) */
         return 0;
-    case 0x0B: /* Configuration 2 — return 0 for NCR53C90 (not 90A) */
-        return 0;
+    case 0x0B: /* Configuration 2 — read/write for 53C90A detection */
+        return esp.config2;
     default:
         return 0;
     }
@@ -683,6 +693,9 @@ void next_esp_write(uint32_t offset, uint8_t value)
     case 0x0A: /* Test */
         esp.esptest = value;
         break;
+    case 0x0B: /* Configuration 2 (53C90A) */
+        esp.config2 = value;
+        break;
     default:
         break;
     }
@@ -706,7 +719,7 @@ void next_esp_dma_ctrl_write(uint8_t value)
         /* DMA flush — no action needed in our synchronous model */
     }
     if (value & ESPCTRL_RESET) {
-        xil_printf("[ESP] DMA reset → chip reset\r\n");
+        DPRINTF("[ESP] DMA reset → chip reset\r\n");
         esp_reset_hard();
     }
     if (value & ESPCTRL_ENABLE_INT) {

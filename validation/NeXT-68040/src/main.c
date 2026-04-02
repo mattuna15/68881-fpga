@@ -474,6 +474,11 @@ static void poll_uart_rx(void)
                 extern void esp_dump_irq_log(void);
                 esp_dump_irq_log();
             }
+            /* Dump live I/O activity */
+            {
+                extern void io_activity_dump(void);
+                io_activity_dump();
+            }
             continue;
         }
         next_scc_rx_push(ch);    /* SCC serial path */

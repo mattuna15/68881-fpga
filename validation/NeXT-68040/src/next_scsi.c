@@ -11,6 +11,9 @@
 #include "xil_printf.h"
 #include <string.h>
 
+extern int next_debug_scsi;
+#define DPRINTF(...) do { if (next_debug_scsi) xil_printf(__VA_ARGS__); } while(0)
+
 /* ------------------------------------------------------------------ */
 /* SCSI status/message codes                                           */
 /* ------------------------------------------------------------------ */
@@ -142,7 +145,7 @@ static void scsi_read_one_sector(void)
         UINT br;
         FRESULT res = f_lseek(&disk.fil, (FSIZE_t)offset);
         if (res != FR_OK) {
-            xil_printf("[SCSI] f_lseek error %d at LBA %u\r\n", res, disk.lba);
+            DPRINTF("[SCSI] f_lseek error %d at LBA %u\r\n", res, disk.lba);
             disk.status = STAT_CHECK_COND;
             disk.sense.code = SC_NOT_READY;
             disk.phase = SCSI_PHASE_ST;
@@ -150,7 +153,7 @@ static void scsi_read_one_sector(void)
         }
         res = f_read(&disk.fil, scsi_buf.data, SCSI_BLOCKSIZE, &br);
         if (res != FR_OK || br != SCSI_BLOCKSIZE) {
-            xil_printf("[SCSI] f_read error %d (got %u) at LBA %u\r\n", res, br, disk.lba);
+            DPRINTF("[SCSI] f_read error %d (got %u) at LBA %u\r\n", res, br, disk.lba);
             disk.status = STAT_CHECK_COND;
             disk.sense.code = SC_NOT_READY;
             disk.phase = SCSI_PHASE_ST;
@@ -205,7 +208,7 @@ static void scsi_inquiry(uint8_t *cdb)
     disk.status = STAT_GOOD;
     disk.phase = SCSI_PHASE_DI;
     disk.sense.code = SC_NO_ERROR;
-    xil_printf("[SCSI] Inquiry: %d bytes\r\n", len);
+    DPRINTF("[SCSI] Inquiry: %d bytes\r\n", len);
 }
 
 static void scsi_read_capacity(void)
@@ -233,7 +236,7 @@ static void scsi_read_capacity(void)
     disk.status = STAT_GOOD;
     disk.phase = SCSI_PHASE_DI;
     disk.sense.code = SC_NO_ERROR;
-    xil_printf("[SCSI] Read Capacity: %u sectors, last LBA=%u\r\n",
+    DPRINTF("[SCSI] Read Capacity: %u sectors, last LBA=%u\r\n",
                (unsigned)(disk.size / SCSI_BLOCKSIZE), last_lba);
 }
 
@@ -354,7 +357,7 @@ static void scsi_read_sector(uint8_t *cdb)
     scsi_buf.is_disk = true;
     scsi_buf.size = 0;
     disk.phase = SCSI_PHASE_DI;
-    xil_printf("[SCSI] Read: %u block(s) at LBA %u\r\n", disk.blockcounter, disk.lba);
+    DPRINTF("[SCSI] Read: %u block(s) at LBA %u\r\n", disk.blockcounter, disk.lba);
     scsi_read_one_sector();
 }
 
@@ -362,7 +365,7 @@ static void scsi_write_sector(uint8_t *cdb)
 {
     /* Read-only for now */
     (void)cdb;
-    xil_printf("[SCSI] Write: rejected (read-only)\r\n");
+    DPRINTF("[SCSI] Write: rejected (read-only)\r\n");
     disk.status = STAT_CHECK_COND;
     disk.sense.code = SC_WRITE_PROTECT;
     disk.sense.valid = false;
@@ -400,11 +403,11 @@ int next_scsi_init(void)
     FILINFO fno;
 
     for (int d = 0; d < 2; d++) {
-        xil_printf("[SCSI] Trying mount %s ...\r\n", drives[d]);
+        DPRINTF("[SCSI] Trying mount %s ...\r\n", drives[d]);
         res = f_mount(&fatfs_inst, drives[d], 1);
         if (res != FR_OK) continue;
 
-        xil_printf("[SCSI] Mounted %s\r\n", drives[d]);
+        DPRINTF("[SCSI] Mounted %s\r\n", drives[d]);
 
         /* Scan root for *.IMG file */
         res = f_opendir(&dir, drives[d]);
@@ -426,18 +429,18 @@ int next_scsi_init(void)
                 if (res == FR_OK) {
                     disk.size = f_size(&disk.fil);
                     disk.mounted = true;
-                    xil_printf("[SCSI] Opened %s: %llu bytes (%u sectors)\r\n",
+                    DPRINTF("[SCSI] Opened %s: %llu bytes (%u sectors)\r\n",
                                path, disk.size, (unsigned)(disk.size / SCSI_BLOCKSIZE));
                     return 0;
                 }
-                xil_printf("[SCSI] Failed to open %s (err %d)\r\n", path, res);
+                DPRINTF("[SCSI] Failed to open %s (err %d)\r\n", path, res);
                 f_mount(NULL, drives[d], 0);
                 return -1;
             }
         }
         f_closedir(&dir);
         if (!found) {
-            xil_printf("[SCSI] No .IMG file found on %s\r\n", drives[d]);
+            DPRINTF("[SCSI] No .IMG file found on %s\r\n", drives[d]);
             f_mount(NULL, drives[d], 0);
         }
     }
@@ -449,7 +452,7 @@ int next_scsi_init(void)
 bool next_scsi_select(uint8_t target)
 {
     if (target != SCSI_TARGET_ID || !disk.mounted) {
-        xil_printf("[SCSI] Select target %d: timeout\r\n", target);
+        DPRINTF("[SCSI] Select target %d: timeout\r\n", target);
         disk.phase = SCSI_PHASE_ST;  /* bus free — match Previous behavior */
         return true; /* timeout */
     }
@@ -468,7 +471,7 @@ void next_scsi_receive_command(uint8_t *cdb, int cdb_len, uint8_t identify)
         disk.lun = (cdb[1] & 0xE0) >> 5;
 
     uint8_t opcode = cdb[0];
-    xil_printf("[SCSI] Cmd $%02X target=%d lun=%d\r\n", opcode, disk.target, disk.lun);
+    DPRINTF("[SCSI] Cmd $%02X target=%d lun=%d\r\n", opcode, disk.target, disk.lun);
 
     /* LUN-independent commands first */
     switch (opcode) {
@@ -510,7 +513,7 @@ void next_scsi_receive_command(uint8_t *cdb, int cdb_len, uint8_t identify)
         disk.phase = SCSI_PHASE_ST;
         break;
     default:
-        xil_printf("[SCSI] Unknown command $%02X\r\n", opcode);
+        DPRINTF("[SCSI] Unknown command $%02X\r\n", opcode);
         disk.status = STAT_CHECK_COND;
         disk.sense.code = SC_INVALID_CMD;
         disk.sense.valid = false;
@@ -523,7 +526,7 @@ void next_scsi_receive_command(uint8_t *cdb, int cdb_len, uint8_t identify)
 uint8_t next_scsi_send_data(void)
 {
     if (scsi_buf.size <= 0) {
-        xil_printf("[SCSI] send_data: buffer empty!\r\n");
+        DPRINTF("[SCSI] send_data: buffer empty!\r\n");
         return 0;
     }
     uint8_t val = scsi_buf.data[scsi_buf.limit - scsi_buf.size];

@@ -16,6 +16,10 @@
 #include "xil_printf.h"
 #include <string.h>
 
+/* Quiet mode: all DMA prints go through debug toggle */
+extern int next_debug_scsi;
+#define DPRINTF(...) do { if (next_debug_scsi) xil_printf(__VA_ARGS__); } while(0)
+
 /* ------------------------------------------------------------------ */
 /* Turbo DMA CSR bits (68040 format)                                   */
 /* ------------------------------------------------------------------ */
@@ -106,11 +110,11 @@ void next_scsi_dma_reg_write(uint32_t addr, uint32_t value)
     /* Active DMA registers */
     case 0x4010:
         dma.next = value;
-        xil_printf("[DMA] next=$%08X\r\n", value);
+        DPRINTF("[DMA] next=$%08X\r\n", value);
         break;
     case 0x4014:
         dma.limit = value;
-        xil_printf("[DMA] limit=$%08X\r\n", value);
+        DPRINTF("[DMA] limit=$%08X\r\n", value);
         break;
     case 0x4018:
         dma.start = value;
@@ -141,7 +145,7 @@ uint32_t next_scsi_dma_csr_read(void)
     extern int next_debug_scsi;
     if (next_debug_scsi) {
         uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
-        xil_printf("[DMA] CSR read → $%08X (csr=$%02X) PC=$%08X\r\n", val, dma.csr, pc);
+        DPRINTF("[DMA] CSR read → $%08X (csr=$%02X) PC=$%08X\r\n", val, dma.csr, pc);
     }
     return val;
 }
@@ -151,13 +155,13 @@ void next_scsi_dma_csr_write(uint32_t value)
     extern int next_debug_scsi;
     if (next_debug_scsi) {
         uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
-        xil_printf("[DMA] CSR write=$%08X PC=$%08X\r\n", value, pc);
+        DPRINTF("[DMA] CSR write=$%08X PC=$%08X\r\n", value, pc);
         /* Trace caller chain via A6 frame pointer */
         static int call_traced = 0;
         if (!call_traced) {
             call_traced = 1;
             uint32_t a6 = m68k_get_reg(NULL, M68K_REG_A6);
-            xil_printf("[DMA] Call chain: ");
+            DPRINTF("[DMA] Call chain: ");
             for (int i = 0; i < 6 && a6 >= 0x04000000 && a6 < 0x08000000; i++) {
                 uint32_t ret = next_phys_read_32(a6 + 4);
                 xil_printf("$%08X ", ret);
@@ -167,7 +171,7 @@ void next_scsi_dma_csr_write(uint32_t value)
             /* Dump code at first caller */
             a6 = m68k_get_reg(NULL, M68K_REG_A6);
             uint32_t caller = next_phys_read_32(a6 + 4);
-            xil_printf("[DMA] Code at caller $%08X:\r\n  ", caller);
+            DPRINTF("[DMA] Code at caller $%08X:\r\n  ", caller);
             for (int i = -8; i < 8; i++) {
                 uint32_t w = next_phys_read_32(caller + i*2);
                 xil_printf("%04X ", w >> 16);
@@ -175,7 +179,7 @@ void next_scsi_dma_csr_write(uint32_t value)
             xil_printf("\r\n");
         }
     } else {
-        xil_printf("[DMA] CSR write=$%08X\r\n", value);
+        DPRINTF("[DMA] CSR write=$%08X\r\n", value);
     }
 
     dma.direction = (value & TDMA_DEV2M) ? DMA_DEV2M : 0;
@@ -183,7 +187,7 @@ void next_scsi_dma_csr_write(uint32_t value)
     if (value & TDMA_RESET) {
         dma.csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE);
         next_intr_clear(I_IPL6_SCSI_DMA);
-        xil_printf("[DMA] reset\r\n");
+        DPRINTF("[DMA] reset\r\n");
     }
     if (value & TDMA_SETSUPDATE) {
         dma.csr |= DMA_SUPDATE;
@@ -206,7 +210,7 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
     int total = 0;
 
     if (!(dma.csr & DMA_ENABLE)) {
-        xil_printf("[DMA] Transfer requested but DMA not enabled\r\n");
+        DPRINTF("[DMA] Transfer requested but DMA not enabled\r\n");
         return 0;
     }
 
@@ -236,11 +240,11 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
                 if (src) {
                     memcpy(&next_ram[phys - NEXT_RAM_BASE], src, chunk);
                 } else {
-                    xil_printf("[DMA] NULL src at phys=$%08X\r\n", phys);
+                    DPRINTF("[DMA] NULL src at phys=$%08X\r\n", phys);
                     break;
                 }
             } else {
-                xil_printf("[DMA] Bus error: write outside RAM $%08X\r\n", phys);
+                DPRINTF("[DMA] Bus error: write outside RAM $%08X\r\n", phys);
                 dma.csr |= DMA_BUSEXC;
                 break;
             }
@@ -256,11 +260,11 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
             dma.next = dma.start;
             dma.limit = dma.stop;
             dma.csr &= ~DMA_SUPDATE;
-            xil_printf("[DMA] Chain: next=$%08X limit=$%08X\r\n", dma.next, dma.limit);
+            DPRINTF("[DMA] Chain: next=$%08X limit=$%08X\r\n", dma.next, dma.limit);
         }
     } else {
         /* Memory to device (68K RAM → SCSI write) — not implemented */
-        xil_printf("[DMA] Mem→SCSI transfer not implemented\r\n");
+        DPRINTF("[DMA] Mem→SCSI transfer not implemented\r\n");
         return 0;
     }
 
@@ -271,6 +275,6 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
         next_intr_set(I_IPL6_SCSI_DMA);
     }
 
-    xil_printf("[DMA] Transfer done: %d bytes, next=$%08X\r\n", total, dma.next);
+    DPRINTF("[DMA] Transfer done: %d bytes, next=$%08X\r\n", total, dma.next);
     return total;
 }

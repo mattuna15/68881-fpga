@@ -998,6 +998,18 @@ int m68k_execute(int num_cycles)
 			/* Record previous program counter */
 			REG_PPC = REG_PC;
 
+			/* PC trace (toggled by 'T' key) */
+			{
+				extern int next_trace_count;
+				if (next_trace_count > 0) {
+					extern void xil_printf(const char *fmt, ...);
+					extern uint32_t next_eventc_read_count;
+					xil_printf("PC=$%08X SR=$%04X ec_rd=%u\r\n",
+					           REG_PC, m68ki_get_sr(), next_eventc_read_count);
+					next_trace_count--;
+				}
+			}
+
 			/* Record previous D/A register state (in case of bus error) */
 			for (i = 15; i >= 0; i--){
 				REG_DA_SAVE[i] = REG_DA[i];

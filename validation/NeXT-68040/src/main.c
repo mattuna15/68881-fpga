@@ -278,7 +278,27 @@ static void next_boot(void)
         int ipl = next_intr_pending_ipl();
         m68k_set_irq(ipl);
 
-
+        /* Detect framebuffer text changes — kernel printf goes to VRAM */
+        {
+            static uint32_t last_vram_hash = 0;
+            static int vram_check_counter = 0;
+            if (++vram_check_counter >= 500) {  /* check every ~200ms */
+                vram_check_counter = 0;
+                extern unsigned char next_vram[];
+                {
+                    /* Hash first 4K of VRAM (top lines of display) */
+                    uint32_t hash = 0;
+                    for (int i = 0; i < 4096; i += 4)
+                        hash ^= *(uint32_t*)(next_vram + i);
+                    if (hash != last_vram_hash && last_vram_hash != 0) {
+                        xil_printf("[VRAM] Display changed! (hash $%08X → $%08X)\r\n",
+                                   last_vram_hash, hash);
+                        /* Force a video refresh */
+                    }
+                    last_vram_hash = hash;
+                }
+            }
+        }
 
         /* After ROM settles, find mon_global and dump key fields (one-shot).
          * The ROM may store mg pointer at P_MON, or we can find it via A5
@@ -478,6 +498,21 @@ static void poll_uart_rx(void)
             {
                 extern void io_activity_dump(void);
                 io_activity_dump();
+            }
+            continue;
+        }
+        if (ch == 'T') {
+            /* Trace: log PC for next N cycles */
+            static int trace_active = 0;
+            trace_active = !trace_active;
+            if (trace_active) {
+                xil_printf("\r\n[TRACE] PC logging ON (next 200 instructions)\r\n");
+                extern int next_trace_count;
+                next_trace_count = 200;
+            } else {
+                xil_printf("\r\n[TRACE] PC logging OFF\r\n");
+                extern int next_trace_count;
+                next_trace_count = 0;
             }
             continue;
         }

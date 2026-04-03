@@ -41,6 +41,10 @@ static uint32_t scr2_value;
 /* P_MON register: the ROM stores its mon_global pointer here */
 static uint32_t p_mon_value;
 
+/* PC trace (toggled by 'T' key) */
+int next_trace_count = 0;
+uint32_t next_eventc_read_count = 0;
+
 /* ------------------------------------------------------------------ */
 /* Interrupt controller                                                */
 /* ------------------------------------------------------------------ */
@@ -402,6 +406,32 @@ uint8_t next_io_read_8(uint32_t address)
 {
     address = next_io_canon(address);
 
+    /* Device probe detection (byte reads) — phase-aware */
+    {
+        static uint8_t probed8[2] = {0, 0};
+        static int phase8 = 0;
+        if (!phase8 && address >= 0x02014000 && address < 0x02014020) {
+            static int esp_byte_count = 0;
+            if (++esp_byte_count > 30) phase8 = 1;  /* kernel re-accesses ESP */
+        }
+        uint8_t *p = &probed8[phase8];
+        if (!((*p) & 0x01) && address >= 0x02014000 && address < 0x02014020) {
+            *p |= 0x01; xil_printf("[PROBE%d] ESP (byte) at $%08X\r\n", phase8, address);
+        }
+        if (!((*p) & 0x02) && address >= 0x02014100 && address <= 0x02014108) {
+            *p |= 0x02; xil_printf("[PROBE%d] Floppy (byte) at $%08X\r\n", phase8, address);
+        }
+        if (!((*p) & 0x04) && address >= 0x02006000 && address < 0x02006010) {
+            *p |= 0x04; xil_printf("[PROBE%d] Ethernet (byte) at $%08X\r\n", phase8, address);
+        }
+        if (!((*p) & 0x08) && address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE) {
+            *p |= 0x08; xil_printf("[PROBE%d] DSP (byte) at $%08X\r\n", phase8, address);
+        }
+        if (!((*p) & 0x10) && address >= 0x02018000 && address < 0x02018004) {
+            *p |= 0x10; xil_printf("[PROBE%d] SCC (byte) at $%08X\r\n", phase8, address);
+        }
+    }
+
     /* SCC registers (byte-wide) */
     if (address >= P_SCC && address < P_SCC + 4) {
         uint32_t off = address - P_SCC;
@@ -521,7 +551,13 @@ uint8_t next_io_read_8(uint32_t address)
      * Previous also returns & 0xFFFFF, but on Previous the emulated CPU
      * is fast enough that DELAY loops complete before wrapping. */
     if (address == P_EVENTC) {
+        next_eventc_read_count++;
         event_latch = eventc_synced();
+        /* Log every 1000th read to see if value advances */
+        if ((next_eventc_read_count % 50000) == 0)
+            xil_printf("[EVENTC] #%u val=$%08X (us=%u run=%d base=%d)\r\n",
+                       next_eventc_read_count, event_latch,
+                       eventc_us, m68k_cycles_run(), eventc_batch_base);
         return (event_latch >> 24) & 0xFF;  /* byte 0: bits 31-24 */
     }
     if (address == P_EVENTC + 1)
@@ -581,6 +617,36 @@ uint32_t next_io_read_32(uint32_t address)
     address = next_io_canon(address);
     io_track(address);
 
+    /* Device probe detection — fires once per phase (ROM=phase 0, kernel=phase 1) */
+    {
+        static uint8_t probed[2] = {0, 0};
+        static int phase = 0;
+        /* Detect kernel phase: timer CSR is written during kernel init */
+        if (!phase && address == P_SCR1) {
+            static int scr1_count = 0;
+            if (++scr1_count > 10) phase = 1;  /* kernel re-reads SCR1 */
+        }
+        uint8_t *p = &probed[phase];
+        if (!((*p) & 0x01) && address >= 0x02014000 && address < 0x02014020) {
+            *p |= 0x01; xil_printf("[PROBE%d] SCSI (ESP) at $%08X\r\n", phase, address);
+        }
+        if (!((*p) & 0x02) && address >= 0x02006000 && address < 0x02006010) {
+            *p |= 0x02; xil_printf("[PROBE%d] Ethernet at $%08X\r\n", phase, address);
+        }
+        if (!((*p) & 0x04) && address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE) {
+            *p |= 0x04; xil_printf("[PROBE%d] DSP at $%08X\r\n", phase, address);
+        }
+        if (!((*p) & 0x08) && address >= 0x02200000 && address < 0x02210000) {
+            *p |= 0x08; xil_printf("[PROBE%d] TMC/ADB at $%08X\r\n", phase, address);
+        }
+        if (!((*p) & 0x10) && address == 0x02010000) {
+            *p |= 0x10; xil_printf("[PROBE%d] Brightness at $%08X\r\n", phase, address);
+        }
+        if (!((*p) & 0x20) && address >= 0x0200E000 && address < 0x0200E010) {
+            *p |= 0x20; xil_printf("[PROBE%d] KMS at $%08X\r\n", phase, address);
+        }
+    }
+
     /* SCR1 — the first thing the kernel reads */
     if (address == P_SCR1)
         return scr1_value;
@@ -613,9 +679,15 @@ uint32_t next_io_read_32(uint32_t address)
     /* P_MON / KMS: $0200E000-$0200E00F is the keyboard/mouse/sound chip. */
     if (address >= P_MON && address < P_MON + 16) {
         static int pmon_log = 0;
+        static int pmon_late = 0;
         if (pmon_log < 5)
             xil_printf("[PMON] R32 @%08X → KMS offset %X\r\n", address, address - P_MON);
         pmon_log++;
+        /* Detect kernel phase polling (console input wait) */
+        if (pmon_log > 100 && !pmon_late) {
+            pmon_late = 1;
+            xil_printf("[KMS-POLL] Kernel polling KMS — likely waiting for console input!\r\n");
+        }
         return next_kms_read(address - P_MON);
     }
 
@@ -724,6 +796,12 @@ void next_io_write_8(uint32_t address, uint8_t value)
         case SCC_CHAN_B_DATA:
             break;  /* channel B: accept silently */
         }
+        return;
+    }
+
+    /* Floppy controller (82077): 0x02014100-0x02014108 */
+    if (address >= 0x02014100 && address <= 0x02014108) {
+        xil_printf("[FLP-W] @%08X = $%02X\r\n", address, value);
         return;
     }
 

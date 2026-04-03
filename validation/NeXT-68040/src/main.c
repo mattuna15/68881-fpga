@@ -499,6 +499,11 @@ static void poll_uart_rx(void)
                 extern void io_activity_dump(void);
                 io_activity_dump();
             }
+            /* Dump sfa state */
+            {
+                extern void sfa_dump(void);
+                sfa_dump();
+            }
             continue;
         }
         if (ch == 'T') {

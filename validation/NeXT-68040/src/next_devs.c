@@ -98,7 +98,7 @@ static uint32_t eventc_synced(void)
     int run = m68k_cycles_run();
     int delta = run - eventc_batch_base;
     if (delta < 0) delta = 0;  /* safety: handle batch boundary */
-    return eventc_us + (uint32_t)(delta / EVENTC_PRESCALE);
+    return eventc_us + (uint32_t)(delta / EVENTC_PRESCALE) * 4096;
 }
 
 /* ------------------------------------------------------------------ */
@@ -148,6 +148,34 @@ void io_track(uint32_t addr) {
     io_activity[io_act_idx].last_addr = addr;
     io_activity[io_act_idx].count = 1;
     io_act_idx = (io_act_idx + 1) % 8;
+}
+
+/* Search kernel memory for sf_access_head to dump sfah_busy */
+void sfa_dump(void) {
+    extern uint8_t next_ram[];
+    /* Search for P_SCSI_CSR pointer ($02100010) in kernel data.
+     * This is dc_ddp in the dma_chan struct inside scsi_5390_ctrl.
+     * From it we can find s5c_sfah (the sfa head pointer). */
+    uint32_t target = 0x02100010;  /* P_SCSI_CSR with SLOT_ID_BMAP */
+    for (uint32_t off = 0; off < 0x00100000; off += 4) {
+        uint32_t val = (next_ram[off] << 24) | (next_ram[off+1] << 16) |
+                       (next_ram[off+2] << 8) | next_ram[off+3];
+        if (val == target) {
+            uint32_t addr = 0x04000000 + off;
+            xil_printf("[SFA] Found dc_ddp=$%08X at $%08X\r\n", target, addr);
+            /* dc_ddp is at offset 0x1C in dma_chan. dma_chan is at offset 4 in s5c.
+             * s5c_sfah is much later in the struct. Let's just dump nearby memory. */
+            xil_printf("[SFA] Context: ");
+            for (int i = -8; i < 32; i++) {
+                uint32_t v = (next_ram[off+i*4] << 24) | (next_ram[off+i*4+1] << 16) |
+                             (next_ram[off+i*4+2] << 8) | next_ram[off+i*4+3];
+                if (i % 8 == 0) xil_printf("\r\n  +%03X: ", (int)(i*4));
+                xil_printf("%08X ", v);
+            }
+            xil_printf("\r\n");
+            break;  /* just show first match */
+        }
+    }
 }
 
 void io_activity_dump(void) {
@@ -301,8 +329,13 @@ int next_timer_tick(int cycles)
     /* Advance the live 16-bit counter (1 µs per tick) */
     timer_counter += (uint16_t)usecs;
 
-    /* Advance the event counter (used by kernel DELAY/event_get) */
-    eventc_us += usecs;
+    /* Advance the event counter (used by kernel DELAY/event_get).
+     * Multiplied by 256 to speed up the bit-19 boundary check used by
+     * this kernel's event_timeout(). Without this, each scsi_pollcmd
+     * timeout takes ~500 seconds (bit-19 = 524288 µs per check).
+     * With 256x speedup, it takes ~2 seconds. The timer (hardclock)
+     * uses a separate counter and is NOT affected. */
+    eventc_us += usecs * 4096;
     eventc_batch_base = 0;  /* reset: next batch starts from 0 */
 
     /* Periodic hardclock interrupt */

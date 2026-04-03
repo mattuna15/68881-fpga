@@ -195,6 +195,7 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
     address = addr_normalise(address);
     if (in_ram(address)) {
+        /* (sc_active intercept removed — root cause is interrupt timing) */
         next_ram[address - NEXT_RAM_BASE] = value & 0xFF;
         return;
     }

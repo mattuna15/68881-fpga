@@ -150,32 +150,55 @@ void io_track(uint32_t addr) {
     io_act_idx = (io_act_idx + 1) % 8;
 }
 
-/* Search kernel memory for sf_access_head to dump sfah_busy */
+/* Search kernel memory for sf_access_head by finding empty queue_head pattern:
+ * two consecutive words where both equal the address of the first word (self-referencing).
+ * Then dump the struct following it to show sfah_busy. */
 void sfa_dump(void) {
     extern uint8_t next_ram[];
-    /* Search for P_SCSI_CSR pointer ($02100010) in kernel data.
-     * This is dc_ddp in the dma_chan struct inside scsi_5390_ctrl.
-     * From it we can find s5c_sfah (the sfa head pointer). */
-    uint32_t target = 0x02100010;  /* P_SCSI_CSR with SLOT_ID_BMAP */
-    for (uint32_t off = 0; off < 0x00100000; off += 4) {
-        uint32_t val = (next_ram[off] << 24) | (next_ram[off+1] << 16) |
-                       (next_ram[off+2] << 8) | next_ram[off+3];
-        if (val == target) {
-            uint32_t addr = 0x04000000 + off;
-            xil_printf("[SFA] Found dc_ddp=$%08X at $%08X\r\n", target, addr);
-            /* dc_ddp is at offset 0x1C in dma_chan. dma_chan is at offset 4 in s5c.
-             * s5c_sfah is much later in the struct. Let's just dump nearby memory. */
-            xil_printf("[SFA] Context: ");
-            for (int i = -8; i < 32; i++) {
-                uint32_t v = (next_ram[off+i*4] << 24) | (next_ram[off+i*4+1] << 16) |
-                             (next_ram[off+i*4+2] << 8) | next_ram[off+i*4+3];
-                if (i % 8 == 0) xil_printf("\r\n  +%03X: ", (int)(i*4));
-                xil_printf("%08X ", v);
+    #define RD32(o) ((uint32_t)((next_ram[o]<<24)|(next_ram[(o)+1]<<16)|(next_ram[(o)+2]<<8)|next_ram[(o)+3]))
+    int found = 0;
+    /* sf_access_head has: queue_head(8), lock(4), wait_cnt(4), flags(4), last_dev(4), excl_q(4), busy(4)
+     * For an empty queue: q.next == q.prev == &q (self-pointer)
+     * For a non-empty queue: q.next and q.prev are different kernel pointers */
+    for (uint32_t off = 0; off < 0x00200000 && found < 5; off += 4) {
+        uint32_t addr = 0x04000000 + off;
+        uint32_t w0 = RD32(off);
+        uint32_t w1 = RD32(off+4);
+        /* Check for self-referencing queue (empty) or two valid kernel pointers */
+        if (w0 == addr && w1 == addr) {
+            /* Empty queue — both next and prev point to queue head itself.
+             * Check that following fields look like sfah (small integers). */
+            uint32_t wait_cnt = RD32(off+0x0C);
+            uint32_t flags = RD32(off+0x10);
+            uint32_t last_dev = RD32(off+0x14);
+            uint32_t excl_q = RD32(off+0x18);
+            uint32_t busy = RD32(off+0x1C);
+            if (wait_cnt < 100 && flags < 100 && last_dev < 100 && excl_q < 100 && busy < 100) {
+                xil_printf("[SFA-HEAD] @$%08X: q={self,self} lock=%d wait=%d flags=%d last=%d excl=%d BUSY=%d\r\n",
+                           addr, RD32(off+8), wait_cnt, flags, last_dev, excl_q, busy);
+                found++;
             }
-            xil_printf("\r\n");
-            break;  /* just show first match */
+        }
+        /* Also check non-empty queue: two different kernel ptrs, followed by small ints */
+        else if (w0 >= 0x04000000 && w0 < 0x04200000 &&
+                 w1 >= 0x04000000 && w1 < 0x04200000 && w0 != w1) {
+            uint32_t lock = RD32(off+8);
+            uint32_t wait_cnt = RD32(off+0x0C);
+            uint32_t flags = RD32(off+0x10);
+            uint32_t last_dev = RD32(off+0x14);
+            uint32_t excl_q = RD32(off+0x18);
+            uint32_t busy = RD32(off+0x1C);
+            if (lock == 0 && wait_cnt > 0 && wait_cnt < 10 &&
+                flags < 10 && last_dev < 10 && excl_q < 10 && busy > 0 && busy < 10) {
+                xil_printf("[SFA-HEAD] @$%08X: q={$%08X,$%08X} lock=%d wait=%d flags=%d last=%d excl=%d BUSY=%d\r\n",
+                           addr, w0, w1, lock, wait_cnt, flags, last_dev, excl_q, busy);
+                found++;
+            }
         }
     }
+    if (!found)
+        xil_printf("[SFA-HEAD] No sf_access_head found in kernel RAM!\r\n");
+    #undef RD32
 }
 
 void io_activity_dump(void) {
@@ -405,12 +428,23 @@ int next_intr_acknowledge(int level)
 void next_intr_set(uint32_t bit)
 {
     extern int next_debug_scsi;
-    /* Track SCSI IRQ count (dump available via 'D' key) */
-    if (bit == I_IPL3_SCSI) {
-        static int scsi_irq_count = 0;
-        scsi_irq_count++;
-    }
     intr_status |= bit;
+    /* For SCSI interrupts: defer m68k_set_irq to the main loop tick.
+     * Our synchronous ESP model completes commands instantly during the
+     * register write instruction. If we deliver the interrupt immediately,
+     * it fires during splx() BEFORE the kernel sets its polling flags
+     * (e.g., STF_POLL_IP in the tape driver). This causes a race where
+     * stdone clears the flag, then the kernel re-sets it, and the polling
+     * loop never exits. Deferring lets at least one instruction execute
+     * between the ESP write and the interrupt delivery.
+     * The kernel's scintr goto-again loop still works because it checks
+     * *intrstat (which reads intr_status directly, not m68k IRQ level). */
+    if (bit == I_IPL3_SCSI) {
+        if (next_debug_scsi)
+            xil_printf("[IRQ+] set $%08X → status=$%08X (DEFERRED)\r\n",
+                       bit, intr_status);
+        return;  /* don't call m68k_set_irq — main loop will pick it up */
+    }
     int ipl = next_intr_pending_ipl();
     if (next_debug_scsi && bit != I_IPL6_TIMER)
         xil_printf("[IRQ+] set $%08X → status=$%08X ipl=%d\r\n",
@@ -945,10 +979,22 @@ void next_io_write_32(uint32_t address, uint32_t value)
 
     /* Interrupt mask */
     if (address == P_INTRMASK) {
-        if (next_debug_scsi && value != intr_mask)
-            xil_printf("[IRQ] mask $%08X → $%08X (delta=$%08X)\r\n",
-                       intr_mask, value, value ^ intr_mask);
+        uint32_t old_mask = intr_mask;
         intr_mask = value;
+        if (value != old_mask) {
+            uint32_t delta = value ^ old_mask;
+            /* Always log SCSI-related mask changes */
+            if (delta & I_IPL3_SCSI)
+                xil_printf("[IRQ-MASK] SCSI bit %s: $%08X → $%08X\r\n",
+                           (value & I_IPL3_SCSI) ? "SET" : "CLEARED",
+                           old_mask, value);
+            else if (next_debug_scsi)
+                xil_printf("[IRQ] mask $%08X → $%08X (delta=$%08X)\r\n",
+                           old_mask, value, delta);
+        }
+        /* Recalculate pending IPL — an unmasked pending interrupt must fire */
+        int ipl = next_intr_pending_ipl();
+        m68k_set_irq(ipl);
         return;
     }
 

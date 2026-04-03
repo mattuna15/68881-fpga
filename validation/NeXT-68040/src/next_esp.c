@@ -12,6 +12,7 @@
 #include "next_scsi_dma.h"
 #include "next_devs.h"
 #include "next_hw.h"
+#include "musashi/m68k.h"
 #include "xil_printf.h"
 #include <string.h>
 #include <stdbool.h>
@@ -141,6 +142,9 @@ static struct {
     uint8_t  dma_status;
 } esp;
 
+static int esp_post_probe = 0;  /* set once probing is clearly done */
+int esp_cmds_since_last_sel = 0; /* commands since last SELECT */
+
 /* ------------------------------------------------------------------ */
 /* FIFO operations                                                     */
 /* ------------------------------------------------------------------ */
@@ -228,11 +232,15 @@ static void esp_raise_irq(void)
             next_intr_set(I_IPL3_SCSI);
         } else {
             esp_irq_log[esp_irq_log_idx].raised = 0;
-            if (next_debug_scsi)
-                xil_printf("[ESP-IRQ] SUPPRESS (INT disabled): intstatus=$%02X\r\n", esp.intstatus);
+            /* Always log INT-disabled suppression after probe phase */
+            xil_printf("[ESP-IRQ] SUPPRESS (INT disabled): intstatus=$%02X dma=$%02X\r\n",
+                       esp.intstatus, esp.dma_control);
         }
     } else {
         esp_irq_log[esp_irq_log_idx].raised = 0;
+        /* Always log double-INT suppression after probe phase */
+        xil_printf("[ESP-IRQ] SUPPRESS (STAT_INT set): intstatus=$%02X cmd=$%02X\r\n",
+                   esp.intstatus, esp.command[0]);
     }
     esp_irq_log_idx = (esp_irq_log_idx + 1) % ESP_IRQ_LOG_SIZE;
 }
@@ -346,8 +354,35 @@ static void esp_reset_hard(void)
 /* Bus reset                                                           */
 /* ------------------------------------------------------------------ */
 
+extern void sfa_dump(void);
+extern unsigned int m68k_read_memory_32(unsigned int address);
+
 static void esp_bus_reset(void)
 {
+    if (esp_post_probe) {
+        static int busrst_count = 0;
+        if (busrst_count++ < 2) {
+            extern int esp_cmds_since_last_sel;
+            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+            uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
+            xil_printf("[BUSRST] PC=$%08X SP=$%08X cmds_since_sel=%d\r\n",
+                       pc, sp, esp_cmds_since_last_sel);
+            /* Dump stack to see full caller chain */
+            xil_printf("[BUSRST] Stack: ");
+            for (int i = 0; i < 16; i++)
+                xil_printf("%08X ", m68k_read_memory_32(sp + i*4));
+            xil_printf("\r\n");
+            /* Dump 256 bytes from scsi_ctrl to find sc_ipl/sc_target */
+            uint32_t scp_addr = m68k_read_memory_32(0x040C69D4); /* s5c_scp */
+            xil_printf("[SC-CTRL] scp=$%08X dump 256 bytes:\r\n", scp_addr);
+            for (int off = 0; off < 256; off += 16) {
+                xil_printf("  +$%02X: ", off);
+                for (int b = 0; b < 16; b++)
+                    xil_printf("%02X", m68k_read_memory_8(scp_addr + off + b));
+                xil_printf("\r\n");
+            }
+        }
+    }
     DPRINTF("[ESP] Bus reset\r\n");
     esp_reset_soft();
     if (!(esp.configuration & CFG1_RESREPT)) {
@@ -371,8 +406,12 @@ static void esp_select(bool atn)
     /* Unconditional: track every SELECT to see if scsi_pollcmd's command executes */
     {
         static int sel_count = 0;
-        if (++sel_count > 60)
+        sel_count++;
+        esp_cmds_since_last_sel = 0;  /* reset counter */
+        if (sel_count > 60)
             xil_printf("[SEL#%d] target=%d\r\n", sel_count, target);
+        if (sel_count == 100)
+            esp_post_probe = 1;  /* enable detailed logging after 100 SELECTs */
     }
     bool timeout = next_scsi_select(target);
 
@@ -538,6 +577,13 @@ static void esp_start_command(uint8_t cmd)
 {
     esp.cmd_state |= ESP_CMD_INPROGRESS;
 
+    /* Log all ESP commands after probe phase */
+    if (esp_post_probe) {
+        esp_cmds_since_last_sel++;
+        xil_printf("[ESP-CMD] $%02X stat=$%02X int=$%02X dma=$%02X\r\n",
+                   cmd, esp.status, esp.intstatus, esp.dma_control);
+    }
+
     /* Load counter for DMA commands */
     if (cmd & CMD_DMA) {
         esp.counter = esp.writetcl | ((uint32_t)esp.writetch << 8);
@@ -633,6 +679,9 @@ uint8_t next_esp_read(uint32_t offset)
         if (next_debug_scsi)
             DPRINTF("[ESP] R intrstat=$%02X stat=$%02X (INT=%d)\r\n",
                        val, esp.status, !!(esp.status & STAT_INT));
+        if (esp_post_probe)
+            xil_printf("[ESP-ACK] intrstat=$%02X stat=$%02X\r\n",
+                       val, esp.status);
         if (esp.status & STAT_INT) {
             esp.intstatus = 0;
             esp.status &= ~(STAT_VGC | STAT_PE | STAT_GE);
@@ -714,6 +763,11 @@ void next_esp_dma_ctrl_write(uint8_t value)
 {
     uint8_t old_ctrl = esp.dma_control;
     esp.dma_control = value;
+
+    if (esp_post_probe && (value != old_ctrl || (value & (ESPCTRL_RESET|ESPCTRL_FLUSH)))) {
+        xil_printf("[ESP-DMA] ctrl=$%02X (was $%02X) stat=$%02X int=$%02X\r\n",
+                   value, old_ctrl, esp.status, esp.intstatus);
+    }
 
     if (value & ESPCTRL_FLUSH) {
         /* DMA flush — no action needed in our synchronous model */

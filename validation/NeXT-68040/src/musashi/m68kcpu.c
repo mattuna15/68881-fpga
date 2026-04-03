@@ -1004,7 +1004,17 @@ int m68k_execute(int num_cycles)
 				if (next_trace_count > 0) {
 					extern void xil_printf(const char *fmt, ...);
 					extern uint32_t next_eventc_read_count;
-					xil_printf("PC=$%08X SR=$%04X ec_rd=%u\r\n",
+					/* On first trace, dump code at the loop PC */
+					if (next_trace_count == 200) {
+						extern unsigned int m68k_read_memory_32(unsigned int);
+						unsigned int lpc = REG_PC & ~3;
+						xil_printf("[CODE] at $%08X:", lpc);
+						int ci;
+						for (ci = -4; ci < 12; ci++)
+							xil_printf(" %08X", m68k_read_memory_32(lpc + ci*4));
+						xil_printf("\r\n");
+					}
+					xil_printf("PC=$%08X SR=$%04X ec=%u\r\n",
 					           REG_PC, m68ki_get_sr(), next_eventc_read_count);
 					next_trace_count--;
 				}

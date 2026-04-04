@@ -268,6 +268,11 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
         return 0;
     }
 
+    if (total == 0 && (dma.csr & DMA_ENABLE)) {
+        DPRINTF("[DMA] WARNING: zero-byte transfer (next=$%08X limit=$%08X dir=%d)\r\n",
+                dma.next, dma.limit, direction);
+    }
+
     /* Signal completion only if data was actually transferred without error */
     if (total > 0 && !(dma.csr & DMA_BUSEXC)) {
         dma.csr |= DMA_COMPLETE;

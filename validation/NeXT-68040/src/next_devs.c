@@ -353,10 +353,10 @@ int next_timer_tick(int cycles)
     timer_counter += (uint16_t)usecs;
 
     /* Advance the event counter (used by kernel DELAY/event_get).
-     * Multiplied by 256 to speed up the bit-19 boundary check used by
+     * Multiplied by 4096 to speed up the bit-19 boundary check used by
      * this kernel's event_timeout(). Without this, each scsi_pollcmd
      * timeout takes ~500 seconds (bit-19 = 524288 µs per check).
-     * With 256x speedup, it takes ~2 seconds. The timer (hardclock)
+     * With 4096x speedup, it takes ~0.13 seconds. The timer (hardclock)
      * uses a separate counter and is NOT affected. */
     eventc_us += usecs * 4096;
     eventc_batch_base = 0;  /* reset: next batch starts from 0 */

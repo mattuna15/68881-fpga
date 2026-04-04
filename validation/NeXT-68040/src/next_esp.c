@@ -4,7 +4,9 @@
  * Adapted from Previous emulator (previous/src/esp.c).
  *
  * Synchronous model: commands complete immediately within the I/O write
- * handler. No deferred interrupts — the ROM polls status registers.
+ * handler. SCSI interrupt delivery is deferred to the main loop tick to
+ * avoid a race with kernel polling flag setup (see next_intr_set in
+ * next_devs.c).
  */
 
 #include "next_esp.h"
@@ -232,15 +234,17 @@ static void esp_raise_irq(void)
             next_intr_set(I_IPL3_SCSI);
         } else {
             esp_irq_log[esp_irq_log_idx].raised = 0;
-            /* Always log INT-disabled suppression after probe phase */
-            xil_printf("[ESP-IRQ] SUPPRESS (INT disabled): intstatus=$%02X dma=$%02X\r\n",
-                       esp.intstatus, esp.dma_control);
+            /* Log INT-disabled suppression after probe phase */
+            if (esp_post_probe)
+                xil_printf("[ESP-IRQ] SUPPRESS (INT disabled): intstatus=$%02X dma=$%02X\r\n",
+                           esp.intstatus, esp.dma_control);
         }
     } else {
         esp_irq_log[esp_irq_log_idx].raised = 0;
-        /* Always log double-INT suppression after probe phase */
-        xil_printf("[ESP-IRQ] SUPPRESS (STAT_INT set): intstatus=$%02X cmd=$%02X\r\n",
-                   esp.intstatus, esp.command[0]);
+        /* Log double-INT suppression after probe phase */
+        if (esp_post_probe)
+            xil_printf("[ESP-IRQ] SUPPRESS (STAT_INT set): intstatus=$%02X cmd=$%02X\r\n",
+                       esp.intstatus, esp.command[0]);
     }
     esp_irq_log_idx = (esp_irq_log_idx + 1) % ESP_IRQ_LOG_SIZE;
 }
@@ -325,6 +329,7 @@ static void esp_command_write(uint8_t cmd)
 static void esp_reset_soft(void)
 {
     esp.status &= ~STAT_TC;
+    esp.intstatus = 0;  /* defense in depth — harmless if caller already cleared */
     esp.mode_dma = 0;
     esp.counter = 0;
     esp.seqstep = 0;

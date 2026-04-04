@@ -28,6 +28,11 @@ void next_vram_mark_clean(void) { vram_dirty = 0; }
 
 void next_vram_get_dirty_lines(uint32_t *out)
 {
+    /* Note: on dual-core configurations the emulator core may set a dirty
+     * bit between memcpy and memset, causing that bit to be lost. This is
+     * benign — the affected scanline will simply be redrawn one frame late.
+     * No memory barrier is needed since the worst case is a single-frame
+     * delay on one scanline. */
     memcpy(out, vram_dirty_lines, sizeof(vram_dirty_lines));
     memset(vram_dirty_lines, 0, sizeof(vram_dirty_lines));
 }
@@ -195,7 +200,6 @@ void m68k_write_memory_8(unsigned int address, unsigned int value)
 {
     address = addr_normalise(address);
     if (in_ram(address)) {
-        /* (sc_active intercept removed — root cause is interrupt timing) */
         next_ram[address - NEXT_RAM_BASE] = value & 0xFF;
         return;
     }

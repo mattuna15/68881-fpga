@@ -1,9 +1,9 @@
 /*
  * next_video.h
- * NeXT mono framebuffer → ARGB8888 pixel buffer converter.
+ * NeXT mono framebuffer → ABGR8888 pixel buffer converter.
  *
  * Converts the NeXT 2bpp mono framebuffer (1120x832 at 0x0B000000)
- * into the ARGB8888 pixel buffer used by the DP/DPDMA display.
+ * into the ABGR8888 pixel buffer used by the DP/DPDMA display.
  * The NeXT image is centred within the output frame (1920x1080).
  *
  * On real hardware: pixel_buf feeds DPDMA → DisplayPort.
@@ -27,14 +27,14 @@
 #define NEXT_VIDEO_NBPL_NONTURBO (NEXT_VIDEO_MW >> 2)    /* 288 bytes/line */
 #define NEXT_VIDEO_NBPL          NEXT_VIDEO_NBPL_NONTURBO  /* SCR1 reports non-Turbo → stride 288 */
 
-/* 2bpp greyscale values → ARGB8888 */
+/* 2bpp greyscale values → ABGR8888 */
 #define NEXT_WHITE    0xFFFFFFFF   /* 00 */
 #define NEXT_LTGRAY   0xFFAAAAAA   /* 01 */
 #define NEXT_DKGRAY   0xFF555555   /* 10 */
 #define NEXT_BLACK    0xFF000000   /* 11 */
 
 /* Initialise the video converter.
- * pixel_buf: the ARGB8888 buffer for DP output (1280x720).
+ * pixel_buf: the ABGR8888 buffer for DP output (1920x1080).
  * vram: the NeXT emulated VRAM (256 KB at 0x0B000000). */
 void next_video_init(uint32_t *pixel_buf, const uint8_t *vram);
 

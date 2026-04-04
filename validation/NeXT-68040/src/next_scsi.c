@@ -403,11 +403,11 @@ int next_scsi_init(void)
     FILINFO fno;
 
     for (int d = 0; d < 2; d++) {
-        DPRINTF("[SCSI] Trying mount %s ...\r\n", drives[d]);
+        xil_printf("[SCSI] Trying mount %s ...\r\n", drives[d]);
         res = f_mount(&fatfs_inst, drives[d], 1);
         if (res != FR_OK) continue;
 
-        DPRINTF("[SCSI] Mounted %s\r\n", drives[d]);
+        xil_printf("[SCSI] Mounted %s\r\n", drives[d]);
 
         /* Scan root for *.IMG file */
         res = f_opendir(&dir, drives[d]);
@@ -429,18 +429,18 @@ int next_scsi_init(void)
                 if (res == FR_OK) {
                     disk.size = f_size(&disk.fil);
                     disk.mounted = true;
-                    DPRINTF("[SCSI] Opened %s: %llu bytes (%u sectors)\r\n",
+                    xil_printf("[SCSI] Opened %s: %llu bytes (%u sectors)\r\n",
                                path, disk.size, (unsigned)(disk.size / SCSI_BLOCKSIZE));
                     return 0;
                 }
-                DPRINTF("[SCSI] Failed to open %s (err %d)\r\n", path, res);
+                xil_printf("[SCSI] Failed to open %s (err %d)\r\n", path, res);
                 f_mount(NULL, drives[d], 0);
                 return -1;
             }
         }
         f_closedir(&dir);
         if (!found) {
-            DPRINTF("[SCSI] No .IMG file found on %s\r\n", drives[d]);
+            xil_printf("[SCSI] No .IMG file found on %s\r\n", drives[d]);
             f_mount(NULL, drives[d], 0);
         }
     }

@@ -68,14 +68,14 @@ void         m68k_write_memory_32(unsigned int address, unsigned int value);
 static inline uint32_t next_phys_read_32(uint32_t addr)
 {
     addr &= 0x7FFFFFFF;  /* strip TT bit 31 */
-    if (addr >= NEXT_RAM_BASE && addr < NEXT_RAM_BASE + NEXT_RAM_SIZE) {
+    if (addr >= NEXT_RAM_BASE && addr + 3 < NEXT_RAM_BASE + NEXT_RAM_SIZE) {
         uint32_t off = addr - NEXT_RAM_BASE;
         return ((uint32_t)next_ram[off] << 24) |
                ((uint32_t)next_ram[off+1] << 16) |
                ((uint32_t)next_ram[off+2] << 8) |
                 (uint32_t)next_ram[off+3];
     }
-    if (addr < NEXT_ROM_SIZE) {
+    if (addr + 3 < NEXT_ROM_SIZE) {
         return ((uint32_t)next_rom[addr] << 24) |
                ((uint32_t)next_rom[addr+1] << 16) |
                ((uint32_t)next_rom[addr+2] << 8) |

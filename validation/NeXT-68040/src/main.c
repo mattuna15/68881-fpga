@@ -29,6 +29,7 @@
 #include "next_dsp.h"
 #include "next_kms.h"
 #include "next_scsi.h"
+#include "next_ufs_diag.h"
 #include "next_video.h"
 #include "text_fb.h"
 #include "dp_video.h"
@@ -96,6 +97,132 @@ void emu_instr_hook(unsigned int pc)
     if (pc == 0x010024E8 && next_scc_rx_available()) {
         /* $010024E8 is TST.L D3 after the BSR — force D3=0 to exit */
         m68k_set_reg(M68K_REG_D3, 0);
+    }
+
+    /* Watch for kernel exec path — all call stack addresses from panic.
+     * Also search for "errno" string in kernel to find the printf caller. */
+    {
+        static int exec_watch_armed = 0;
+        static int exec_watch_hits = 0;
+        static uint32_t errno_str_addr = 0;
+        static int errno_search_done = 0;
+        static int kernel_phase = 0;  /* 0=boot, 1=kernel running */
+
+        /* Arm after kernel starts executing in RAM */
+        if (!exec_watch_armed && pc >= 0x04000000 && pc < 0x04100000)
+            exec_watch_armed = 1;
+        /* Detect kernel phase: after timer set to 500us, the kernel is running.
+         * PC=$040013A6 is PFLUSH right after SRP setup — marks kernel takeover. */
+        if (kernel_phase == 0 && pc == 0x040013A6)
+            kernel_phase = 1;
+
+        if (exec_watch_armed) {
+            /* One-time search: find "errno" string in kernel text/data.
+             * The kernel prints "Load of /etc/mach_init, errno 13" —
+             * search for "errno " in physical RAM. */
+            if (!errno_search_done) {
+                errno_search_done = 1;
+                for (uint32_t off = 0; off < 0x00C00000 && !errno_str_addr; off += 2) {
+                    if (next_ram[off]   == 'e' && next_ram[off+1] == 'r' &&
+                        next_ram[off+2] == 'r' && next_ram[off+3] == 'n' &&
+                        next_ram[off+4] == 'o' && next_ram[off+5] == ' ') {
+                        /* Check for "Load of" nearby (within 64 bytes before) */
+                        for (int back = 4; back < 64; back++) {
+                            if (off >= (uint32_t)back &&
+                                next_ram[off-back]   == 'L' &&
+                                next_ram[off-back+1] == 'o' &&
+                                next_ram[off-back+2] == 'a' &&
+                                next_ram[off-back+3] == 'd') {
+                                errno_str_addr = NEXT_RAM_BASE + off - back;
+                                xil_printf("[EXEC-FIND] 'Load of...errno' string at VA=$%08X\r\n",
+                                           errno_str_addr);
+                                /* Dump 64 bytes of the string */
+                                xil_printf("[EXEC-FIND] ");
+                                for (int j = 0; j < 64; j++) {
+                                    uint8_t ch = next_ram[off - back + j];
+                                    if (ch >= 0x20 && ch < 0x7F) xil_printf("%c", ch);
+                                    else if (ch == 0) { xil_printf("\\0"); break; }
+                                    else xil_printf(".");
+                                }
+                                xil_printf("\r\n");
+                                break;
+                            }
+                        }
+                    }
+                }
+                if (!errno_str_addr)
+                    xil_printf("[EXEC-FIND] 'errno' string NOT found in kernel RAM\r\n");
+            }
+
+            /* Watch exec-related call stack addresses — each with own counter.
+             * Only after kernel takes over (kernel_phase=1). */
+            if (kernel_phase) {
+                static int w54c_n=0, wfef6_n=0, w2504_n=0, w7884_n=0;
+                /* 0x0405454c — in exec call chain */
+                if (pc == 0x0405454c && w54c_n < 5) {
+                    xil_printf("[W@54c] D0=$%08X D1=$%08X A0=$%08X A6=$%08X SP=$%08X\r\n",
+                        m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
+                        m68k_get_reg(NULL, M68K_REG_A0), m68k_get_reg(NULL, M68K_REG_A6),
+                        m68k_get_reg(NULL, M68K_REG_A7));
+                    w54c_n++;
+                }
+                /* 0x0405fef6 — return addr in exec chain */
+                if (pc == 0x0405fef6 && wfef6_n < 5) {
+                    xil_printf("[W@fef6] D0=$%08X D1=$%08X A0=$%08X SP=$%08X\r\n",
+                        m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
+                        m68k_get_reg(NULL, M68K_REG_A0), m68k_get_reg(NULL, M68K_REG_A7));
+                    wfef6_n++;
+                }
+                /* 0x04072504 — load_init_program caller return */
+                if (pc == 0x04072504 && w2504_n < 5) {
+                    xil_printf("[W@2504] D0=$%08X D1=$%08X SP=$%08X\r\n",
+                        m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
+                        m68k_get_reg(NULL, M68K_REG_A7));
+                    w2504_n++;
+                }
+                /* 0x04067884 — kernel init caller */
+                if (pc == 0x04067884 && w7884_n < 5) {
+                    xil_printf("[W@7884] D0=$%08X D1=$%08X SP=$%08X\r\n",
+                        m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
+                        m68k_get_reg(NULL, M68K_REG_A7));
+                    w7884_n++;
+                }
+
+                /* Watch for PEA $040A6980 or MOVE.L #$040A6980 — loading
+                 * the "Load of...errno" format string for printf.
+                 * Detect by checking if any data register or address reg
+                 * contains the string address. Check every 10000 PCs. */
+                {
+                    static int errno_printf_n = 0;
+                    static uint32_t last_errno_check = 0;
+                    if (errno_str_addr && errno_printf_n < 2 &&
+                        pc >= 0x04060000 && pc <= 0x040A0000) {
+                        /* Check A0 for the format string address */
+                        uint32_t a0 = m68k_get_reg(NULL, M68K_REG_A0);
+                        if (a0 == errno_str_addr) {
+                            uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
+                            xil_printf("\r\n[ERRNO-PRINTF] PC=$%08X A0=$%08X (format str!)\r\n", pc, a0);
+                            xil_printf("[ERRNO-PRINTF] SP=$%08X stack:\r\n", sp);
+                            for (int i = 0; i < 10; i++)
+                                xil_printf("  SP+%02X: $%08X\r\n", i*4,
+                                    m68k_read_memory_32(sp + i*4));
+                            /* Dump string at the filename arg (likely SP+4 or SP+8) */
+                            uint32_t fn = m68k_read_memory_32(sp + 4);
+                            if (fn > 0x04000000 && fn < 0x05000000) {
+                                xil_printf("[ERRNO-PRINTF] filename: ");
+                                for (int j = 0; j < 30; j++) {
+                                    uint8_t ch = m68k_read_memory_8(fn + j);
+                                    if (ch == 0) break;
+                                    if (ch >= 0x20 && ch < 0x7F) xil_printf("%c", ch);
+                                }
+                                xil_printf("\r\n");
+                            }
+                            errno_printf_n++;
+                        }
+                    }
+                }
+            }
+        }
     }
 
     if (trace_count < TRACE_LIMIT) {
@@ -184,9 +311,10 @@ static void next_boot(void)
     next_rtc_init();
     next_dsp_init();
     next_kms_init();
-    if (next_scsi_init() == 0)
+    if (next_scsi_init() == 0) {
         xil_printf("[NEXT] SCSI disk: mounted from SD card\r\n");
-    else
+        next_ufs_diagnose();
+    } else
         xil_printf("[NEXT] SCSI disk: no disk image found\r\n");
     xil_printf("[NEXT] Device stubs: SCR1=%08X (WARP9/040)\r\n",
                SCR1_VALUE(NeXT_WARP9, 0));

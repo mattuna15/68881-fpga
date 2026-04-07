@@ -41,6 +41,7 @@ set(USER_COMPILE_SOURCES
 "next_esp.c"
 "next_scsi.c"
 "next_scsi_dma.c"
+"next_ufs_diag.c"
 "render_core1.c"
 "core1_boot.S"
 "fatfs/ff.c"

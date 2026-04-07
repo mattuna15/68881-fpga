@@ -388,6 +388,9 @@ static void esp_bus_reset(void)
             }
         }
     }
+    /* Reset SCSI read + DMA verify logs so we see kernel-driven reads */
+    { extern void next_scsi_reset_read_log(void); next_scsi_reset_read_log(); }
+    { extern int dma_verify_log; dma_verify_log = 0; }
     DPRINTF("[ESP] Bus reset\r\n");
     esp_reset_soft();
     if (!(esp.configuration & CFG1_RESREPT)) {

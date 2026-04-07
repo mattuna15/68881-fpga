@@ -197,18 +197,23 @@ uint pmmu_translate_addr_030(uint addr_in)
 	  11 = page descriptor (resident, used+modified)
 */
 
-/* Check if a 68040 TT register matches the address */
+/* Check if a 68040 TT register matches the address.
+ * S-field (bits 14-13) per Previous emulator / UAE interpretation:
+ *   bit 14 = 1: S-field filtering DISABLED → match both super and user
+ *   bit 14 = 0, bit 13 = 1: match supervisor only
+ *   bit 14 = 0, bit 13 = 0: match user only */
 static int tt040_match(uint tt, uint addr, int supervisor)
 {
 	if (!(tt & 0x8000))		/* bit 15: E (enable) */
 		return 0;
 
-	/* Check supervisor mode: bits 14-13: 00=both, 01=user only, 10=super only */
-	int sfield = (tt >> 13) & 3;
-	if (sfield == 1 && supervisor)
-		return 0;	/* user-only TT, but we're in supervisor mode */
-	if (sfield == 2 && !supervisor)
-		return 0;	/* supervisor-only TT, but we're in user mode */
+	/* S-field check (matches Previous/UAE cpummu.c logic) */
+	if (!(tt & (1 << 14))) {		/* bit 14 = 0: filtering active */
+		int s_super = (tt >> 13) & 1;	/* bit 13: 1=super, 0=user */
+		if (s_super != (supervisor ? 1 : 0))
+			return 0;		/* mode mismatch */
+	}
+	/* bit 14 = 1: filtering disabled, match both modes */
 
 	/* Address match: upper 8 bits of address must match base, masked */
 	uint lbase = (tt >> 24) & 0xFF;
@@ -222,6 +227,11 @@ static int tt040_match(uint tt, uint addr, int supervisor)
 }
 
 static int mmu040_log_count = 0;
+
+/* ATC fault signalling — set by pmmu_walk_040 on invalid page table entry.
+ * The caller generates a 68040 access fault exception (format 7). */
+static int mmu040_atc_fault = 0;
+static uint32_t mmu040_fault_addr = 0;
 
 /* ------------------------------------------------------------------ */
 /* TLB — caches page translations to avoid page table walks            */
@@ -246,6 +256,13 @@ void tlb040_flush(void)
 }
 
 /* Full page table walk — called on TLB miss */
+/* Full page table walk — called on TLB miss.
+ * Handles indirect page descriptors (type 2) per 68040 manual.
+ * NOTE: WP/S protection checks and U/M bit writeback are NOT implemented
+ * yet — they cause regressions because our ATC fault SSW doesn't properly
+ * distinguish protection faults from invalid-page faults, and U/M writes
+ * to descriptor memory corrupt early-boot page tables. These features
+ * require proper SSW encoding (write bit, TM field) before enabling. */
 static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k)
 {
 	/* Level 1: Root table — bits 31-25 (7 bits, 128 entries) */
@@ -259,6 +276,8 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k)
 			           addr_in, root_ptr, l1_idx, l1_desc);
 			l1_fault_log++;
 		}
+		mmu040_atc_fault = 1;
+		mmu040_fault_addr = addr_in;
 		return addr_in;
 	}
 
@@ -274,6 +293,8 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k)
 			           addr_in, l2_base, l2_idx);
 			l2_fault_log++;
 		}
+		mmu040_atc_fault = 1;
+		mmu040_fault_addr = addr_in;
 		return addr_in;
 	}
 
@@ -299,6 +320,8 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k)
 			           addr_in, l3_base, l3_idx);
 			l3_fault_log++;
 		}
+		mmu040_atc_fault = 1;
+		mmu040_fault_addr = addr_in;
 		return addr_in;
 	}
 
@@ -353,12 +376,55 @@ uint pmmu_translate_addr_040(uint addr_in)
 
 	/* TLB miss — full page table walk */
 	uint root_ptr = supervisor ? m68ki_cpu.mmu_040_srp : m68ki_cpu.mmu_040_urp;
+	mmu040_atc_fault = 0;
 	uint result = pmmu_walk_040(addr_in, root_ptr, page_8k);
 
-	/* Fill TLB — only cache successful translations.
-	 * Page faults return addr_in unchanged; do NOT cache these because
-	 * the kernel populates page tables incrementally and a cached fault
-	 * would mask a later valid mapping until the next PFLUSH. */
+	/* ATC fault: page table entry was invalid.
+	 * Generate a 68040 access fault exception (format 7 stack frame)
+	 * so the kernel's page fault handler can populate the pmap. */
+	if (mmu040_atc_fault) {
+		mmu040_atc_fault = 0;
+
+		/* Build 68040 SSW: ATC=1 (bit 7), RW=1 for read (bit 5),
+		 * TT=00 (normal transfer), SIZE=10 (long).
+		 * NOTE: FC/TM is NOT in SSW — the kernel infers it from SR. */
+		uint ssw = (1 << 7) | (1 << 5) | (2 << 2);  /* ATC | RW | SIZE=long | TT=normal */
+
+		static int fault_fire_log = 0;
+		static int fault_total = 0;
+		if (fault_fire_log < 20) {
+			xil_printf("[MMU040] ATC FAULT: VA=$%08X SSW=$%04X PC=$%08X\r\n",
+			           addr_in, ssw, REG_PPC);
+			fault_fire_log++;
+		}
+
+		/* Detect infinite fault loop (double bus fault → CPU halt).
+		 * On real 68040 this halts the CPU; we stop the emulator. */
+		fault_total++;
+		if (fault_total > 500) {
+			xil_printf("[MMU040] HALT: >500 ATC faults — likely double bus fault\r\n");
+			m68k_end_timeslice();
+			m68k_pulse_halt();
+			return addr_in;
+		}
+
+		/* Restore registers to pre-instruction state */
+		for (int i = 15; i >= 0; i--)
+			REG_DA[i] = REG_DA_SAVE[i];
+
+		/* Fire 68040 bus error with format 7 stack frame */
+		CPU_RUN_MODE = RUN_MODE_BERR_AERR_RESET_WSF;
+		uint sr = m68ki_init_exception();
+		m68ki_stack_frame_0111(REG_PPC, sr, addr_in, ssw);
+		m68ki_jump_vector(EXCEPTION_BUS_ERROR);
+		CPU_RUN_MODE = RUN_MODE_BERR_AERR_RESET;
+		USE_CYCLES(50);
+
+		/* Abort current instruction */
+		longjmp(m68ki_bus_error_jmp_buf, 1);
+	}
+
+	/* Fill TLB — only cache successful translations */
 	if (result != addr_in) {
 		page_tlb[tlb_idx].tag = tag;
 		page_tlb[tlb_idx].phys = result & ~page_mask;

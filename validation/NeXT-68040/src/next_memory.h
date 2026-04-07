@@ -92,6 +92,20 @@ static inline uint32_t next_phys_read_32(uint32_t addr)
     return 0;
 }
 
+/* Physical memory write — bypasses MMU translation.
+ * Used by the 68040 MMU to update Used/Modified bits in page descriptors. */
+static inline void next_phys_write_32(uint32_t addr, uint32_t val)
+{
+    addr &= 0x7FFFFFFF;  /* strip TT bit 31 */
+    if (addr >= NEXT_RAM_BASE && addr + 3 < NEXT_RAM_BASE + NEXT_RAM_SIZE) {
+        uint32_t off = addr - NEXT_RAM_BASE;
+        next_ram[off]   = (val >> 24) & 0xFF;
+        next_ram[off+1] = (val >> 16) & 0xFF;
+        next_ram[off+2] = (val >>  8) & 0xFF;
+        next_ram[off+3] = val & 0xFF;
+    }
+}
+
 /* VRAM dirty tracking for display refresh */
 int  next_vram_is_dirty(void);
 void next_vram_mark_clean(void);

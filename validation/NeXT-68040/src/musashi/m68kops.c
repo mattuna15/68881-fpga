@@ -22036,7 +22036,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_itt0 = REG_DA[(word2 >> 12) & 15];
-					xil_printf("[MMU040] ITT0=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_itt0, REG_PC);
+					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] ITT0=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_itt0, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22045,7 +22045,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_itt1 = REG_DA[(word2 >> 12) & 15];
-					xil_printf("[MMU040] ITT1=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_itt1, REG_PC);
+					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] ITT1=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_itt1, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22054,7 +22054,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_dtt0 = REG_DA[(word2 >> 12) & 15];
-					xil_printf("[MMU040] DTT0=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_dtt0, REG_PC);
+					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] DTT0=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_dtt0, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22063,7 +22063,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_dtt1 = REG_DA[(word2 >> 12) & 15];
-					xil_printf("[MMU040] DTT1=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_dtt1, REG_PC);
+					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] DTT1=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_dtt1, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();

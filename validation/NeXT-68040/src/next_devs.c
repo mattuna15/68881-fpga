@@ -119,15 +119,49 @@ static uint8_t dma_csr[NUM_DMA_CHANNELS];
 
 /* ------------------------------------------------------------------ */
 /* ADB (Apple Desktop Bus) stub — Turbo machines use ADB for keyboard  */
-/* and mouse via the TMC at $02208xxx.  Without this stub, the kernel  */
-/* hangs polling ADB_INTSTATUS waiting for command completion.          */
+/* and mouse via the TMC at $02208xxx.  Matches Previous emulator's    */
+/* register layout and command handling so the ROM/kernel probe         */
+/* completes correctly (all commands timeout → no devices found).      */
 /* ------------------------------------------------------------------ */
-#define ADB_INTSTATUS   0x00
-#define ADB_INTMASK     0x08
-#define ADB_CMD         0x30
-#define ADB_INT_REJECT  0x01  /* no device responded */
-static uint32_t adb_intstatus = 0;
-static uint32_t adb_intmask = 0;
+#define ADB_REG_INTSTATUS   0x00  /* rw (write-1-to-clear) */
+#define ADB_REG_INTMASK     0x08  /* rw */
+#define ADB_REG_SETINT      0x10  /* w */
+#define ADB_REG_CONFIG      0x18  /* rw */
+#define ADB_REG_CTRL        0x20  /* w */
+#define ADB_REG_STATUS      0x28  /* r */
+#define ADB_REG_CMD         0x30  /* rw */
+#define ADB_REG_COUNT       0x38  /* rw */
+#define ADB_REG_DATA0       0x80  /* rw */
+#define ADB_REG_DATA1       0x88  /* rw */
+
+/* Interrupt status/mask bits */
+#define ADB_INT_REJECT      0x01
+#define ADB_INT_POLLSTOP    0x02
+#define ADB_INT_ACCESS      0x04
+#define ADB_INT_RESET       0x08
+
+/* Control register bits */
+#define ADB_CTRL_EN_POLL    0x01
+#define ADB_CTRL_DIS_POLL   0x02
+#define ADB_CTRL_XMIT_CMD  0x04
+#define ADB_CTRL_RESET_ADB  0x08
+
+/* Status register bits */
+#define ADB_STAT_TIMEOUT    0x04
+#define ADB_STAT_RESET      0x10
+#define ADB_STAT_ACCESS     0x20
+#define ADB_STAT_POLL_EN    0x40
+
+static struct {
+    uint32_t intstatus;
+    uint32_t intmask;
+    uint32_t config;
+    uint32_t status;
+    uint32_t command;
+    uint32_t bitcount;
+    uint32_t data0;
+    uint32_t data1;
+} adb;
 
 /* ------------------------------------------------------------------ */
 /* Live I/O activity tracker — dump with 'D' to see what CPU accesses  */
@@ -285,6 +319,9 @@ void next_devs_init(void)
     eventc_us = 0;
     eventc_accum = 0;
     event_latch = 0;
+
+    /* ADB: all zeroed (no devices) */
+    memset(&adb, 0, sizeof(adb));
 
     /* DMA: all channels idle + complete (internal 8-bit state) */
     memset(dma_csr, 0, sizeof(dma_csr));
@@ -803,16 +840,19 @@ uint32_t next_io_read_32(uint32_t address)
         /* TMC SCR1 at $02200000 — same as P_SCR1 */
         if (tmc_off < 4)
             return scr1_value;
-        /* ADB registers at TMC+$8000-$803F (mapped via $02208xxx) */
-        if (tmc_off >= 0x8000 && tmc_off < 0x8040) {
+        /* ADB registers at TMC+$8000-$80FF (mapped via $02208xxx) */
+        if (tmc_off >= 0x8000 && tmc_off < 0x8100) {
             uint32_t adb_reg = tmc_off - 0x8000;
             switch (adb_reg) {
-            case ADB_INTSTATUS:
-                return adb_intstatus;
-            case ADB_INTMASK:
-                return adb_intmask;
-            default:
-                return 0;
+            case ADB_REG_INTSTATUS: return adb.intstatus;
+            case ADB_REG_INTMASK:   return adb.intmask;
+            case ADB_REG_CONFIG:    return adb.config;
+            case ADB_REG_STATUS:    return adb.status;
+            case ADB_REG_CMD:       return adb.command;
+            case ADB_REG_COUNT:     return adb.bitcount;
+            case ADB_REG_DATA0:     return adb.data0;
+            case ADB_REG_DATA1:     return adb.data1;
+            default:                return 0;
             }
         }
         return 0;  /* other TMC registers */
@@ -922,7 +962,8 @@ void next_io_write_8(uint32_t address, uint8_t value)
             hardclock_accum = 0;
         }
         if ((hardclock_csr & HARDCLOCK_ENABLE) && latch_hardclock > 0) {
-            xil_printf("[TIMER] enable periodic IRQ every %d us\r\n", latch_hardclock);
+            static int timer_log = 0;
+            if (timer_log < 5) { timer_log++; xil_printf("[TIMER] enable periodic IRQ every %d us\r\n", latch_hardclock); }
         }
         /* Writing CSR clears timer interrupt */
         next_intr_clear(I_IPL6_TIMER);
@@ -1069,19 +1110,58 @@ void next_io_write_32(uint32_t address, uint32_t value)
     /* TMC space: $02200000-$0220FFFF */
     if (address >= 0x02200000 && address < 0x02210000) {
         uint32_t tmc_off = address - 0x02200000;
-        /* ADB registers at TMC+$8000-$803F */
-        if (tmc_off >= 0x8000 && tmc_off < 0x8040) {
+        /* ADB registers at TMC+$8000-$80FF */
+        if (tmc_off >= 0x8000 && tmc_off < 0x8100) {
             uint32_t adb_reg = tmc_off - 0x8000;
             switch (adb_reg) {
-            case ADB_INTSTATUS:
-                adb_intstatus &= ~value;  /* write-1-to-clear */
+            case ADB_REG_INTSTATUS:
+                adb.intstatus &= ~value;  /* write-1-to-clear */
                 break;
-            case ADB_INTMASK:
-                adb_intmask = value;
+            case ADB_REG_INTMASK:
+                adb.intmask = value;
                 break;
-            case ADB_CMD:
-                /* Any ADB command → immediately reject (no devices) */
-                adb_intstatus |= ADB_INT_REJECT;
+            case ADB_REG_SETINT:
+                adb.intstatus |= value;
+                break;
+            case ADB_REG_CONFIG:
+                adb.config = value;
+                break;
+            case ADB_REG_CTRL:
+                /* Control register — matches Previous emulator logic */
+                if (value & ADB_CTRL_RESET_ADB) {
+                    adb.status &= ~ADB_STAT_POLL_EN;
+                    adb.intstatus |= ADB_INT_RESET;
+                }
+                if (value & ADB_CTRL_XMIT_CMD) {
+                    if (adb.status & (ADB_STAT_RESET | ADB_STAT_ACCESS)) {
+                        adb.intstatus |= ADB_INT_REJECT;
+                    } else {
+                        /* No ADB devices: command times out */
+                        adb.status |= ADB_STAT_TIMEOUT;
+                        adb.intstatus |= ADB_INT_ACCESS;
+                    }
+                }
+                if (value & ADB_CTRL_DIS_POLL)
+                    adb.status &= ~ADB_STAT_POLL_EN;
+                if (value & ADB_CTRL_EN_POLL) {
+                    if ((adb.status & (ADB_STAT_RESET | ADB_STAT_ACCESS)) &&
+                        !(adb.status & ADB_STAT_POLL_EN))
+                        adb.intstatus |= ADB_INT_REJECT;
+                    else
+                        adb.status |= ADB_STAT_POLL_EN;
+                }
+                break;
+            case ADB_REG_CMD:
+                adb.command = value;
+                break;
+            case ADB_REG_COUNT:
+                adb.bitcount = value;
+                break;
+            case ADB_REG_DATA0:
+                adb.data0 = value;
+                break;
+            case ADB_REG_DATA1:
+                adb.data1 = value;
                 break;
             default:
                 break;

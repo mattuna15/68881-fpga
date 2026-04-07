@@ -1735,6 +1735,40 @@ static inline void m68ki_stack_frame_1000(uint pc, uint sr, uint vector)
 	m68ki_push_16(sr);
 }
 
+/* Format 7 stack frame (68040 access fault).
+ * Used for ATC faults (page table entry invalid) on 68040.
+ * 30 words = 60 bytes. The kernel's bus error handler reads
+ * the SSW and fault address to handle the page fault.
+ *
+ * SSW bits: bit 7=ATC, bit 6=LK, bit 5=RW(1=read), bits 2-0=TM(FC)
+ */
+static inline void m68ki_stack_frame_0111(uint pc, uint sr, uint addr, uint ssw)
+{
+	/* 68040 Format 7 Access Error frame — 30 words (60 bytes).
+	 * MC68040 User Manual Section 8.4.2.2.
+	 * Push in reverse order (stack grows down). */
+
+	m68ki_push_32(0);     /* +$34: PD3 (Push Data 3) */
+	m68ki_push_32(0);     /* +$30: PD2 (Push Data 2) */
+	m68ki_push_32(0);     /* +$2C: PD LReg / WB1D (Push Data / Write-Back 1 Data) */
+	m68ki_push_32(0);     /* +$28: WB1A (Write-Back 1 Address) */
+	m68ki_push_32(0);     /* +$24: WB2D (Write-Back 2 Data) */
+	m68ki_push_32(0);     /* +$20: WB2A (Write-Back 2 Address) */
+	m68ki_push_32(0);     /* +$1C: WB3D (Write-Back 3 Data) */
+	m68ki_push_32(0);     /* +$18: WB3A (Write-Back 3 Address) */
+	m68ki_push_32(addr);  /* +$14: FA (Fault Address) */
+
+	m68ki_push_16(0);     /* +$12: WB1S (Write-Back 1 Status) */
+	m68ki_push_16(0);     /* +$10: WB2S (Write-Back 2 Status) */
+	m68ki_push_16(0);     /* +$0E: WB3S (Write-Back 3 Status) */
+	m68ki_push_16(ssw);   /* +$0C: SSW (Special Status Word) */
+
+	m68ki_push_32(addr);  /* +$08: EA (Effective Address) */
+	m68ki_push_16(0x7000 | (EXCEPTION_BUS_ERROR << 2));  /* +$06: Format/Vector */
+	m68ki_push_32(pc);    /* +$02: PC */
+	m68ki_push_16(sr);    /* +$00: SR */
+}
+
 /* Format A stack frame (short bus fault).
  * This is used only by 68020 for bus fault and address error
  * if the error happens at an instruction boundary.

@@ -350,6 +350,14 @@ static void scsi_mode_sense(uint8_t *cdb)
     disk.sense.code = SC_NO_ERROR;
 }
 
+static int scsi_read_log = 0;
+
+/* Reset read log counter after kernel bus reset so we see exec-time reads */
+void next_scsi_reset_read_log(void)
+{
+    scsi_read_log = 0;
+}
+
 static void scsi_read_sector(uint8_t *cdb)
 {
     disk.lba = (uint32_t)scsi_get_offset(cdb[0], cdb);
@@ -357,7 +365,12 @@ static void scsi_read_sector(uint8_t *cdb)
     scsi_buf.is_disk = true;
     scsi_buf.size = 0;
     disk.phase = SCSI_PHASE_DI;
-    DPRINTF("[SCSI] Read: %u block(s) at LBA %u\r\n", disk.blockcounter, disk.lba);
+    /* Log reads — counter resets after kernel bus reset */
+    if (scsi_read_log < 200)
+        xil_printf("[SCSI-RD] LBA=%u cnt=%u (byte=%llu)\r\n",
+                   disk.lba, disk.blockcounter,
+                   (unsigned long long)disk.lba * SCSI_BLOCKSIZE);
+    scsi_read_log++;
     scsi_read_one_sector();
 }
 
@@ -570,6 +583,29 @@ void next_scsi_set_phase(uint8_t phase)
 uint8_t next_scsi_get_target(void)
 {
     return disk.target;
+}
+
+int next_scsi_read_raw(uint32_t lba, uint8_t *buf, uint32_t nsect)
+{
+    if (!disk.mounted)
+        return -1;
+    uint64_t offset = (uint64_t)lba * 512;
+    if (offset + (uint64_t)nsect * 512 > disk.size)
+        return -1;
+    /* Save and restore file position so diagnostic reads don't
+     * interfere with in-flight SCSI operations. */
+    FSIZE_t saved_pos = f_tell(&disk.fil);
+    FRESULT res = f_lseek(&disk.fil, (FSIZE_t)offset);
+    if (res != FR_OK) {
+        f_lseek(&disk.fil, saved_pos);
+        return -1;
+    }
+    UINT br;
+    res = f_read(&disk.fil, buf, nsect * 512, &br);
+    f_lseek(&disk.fil, saved_pos);
+    if (res != FR_OK || br != nsect * 512)
+        return -1;
+    return 0;
 }
 
 uint8_t *next_scsi_get_buffer_ptr(void)

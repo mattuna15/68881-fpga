@@ -193,42 +193,85 @@ d0: 000006E4              ; 1764 = 42 × 42 ✓
 Full stack: serial keystroke → KMS → ROM monitor → 68K code → F-line
 trap → ARM fline_handler → AXI-Lite → MC68881 FPGA → result to D0.
 
-### Mach Kernel Boot — SCSI Disk Loaded, Autoconfiguration In Progress
+### Mach Kernel Boot — Root Filesystem Mounted
 
-The Mach kernel (NEXTSTEP 3.3) loads from a SCSI disk image on SD card
-and reaches the autoconfiguration phase. The kernel loads ~800 KB of
-code from disk and begins device probing.
+The Mach kernel (NEXTSTEP 3.3) boots from a SCSI disk image on SD card,
+completes all device probing, mounts the UFS root filesystem, and
+attempts to exec `/etc/mach_init`. The same disk image boots successfully
+on the Previous emulator — the issue is in our emulator.
 
 **Boot sequence completed:**
 1. ROM monitor: `b sd` → probes SCSI targets 0-7, finds disk at target 6
 2. ROM reads boot blocks, disk label, kernel binary from SCSI disk
-3. Kernel starts: MMU enabled, timer configured at 500 µs, ESP reset
-4. Kernel SCSI probe: targets 0-5 timeout, target 6 found (INQUIRY)
-5. Disk attach: START/STOP, TEST UNIT READY, READ CAPACITY (730016 sectors)
-6. Disk I/O: reads boot sectors, kernel text from LBAs 380512-414688
-7. LUN probe: INQUIRY for LUNs 0-7 on target 6 (LUNs 1-7 return 0x7F)
+3. Kernel starts: MMU enabled (3-level 68040 page tables), timer at 500 µs
+4. ESP bus reset, SCSI re-probe: 53C90A, disk at target 6 (INQUIRY, READ CAPACITY)
+5. Tape/generic SCSI probes: targets 0-7 scanned for st and sg drivers
+6. Ethernet (en0), printer (np0), sound (sound0) probed
+7. UFS root filesystem mounted from sd0
+8. Kernel execs `/etc/mach_init` → **errno 13 (EACCES)**
+9. Falls back to `/etc/init` → **errno 13 (EACCES)**
+10. Page fault at VA=0xa10000 → bus error panic (downstream of exec failure)
 
-**Current hang point:** After LUN probing completes, the kernel's final
-SELECT timeout (target 0, wrapping from target 7) triggers a `screset`
-loop. The IPL 3 interrupt fires correctly via Musashi's `MOVE to SR`
-handler, but a batch-boundary timing interaction between the IPL 3 SCSI
-handler and the IPL 6 timer causes the SCSI controller state machine
-to enter "bad reselection" error recovery.
+**Current issue: ENOEXEC on exec (under investigation)**
 
-**Fixes applied (this session):**
-- DMA CSR read format: returns `csr << 24` (Turbo format), not write echo
-- ESP DMA ctrl INT enable: edge detection prevents spurious re-raise
-- SELECT timeout phase: set to STATUS on timeout (matches Previous emulator)
-- Generic DMA CSR: proper 8-bit state tracking with Turbo write-bit decoding
+Exec returns **ENOEXEC (errno 8)** — binary format not recognised.
+The display shows "errno 13" (EACCES) which is the mapped error code.
+Confirmed via PC watchpoints at exec call chain addresses:
+- D1=$0E (EFAULT) on first attempt, then D1=$08 (ENOEXEC)
+- The kernel never issues SCSI reads for the file's data blocks
+- exec fails before reading the CAFEBABE magic number
 
-**Expected next display text:** `en0 at 0x2006000`, `dsp0`, `sound0`,
-`root on sd0` — these are the device probes AFTER SCSI completes.
+The binary is a Mach-O fat binary (CAFEBABE) with m68k + Intel slices
+(cputype=6, cpusubtype=ALL). Previous emulator boots it fine.
+
+**Root cause theory:** The kernel's `bread()` or `VOP_READ()` path
+fails to issue SCSI I/O for file data blocks during exec. The kernel
+mounts the filesystem and resolves paths using cached metadata from
+3 initial reads, but cannot page in new file data.
+
+Investigated and ruled out:
+- SCSI/DMA data integrity (verified correct with DMA-V logging)
+- Sector size (Previous also uses 512, bratio=4 handles conversion)
+- MMU page table walks (multiple approaches tried, reverted)
+- Format 7 frame size (fixed: was 52 bytes, now 56 — correctness fix)
+- SSW encoding (fixed: TT=00 normal, was TT=01 MOVE16 — correctness fix)
+- CPU type matching (CPU_TYPE_MC680x0=6 matches fat binary cputype=6)
+- Disk image (boots on Previous)
+
+**68040 MMU and bus error implementation:**
+Full 3-level page table walk with TLB (256 entries, direct-mapped).
+Transparent Translation registers (ITT0/1, DTT0/1). Format 7 access
+error stack frame (56 bytes / 28 words) with correct field layout:
+separate FA and WB3A fields, SSW with ATC=1, RW=1, TT=00 (normal),
+SIZE=10 (long). Infinite fault guard halts CPU after 500 ATC faults.
+
+**Key fix: deferred SCSI interrupt delivery.** The tape driver's `stcmd`
+sets `STF_POLL_IP` after `splx()`. Our synchronous ESP model completes
+commands instantly, causing the interrupt to fire during `splx()` before
+the flag is set. Fix: defer `I_IPL3_SCSI` delivery to the main loop
+tick, giving the kernel time to set polling flags.
+
+**Fixes applied (cumulative):**
+- DMA CSR Turbo format (`csr << 24`)
+- ESP DMA ctrl INT enable edge detection
+- SELECT timeout phase matching
+- ADB stub (ADB_INT_REJECT)
+- ESP 53C90A config2 register
+- TMC SCR1 read support
+- Per-instruction IPL ≤ 5 interrupt check in Musashi
+- Event counter 4096x speedup for kernel timeouts
+- Interrupt mask write recalculates pending IPL
+- **Deferred SCSI interrupt delivery** (fixed probe hang)
+- TMC address canonicalization fix (PR review)
+- **68040 MMU: indirect descriptors + U/M bits + WP/S checks**
 
 ### Next Steps
 
-1. Fix batch-boundary timer pre-emption of IPL 3 SCSI handler
-2. Implement MCS1850 protocol support (bit 7 inversion for new clock chip reads/writes)
-3. USB HID keyboard integration (from hello_world project)
+1. Diagnose EACCES root cause using DMA data verification diagnostics
+2. If data is correct: investigate CPU instruction differences in exec path
+3. If data is wrong: fix DMA/SCSI data integrity issue
+4. Implement MCS1850 protocol support (bit 7 inversion for new clock chip)
+5. USB HID keyboard integration (from hello_world project)
 
 ## Memory Map (Turbo 68040)
 

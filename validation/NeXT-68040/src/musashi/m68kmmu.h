@@ -385,10 +385,23 @@ uint pmmu_translate_addr_040(uint addr_in)
 	if (mmu040_atc_fault) {
 		mmu040_atc_fault = 0;
 
-		/* Build 68040 SSW: ATC=1 (bit 7), RW=1 for read (bit 5),
-		 * TT=00 (normal transfer), SIZE=10 (long).
-		 * NOTE: FC/TM is NOT in SSW — the kernel infers it from SR. */
-		uint ssw = (1 << 7) | (1 << 5) | (2 << 2);  /* ATC | RW | SIZE=long | TT=normal */
+		/* Build 68040 SSW per MC68040 User Manual Table 8-4 and
+		 * kernel's struct special_status_040 (reg.h):
+		 *   bit 10: ATC  — ATC fault (page table entry invalid)
+		 *   bit 8:  RW   — 1=read, 0=write
+		 *   bits 6-5: SIZE — 00=long
+		 *   bits 4-3: TT   — 00=normal transfer
+		 *   bits 2-0: TM   — function code (1=user data, 5=super data, etc.)
+		 * The kernel checks ATC_BIT (bit 10) to distinguish MMU faults
+		 * from bus errors, and TM for the function code. */
+		/* Reconstruct 68040 function code from Musashi's m68ki_address_space.
+		 * Musashi stores FLAG_S(0x2000) | base_fc where base_fc is 1(data) or 2(code).
+		 * Real 68040 FC: user data=1, user code=2, super data=5, super code=6. */
+		uint raw_fc = m68ki_address_space;
+		uint fc = (raw_fc & 3) | ((raw_fc & 0x2000) ? 4 : 0);
+		uint ssw = 0x0400    /* ATC=1 (bit 10) */
+		         | 0x0100    /* RW=1 (read — TODO: detect writes) */
+		         | fc;       /* TM = function code (bits 2-0) */
 
 		static int fault_fire_log = 0;
 		static int fault_total = 0;

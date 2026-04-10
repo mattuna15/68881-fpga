@@ -58,6 +58,7 @@ extern void m68ki_build_opcode_table(void);
 int  m68ki_initial_cycles;
 int  m68ki_remaining_cycles = 0;                     /* Number of clocks remaining */
 uint m68ki_tracing = 0;
+int  rte_format7_count = 0;                          /* Format 7 RTE completions */
 uint m68ki_address_space;
 
 #ifdef M68K_LOG_ENABLE

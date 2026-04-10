@@ -585,10 +585,12 @@ typedef uint32 uint64;
 	#define m68ki_use_program_space() m68ki_address_space = FUNCTION_CODE_USER_PROGRAM
 	#define m68ki_get_address_space() m68ki_address_space
 #else
-	#define m68ki_set_fc(A)
-	#define m68ki_use_data_space()
-	#define m68ki_use_program_space()
-	#define m68ki_get_address_space() FUNCTION_CODE_USER_DATA
+	/* FC emulation off, but m68ki_address_space must still be updated
+	 * for 68040 ATC fault SSW encoding (TM field = function code). */
+	#define m68ki_set_fc(A) m68ki_address_space = (A)
+	#define m68ki_use_data_space() m68ki_address_space = FUNCTION_CODE_USER_DATA
+	#define m68ki_use_program_space() m68ki_address_space = FUNCTION_CODE_USER_PROGRAM
+	#define m68ki_get_address_space() m68ki_address_space
 #endif /* M68K_EMULATE_FC */
 
 
@@ -1735,6 +1737,10 @@ static inline void m68ki_stack_frame_1000(uint pc, uint sr, uint vector)
 	m68ki_push_16(sr);
 }
 
+/* Format 7 RTE counter — tracks successful page fault returns.
+ * Defined in m68kcpu.c, used by RTE handler in m68kops.c/m68k_in.c. */
+extern int rte_format7_count;
+
 /* Format 7 stack frame (68040 access fault).
  * Used for ATC faults (page table entry invalid) on 68040.
  * 30 words = 60 bytes. The kernel's bus error handler reads
@@ -1745,13 +1751,14 @@ static inline void m68ki_stack_frame_1000(uint pc, uint sr, uint vector)
 static inline void m68ki_stack_frame_0111(uint pc, uint sr, uint addr, uint ssw)
 {
 	/* 68040 Format 7 Access Error frame — 30 words (60 bytes).
-	 * MC68040 User Manual Section 8.4.2.2.
+	 * MC68040 User Manual Section 8.4.2.2, Table 8-5.
 	 * Push in reverse order (stack grows down). */
 
-	m68ki_push_32(0);     /* +$34: PD3 (Push Data 3) */
-	m68ki_push_32(0);     /* +$30: PD2 (Push Data 2) */
-	m68ki_push_32(0);     /* +$2C: PD LReg / WB1D (Push Data / Write-Back 1 Data) */
-	m68ki_push_32(0);     /* +$28: WB1A (Write-Back 1 Address) */
+	m68ki_push_32(0);     /* +$38: PD3 (Push Data 3) */
+	m68ki_push_32(0);     /* +$34: PD2 (Push Data 2) */
+	m68ki_push_32(0);     /* +$30: PD1 (Push Data 1) */
+	m68ki_push_32(0);     /* +$2C: WB1D/PD0 (Write-Back 1 Data / Push Data 0) */
+	m68ki_push_32(0);     /* +$28: WB1A/PD0A (Write-Back 1 Address) */
 	m68ki_push_32(0);     /* +$24: WB2D (Write-Back 2 Data) */
 	m68ki_push_32(0);     /* +$20: WB2A (Write-Back 2 Address) */
 	m68ki_push_32(0);     /* +$1C: WB3D (Write-Back 3 Data) */

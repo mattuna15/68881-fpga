@@ -358,6 +358,11 @@ void next_scsi_reset_read_log(void)
     scsi_read_log = 0;
 }
 
+int scsi_read_log_count(void)
+{
+    return scsi_read_log;
+}
+
 static void scsi_read_sector(uint8_t *cdb)
 {
     disk.lba = (uint32_t)scsi_get_offset(cdb[0], cdb);

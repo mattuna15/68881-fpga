@@ -9290,6 +9290,23 @@ rte_loop:
 				CPU_INSTR_MODE = INSTRUCTION_YES;
 				CPU_RUN_MODE = RUN_MODE_NORMAL;
 				return;
+			case 7: /* 68040 Access Error (Format 7) — 30 words = 60 bytes.
+				 * Pop SR+PC+Format (8 bytes) then skip remaining 52 bytes.
+				 * The kernel's bus error handler has already resolved the
+				 * page fault; we just need to resume at the stacked PC. */
+				new_sr = m68ki_pull_16();
+				new_pc = m68ki_pull_32();
+				m68ki_fake_pull_16();	/* format word */
+				REG_A[7] += 52;		/* skip EA, SSW, WBnS, FA, WBnA/D, PDn */
+				rte_format7_count++;
+				if (rte_format7_count <= 5 || (rte_format7_count % 100) == 0)
+					xil_printf("[RTE-F7] #%d resume PC=$%08X SR=$%04X\r\n",
+					           rte_format7_count, new_pc, new_sr);
+				m68ki_jump(new_pc);
+				m68ki_set_sr(new_sr);
+				CPU_INSTR_MODE = INSTRUCTION_YES;
+				CPU_RUN_MODE = RUN_MODE_NORMAL;
+				return;
 		}
 		/* Not handling long or short bus fault */
 		CPU_INSTR_MODE = INSTRUCTION_YES;

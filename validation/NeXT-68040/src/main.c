@@ -57,8 +57,11 @@ static int trace_count = 0;
 static struct {
     uint32_t pc;       /* user PC of TRAP instruction */
     uint32_t d0;       /* D0 = syscall number */
-    uint32_t d1;       /* D1 = first arg (sometimes) */
+    uint32_t d1;       /* D1 = first arg (Mach traps) */
     uint32_t sp;       /* user SP at time of trap */
+    uint32_t arg1;     /* USP+4: first stack arg (Unix syscalls) */
+    uint32_t arg2;     /* USP+8: second stack arg */
+    uint32_t arg3;     /* USP+12: third stack arg */
     uint16_t sr;       /* SR before trap (bit 13 = user/super) */
     uint8_t  trap_num; /* TRAP #N (0-15) */
 } trap_log[TRAP_LOG_SIZE];
@@ -85,6 +88,17 @@ void emu_trap_log(unsigned int trap_num, unsigned int pc,
     trap_log[idx].sp = sp;
     trap_log[idx].sr = (uint16_t)sr;
     trap_log[idx].trap_num = (uint8_t)trap_num;
+    /* For Unix syscalls (TRAP#4), capture args from user stack.
+     * BSD convention: args at USP+4, USP+8, USP+12 */
+    if (trap_num == 4 && sp >= 0x1000) {
+        trap_log[idx].arg1 = m68k_read_memory_32(sp + 4);
+        trap_log[idx].arg2 = m68k_read_memory_32(sp + 8);
+        trap_log[idx].arg3 = m68k_read_memory_32(sp + 12);
+    } else {
+        trap_log[idx].arg1 = 0;
+        trap_log[idx].arg2 = 0;
+        trap_log[idx].arg3 = 0;
+    }
     trap_log_idx = (trap_log_idx + 1) % TRAP_LOG_SIZE;
     trap_log_total++;
 }
@@ -128,10 +142,31 @@ void trap_log_dump(void) {
         else if (trap_log[idx].trap_num == 5) kind = "GREG";
         else if (trap_log[idx].trap_num == 6) kind = "SREG";
         else if (trap_log[idx].trap_num == 0) kind = "OLD ";
-        xil_printf("  [%d] TRAP#%d (%s) D0=$%08X D1=$%08X PC=$%08X SP=$%08X SR=$%04X\r\n",
-                   i, trap_log[idx].trap_num, kind,
-                   trap_log[idx].d0, trap_log[idx].d1,
-                   trap_log[idx].pc, trap_log[idx].sp, trap_log[idx].sr);
+        if (trap_log[idx].trap_num == 4) {
+            /* Unix syscall: show syscall name and stack args */
+            const char *sname = "?";
+            switch (trap_log[idx].d0) {
+            case 1: sname = "exit"; break;
+            case 2: sname = "fork"; break;
+            case 3: sname = "read"; break;
+            case 4: sname = "write"; break;
+            case 5: sname = "open"; break;
+            case 6: sname = "close"; break;
+            case 20: sname = "getpid"; break;
+            case 54: sname = "ioctl"; break;
+            case 59: sname = "execve"; break;
+            case 66: sname = "vfork"; break;
+            }
+            xil_printf("  [%d] TRAP#4 (UNIX) %s(%d) args=[$%08X,$%08X,$%08X] PC=$%08X SP=$%08X\r\n",
+                       i, sname, trap_log[idx].d0,
+                       trap_log[idx].arg1, trap_log[idx].arg2, trap_log[idx].arg3,
+                       trap_log[idx].pc, trap_log[idx].sp);
+        } else {
+            xil_printf("  [%d] TRAP#%d (%s) D0=$%08X D1=$%08X PC=$%08X SP=$%08X SR=$%04X\r\n",
+                       i, trap_log[idx].trap_num, kind,
+                       trap_log[idx].d0, trap_log[idx].d1,
+                       trap_log[idx].pc, trap_log[idx].sp, trap_log[idx].sr);
+        }
     }
 }
 

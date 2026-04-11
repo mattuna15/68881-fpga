@@ -432,16 +432,30 @@ uint pmmu_translate_addr_040(uint addr_in)
 	 * and DTT matches data accesses (FC bit 0 = 1: FC=1,5). */
 	int fc = m68ki_address_space & 7;
 	int is_data = fc & 1;  /* FC=1(user data) or FC=5(super data) */
+	int tt_hit = 0;
 	if (is_data) {
 		if (tt040_match(m68ki_cpu.mmu_040_dtt0, addr_in, supervisor))
-			return addr_in;
-		if (tt040_match(m68ki_cpu.mmu_040_dtt1, addr_in, supervisor))
-			return addr_in;
+			tt_hit = 1;
+		else if (tt040_match(m68ki_cpu.mmu_040_dtt1, addr_in, supervisor))
+			tt_hit = 2;
 	} else {
 		if (tt040_match(m68ki_cpu.mmu_040_itt0, addr_in, supervisor))
-			return addr_in;
-		if (tt040_match(m68ki_cpu.mmu_040_itt1, addr_in, supervisor))
-			return addr_in;
+			tt_hit = 3;
+		else if (tt040_match(m68ki_cpu.mmu_040_itt1, addr_in, supervisor))
+			tt_hit = 4;
+	}
+	if (tt_hit) {
+		/* Warn if TT maps to physical address outside RAM */
+		if (addr_in >= 0x05000000 && addr_in < 0x08000000) {
+			static int tt_oob_count = 0;
+			if (tt_oob_count < 20) {
+				xil_printf("[TT-OOB] %s%d VA=$%08X → PA=$%08X (outside 16MB RAM!) FC=%d PC=$%08X\r\n",
+					is_data ? "DTT" : "ITT", (tt_hit <= 2) ? (tt_hit-1) : (tt_hit-3),
+					addr_in, addr_in, fc, REG_PPC);
+				tt_oob_count++;
+			}
+		}
+		return addr_in;
 	}
 
 	/* TLB lookup — check cached translation first */

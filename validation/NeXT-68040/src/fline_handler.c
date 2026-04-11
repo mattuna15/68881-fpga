@@ -697,6 +697,102 @@ static int handle_fbcc(unsigned int opword, unsigned int pc)
 }
 
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* Handle FMOVEM (multiple FP data registers to/from memory)           */
+/* cmd_type 6 (110): EA → FP register list (restore)                   */
+/* cmd_type 7 (111): FP register list → EA (save)                      */
+/* Command word: 11 d mode[1:0] 0 register_list[7:0]                  */
+/*   d=0 (type 6): memory → registers                                  */
+/*   d=1 (type 7): registers → memory                                  */
+/*   mode 00/10: static register list                                  */
+/*   mode 01/11: dynamic (Dn holds mask)                               */
+/*   register_list: bit 7=FP0 .. bit 0=FP7 (or reversed for predec)   */
+/* Each FP register is 12 bytes in memory (96-bit extended)            */
+/* ------------------------------------------------------------------ */
+static int handle_fmovem_data(unsigned int opword, unsigned int cmd,
+                               unsigned int pc)
+{
+    int direction = (cmd >> 13) & 1;  /* 0=EA→regs, 1=regs→EA */
+    int mode_bits = (cmd >> 11) & 3;
+    int ea_mode = EA_MODE(opword);
+    int ea_reg  = EA_REG(opword);
+    uint8_t regmask;
+
+    if (mode_bits & 1) {
+        /* Dynamic: register list in Dn (bits 7-4 of mode field = reg#) */
+        int dn = (cmd >> 4) & 7;
+        regmask = (uint8_t)m68k_get_reg(NULL, M68K_REG_D0 + dn);
+    } else {
+        regmask = cmd & 0xFF;
+    }
+
+    /* For predecrement -(An), the register list is reversed:
+     * bit 0=FP0 .. bit 7=FP7 (opposite of normal order) */
+    int predec = (ea_mode == 4);
+
+    /* Count registers for predecrement address calculation */
+    int nregs = 0;
+    for (int i = 0; i < 8; i++)
+        if (regmask & (1 << i)) nregs++;
+
+    unsigned int ea_addr;
+    if (predec) {
+        unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+        an -= nregs * 12;
+        ea_addr = an;
+        m68k_set_reg(M68K_REG_A0 + ea_reg, an);
+    } else if (ea_mode == 3) {
+        /* Postincrement (An)+ */
+        ea_addr = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+    } else {
+        ea_addr = eval_ea(ea_mode, ea_reg, &pc);
+    }
+
+    /* Transfer registers */
+    unsigned int addr = ea_addr;
+    for (int i = 0; i < 8; i++) {
+        int reg_idx;
+        if (predec)
+            reg_idx = i;       /* bit 0=FP0 for predecrement */
+        else
+            reg_idx = 7 - i;   /* bit 7=FP0 for normal order */
+
+        if (!(regmask & (1 << i)))
+            continue;
+
+        if (direction) {
+            /* Registers → memory (save) */
+            fp80_t val = fp_reg_get(reg_idx);
+            /* Write 12 bytes: 4-byte exp+sign_hi, 4-byte mantissa_hi, 4-byte mantissa_lo */
+            uint32_t w0 = ((uint32_t)val.e << 16) | (val.h >> 16);
+            uint32_t w1 = (val.h << 16) | (val.l >> 16);
+            uint32_t w2 = (val.l << 16);
+            m68k_write_memory_32(addr, w0);
+            m68k_write_memory_32(addr + 4, w1);
+            m68k_write_memory_32(addr + 8, w2);
+        } else {
+            /* Memory → registers (restore) */
+            uint32_t w0 = m68k_read_memory_32(addr);
+            uint32_t w1 = m68k_read_memory_32(addr + 4);
+            uint32_t w2 = m68k_read_memory_32(addr + 8);
+            fp80_t val;
+            val.e = (w0 >> 16) & 0xFFFF;
+            val.h = (w0 << 16) | (w1 >> 16);
+            val.l = (w1 << 16) | (w2 >> 16);
+            fp_reg_set(reg_idx, val);
+        }
+        addr += 12;
+    }
+
+    /* Postincrement: advance An */
+    if (ea_mode == 3) {
+        m68k_set_reg(M68K_REG_A0 + ea_reg, ea_addr + nregs * 12);
+    }
+
+    m68k_set_reg(M68K_REG_PC, pc);
+    return 1;
+}
+
 /* Handle FMOVE to/from control registers (type 100/101)               */
 /* Command word: 10 d dr[2:0] 0000000000                               */
 /*   d=0 → ea to FPcr, d=1 → FPcr to ea                               */
@@ -1258,6 +1354,10 @@ int fline_illg_callback(int opcode)
         int cmd_type = (cmd >> 13) & 7;
         if (cmd_type == 4 || cmd_type == 5)
             return handle_fmove_ctrl(opword, cmd, pc + 2);
+
+        /* FMOVEM: multiple FP data registers to/from memory */
+        if (cmd_type == 6 || cmd_type == 7)
+            return handle_fmovem_data(opword, cmd, pc + 2);
 
         /* FMOVE FPn → <ea> (cmd_type = 3 = 011) */
         if (cmd_type == 3)

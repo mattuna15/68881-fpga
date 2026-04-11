@@ -427,15 +427,22 @@ uint pmmu_translate_addr_040(uint addr_in)
 	uint page_shift = page_8k ? 13 : 12;
 	uint page_mask = (1u << page_shift) - 1;
 
-	/* Check Transparent Translation registers first */
-	if (tt040_match(m68ki_cpu.mmu_040_dtt0, addr_in, supervisor))
-		return addr_in;
-	if (tt040_match(m68ki_cpu.mmu_040_dtt1, addr_in, supervisor))
-		return addr_in;
-	if (tt040_match(m68ki_cpu.mmu_040_itt0, addr_in, supervisor))
-		return addr_in;
-	if (tt040_match(m68ki_cpu.mmu_040_itt1, addr_in, supervisor))
-		return addr_in;
+	/* Check Transparent Translation registers first.
+	 * On real 68040, ITT matches instruction fetches (FC bit 0 = 0: FC=2,6)
+	 * and DTT matches data accesses (FC bit 0 = 1: FC=1,5). */
+	int fc = m68ki_address_space & 7;
+	int is_data = fc & 1;  /* FC=1(user data) or FC=5(super data) */
+	if (is_data) {
+		if (tt040_match(m68ki_cpu.mmu_040_dtt0, addr_in, supervisor))
+			return addr_in;
+		if (tt040_match(m68ki_cpu.mmu_040_dtt1, addr_in, supervisor))
+			return addr_in;
+	} else {
+		if (tt040_match(m68ki_cpu.mmu_040_itt0, addr_in, supervisor))
+			return addr_in;
+		if (tt040_match(m68ki_cpu.mmu_040_itt1, addr_in, supervisor))
+			return addr_in;
+	}
 
 	/* TLB lookup — check cached translation first */
 	uint vpn = addr_in >> page_shift;

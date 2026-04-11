@@ -14,8 +14,12 @@ add_definitions(-DQEMU_MODE -DNEXT_IO_DEBUG)
 # Add -DTEST_ROM to use the timer test ROM instead of the NeXT ROM
 # cmake -DTEST_ROM=ON ...
 option(TEST_ROM "Use timer/interrupt test ROM instead of NeXT ROM" OFF)
+option(MMU_TEST_ROM "Use MMU test ROM instead of timer test ROM" OFF)
 if(TEST_ROM)
     add_definitions(-DTEST_ROM)
+    if(MMU_TEST_ROM)
+        add_definitions(-DMMU_TEST_ROM)
+    endif()
 endif()
 add_compile_options(-Wall -O0 -g3)
 include_directories(${BSP_INCLUDE})

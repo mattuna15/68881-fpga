@@ -621,7 +621,52 @@ void m68881_mmu_ops(void)
 
 				if ((modes & 0xfde0) == 0x2000)	// PLOAD
 				{
-					xil_printf("680x0: unhandled PLOAD\n");
+					/* PLOAD: walk page table for effective address and
+					 * preload result into TLB. Used by kernel after
+					 * vm_fault/pmap_enter to avoid re-faulting on rerun.
+					 * modes bit 5: 1=read, 0=write */
+					int pl_write = (modes & 0x0200) ? 0 : 1;
+					int pl_super = (REG_DFC & 4) != 0;
+					uint tc = m68ki_cpu.mmu_040_tc;
+					if (tc & 0x8000) {  /* only if MMU enabled */
+						int page_8k = (tc & 0x4000) ? 1 : 0;
+						uint page_shift = page_8k ? 13 : 12;
+						uint page_mask = (1u << page_shift) - 1;
+						uint root = pl_super ? m68ki_cpu.mmu_040_srp : m68ki_cpu.mmu_040_urp;
+						uint pl_addr = MAKE_INT_32(m68ki_cpu.ir); /* EA from next word? */
+						/* Actually, PLOAD uses the EA from the instruction.
+						 * The EA was already computed by OPER_I_16 as modes.
+						 * For 68040, PLOAD (An) uses register indirect.
+						 * Re-decode: modes bits 15-13 tell us the format.
+						 * Actually on 68040, PLOAD is rarely used — the kernel
+						 * uses pload_read/pload_write macros that expand to
+						 * PLOAD (An) with DFC set. The EA is in the original
+						 * instruction word, not the extension.
+						 * ir = F000, ea bits = ir & 0x3F.
+						 * For register indirect (An): ea mode = 010, reg = n */
+						uint ea_mode = (m68ki_cpu.ir >> 3) & 7;
+						uint ea_reg = m68ki_cpu.ir & 7;
+						if (ea_mode == 2) {  /* (An) */
+							pl_addr = REG_A[ea_reg];
+						} else {
+							pl_addr = 0; /* unsupported EA mode */
+						}
+
+						mmu040_atc_fault = 0;
+						uint result = pmmu_walk_040(pl_addr, root, page_8k, pl_write);
+						if (!mmu040_atc_fault && result != pl_addr) {
+							/* Fill TLB with the walk result */
+							uint vpn = pl_addr >> page_shift;
+							uint tag = (pl_super ? 0x80000000 : 0) | vpn;
+							uint tlb_idx = vpn & (PAGE_TLB_SIZE - 1);
+							page_tlb[tlb_idx].tag = tag;
+							page_tlb[tlb_idx].phys = result & ~page_mask;
+							page_tlb[tlb_idx].wp = mmu040_walk_wp;
+							page_tlb[tlb_idx].modified = mmu040_walk_modified;
+							page_tlb[tlb_idx].valid = 1;
+						}
+						mmu040_atc_fault = 0; /* don't propagate fault from PLOAD */
+					}
 					return;
 				}
 				else if ((modes & 0xe200) == 0x2000)	// PFLUSH

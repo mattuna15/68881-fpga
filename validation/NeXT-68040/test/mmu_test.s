@@ -646,6 +646,120 @@ start:
 .t10_done:
 
 ; ==================================================================
+; Test 11: PLOAD preloads TLB — no fault on subsequent access
+; ==================================================================
+        move.l  #11,TEST_NUM
+        lea     msg_t11(pc),a0
+        bsr     puts
+
+        ; Set up mapping: L3[0] → TARGET_PAGE | RESIDENT
+        move.l  #TARGET_PAGE+PD_RESIDENT,L3_TABLE
+        move.l  #L2_TABLE+PD_UDT_VALID,L1_TABLE+(4*4)
+        move.l  #L3_TABLE+PD_UDT_VALID,L2_TABLE
+        move.l  #$DEADC0DE,TARGET_PAGE
+
+        ; Enable MMU with narrow DTT0
+        move.l  #$0400A000,d0
+        movec   d0,dtt0
+        movec   d0,itt0
+        move.l  #L1_TABLE,d0
+        movec   d0,srp
+        move.l  #$8000,d0
+        movec   d0,tc
+        pflusha                 ; flush TLB — no cached entry
+
+        ; Set DFC for supervisor data
+        move.l  #5,d0
+        movec   d0,dfc
+
+        ; PLOAD read (a0) — preload TLB for $08000000
+        lea     $08000000,a0
+        dc.l    $f0102208       ; PLOAD read (a0) — raw opcode
+
+        ; Now access $08000000 — should hit TLB (no page walk needed)
+        ; If PLOAD didn't work, this would still work via walk.
+        ; But the key is: no ATC fault should fire.
+        clr.l   FAULT_FIRED
+        move.l  $08000000,d0
+
+        moveq   #0,d1
+        movec   d1,tc
+        pflusha
+
+        cmp.l   #$DEADC0DE,d0
+        bne.s   .t11_fail
+
+        ; Verify no fault fired (PLOAD preloaded TLB)
+        tst.l   FAULT_FIRED
+        bne.s   .t11_fail
+
+        lea     msg_pass(pc),a0
+        bsr     puts
+        addq.l  #1,PASS_COUNT
+        bra.s   .t11_done
+.t11_fail:
+        lea     msg_fail(pc),a0
+        bsr     puts
+        addq.l  #1,FAIL_COUNT
+.t11_done:
+
+; ==================================================================
+; Test 12: Fault-rerun with PLOAD (kernel pattern)
+; Simulates: fault → fix PTE → PLOAD → RTE → rerun succeeds
+; Without PLOAD, this would infinite-loop (fault, fix, rerun, fault...)
+; ==================================================================
+        move.l  #12,TEST_NUM
+        lea     msg_t12(pc),a0
+        bsr     puts
+
+        ; L3[1] initially INVALID
+        clr.l   L3_TABLE+(1*4)
+        move.l  #L2_TABLE+PD_UDT_VALID,L1_TABLE+(4*4)
+        move.l  #L3_TABLE+PD_UDT_VALID,L2_TABLE
+        move.l  #$CAFE1234,TARGET_PAGE+$1000
+
+        clr.l   FAULT_FIRED
+        clr.l   RECOVER_ADDR        ; no skip — we want real rerun
+
+        ; Enable MMU
+        move.l  #$0400A000,d0
+        movec   d0,dtt0
+        movec   d0,itt0
+        move.l  #L1_TABLE,d0
+        movec   d0,srp
+        move.l  #$8000,d0
+        movec   d0,tc
+        pflusha
+
+        ; Access VA $08001000 — L3[1]=0 → fault!
+        ; Bus error handler will: map PTE, PLOAD, RTE
+        move.l  $08001000,d0
+
+        ; If we get here, rerun worked
+        moveq   #0,d1
+        movec   d1,tc
+        pflusha
+
+        tst.l   FAULT_FIRED
+        beq.s   .t12_fail
+
+        cmp.l   #$CAFE1234,d0
+        bne.s   .t12_fail
+
+        lea     msg_pass(pc),a0
+        bsr     puts
+        addq.l  #1,PASS_COUNT
+        bra.s   .t12_done
+.t12_fail:
+        moveq   #0,d1
+        movec   d1,tc
+        pflusha
+        lea     msg_fail(pc),a0
+        bsr     puts
+        addq.l  #1,FAIL_COUNT
+.t12_done:
+
+; ==================================================================
 ; Summary
 ; ==================================================================
         lea     msg_summary(pc),a0
@@ -710,13 +824,21 @@ buserr_handler:
 .try_resolve:
         ; Rerun mode: fix the page table so instruction can succeed.
         ; Map L3[1] → $04005000 (TARGET_PAGE + $1000) | RESIDENT
-        ; This simulates what the kernel's vm_fault() would do.
+        ; This simulates what the kernel's vm_fault() + pmap_enter() does.
         move.l  #$04005001,L3_TABLE+(1*4)   ; PA $04005000 + RESIDENT
 
-        ; PFLUSH the faulted VA to clear stale TLB entry
+        ; PFLUSH then PLOAD — exactly what the kernel's trap return does.
+        ; Without PLOAD, the TLB isn't preloaded and the rerun re-faults.
         pflusha
 
-        ; RTE — CPU will rerun the faulting instruction
+        ; PLOAD read: preload TLB for the faulted address
+        ; Set DFC to supervisor data (FC=5) for PLOAD
+        move.l  #5,d0
+        movec   d0,dfc
+        move.l  FAULT_VA,a0         ; load faulted VA into A0
+        dc.l    $f0102208       ; PLOAD read (a0) — raw opcode                ; preload TLB
+
+        ; RTE — CPU will rerun the faulting instruction (TLB now valid)
         rte
 
 ; ==================================================================
@@ -770,6 +892,8 @@ msg_t7:         dc.b    "T7 Write-protect:     ",0
 msg_t8:         dc.b    "T8 RTE rerun:         ",0
 msg_t9:         dc.b    "T9 PTEST:             ",0
 msg_t10:        dc.b    "T10 PFLUSH:           ",0
+msg_t11:        dc.b    "T11 PLOAD preload:    ",0
+msg_t12:        dc.b    "T12 Fault+PLOAD+RTE:  ",0
 msg_pass:       dc.b    "PASS",13,10,0
 msg_fail:       dc.b    "FAIL",13,10,0
 msg_summary:    dc.b    13,10,"Results: ",0

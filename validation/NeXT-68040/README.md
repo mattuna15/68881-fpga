@@ -212,31 +212,42 @@ on the Previous emulator — the issue is in our emulator.
 9. Falls back to `/etc/init` → **errno 13 (EACCES)**
 10. Page fault at VA=0xa10000 → bus error panic (downstream of exec failure)
 
-**Current issue: ENOEXEC on exec (under investigation)**
+**Previous issue (RESOLVED): EACCES on exec**
 
-Exec returns **ENOEXEC (errno 8)** — binary format not recognised.
-The display shows "errno 13" (EACCES) which is the mapped error code.
-Confirmed via PC watchpoints at exec call chain addresses:
-- D1=$0E (EFAULT) on first attempt, then D1=$08 (ENOEXEC)
-- The kernel never issues SCSI reads for the file's data blocks
-- exec fails before reading the CAFEBABE magic number
+The kernel was failing to exec `/etc/mach_init` with errno 13 (EACCES).
+Root cause was 68040 MMU bugs: supervisor detection used wrong flag
+(0x2000 instead of SFLAG_SET=4), making all page table walks use URP
+instead of SRP. Fixed across 5 MMU commits (see below). PLOAD instruction
+was also unimplemented, causing a fault loop at VA=$01.
 
-The binary is a Mach-O fat binary (CAFEBABE) with m68k + Intel slices
-(cputype=6, cpusubtype=ALL). Previous emulator boots it fine.
+### Mach Kernel Boot — mach_init Running (Current)
 
-**Root cause theory:** The kernel's `bread()` or `VOP_READ()` path
-fails to issue SCSI I/O for file data blocks during exec. The kernel
-mounts the filesystem and resolves paths using cached metadata from
-3 initial reads, but cannot page in new file data.
+With MMU fixes applied, the kernel now **fully boots and starts user
+processes**:
 
-Investigated and ruled out:
-- SCSI/DMA data integrity (verified correct with DMA-V logging)
-- Sector size (Previous also uses 512, bratio=4 handles conversion)
-- MMU page table walks (multiple approaches tried, reverted)
-- Format 7 frame size (fixed: was 52 bytes, now 56 — correctness fix)
-- SSW encoding (fixed: TT=00 normal, was TT=01 MOVE16 — correctness fix)
-- CPU type matching (CPU_TYPE_MC680x0=6 matches fat binary cputype=6)
-- Disk image (boots on Previous)
+1. `load_init_program` returns D0=0 (SUCCESS) — confirmed via `[W@2504]` watchpoint
+2. Separate user address space created: URP=$04215200 ≠ SRP=$040CAA00
+3. User stack pointer configured: USP=$000FFFDC
+4. ~160 ATC page faults serviced via demand paging (~130 SCSI reads)
+5. User-mode code executing at VAs $0000xxxx-$0001xxxx (FC=2)
+6. Multiple user tasks exist (3 different URP values = mach_init forked)
+7. Kernel code paged in at VAs $0500xxxx-$050Axxxx (mapped kernel text)
+8. System eventually idles — all threads sleeping, scheduler polling P_INTRSTAT
+
+**SCSI write support added:** Writes accepted and discarded. The kernel
+writes dirty inode metadata and buffer cache entries; if writes fail
+(EACCES), the buffer cache fills and demand paging stops entirely.
+
+**Current status:** mach_init and child processes ran extensively
+(160+ page faults = many KB of code executed across multiple executables
+and shared libraries). All threads eventually go to sleep waiting for
+events that don't arrive. The kernel's scheduler idle loop runs with
+working timer interrupts (hardclock at 500 µs).
+
+**Likely blockers for further progress:**
+- `/etc/rc` script blocked on a device or network operation not emulated
+- Console I/O — a process waiting for console input/output
+- Mach IPC — a process waiting on a port message from an unstarted server
 
 **68040 MMU and bus error implementation:**
 Full 3-level page table walk with TLB (256 entries, direct-mapped).
@@ -264,12 +275,18 @@ tick, giving the kernel time to set polling flags.
 - **Deferred SCSI interrupt delivery** (fixed probe hang)
 - TMC address canonicalization fix (PR review)
 - **68040 MMU: indirect descriptors + U/M bits + WP/S checks**
+- **68040 MMU: SSW encoding, RTE Format 7, PTEST, PLOAD (5 commits)**
+- **68040 MMU: SFLAG_SET supervisor detection fix** (was using 0x2000, correct is 4)
+- **SCSI write support** (accept and discard — prevents buffer cache deadlock)
+- **Debug: `I` keypress** — verbose I/O register logging with PC
+- **Debug: `X` keypress** — MMU-translated stack dump, SRP/URP/TC/TT registers
+- **Debug: `mmu040_dump_regs()`** — expose MMU state from m68kmmu.h
 
 ### Next Steps
 
-1. Diagnose EACCES root cause using DMA data verification diagnostics
-2. If data is correct: investigate CPU instruction differences in exec path
-3. If data is wrong: fix DMA/SCSI data integrity issue
+1. Add system call / trap logging to identify what the last user thread blocked on
+2. Investigate console device emulation (WindowServer / loginwindow dependency)
+3. Check if `/etc/rc` needs network or other device responses to proceed
 4. Implement MCS1850 protocol support (bit 7 inversion for new clock chip)
 5. USB HID keyboard integration (from hello_world project)
 

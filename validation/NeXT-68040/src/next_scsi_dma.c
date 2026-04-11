@@ -266,9 +266,34 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
             DPRINTF("[DMA] Chain: next=$%08X limit=$%08X\r\n", dma.next, dma.limit);
         }
     } else {
-        /* Memory to device (68K RAM → SCSI write) — not implemented */
-        DPRINTF("[DMA] Mem→SCSI transfer not implemented\r\n");
-        return 0;
+        /* Memory to device (68K RAM → SCSI write) — discard data.
+         * The kernel flushes dirty buffers via SCSI WRITE; we accept
+         * the DMA transfer and throw away the bytes so the buffer
+         * cache can reclaim buffers for new reads. */
+        while (*esp_counter > 0 && dma.next < dma.limit) {
+            int avail = next_scsi_get_write_remaining();
+            if (avail <= 0)
+                break;
+
+            uint32_t dma_remain = dma.limit - dma.next;
+            uint32_t chunk = (uint32_t)avail;
+            if (chunk > dma_remain) chunk = dma_remain;
+            if (chunk > *esp_counter) chunk = *esp_counter;
+            if (chunk == 0) break;
+
+            /* Just advance pointers — data is discarded */
+            next_scsi_consume_write_bytes((int)chunk);
+            dma.next += chunk;
+            *esp_counter -= chunk;
+            total += (int)chunk;
+        }
+
+        /* Check for chaining (same as read path) */
+        if (dma.next >= dma.limit && (dma.csr & DMA_SUPDATE)) {
+            dma.next = dma.start;
+            dma.limit = dma.stop;
+            dma.csr &= ~DMA_SUPDATE;
+        }
     }
 
     if (total == 0 && (dma.csr & DMA_ENABLE)) {

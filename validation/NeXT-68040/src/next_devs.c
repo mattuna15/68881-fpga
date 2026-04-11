@@ -23,6 +23,33 @@
 
 /* Debug toggle — toggled by 'D' keypress in main loop */
 int next_debug_scsi = 0;
+
+/* Verbose I/O logging — toggled by 'I' keypress.
+ * Logs every device register read/write with address, value, size, and PC.
+ * Filters out timer reads (0x02016000-0x02016004) to avoid flooding. */
+int next_debug_io = 0;
+int io_log_count = 0;
+#define IO_LOG_LIMIT 500  /* auto-stop after this many lines */
+
+static void io_log(const char *rw, uint32_t addr, uint32_t val, int size)
+{
+    if (!next_debug_io) return;
+    /* Filter out high-frequency polling that would flood the log */
+    if (addr >= P_TIMER && addr <= P_TIMER_CSR + 3) return;  /* timer */
+    if (addr >= P_EVENTC && addr <= P_EVENTC + 3) return;      /* event counter */
+    if (addr >= P_SCR2 && addr < P_SCR2 + 4) return;           /* RTC bit-bang */
+    if (addr == P_INTRSTAT) return;                             /* idle loop polls */
+    uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+    if (rw[0] == 'R')
+        xil_printf("[IO] R%d $%08X  PC=$%08X\r\n", size*8, addr, pc);
+    else
+        xil_printf("[IO] W%d $%08X = $%0*X  PC=$%08X\r\n",
+                   size*8, addr, size*2, val, pc);
+    if (++io_log_count >= IO_LOG_LIMIT) {
+        next_debug_io = 0;
+        xil_printf("[IO] auto-stop after %d entries\r\n", IO_LOG_LIMIT);
+    }
+}
 #include "xiltimer.h"
 #include <string.h>
 
@@ -509,6 +536,7 @@ uint32_t next_intr_get_mask(void) { return intr_mask; }
 uint8_t next_io_read_8(uint32_t address)
 {
     address = next_io_canon(address);
+    if (next_debug_io) io_log("R", address, 0, 1);
 
     /* Device probe detection (byte reads) — phase-aware */
     {
@@ -703,6 +731,7 @@ uint8_t next_io_read_8(uint32_t address)
 uint16_t next_io_read_16(uint32_t address)
 {
     address = next_io_canon(address);
+    if (next_debug_io) io_log("R", address, 0, 2);
 
     /* Hardclock timer (16-bit read returns live counter value) */
     if (address == P_TIMER)
@@ -720,6 +749,7 @@ uint32_t next_io_read_32(uint32_t address)
 {
     address = next_io_canon(address);
     io_track(address);
+    if (next_debug_io) io_log("R", address, 0, 4);
 
     /* Device probe detection — fires once per phase (ROM=phase 0, kernel=phase 1) */
     {
@@ -875,6 +905,7 @@ uint32_t next_io_read_32(uint32_t address)
 void next_io_write_8(uint32_t address, uint8_t value)
 {
     address = next_io_canon(address);
+    if (next_debug_io) io_log("W", address, value, 1);
 
     /* SCC channel A */
     if (address >= P_SCC && address < P_SCC + 4) {
@@ -978,6 +1009,7 @@ void next_io_write_8(uint32_t address, uint8_t value)
 void next_io_write_16(uint32_t address, uint16_t value)
 {
     address = next_io_canon(address);
+    if (next_debug_io) io_log("W", address, value, 2);
 
     /* Hardclock timer (16-bit write: high/low bytes) */
     if (address == P_TIMER) {
@@ -1001,6 +1033,7 @@ void next_io_write_16(uint32_t address, uint16_t value)
 void next_io_write_32(uint32_t address, uint32_t value)
 {
     address = next_io_canon(address);
+    if (next_debug_io) io_log("W", address, value, 4);
 
     /* SCR2 — feed RTC bit-bang state machine before updating */
     if (address == P_SCR2) {

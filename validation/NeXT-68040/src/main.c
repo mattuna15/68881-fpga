@@ -598,17 +598,37 @@ static void poll_uart_rx(void)
             xil_printf("[DUMP] A4=$%08X A5=$%08X A6=$%08X A7=$%08X\r\n",
                 m68k_get_reg(NULL, M68K_REG_A4), m68k_get_reg(NULL, M68K_REG_A5),
                 m68k_get_reg(NULL, M68K_REG_A6), m68k_get_reg(NULL, M68K_REG_A7));
-            xil_printf("[DUMP] Stack (phys):\r\n");
-            for (int i = 0; i < 16; i++) {
-                uint32_t val = next_phys_read_32(sp + i*4);
-                xil_printf("  SP+%02X: $%08X\r\n", i*4, val);
+            xil_printf("[DUMP] USP=$%08X\r\n",
+                m68k_get_reg(NULL, M68K_REG_USP));
+            {
+                extern void mmu040_dump_regs(void);
+                mmu040_dump_regs();
             }
-            xil_printf("[DUMP] Code at PC (phys):\r\n  ");
-            for (int i = 0; i < 8; i++) {
-                uint32_t val = next_phys_read_32(pc + i*4);
-                xil_printf("%08X ", val);
+            /* Stack dump: translate VA→PA through MMU for virtual stacks */
+            {
+                extern unsigned int pmmu_translate_addr(unsigned int addr_in);
+                uint32_t sp_pa = pmmu_translate_addr(sp);
+                xil_printf("[DUMP] Stack VA=$%08X → PA=$%08X:\r\n", sp, sp_pa);
+                for (int i = 0; i < 16; i++) {
+                    uint32_t va = sp + i*4;
+                    uint32_t pa = pmmu_translate_addr(va);
+                    uint32_t val = next_phys_read_32(pa);
+                    xil_printf("  SP+%02X: $%08X  (VA=$%08X PA=$%08X)\r\n",
+                               i*4, val, va, pa);
+                }
             }
-            xil_printf("\r\n");
+            /* Code dump: translate VA→PA for PC too */
+            {
+                extern unsigned int pmmu_translate_addr(unsigned int addr_in);
+                uint32_t pc_pa = pmmu_translate_addr(pc);
+                xil_printf("[DUMP] Code at PC VA=$%08X → PA=$%08X:\r\n  ", pc, pc_pa);
+                for (int i = 0; i < 8; i++) {
+                    uint32_t pa = pmmu_translate_addr(pc + i*4);
+                    uint32_t val = next_phys_read_32(pa);
+                    xil_printf("%08X ", val);
+                }
+                xil_printf("\r\n");
+            }
             continue;  /* don't forward 'X' to SCC */
         }
         if (ch == 'D') {
@@ -651,6 +671,16 @@ static void poll_uart_rx(void)
                 extern int next_trace_count;
                 next_trace_count = 0;
             }
+            continue;
+        }
+        if (ch == 'I') {
+            /* Toggle verbose I/O logging (all device register accesses) */
+            extern int next_debug_io;
+            extern int io_log_count;
+            next_debug_io = !next_debug_io;
+            io_log_count = 0;  /* reset counter on each toggle-on */
+            xil_printf("\r\n[DEBUG] I/O logging %s (auto-stops after 500 lines)\r\n",
+                       next_debug_io ? "ON" : "OFF");
             continue;
         }
         if (ch == 'F') {

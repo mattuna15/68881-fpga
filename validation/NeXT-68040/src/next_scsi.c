@@ -3,7 +3,7 @@
  * SCSI disk emulation backed by disk image file on SD card (FatFs).
  * Adapted from Previous emulator (previous/src/scsi.c).
  *
- * Single target (target 0) only. Read-only for now.
+ * Single target (target 0) only. Writes accepted and discarded.
  */
 
 #include "next_scsi.h"
@@ -98,6 +98,7 @@ static struct {
     } sense;
     uint32_t lba;
     uint32_t blockcounter;
+    uint32_t write_pending;  /* bytes remaining for Data-Out (write discard) */
 } disk;
 
 /* Transfer buffer */
@@ -290,7 +291,7 @@ static void scsi_mode_sense(uint8_t *cdb)
     /* Header */
     retbuf[0] = 0x00; /* length (filled later) */
     retbuf[1] = 0x00; /* medium type */
-    retbuf[2] = 0x80; /* read-only */
+    retbuf[2] = 0x00; /* writable (writes accepted and discarded) */
     retbuf[3] = dbd ? 0x00 : 0x08; /* block descriptor length (0 when DBD set) */
 
     uint8_t hdr_size = 4;
@@ -381,13 +382,18 @@ static void scsi_read_sector(uint8_t *cdb)
 
 static void scsi_write_sector(uint8_t *cdb)
 {
-    /* Read-only for now */
-    (void)cdb;
-    DPRINTF("[SCSI] Write: rejected (read-only)\r\n");
-    disk.status = STAT_CHECK_COND;
-    disk.sense.code = SC_WRITE_PROTECT;
-    disk.sense.valid = false;
-    disk.phase = SCSI_PHASE_ST;
+    /* Accept writes silently — enter Data-Out phase so the host DMA can
+     * transfer data, then discard it and return GOOD status.  This prevents
+     * buffer cache deadlock: the kernel marks buffers dirty (inode timestamps,
+     * metadata) and eventually needs to flush them to reclaim buffers for
+     * new reads.  If writes fail, the cache fills and demand paging stops. */
+    disk.lba = (uint32_t)scsi_get_offset(cdb[0], cdb);
+    disk.blockcounter = scsi_get_count(cdb[0], cdb);
+    disk.write_pending = disk.blockcounter * SCSI_BLOCKSIZE;
+    xil_printf("[SCSI-WR] LBA=%u cnt=%u (discard)\r\n",
+               disk.lba, disk.blockcounter);
+    disk.status = STAT_GOOD;
+    disk.phase = SCSI_PHASE_DO;  /* host sends data to us */
 }
 
 static void scsi_start_stop(uint8_t *cdb)
@@ -635,4 +641,18 @@ void next_scsi_consume_bytes(int n)
         else
             disk.phase = SCSI_PHASE_ST;
     }
+}
+
+int next_scsi_get_write_remaining(void)
+{
+    return (int)disk.write_pending;
+}
+
+void next_scsi_consume_write_bytes(int n)
+{
+    if ((uint32_t)n > disk.write_pending)
+        n = (int)disk.write_pending;
+    disk.write_pending -= (uint32_t)n;
+    if (disk.write_pending == 0)
+        disk.phase = SCSI_PHASE_ST;  /* all data received, go to status */
 }

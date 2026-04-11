@@ -486,7 +486,7 @@ uint pmmu_translate_addr_040(uint addr_in)
 		static int fault_fire_log = 0;
 		mmu040_fault_total++;
 		int since_reset = mmu040_fault_total - mmu040_fault_reset_at;
-		if (fault_fire_log < 20 || (since_reset > 0 && since_reset <= 10)) {
+		if (fault_fire_log < 200 || (since_reset > 0 && since_reset <= 10)) {
 			xil_printf("[MMU040] ATC FAULT #%d (+%d): VA=$%08X SSW=$%04X PC=$%08X FC=%d\r\n",
 			           mmu040_fault_total, since_reset, addr_in, ssw, REG_PPC, fc);
 			fault_fire_log++;
@@ -812,5 +812,15 @@ void m68881_mmu_ops(void)
 				break;
 		}
 	}
+}
+
+void mmu040_dump_regs(void)
+{
+	xil_printf("[DUMP] SRP=$%08X URP=$%08X TC=$%04X\r\n",
+		m68ki_cpu.mmu_040_srp, m68ki_cpu.mmu_040_urp,
+		m68ki_cpu.mmu_040_tc);
+	xil_printf("[DUMP] ITT0=$%08X ITT1=$%08X DTT0=$%08X DTT1=$%08X\r\n",
+		m68ki_cpu.mmu_040_itt0, m68ki_cpu.mmu_040_itt1,
+		m68ki_cpu.mmu_040_dtt0, m68ki_cpu.mmu_040_dtt1);
 }
 

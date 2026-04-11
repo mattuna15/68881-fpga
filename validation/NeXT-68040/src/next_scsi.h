@@ -48,6 +48,10 @@ uint8_t *next_scsi_get_buffer_ptr(void);   /* pointer into current position */
 int      next_scsi_get_buffer_remaining(void);
 void     next_scsi_consume_bytes(int n);   /* advance buffer by n bytes */
 
+/* Write (Data-Out) discard support for DMA. */
+int      next_scsi_get_write_remaining(void);
+void     next_scsi_consume_write_bytes(int n);
+
 /* Direct raw read from disk image (512-byte sectors). */
 int      next_scsi_read_raw(uint32_t lba, uint8_t *buf, uint32_t nsect);
 

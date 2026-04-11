@@ -416,7 +416,13 @@ uint pmmu_translate_addr_040(uint addr_in)
 			xil_printf("[MMU040] Further translation logging suppressed\n");
 	}
 
-	int supervisor = (m68ki_get_sr() & 0x2000) ? 1 : 0;
+	/* Use function code (m68ki_address_space) to determine supervisor/user,
+	 * NOT the SR.  MOVES instruction accesses user space while in supervisor
+	 * mode — the FC is set to user (via DFC/SFC) but SR.S remains set.
+	 * On real 68040 hardware, FC pins select SRP vs URP during table walk.
+	 * m68ki_address_space = FLAG_S | base_fc, where FLAG_S = SFLAG_SET = 4.
+	 * Supervisor FCs (5,6) have bit 2 set; user FCs (1,2) do not. */
+	int supervisor = (m68ki_address_space & SFLAG_SET) ? 1 : 0;
 	int page_8k = (tc & 0x4000) ? 1 : 0;
 	uint page_shift = page_8k ? 13 : 12;
 	uint page_mask = (1u << page_shift) - 1;
@@ -468,10 +474,10 @@ uint pmmu_translate_addr_040(uint addr_in)
 		 * The kernel checks ATC_BIT (bit 10) to distinguish MMU faults
 		 * from bus errors, and TM for the function code. */
 		/* Reconstruct 68040 function code from Musashi's m68ki_address_space.
-		 * Musashi stores FLAG_S(0x2000) | base_fc where base_fc is 1(data) or 2(code).
-		 * Real 68040 FC: user data=1, user code=2, super data=5, super code=6. */
-		uint raw_fc = m68ki_address_space;
-		uint fc = (raw_fc & 3) | ((raw_fc & 0x2000) ? 4 : 0);
+		 * Musashi stores FLAG_S(=SFLAG_SET=4) | base_fc where base_fc is 1(data) or 2(code).
+		 * Real 68040 FC: user data=1, user code=2, super data=5, super code=6.
+		 * Since SFLAG_SET==4 and supervisor FC bit==4, the value is already correct. */
+		uint fc = m68ki_address_space & 7;
 		uint ssw = 0x0400                              /* ATC=1 (bit 10) */
 		         | (mmu040_write_pending ? 0 : 0x0100) /* RW: 1=read, 0=write */
 		         | ((mmu040_access_size & 3) << 5)     /* SIZE bits 6-5 */

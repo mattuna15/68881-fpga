@@ -53,7 +53,7 @@ static int trace_count = 0;
 /* On NeXT Mach: TRAP #0 = Unix syscall, TRAP #1 = Mach trap           */
 /* D0 holds the syscall number (negative for Mach traps)                */
 /* ------------------------------------------------------------------ */
-#define TRAP_LOG_SIZE 32
+#define TRAP_LOG_SIZE 256
 static struct {
     uint32_t pc;       /* user PC of TRAP instruction */
     uint32_t d0;       /* D0 = syscall number */
@@ -94,6 +94,19 @@ void emu_trap_log(unsigned int trap_num, unsigned int pc,
         trap_log[idx].arg1 = m68k_read_memory_32(sp + 4);
         trap_log[idx].arg2 = m68k_read_memory_32(sp + 8);
         trap_log[idx].arg3 = m68k_read_memory_32(sp + 12);
+    } else if (trap_num == 3 && (d0 == 0x15 || d0 == 0x16 || d0 == 0x14)) {
+        /* Mach msg traps: D1 = msg header pointer.
+         * msg_local_port at offset 12 = the port being used.
+         * D0=$14=msg_send, $15=msg_receive, $16=msg_rpc */
+        if (d1 >= 0x1000) {
+            trap_log[idx].arg1 = m68k_read_memory_32(d1 + 12); /* msg_local_port */
+            trap_log[idx].arg2 = m68k_read_memory_32(d1 + 16); /* msg_remote_port */
+            trap_log[idx].arg3 = m68k_read_memory_32(d1 + 20); /* msg_id */
+        } else {
+            trap_log[idx].arg1 = 0;
+            trap_log[idx].arg2 = 0;
+            trap_log[idx].arg3 = 0;
+        }
     } else {
         trap_log[idx].arg1 = 0;
         trap_log[idx].arg2 = 0;
@@ -152,20 +165,85 @@ void trap_log_dump(void) {
             case 4: sname = "write"; break;
             case 5: sname = "open"; break;
             case 6: sname = "close"; break;
+            case 7: sname = "wait4"; break;
+            case 9: sname = "link"; break;
+            case 10: sname = "unlink"; break;
+            case 12: sname = "chdir"; break;
+            case 15: sname = "chmod"; break;
+            case 17: sname = "obreak"; break;
+            case 18: sname = "getfsstat"; break;
             case 20: sname = "getpid"; break;
+            case 23: sname = "setuid"; break;
+            case 24: sname = "getuid"; break;
+            case 33: sname = "access"; break;
+            case 37: sname = "kill"; break;
+            case 42: sname = "pipe"; break;
+            case 47: sname = "getgid"; break;
             case 54: sname = "ioctl"; break;
             case 59: sname = "execve"; break;
+            case 61: sname = "chroot"; break;
             case 66: sname = "vfork"; break;
+            case 73: sname = "munmap"; break;
+            case 74: sname = "mprotect"; break;
+            case 78: sname = "mincore"; break;
+            case 90: sname = "dup2"; break;
+            case 92: sname = "fcntl"; break;
+            case 97: sname = "socket"; break;
+            case 104: sname = "bind"; break;
+            case 106: sname = "listen"; break;
+            case 120: sname = "readv"; break;
+            case 121: sname = "writev"; break;
+            case 128: sname = "rename"; break;
+            case 136: sname = "mkdir"; break;
+            case 197: sname = "mmap"; break;
             }
             xil_printf("  [%d] TRAP#4 (UNIX) %s(%d) args=[$%08X,$%08X,$%08X] PC=$%08X SP=$%08X\r\n",
                        i, sname, trap_log[idx].d0,
                        trap_log[idx].arg1, trap_log[idx].arg2, trap_log[idx].arg3,
                        trap_log[idx].pc, trap_log[idx].sp);
+        } else if (trap_log[idx].trap_num == 3 &&
+                   (trap_log[idx].d0 == 0x14 || trap_log[idx].d0 == 0x15 || trap_log[idx].d0 == 0x16)) {
+            /* Mach msg trap: show port info */
+            const char *mname = "msg_send";
+            if (trap_log[idx].d0 == 0x15) mname = "msg_recv";
+            else if (trap_log[idx].d0 == 0x16) mname = "msg_rpc";
+            xil_printf("  [%d] TRAP#3 %s port=%d rport=%d id=%d msg=$%08X PC=$%08X\r\n",
+                       i, mname,
+                       trap_log[idx].arg1, trap_log[idx].arg2, trap_log[idx].arg3,
+                       trap_log[idx].d1, trap_log[idx].pc);
         } else {
             xil_printf("  [%d] TRAP#%d (%s) D0=$%08X D1=$%08X PC=$%08X SP=$%08X SR=$%04X\r\n",
                        i, trap_log[idx].trap_num, kind,
                        trap_log[idx].d0, trap_log[idx].d1,
                        trap_log[idx].pc, trap_log[idx].sp, trap_log[idx].sr);
+        }
+    }
+    /* Dump msg_header for the last msg_recv/msg_rpc using URP walker */
+    {
+        extern unsigned int mmu040_translate_user(unsigned int va);
+        for (int i = count - 1; i >= 0; i--) {
+            int idx2 = ((start + i) % TRAP_LOG_SIZE);
+            if (trap_log[idx2].trap_num == 3 &&
+                (trap_log[idx2].d0 == 0x15 || trap_log[idx2].d0 == 0x16) &&
+                trap_log[idx2].d1 >= 0x1000) {
+                uint32_t msg_va = trap_log[idx2].d1;
+                xil_printf("[MSG-HDR] %s buf at VA=$%08X:\r\n",
+                           trap_log[idx2].d0 == 0x15 ? "msg_recv" : "msg_rpc",
+                           msg_va);
+                for (int j = 0; j < 24; j += 4) {
+                    uint32_t pa = mmu040_translate_user(msg_va + j);
+                    uint32_t val = next_phys_read_32(pa);
+                    const char *fname = "";
+                    if (j == 0)  fname = " (simple+unused)";
+                    if (j == 4)  fname = " (msg_size)";
+                    if (j == 8)  fname = " (msg_type)";
+                    if (j == 12) fname = " (local_port)";
+                    if (j == 16) fname = " (remote_port)";
+                    if (j == 20) fname = " (msg_id)";
+                    xil_printf("  +%02d: $%08X%s\r\n", j, val, fname);
+                }
+                break;
+            }
         }
     }
 }

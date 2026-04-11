@@ -233,6 +233,18 @@ static int mmu040_log_count = 0;
 static int mmu040_atc_fault = 0;
 static uint32_t mmu040_fault_addr = 0;
 
+/* Walk result info — set by pmmu_walk_040 for TLB fill */
+static uint mmu040_walk_wp = 0;        /* accumulated write-protect */
+static uint mmu040_walk_modified = 0;  /* M bit was set (write allowed) */
+
+/* Global ATC fault counter — queryable from debug key handler.
+ * mmu040_fault_reset_at records the count at last BUSRST so we can
+ * report "faults since kernel init" separately from boot faults.
+ * Defined in m68kcpu.c, used by m68kmmu.h (included from m68kcpu.c)
+ * and extern'd from main.c / next_esp.c. */
+extern int mmu040_fault_total;
+extern int mmu040_fault_reset_at;
+
 /* ------------------------------------------------------------------ */
 /* TLB — caches page translations to avoid page table walks            */
 /* ------------------------------------------------------------------ */
@@ -247,6 +259,8 @@ static struct {
 	uint32_t tag;    /* (supervisor << 31) | virtual_page_number */
 	uint32_t phys;   /* physical page base address */
 	uint8_t  valid;
+	uint8_t  wp;     /* write-protect (accumulated from all levels) */
+	uint8_t  modified; /* M bit set in descriptor (write allowed) */
 } page_tlb[PAGE_TLB_SIZE];
 
 void tlb040_flush(void)
@@ -255,21 +269,26 @@ void tlb040_flush(void)
 		page_tlb[i].valid = 0;
 }
 
-/* Full page table walk — called on TLB miss */
+/* 68040 page descriptor bits (MC68040 manual Section 9) */
+#define DES_USED     0x08   /* bit 3: Used — set on any access */
+#define DES_MODIFIED 0x10   /* bit 4: Modified — set on write */
+#define DES_WP       0x04   /* bit 2: Write Protect */
+#define DES_SUPER    0x80   /* bit 7: Supervisor only */
+
 /* Full page table walk — called on TLB miss.
- * Handles indirect page descriptors (type 2) per 68040 manual.
- * NOTE: WP/S protection checks and U/M bit writeback are NOT implemented
- * yet — they cause regressions because our ATC fault SSW doesn't properly
- * distinguish protection faults from invalid-page faults, and U/M writes
- * to descriptor memory corrupt early-boot page tables. These features
- * require proper SSW encoding (write bit, TM field) before enabling. */
-static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k)
+ * Handles indirect page descriptors (type 2), U/M bit writeback,
+ * and write-protect/supervisor protection per MC68040 manual.
+ * Modelled on Previous emulator's cpummu.c mmu_fill_atc_040(). */
+static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k, int write)
 {
+	uint wp = 0;   /* accumulated write-protect from all levels */
+
 	/* Level 1: Root table — bits 31-25 (7 bits, 128 entries) */
 	uint l1_idx = (addr_in >> 25) & 0x7F;
-	uint l1_desc = next_phys_read_32(root_ptr + l1_idx * 4);
+	uint l1_addr = root_ptr + l1_idx * 4;
+	uint l1_desc = next_phys_read_32(l1_addr);
 
-	if ((l1_desc & 3) == 0) {
+	if ((l1_desc & 2) == 0) {  /* bit 1 must be set for valid UDT */
 		static int l1_fault_log = 0;
 		if (l1_fault_log < 10) {
 			xil_printf("[MMU040] L1 FAULT: VA=$%08X root=$%08X idx=%d desc=$%08X\r\n",
@@ -280,13 +299,17 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k)
 		mmu040_fault_addr = addr_in;
 		return addr_in;
 	}
+	wp |= l1_desc;
+	if ((l1_desc & DES_USED) == 0)
+		next_phys_write_32(l1_addr, l1_desc | DES_USED);
 
 	/* Level 2: Pointer table — bits 24-18 (7 bits, 128 entries) */
 	uint l2_base = l1_desc & 0xFFFFFE00;
 	uint l2_idx = (addr_in >> 18) & 0x7F;
-	uint l2_desc = next_phys_read_32(l2_base + l2_idx * 4);
+	uint l2_addr = l2_base + l2_idx * 4;
+	uint l2_desc = next_phys_read_32(l2_addr);
 
-	if ((l2_desc & 3) == 0) {
+	if ((l2_desc & 2) == 0) {
 		static int l2_fault_log = 0;
 		if (l2_fault_log < 10) {
 			xil_printf("[MMU040] L2 FAULT: VA=$%08X l2_base=$%08X idx=%d\r\n",
@@ -297,27 +320,37 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k)
 		mmu040_fault_addr = addr_in;
 		return addr_in;
 	}
+	wp |= l2_desc;
+	if ((l2_desc & DES_USED) == 0)
+		next_phys_write_32(l2_addr, l2_desc | DES_USED);
 
 	/* Level 3: Page table */
-	uint l3_base, l3_idx, l3_desc, page_addr, page_offset;
+	uint l3_base, l3_idx, l3_addr, l3_desc, page_addr, page_offset;
 
 	if (page_8k) {
 		l3_base = l2_desc & 0xFFFFFF80;
 		l3_idx = (addr_in >> 13) & 0x1F;
-		l3_desc = next_phys_read_32(l3_base + l3_idx * 4);
 		page_offset = addr_in & 0x1FFF;
 	} else {
 		l3_base = l2_desc & 0xFFFFFF00;
 		l3_idx = (addr_in >> 12) & 0x3F;
-		l3_desc = next_phys_read_32(l3_base + l3_idx * 4);
 		page_offset = addr_in & 0xFFF;
 	}
+	l3_addr = l3_base + l3_idx * 4;
+	l3_desc = next_phys_read_32(l3_addr);
 
-	if ((l3_desc & 3) == 0) {
+	/* Handle indirect descriptor (type 2: bits 1-0 = 10) */
+	if ((l3_desc & 3) == 2) {
+		l3_addr = l3_desc & 0xFFFFFFFC;  /* follow indirect pointer */
+		l3_desc = next_phys_read_32(l3_addr);
+	}
+
+	/* Check for valid page descriptor (bit 0 = 1 → resident) */
+	if ((l3_desc & 1) == 0) {
 		static int l3_fault_log = 0;
 		if (l3_fault_log < 10) {
-			xil_printf("[MMU040] L3 FAULT: VA=$%08X l3_base=$%08X idx=%d\r\n",
-			           addr_in, l3_base, l3_idx);
+			xil_printf("[MMU040] L3 FAULT: VA=$%08X l3_base=$%08X idx=%d desc=$%08X\r\n",
+			           addr_in, l3_base, l3_idx, l3_desc);
 			l3_fault_log++;
 		}
 		mmu040_atc_fault = 1;
@@ -325,10 +358,39 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k)
 		return addr_in;
 	}
 
+	/* U/M bit writeback on page descriptor (matches Previous cpummu.c:534-550).
+	 * Set U on all accesses. Set M on writes if not write-protected. */
+	wp |= l3_desc;
+	if (write) {
+		if (wp & DES_WP) {
+			/* Write-protected: set U only, fault will be raised by caller */
+			if ((l3_desc & DES_USED) == 0) {
+				l3_desc |= DES_USED;
+				next_phys_write_32(l3_addr, l3_desc);
+			}
+		} else {
+			/* Write allowed: set both U and M */
+			if ((l3_desc & (DES_USED | DES_MODIFIED)) != (DES_USED | DES_MODIFIED)) {
+				l3_desc |= DES_USED | DES_MODIFIED;
+				next_phys_write_32(l3_addr, l3_desc);
+			}
+		}
+	} else {
+		/* Read: set U only */
+		if ((l3_desc & DES_USED) == 0) {
+			l3_desc |= DES_USED;
+			next_phys_write_32(l3_addr, l3_desc);
+		}
+	}
+
 	if (page_8k)
 		page_addr = l3_desc & 0xFFFFE000;
 	else
 		page_addr = l3_desc & 0xFFFFF000;
+
+	/* Store walk results for TLB fill */
+	mmu040_walk_wp = (wp & DES_WP) ? 1 : 0;
+	mmu040_walk_modified = (l3_desc & DES_MODIFIED) ? 1 : 0;
 
 	return page_addr | page_offset;
 }
@@ -370,14 +432,20 @@ uint pmmu_translate_addr_040(uint addr_in)
 	uint tlb_idx = vpn & (PAGE_TLB_SIZE - 1);
 
 	if (page_tlb[tlb_idx].valid && page_tlb[tlb_idx].tag == tag) {
-		/* TLB hit — only successful translations are cached */
-		return page_tlb[tlb_idx].phys | (addr_in & page_mask);
+		/* TLB hit — check protection before returning.
+		 * If write to WP page, or first write to unmodified page,
+		 * invalidate and re-walk to update M bit / generate fault. */
+		if (mmu040_write_pending && (page_tlb[tlb_idx].wp || !page_tlb[tlb_idx].modified)) {
+			page_tlb[tlb_idx].valid = 0;  /* force re-walk */
+		} else {
+			return page_tlb[tlb_idx].phys | (addr_in & page_mask);
+		}
 	}
 
 	/* TLB miss — full page table walk */
 	uint root_ptr = supervisor ? m68ki_cpu.mmu_040_srp : m68ki_cpu.mmu_040_urp;
 	mmu040_atc_fault = 0;
-	uint result = pmmu_walk_040(addr_in, root_ptr, page_8k);
+	uint result = pmmu_walk_040(addr_in, root_ptr, page_8k, mmu040_write_pending);
 
 	/* ATC fault: page table entry was invalid.
 	 * Generate a 68040 access fault exception (format 7 stack frame)
@@ -399,22 +467,23 @@ uint pmmu_translate_addr_040(uint addr_in)
 		 * Real 68040 FC: user data=1, user code=2, super data=5, super code=6. */
 		uint raw_fc = m68ki_address_space;
 		uint fc = (raw_fc & 3) | ((raw_fc & 0x2000) ? 4 : 0);
-		uint ssw = 0x0400    /* ATC=1 (bit 10) */
-		         | 0x0100    /* RW=1 (read — TODO: detect writes) */
-		         | fc;       /* TM = function code (bits 2-0) */
+		uint ssw = 0x0400                              /* ATC=1 (bit 10) */
+		         | (mmu040_write_pending ? 0 : 0x0100) /* RW: 1=read, 0=write */
+		         | ((mmu040_access_size & 3) << 5)     /* SIZE bits 6-5 */
+		         | fc;                                  /* TM = function code */
 
 		static int fault_fire_log = 0;
-		static int fault_total = 0;
-		if (fault_fire_log < 20) {
-			xil_printf("[MMU040] ATC FAULT: VA=$%08X SSW=$%04X PC=$%08X\r\n",
-			           addr_in, ssw, REG_PPC);
+		mmu040_fault_total++;
+		int since_reset = mmu040_fault_total - mmu040_fault_reset_at;
+		if (fault_fire_log < 20 || (since_reset > 0 && since_reset <= 10)) {
+			xil_printf("[MMU040] ATC FAULT #%d (+%d): VA=$%08X SSW=$%04X PC=$%08X FC=%d\r\n",
+			           mmu040_fault_total, since_reset, addr_in, ssw, REG_PPC, fc);
 			fault_fire_log++;
 		}
 
 		/* Detect infinite fault loop (double bus fault → CPU halt).
 		 * On real 68040 this halts the CPU; we stop the emulator. */
-		fault_total++;
-		if (fault_total > 500) {
+		if (mmu040_fault_total - mmu040_fault_reset_at > 500) {
 			xil_printf("[MMU040] HALT: >500 ATC faults — likely double bus fault\r\n");
 			m68k_end_timeslice();
 			m68k_pulse_halt();
@@ -441,6 +510,8 @@ uint pmmu_translate_addr_040(uint addr_in)
 	if (result != addr_in) {
 		page_tlb[tlb_idx].tag = tag;
 		page_tlb[tlb_idx].phys = result & ~page_mask;
+		page_tlb[tlb_idx].wp = mmu040_walk_wp;
+		page_tlb[tlb_idx].modified = mmu040_walk_modified;
 		page_tlb[tlb_idx].valid = 1;
 	}
 
@@ -514,7 +585,33 @@ void m68881_mmu_ops(void)
 				}
 				else if ((modes & 0xe000) == 0x8000)	// PTEST
 				{
-					xil_printf("680x0: unhandled PTEST\n");
+					/* PTEST: walk page table, store result in MMUSR.
+					 * modes bit 5: 0=write, 1=read
+					 * modes bits 2-0: register number (An) */
+					int pt_write = (modes & 32) == 0;
+					int pt_regno = modes & 7;
+					uint pt_addr = REG_A[pt_regno];
+					int pt_super = (REG_DFC & 4) != 0;
+					int pt_page8k = (m68ki_cpu.mmu_040_tc & 0x4000) ? 1 : 0;
+					uint pt_root = pt_super ? m68ki_cpu.mmu_040_srp : m68ki_cpu.mmu_040_urp;
+
+					/* Check TT registers first */
+					if (tt040_match(m68ki_cpu.mmu_040_dtt0, pt_addr, pt_super) ||
+					    tt040_match(m68ki_cpu.mmu_040_dtt1, pt_addr, pt_super)) {
+						m68ki_cpu.mmu_040_mmusr = (1 << 1) | (1 << 0); /* T | R */
+					} else {
+						mmu040_atc_fault = 0;
+						uint pt_result = pmmu_walk_040(pt_addr, pt_root, pt_page8k, pt_write);
+						if (mmu040_atc_fault) {
+							mmu040_atc_fault = 0;
+							m68ki_cpu.mmu_040_mmusr = 0; /* not resident */
+						} else {
+							uint mmusr = (pt_result & 0xFFFFF000) | (1 << 0); /* phys + R */
+							if (mmu040_walk_wp) mmusr |= (1 << 2);  /* W */
+							if (mmu040_walk_modified) mmusr |= (1 << 4); /* M */
+							m68ki_cpu.mmu_040_mmusr = mmusr;
+						}
+					}
 					return;
 				}
 				else

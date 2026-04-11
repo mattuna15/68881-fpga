@@ -653,7 +653,12 @@ static void poll_uart_rx(void)
             /* Dump page fault / RTE Format 7 statistics */
             extern int rte_format7_count;
             extern int scsi_read_log_count(void);
-            xil_printf("\r\n[FAULT] RTE Format 7 completions: %d\r\n",
+            extern int mmu040_fault_total;
+            extern int mmu040_fault_reset_at;
+            xil_printf("\r\n[FAULT] ATC faults: %d total, %d since BUSRST\r\n",
+                       mmu040_fault_total,
+                       mmu040_fault_total - mmu040_fault_reset_at);
+            xil_printf("[FAULT] RTE Format 7 completions: %d\r\n",
                        rte_format7_count);
             xil_printf("[FAULT] SCSI READs since last BUSRST: %d\r\n",
                        scsi_read_log_count());

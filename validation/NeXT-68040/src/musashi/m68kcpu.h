@@ -1037,6 +1037,8 @@ extern const uint16   m68ki_shift_16_table[];
 extern const uint     m68ki_shift_32_table[];
 extern const uint8    m68ki_exception_cycle_table[][256];
 extern uint           m68ki_address_space;
+extern int            mmu040_write_pending;  /* 1 during write translations */
+extern int            mmu040_access_size;    /* SSW SIZE: 0=long, 1=byte, 2=word */
 extern const uint8    m68ki_ea_idx_cycle_table[];
 
 extern uint           m68ki_aerr_address;
@@ -1156,8 +1158,11 @@ static inline uint m68ki_read_8_fc(uint address, uint fc)
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 0;
+	    mmu040_access_size = 1; /* byte */
 	    address = pmmu_translate_addr(address);
+	}
 #endif
 
 	return m68k_read_memory_8(ADDRESS_68K(address));
@@ -1169,8 +1174,11 @@ static inline uint m68ki_read_16_fc(uint address, uint fc)
 	m68ki_check_address_error_010_less(address, MODE_READ, fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 0;
+	    mmu040_access_size = 2; /* word */
 	    address = pmmu_translate_addr(address);
+	}
 #endif
 
 	return m68k_read_memory_16(ADDRESS_68K(address));
@@ -1182,8 +1190,11 @@ static inline uint m68ki_read_32_fc(uint address, uint fc)
 	m68ki_check_address_error_010_less(address, MODE_READ, fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 0;
+	    mmu040_access_size = 0; /* long */
 	    address = pmmu_translate_addr(address);
+	}
 #endif
 
 	return m68k_read_memory_32(ADDRESS_68K(address));
@@ -1195,8 +1206,12 @@ static inline void m68ki_write_8_fc(uint address, uint fc, uint value)
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 1;
+	    mmu040_access_size = 1; /* byte */
 	    address = pmmu_translate_addr(address);
+	    mmu040_write_pending = 0;
+	}
 #endif
 
 	m68k_write_memory_8(ADDRESS_68K(address), value);
@@ -1208,8 +1223,12 @@ static inline void m68ki_write_16_fc(uint address, uint fc, uint value)
 	m68ki_check_address_error_010_less(address, MODE_WRITE, fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 1;
+	    mmu040_access_size = 2; /* word */
 	    address = pmmu_translate_addr(address);
+	    mmu040_write_pending = 0;
+	}
 #endif
 
 	m68k_write_memory_16(ADDRESS_68K(address), value);
@@ -1221,8 +1240,12 @@ static inline void m68ki_write_32_fc(uint address, uint fc, uint value)
 	m68ki_check_address_error_010_less(address, MODE_WRITE, fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 1;
+	    mmu040_access_size = 0; /* long */
 	    address = pmmu_translate_addr(address);
+	    mmu040_write_pending = 0;
+	}
 #endif
 
 	m68k_write_memory_32(ADDRESS_68K(address), value);
@@ -1236,8 +1259,12 @@ static inline void m68ki_write_32_pd_fc(uint address, uint fc, uint value)
 	m68ki_check_address_error_010_less(address, MODE_WRITE, fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 1;
+	    mmu040_access_size = 0; /* long */
 	    address = pmmu_translate_addr(address);
+	    mmu040_write_pending = 0;
+	}
 #endif
 
 	m68k_write_memory_32_pd(ADDRESS_68K(address), value);

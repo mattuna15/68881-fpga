@@ -388,9 +388,11 @@ static void esp_bus_reset(void)
             }
         }
     }
-    /* Reset SCSI read + DMA verify logs so we see kernel-driven reads */
+    /* Reset SCSI read + DMA verify + ATC fault logs so we see kernel-driven activity */
     { extern void next_scsi_reset_read_log(void); next_scsi_reset_read_log(); }
     { extern int dma_verify_log; dma_verify_log = 0; }
+    { extern int mmu040_fault_total, mmu040_fault_reset_at;
+      mmu040_fault_reset_at = mmu040_fault_total; }
     DPRINTF("[ESP] Bus reset\r\n");
     esp_reset_soft();
     if (!(esp.configuration & CFG1_RESREPT)) {

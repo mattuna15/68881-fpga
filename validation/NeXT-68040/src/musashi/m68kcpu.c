@@ -59,6 +59,10 @@ int  m68ki_initial_cycles;
 int  m68ki_remaining_cycles = 0;                     /* Number of clocks remaining */
 uint m68ki_tracing = 0;
 int  rte_format7_count = 0;                          /* Format 7 RTE completions */
+int  mmu040_fault_total = 0;                         /* Total ATC faults */
+int  mmu040_fault_reset_at = 0;                      /* ATC fault count at last BUSRST */
+int  mmu040_write_pending = 0;                       /* 1 during write translations */
+int  mmu040_access_size = 0;                         /* SSW SIZE: 0=long, 1=byte, 2=word */
 uint m68ki_address_space;
 
 #ifdef M68K_LOG_ENABLE

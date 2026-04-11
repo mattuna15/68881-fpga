@@ -870,6 +870,24 @@ uint32_t next_io_read_32(uint32_t address)
         /* TMC SCR1 at $02200000 — same as P_SCR1 */
         if (tmc_off < 4)
             return scr1_value;
+        /* TMC Control at $02200010 — Turbo memory controller config.
+         * Previous returns $0D17038F. Kernel reads this during device init.
+         * Bits: parity, burst mode, memory config. */
+        if (tmc_off >= 0x10 && tmc_off < 0x14)
+            return 0x0D17038F;
+        /* TMC Video registers at $02200080-$0220008F (16-byte block).
+         * Previous layout: byte 0=VIR, 1-3=void, 4-7=unimpl,
+         * bytes 8-11=HCR (horizontal), bytes 12-15=VCR (vertical).
+         * 32-bit read at $80 gets VIR in high byte + void.
+         * 32-bit read at $88 gets HCR. 32-bit read at $8C gets VCR. */
+        if (tmc_off >= 0x80 && tmc_off < 0x84)
+            return 0;  /* VIR=0 (no video interrupt), void bytes */
+        if (tmc_off >= 0x84 && tmc_off < 0x88)
+            return 0;  /* unimplemented */
+        if (tmc_off >= 0x88 && tmc_off < 0x8C)
+            return (0x18 << 25) | (0x20 << 19) | (0x48 << 12) | 0x118; /* HCR */
+        if (tmc_off >= 0x8C && tmc_off < 0x90)
+            return (0x08 << 25) | (0x08 << 19) | (0x30 << 12) | 0x340; /* VCR */
         /* ADB registers at TMC+$8000-$80FF (mapped via $02208xxx) */
         if (tmc_off >= 0x8000 && tmc_off < 0x8100) {
             uint32_t adb_reg = tmc_off - 0x8000;
@@ -1143,6 +1161,12 @@ void next_io_write_32(uint32_t address, uint32_t value)
     /* TMC space: $02200000-$0220FFFF */
     if (address >= 0x02200000 && address < 0x02210000) {
         uint32_t tmc_off = address - 0x02200000;
+        /* TMC Control at $02200010 — accept writes (parity, burst config) */
+        if (tmc_off >= 0x10 && tmc_off < 0x14)
+            return;  /* accept and discard */
+        /* TMC Video Interrupt at $02200100 — accept writes (clears VBL) */
+        if (tmc_off >= 0x100 && tmc_off < 0x104)
+            return;  /* accept and discard */
         /* ADB registers at TMC+$8000-$80FF */
         if (tmc_off >= 0x8000 && tmc_off < 0x8100) {
             uint32_t adb_reg = tmc_off - 0x8000;

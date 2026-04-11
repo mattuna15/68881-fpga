@@ -34471,6 +34471,8 @@ static const opcode_handler_struct m68k_opcode_handler_table[] =
 	{m68k_op_pmmu_32             , 0xfe00, 0xf000, {  0,   0,   8,   8,   8}},
 	{m68k_op_cinv_32             , 0xff20, 0xf400, {  0,   0,   0,   0,   4}},
 	{m68k_op_cpush_32            , 0xff20, 0xf420, {  0,   0,   0,   0,   4}},
+	{m68k_op_pmmu_32             , 0xfff8, 0xf548, {  0,   0,   0,   0,   4}},
+	{m68k_op_pmmu_32             , 0xfff8, 0xf568, {  0,   0,   0,   0,   4}},
 	{m68k_op_pflush_32           , 0xffe0, 0xf500, {  0,   0,   0,   0,   4}},
 	{m68k_op_bra_8               , 0xff00, 0x6000, { 10,  10,  10,  10,  10}},
 	{m68k_op_bsr_8               , 0xff00, 0x6100, { 18,  18,   7,   7,   7}},

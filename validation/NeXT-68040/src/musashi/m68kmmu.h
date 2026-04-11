@@ -363,11 +363,16 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k, int write)
 	wp |= l3_desc;
 	if (write) {
 		if (wp & DES_WP) {
-			/* Write-protected: set U only, fault will be raised by caller */
+			/* Write-protected: set U, then signal ATC fault.
+			 * The kernel's trap handler sees ATC+RW=0 and knows
+			 * it's a write-protect violation. */
 			if ((l3_desc & DES_USED) == 0) {
 				l3_desc |= DES_USED;
 				next_phys_write_32(l3_addr, l3_desc);
 			}
+			mmu040_atc_fault = 1;
+			mmu040_fault_addr = addr_in;
+			return addr_in;
 		} else {
 			/* Write allowed: set both U and M */
 			if ((l3_desc & (DES_USED | DES_MODIFIED)) != (DES_USED | DES_MODIFIED)) {
@@ -549,6 +554,62 @@ void m68881_mmu_ops(void)
 	else if ((m68ki_cpu.ir & 0xffc0) == 0xf080)
 	{
 		xil_printf("680x0: unhandled PBcc\n");
+		return;
+	}
+	else if ((m68ki_cpu.ir & 0xFFF8) == 0xF548)
+	{
+		/* 68040 PTESTW (An) — direct opcode $F548-$F54F, no extension word.
+		 * Bit 5 = 0 → write test. Bits 2-0 = register number. */
+		int pt_regno = m68ki_cpu.ir & 7;
+		uint pt_addr = REG_A[pt_regno];
+		int pt_super = (REG_DFC & 4) != 0;
+		int pt_page8k = (m68ki_cpu.mmu_040_tc & 0x4000) ? 1 : 0;
+		uint pt_root = pt_super ? m68ki_cpu.mmu_040_srp : m68ki_cpu.mmu_040_urp;
+
+		if (tt040_match(m68ki_cpu.mmu_040_dtt0, pt_addr, pt_super) ||
+		    tt040_match(m68ki_cpu.mmu_040_dtt1, pt_addr, pt_super)) {
+			m68ki_cpu.mmu_040_mmusr = (1 << 1) | (1 << 0); /* T | R */
+		} else {
+			mmu040_atc_fault = 0;
+			uint pt_result = pmmu_walk_040(pt_addr, pt_root, pt_page8k, 1);
+			if (mmu040_atc_fault) {
+				mmu040_atc_fault = 0;
+				m68ki_cpu.mmu_040_mmusr = 0;
+			} else {
+				uint mmusr = (pt_result & 0xFFFFF000) | (1 << 0); /* phys + R */
+				if (mmu040_walk_wp) mmusr |= (1 << 2);
+				if (mmu040_walk_modified) mmusr |= (1 << 4);
+				m68ki_cpu.mmu_040_mmusr = mmusr;
+			}
+		}
+		return;
+	}
+	else if ((m68ki_cpu.ir & 0xFFF8) == 0xF568)
+	{
+		/* 68040 PTESTR (An) — direct opcode $F568-$F56F.
+		 * Bit 5 = 1 → read test. Bits 2-0 = register number. */
+		int pt_regno = m68ki_cpu.ir & 7;
+		uint pt_addr = REG_A[pt_regno];
+		int pt_super = (REG_DFC & 4) != 0;
+		int pt_page8k = (m68ki_cpu.mmu_040_tc & 0x4000) ? 1 : 0;
+		uint pt_root = pt_super ? m68ki_cpu.mmu_040_srp : m68ki_cpu.mmu_040_urp;
+
+		if (tt040_match(m68ki_cpu.mmu_040_dtt0, pt_addr, pt_super) ||
+		    tt040_match(m68ki_cpu.mmu_040_dtt1, pt_addr, pt_super)) {
+			m68ki_cpu.mmu_040_mmusr = (1 << 1) | (1 << 0); /* T | R */
+		} else {
+			mmu040_atc_fault = 0;
+			uint pt_result = pmmu_walk_040(pt_addr, pt_root, pt_page8k, 0);
+			if (mmu040_atc_fault) {
+				mmu040_atc_fault = 0;
+				m68ki_cpu.mmu_040_mmusr = 0;
+			} else {
+				uint mmusr = (pt_result & 0xFFFFF000) | (1 << 0);
+				if (mmu040_walk_wp) mmusr |= (1 << 2);
+				if (mmu040_walk_modified) mmusr |= (1 << 4);
+				m68ki_cpu.mmu_040_mmusr = mmusr;
+			}
+		}
 		return;
 	}
 	else	// the rest are 1111000xxxXXXXXX where xxx is the instruction family

@@ -6796,7 +6796,7 @@ M68KMAKE_OP(movec, 32, cr, .)
 			case 0x805:				/* MMUSR */
 				if(CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					REG_DA[(word2 >> 12) & 15] = m68ki_cpu.mmu_040_mmusr;
 					return;
 				}
 				m68ki_exception_illegal();

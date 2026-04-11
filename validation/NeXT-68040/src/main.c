@@ -20,7 +20,7 @@
 #include "next_mon_stub.h"
 #include "next_hw.h"
 #ifdef TEST_ROM
-#include "../test/timer_test_rom.h"
+#include "../test/mmu_test_rom.h"
 #else
 #include "next_rom_image.h"
 #endif

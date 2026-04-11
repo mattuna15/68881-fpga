@@ -48,6 +48,93 @@
 #define TRACE_LIMIT  0  /* Disabled */
 static int trace_count = 0;
 
+/* ------------------------------------------------------------------ */
+/* Syscall/trap ring buffer — records user→kernel transitions            */
+/* On NeXT Mach: TRAP #0 = Unix syscall, TRAP #1 = Mach trap           */
+/* D0 holds the syscall number (negative for Mach traps)                */
+/* ------------------------------------------------------------------ */
+#define TRAP_LOG_SIZE 32
+static struct {
+    uint32_t pc;       /* user PC of TRAP instruction */
+    uint32_t d0;       /* D0 = syscall number */
+    uint32_t d1;       /* D1 = first arg (sometimes) */
+    uint32_t sp;       /* user SP at time of trap */
+    uint16_t sr;       /* SR before trap (bit 13 = user/super) */
+    uint8_t  trap_num; /* TRAP #N (0-15) */
+} trap_log[TRAP_LOG_SIZE];
+static int trap_log_idx = 0;
+static int trap_log_total = 0;
+
+/* User-mode execution tracker — counts instructions + last 4 PCs + URP */
+static uint32_t user_instr_count = 0;
+static uint32_t user_last_pc[4];
+static uint32_t user_last_urp = 0;  /* URP active during last user instruction */
+static int user_last_idx = 0;
+int emu_user_mode_flag = 0;
+
+/* Called from Musashi's m68ki_exception_trapN — before SR goes supervisor */
+void emu_trap_log(unsigned int trap_num, unsigned int pc,
+                  unsigned int sr, unsigned int d0, unsigned int d1,
+                  unsigned int sp)
+{
+    emu_user_mode_flag = 0;  /* entering kernel */
+    int idx = trap_log_idx;
+    trap_log[idx].pc = pc;
+    trap_log[idx].d0 = d0;
+    trap_log[idx].d1 = d1;
+    trap_log[idx].sp = sp;
+    trap_log[idx].sr = (uint16_t)sr;
+    trap_log[idx].trap_num = (uint8_t)trap_num;
+    trap_log_idx = (trap_log_idx + 1) % TRAP_LOG_SIZE;
+    trap_log_total++;
+}
+
+void trap_log_dump(void) {
+    {
+        extern unsigned int pmmu_translate_addr(unsigned int addr_in);
+        uint32_t last_upc = user_last_pc[(user_last_idx - 1) & 3];
+        xil_printf("[USER] %u user-mode instructions, last PCs: $%08X $%08X $%08X $%08X\r\n",
+                   user_instr_count,
+                   user_last_pc[(user_last_idx - 4) & 3],
+                   user_last_pc[(user_last_idx - 3) & 3],
+                   user_last_pc[(user_last_idx - 2) & 3],
+                   last_upc);
+        if (last_upc && user_instr_count > 0) {
+            extern unsigned int mmu040_translate_user(unsigned int va);
+            uint32_t pa = mmu040_translate_user(last_upc & ~1);
+            xil_printf("[USER] Code at last user PC $%08X (PA=$%08X):\r\n  ",
+                       last_upc, pa);
+            for (int i = -4; i < 12; i++) {
+                uint32_t a = mmu040_translate_user((last_upc & ~1) + i*2);
+                uint16_t w = (next_phys_read_32(a & ~3) >> (((a & 2) ? 0 : 16))) & 0xFFFF;
+                if (i == 0) xil_printf("[");
+                xil_printf("%04X", w);
+                if (i == 0) xil_printf("]");
+                xil_printf(" ");
+            }
+            xil_printf("\r\n");
+        }
+    }
+    xil_printf("[TRAP-LOG] Last %d syscalls (total %d):\r\n",
+               trap_log_total < TRAP_LOG_SIZE ? trap_log_total : TRAP_LOG_SIZE,
+               trap_log_total);
+    int start = trap_log_total < TRAP_LOG_SIZE ? 0 : trap_log_idx;
+    int count = trap_log_total < TRAP_LOG_SIZE ? trap_log_total : TRAP_LOG_SIZE;
+    for (int i = 0; i < count; i++) {
+        int idx = (start + i) % TRAP_LOG_SIZE;
+        const char *kind = "???";
+        if (trap_log[idx].trap_num == 3) kind = "MACH";
+        else if (trap_log[idx].trap_num == 4) kind = "UNIX";
+        else if (trap_log[idx].trap_num == 5) kind = "GREG";
+        else if (trap_log[idx].trap_num == 6) kind = "SREG";
+        else if (trap_log[idx].trap_num == 0) kind = "OLD ";
+        xil_printf("  [%d] TRAP#%d (%s) D0=$%08X D1=$%08X PC=$%08X SP=$%08X SR=$%04X\r\n",
+                   i, trap_log[idx].trap_num, kind,
+                   trap_log[idx].d0, trap_log[idx].d1,
+                   trap_log[idx].pc, trap_log[idx].sp, trap_log[idx].sr);
+    }
+}
+
 /* Intercept ROM's mg_putc to mirror bitmap console output to serial.
  * Address is ROM-version-specific; set to 0 to auto-detect from mon_global.
  * Rev 3.3 v74 (Turbo): $010081C8
@@ -56,6 +143,16 @@ static uint32_t rom_putc_addr = 0;  /* 0 = not yet discovered */
 
 void emu_instr_hook(unsigned int pc)
 {
+    /* Track user-mode instruction count (only after first syscall fires) */
+    if (trap_log_total > 0) {
+        uint16_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+        if (!(sr & 0x2000)) {
+            user_instr_count++;
+            user_last_pc[user_last_idx & 3] = pc;
+            user_last_idx++;
+        }
+    }
+
     /* Mirror ROM's bitmap console output to serial.
      * Auto-discover mg_putc address from mon_global (A3 register). */
     if (rom_putc_addr == 0) {
@@ -630,6 +727,12 @@ static void poll_uart_rx(void)
                 xil_printf("\r\n");
             }
             continue;  /* don't forward 'X' to SCC */
+        }
+        if (ch == 'U') {
+            /* Dump syscall/trap ring buffer — last 32 user→kernel traps */
+            xil_printf("\r\n");
+            trap_log_dump();
+            continue;
         }
         if (ch == 'D') {
             /* Toggle SCSI/DMA/interrupt debug logging */

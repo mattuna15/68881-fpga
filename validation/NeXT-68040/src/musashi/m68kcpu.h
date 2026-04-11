@@ -1942,9 +1942,15 @@ static inline void m68ki_exception_trap(uint vector)
 }
 
 /* Trap#n stacks a 0 frame but behaves like group2 otherwise */
+extern void emu_trap_log(unsigned int trap_num, unsigned int pc,
+                         unsigned int sr, unsigned int d0, unsigned int d1,
+                         unsigned int sp);
 static inline void m68ki_exception_trapN(uint vector)
 {
 	uint t = REG_IR & 0xf;
+	/* Log user-mode traps before SR switches to supervisor */
+	if (!FLAG_S)
+		emu_trap_log(t, ADDRESS_68K(REG_PPC), m68ki_get_sr(), REG_D[0], REG_D[1], REG_A[7]);
 #if M68K_LOG_TRAP == M68K_OPT_ON
 	M68K_DO_LOG((M68K_LOG_FILEHANDLE "%s at %08x: trap %01x (%s)\n",
 				 m68ki_cpu_names[CPU_TYPE], ADDRESS_68K(REG_PPC), t,

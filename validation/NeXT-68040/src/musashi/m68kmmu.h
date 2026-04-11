@@ -824,3 +824,39 @@ void mmu040_dump_regs(void)
 		m68ki_cpu.mmu_040_dtt0, m68ki_cpu.mmu_040_dtt1);
 }
 
+/* Translate a user-mode virtual address through URP page tables.
+ * This does a manual 3-level walk, independent of current CPU state. */
+uint mmu040_translate_user(uint va)
+{
+	uint tc = m68ki_cpu.mmu_040_tc;
+	if (!(tc & 0x8000)) return va;  /* MMU disabled */
+
+	uint urp = m68ki_cpu.mmu_040_urp;
+	int page_8k = (tc & 0x4000) ? 1 : 0;
+	uint page_shift = page_8k ? 13 : 12;
+	uint page_mask = (1u << page_shift) - 1;
+
+	/* 3-level walk: 7-bit L1, 7-bit L2, 5/6-bit L3 */
+	int l1_shift = page_8k ? 25 : 25;  /* bits 31-25 */
+	int l2_shift = page_8k ? 18 : 18;  /* bits 24-18 */
+	int l3_shift = page_shift;          /* bits 17-12 or 17-13 */
+
+	uint l1_idx = (va >> l1_shift) & 0x7F;
+	uint l1_desc = next_phys_read_32(urp + l1_idx * 4);
+	if (!(l1_desc & 0x2)) return va;  /* invalid */
+
+	uint l2_base = l1_desc & 0xFFFFFE00;
+	uint l2_idx = (va >> l2_shift) & 0x7F;
+	uint l2_desc = next_phys_read_32(l2_base + l2_idx * 4);
+	if (!(l2_desc & 0x2)) return va;  /* invalid */
+
+	uint l3_base = l2_desc & 0xFFFFFE00;
+	uint l3_bits = page_8k ? 5 : 6;
+	uint l3_idx = (va >> l3_shift) & ((1 << l3_bits) - 1);
+	uint l3_desc = next_phys_read_32(l3_base + l3_idx * 4);
+	if (!(l3_desc & 0x1)) return va;  /* invalid (page descriptor uses bit 0) */
+
+	uint phys_base = l3_desc & ~page_mask;
+	return phys_base | (va & page_mask);
+}
+

@@ -2088,6 +2088,17 @@ static inline void m68ki_exception_1111(void)
 	if (m68ki_illg_callback(REG_IR))
 		return;
 
+	/* F-line not handled by callback — falls to kernel's F-line handler.
+	 * Log if this happens in user mode (potential FPU issue). */
+	if (!FLAG_S) {
+		static int fline_user_log = 0;
+		if (fline_user_log < 10) {
+			xil_printf("[FLINE-USER] unhandled F-line $%04X at PC=$%08X\r\n",
+				REG_IR, ADDRESS_68K(REG_PPC));
+			fline_user_log++;
+		}
+	}
+
 	sr = m68ki_init_exception();
 	m68ki_stack_frame_0000(REG_PPC, sr, EXCEPTION_1111);
 	m68ki_jump_vector(EXCEPTION_1111);
@@ -2114,6 +2125,16 @@ static inline void m68ki_exception_illegal(void)
 				 m68ki_disassemble_quick(ADDRESS_68K(REG_PPC))));
 	if (m68ki_illg_callback(REG_IR))
 	    return;
+
+	/* Log user-mode illegal instructions */
+	if (!FLAG_S) {
+		static int illg_user_log = 0;
+		if (illg_user_log < 10) {
+			xil_printf("[ILLG-USER] illegal $%04X at PC=$%08X\r\n",
+				REG_IR, ADDRESS_68K(REG_PPC));
+			illg_user_log++;
+		}
+	}
 
 	sr = m68ki_init_exception();
 

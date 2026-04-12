@@ -609,7 +609,7 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == 0x02014021)
         return next_esp_dma_status_read();
 
-    /* Ethernet (MB8795): 0x02006000-0x0200600F — return 0 (no ethernet) */
+    /* Ethernet (MB8795): 0x02006000-0x0200600F */
     if (address >= 0x02006000 && address < 0x02006010)
         return 0;
 

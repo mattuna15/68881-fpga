@@ -232,22 +232,46 @@ processes**:
 5. User-mode code executing at VAs $0000xxxx-$0001xxxx (FC=2)
 6. Multiple user tasks exist (3 different URP values = mach_init forked)
 7. Kernel code paged in at VAs $0500xxxx-$050Axxxx (mapped kernel text)
-8. System eventually idles — all threads sleeping, scheduler polling P_INTRSTAT
+8. 1915 syscalls complete (TRAP#3 Mach IPC, TRAP#4 BSD, TRAP#5/6 thread regs)
+9. System idles — all threads blocked on msg_recv, scheduler polling P_INTRSTAT
 
-**SCSI write support added:** Writes accepted and discarded. The kernel
-writes dirty inode metadata and buffer cache entries; if writes fail
-(EACCES), the buffer cache fills and demand paging stops entirely.
+**Syscall sequence decoded (256-entry window of 1915 total):**
+- Phase 1: Close all fds $D0-$FF (BSD fd cleanup after fork)
+- Phase 2: open/ioctl/close on /dev/console
+- Phase 3: execve(59) — loads installer program
+- Phase 4: Bootstrap registration (task_self, thread_reply, msg_rpc)
+- Phase 5: Signal setup (sigvec×8, sigblock, sigstack)
+- Phase 6: Dynamic linker init (getuid, second bootstrap round)
+- Phase 7: Network (socket, sendto — UDP packets, no response needed)
+- Phase 8: Bootstrap RPC loop, config file reads
+- Phase 9: STALL — msg_recv blocks forever, two child threads do TRAP#6
 
-**Current status:** mach_init and child processes ran extensively
-(160+ page faults = many KB of code executed across multiple executables
-and shared libraries). All threads eventually go to sleep waiting for
-events that don't arrive. The kernel's scheduler idle loop runs with
-working timer interrupts (hardclock at 500 µs).
+**SCSI write support added:** Writes accepted and discarded. Prevents
+buffer cache deadlock from dirty metadata blocking demand paging.
+
+**TMC VBL interrupt (68 Hz):** Fires through I_IPL3_DISK matching
+Previous's tmc_video_interrupt(). VIR register at TMC+$80 with
+write-1-to-clear status + direct-write mask. Kernel never enables
+VBL during text-mode boot — not the stall cause.
+
+**SCR2 software interrupts:** SOFTINT0 (bit 24→IPL1) and SOFTINT1
+(bit 25→IPL2) trigger when kernel writes SCR2. Matches Previous's
+sysReg.c. Uses one-shot delivery (auto-clear on report) to prevent
+interrupt storms during timer calibration. Softint fires correctly
+but alone doesn't unblock the msg_recv stall.
+
+**Current stall analysis:** All threads blocked on msg_receive().
+The kernel's softint_thread should deliver deferred Mach IPC messages,
+but one-shot softint delivery may not give the handler enough cycles
+to process the full deferred work queue. Real hardware uses level-
+sensitive softint (stays pending until handler clears SCR2 bit).
 
 **Likely blockers for further progress:**
-- `/etc/rc` script blocked on a device or network operation not emulated
-- Console I/O — a process waiting for console input/output
-- Mach IPC — a process waiting on a port message from an unstarted server
+- Softint delivery model: one-shot vs level-sensitive. The handler may
+  need the interrupt to stay pending while processing multiple callouts.
+- Mach IPC: msg_recv waits on an uninitialized port — the bootstrap
+  server may not have completed registration.
+- Console I/O: zero write(4) syscalls — program never outputs text.
 
 **68040 MMU and bus error implementation:**
 Full 3-level page table walk with TLB (256 entries, direct-mapped).
@@ -278,16 +302,27 @@ tick, giving the kernel time to set polling flags.
 - **68040 MMU: SSW encoding, RTE Format 7, PTEST, PLOAD (5 commits)**
 - **68040 MMU: SFLAG_SET supervisor detection fix** (was using 0x2000, correct is 4)
 - **SCSI write support** (accept and discard — prevents buffer cache deadlock)
+- **TMC VBL interrupt** (68 Hz via I_IPL3_DISK, VIR write-1-to-clear)
+- **SCR2 software interrupts** (SOFTINT0→IPL1, SOFTINT1→IPL2, one-shot delivery)
+- **SCR2 byte-level writes** routed through 32-bit handler for softint detection
+- **Syscall trap logging** (TRAP#3-6, 256-entry ring buffer, Mach IPC decode)
+- **F-line FMOVEM.X handler** (cmd_type 6/7, predecrement/postincrement)
 - **Debug: `I` keypress** — verbose I/O register logging with PC
+- **Debug: `U` keypress** — trap log dump (last 256 syscalls with args)
 - **Debug: `X` keypress** — MMU-translated stack dump, SRP/URP/TC/TT registers
-- **Debug: `mmu040_dump_regs()`** — expose MMU state from m68kmmu.h
+- **Debug: `T` keypress** — PC trace (200 instructions with SR)
 
 ### Next Steps
 
-1. Add system call / trap logging to identify what the last user thread blocked on
-2. Investigate console device emulation (WindowServer / loginwindow dependency)
-3. Check if `/etc/rc` needs network or other device responses to proceed
-4. Implement MCS1850 protocol support (bit 7 inversion for new clock chip)
+1. Fix softint delivery model — investigate level-sensitive vs one-shot.
+   The kernel's softint handler may need persistent interrupt to process
+   all deferred callouts before clearing SCR2.
+2. Investigate what msg_recv port the init process blocks on — is the
+   bootstrap name server fully operational?
+3. Check if the kernel expects INTRSTAT register to reflect softint bits
+   (not just SCR2 edge-trigger via intr_status)
+4. Console device: zero write() syscalls — program never outputs text.
+   May need /dev/console tty emulation beyond SCC.
 5. USB HID keyboard integration (from hello_world project)
 
 ## Memory Map (Turbo 68040)

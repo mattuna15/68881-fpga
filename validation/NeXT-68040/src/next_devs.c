@@ -1191,8 +1191,10 @@ void next_io_write_32(uint32_t address, uint32_t value)
          * Value is big-endian so high byte = VIR byte. */
         if (tmc_off >= 0x80 && tmc_off < 0x84) {
             uint8_t vir_byte = (uint8_t)(value >> 24);
-            tmc_vir = vir_byte;
-            if (tmc_vir & TMC_VI_INTERRUPT) {
+            /* Update mask bit from written value (normal read-write) */
+            tmc_vir = (tmc_vir & ~TMC_VI_INT_MASK) | (vir_byte & TMC_VI_INT_MASK);
+            /* Write-1-to-clear on status bit */
+            if (vir_byte & TMC_VI_INTERRUPT) {
                 tmc_vir &= ~TMC_VI_INTERRUPT;
                 next_intr_clear(I_IPL3_DISK);
             }

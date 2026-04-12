@@ -107,6 +107,18 @@ static int timer_accum;
 #define HARDCLOCK_ENABLE 0x80
 #define HARDCLOCK_LATCH  0x40
 
+/* ------------------------------------------------------------------ */
+/* TMC Video Vertical Blank (VBL) interrupt — 68 Hz                    */
+/* On Turbo systems the TMC VIR (Video Interrupt Register) at offset   */
+/* $80 controls VBL: bit 0 = status (write-1-to-clear), bit 1 = mask. */
+/* The interrupt fires through I_IPL3_DISK, matching Previous.         */
+/* ------------------------------------------------------------------ */
+#define VBL_PERIOD_US   14705   /* 1000000/68 ≈ 14705 µs */
+#define TMC_VI_INTERRUPT 0x01
+#define TMC_VI_INT_MASK  0x02
+static int     vbl_accum;       /* accumulated µs toward next VBL */
+static uint8_t tmc_vir;         /* VIR register (bits 0-1) */
+
 /* Event counter — emulated microseconds derived from CPU cycles.
  * The kernel's DELAY() and event_get() use this to measure time.
  * Must advance with emulated CPU time (25 MHz → 1 µs per 25 cycles),
@@ -431,9 +443,19 @@ int next_timer_tick(int cycles)
         if (hardclock_accum >= latch_hardclock) {
             hardclock_accum %= latch_hardclock;
             next_intr_set(I_IPL6_TIMER);
-            return 1;
         }
     }
+
+    /* VBL interrupt — 68 Hz via TMC, fires through I_IPL3_DISK */
+    vbl_accum += usecs;
+    if (vbl_accum >= VBL_PERIOD_US) {
+        vbl_accum -= VBL_PERIOD_US;
+        if (tmc_vir & TMC_VI_INT_MASK) {
+            tmc_vir |= TMC_VI_INTERRUPT;
+            next_intr_set(I_IPL3_DISK);
+        }
+    }
+
     return 0;
 }
 
@@ -881,7 +903,7 @@ uint32_t next_io_read_32(uint32_t address)
          * 32-bit read at $80 gets VIR in high byte + void.
          * 32-bit read at $88 gets HCR. 32-bit read at $8C gets VCR. */
         if (tmc_off >= 0x80 && tmc_off < 0x84)
-            return 0;  /* VIR=0 (no video interrupt), void bytes */
+            return (uint32_t)tmc_vir << 24;  /* VIR in high byte */
         if (tmc_off >= 0x84 && tmc_off < 0x88)
             return 0;  /* unimplemented */
         if (tmc_off >= 0x88 && tmc_off < 0x8C)
@@ -1164,9 +1186,24 @@ void next_io_write_32(uint32_t address, uint32_t value)
         /* TMC Control at $02200010 — accept writes (parity, burst config) */
         if (tmc_off >= 0x10 && tmc_off < 0x14)
             return;  /* accept and discard */
-        /* TMC Video Interrupt at $02200100 — accept writes (clears VBL) */
-        if (tmc_off >= 0x100 && tmc_off < 0x104)
-            return;  /* accept and discard */
+        /* TMC VIR write at $02200080 — write-1-to-clear status, set mask.
+         * Previous: tmc_vir_write0() handles byte 0 of the 32-bit reg.
+         * Value is big-endian so high byte = VIR byte. */
+        if (tmc_off >= 0x80 && tmc_off < 0x84) {
+            uint8_t vir_byte = (uint8_t)(value >> 24);
+            tmc_vir = vir_byte;
+            if (tmc_vir & TMC_VI_INTERRUPT) {
+                tmc_vir &= ~TMC_VI_INTERRUPT;
+                next_intr_clear(I_IPL3_DISK);
+            }
+            return;
+        }
+        /* TMC Video Interrupt at $02200100 — also clears VBL */
+        if (tmc_off >= 0x100 && tmc_off < 0x104) {
+            tmc_vir &= ~TMC_VI_INTERRUPT;
+            next_intr_clear(I_IPL3_DISK);
+            return;
+        }
         /* ADB registers at TMC+$8000-$80FF */
         if (tmc_off >= 0x8000 && tmc_off < 0x8100) {
             uint32_t adb_reg = tmc_off - 0x8000;

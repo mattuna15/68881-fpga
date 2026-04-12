@@ -313,6 +313,11 @@ void emu_instr_hook(unsigned int pc)
         m68k_set_reg(M68K_REG_D3, 0);
     }
 
+    /* REMOVED: cthread hack at $00004EDE — caused ILLG-USER at $00004EE0
+     * because $008C (FPU displacement word) was executed as opcode.
+     * The real problem is all threads blocked in msg_recv with no
+     * wakeup source — need to investigate what's missing. */
+
     /* Watch for kernel exec path — all call stack addresses from panic.
      * Also search for "errno" string in kernel to find the printf caller. */
     {

@@ -260,6 +260,8 @@ void emu_instr_hook(unsigned int pc)
     if (trap_log_total > 0) {
         uint16_t sr = m68k_get_reg(NULL, M68K_REG_SR);
         if (!(sr & 0x2000)) {
+            if (user_instr_count == 0)
+                next_softint_enable();  /* safe: timer calibration is done */
             user_instr_count++;
             user_last_pc[user_last_idx & 3] = pc;
             user_last_idx++;

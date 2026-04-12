@@ -119,6 +119,16 @@ static int timer_accum;
 static int     vbl_accum;       /* accumulated µs toward next VBL */
 static uint8_t tmc_vir;         /* VIR register (bits 0-1) */
 
+/* Softint gating: suppress softint during kernel init (timer calibration).
+ * Our event counter is cycle-based, not wall-clock, so softint handler
+ * cycles corrupt the timing measurement. Enable after first user-mode exec. */
+static int softint_enabled = 0;
+
+void next_softint_enable(void)
+{
+    softint_enabled = 1;
+}
+
 /* Event counter — emulated microseconds derived from CPU cycles.
  * The kernel's DELAY() and event_get() use this to measure time.
  * Must advance with emulated CPU time (25 MHz → 1 µs per 25 cycles),
@@ -491,17 +501,13 @@ int next_intr_pending_ipl(void)
     if (pending & 0x00003FFC)  /* bits 13-2 */
         return 3;
 
-    /* IPL2: softint1 — one-shot: auto-clear after reporting */
-    if (pending & I_IPL2_SOFTINT1) {
-        intr_status &= ~I_IPL2_SOFTINT1;
+    /* IPL2: softint1 — level-sensitive, cleared when kernel writes SCR2 */
+    if (pending & I_IPL2_SOFTINT1)
         return 2;
-    }
 
-    /* IPL1: softint0 — one-shot: auto-clear after reporting */
-    if (pending & I_IPL1_SOFTINT0) {
-        intr_status &= ~I_IPL1_SOFTINT0;
+    /* IPL1: softint0 — level-sensitive, cleared when kernel writes SCR2 */
+    if (pending & I_IPL1_SOFTINT0)
         return 1;
-    }
 
     return 0;
 }
@@ -1113,27 +1119,13 @@ void next_io_write_32(uint32_t address, uint32_t value)
         /* Software interrupts: kernel sets SCR2 SOFTINT bits to trigger
          * IPL1 (softint0) and IPL2 (softint1). These wake the kernel's
          * softint_thread which delivers deferred Mach IPC messages. */
-        if ((value ^ scr2_value) & SCR2_SOFTINT0) {
-            static int si0_log = 0;
-            if (si0_log < 5) {
-                xil_printf("[SOFTINT0] %s val=$%08X old=$%08X PC=$%08X\r\n",
-                    (value & SCR2_SOFTINT0) ? "SET" : "CLR", value, scr2_value,
-                    m68k_get_reg(NULL, M68K_REG_PC));
-                si0_log++;
-            }
+        if (softint_enabled && ((value ^ scr2_value) & SCR2_SOFTINT0)) {
             if (value & SCR2_SOFTINT0)
                 next_intr_set(I_IPL1_SOFTINT0);
             else
                 next_intr_clear(I_IPL1_SOFTINT0);
         }
-        if ((value ^ scr2_value) & SCR2_SOFTINT1) {
-            static int si1_log = 0;
-            if (si1_log < 5) {
-                xil_printf("[SOFTINT1] %s val=$%08X old=$%08X PC=$%08X\r\n",
-                    (value & SCR2_SOFTINT1) ? "SET" : "CLR", value, scr2_value,
-                    m68k_get_reg(NULL, M68K_REG_PC));
-                si1_log++;
-            }
+        if (softint_enabled && ((value ^ scr2_value) & SCR2_SOFTINT1)) {
             if (value & SCR2_SOFTINT1)
                 next_intr_set(I_IPL2_SOFTINT1);
             else

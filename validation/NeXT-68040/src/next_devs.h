@@ -74,6 +74,9 @@ uint32_t next_get_mon_global(void);
 void next_intr_set(uint32_t bit);
 void next_intr_clear(uint32_t bit);
 
+/* Enable softint delivery (call after timer calibration / first user exec) */
+void next_softint_enable(void);
+
 /* Debug accessors for interrupt state */
 uint32_t next_intr_get_status(void);
 uint32_t next_intr_get_mask(void);

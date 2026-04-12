@@ -491,19 +491,31 @@ int next_intr_pending_ipl(void)
     if (pending & 0x00003FFC)  /* bits 13-2 */
         return 3;
 
-    /* IPL2: softint1 */
-    if (pending & I_IPL2_SOFTINT1)
+    /* IPL2: softint1 — one-shot: auto-clear after reporting */
+    if (pending & I_IPL2_SOFTINT1) {
+        intr_status &= ~I_IPL2_SOFTINT1;
         return 2;
+    }
 
-    /* IPL1: softint0 */
-    if (pending & I_IPL1_SOFTINT0)
+    /* IPL1: softint0 — one-shot: auto-clear after reporting */
+    if (pending & I_IPL1_SOFTINT0) {
+        intr_status &= ~I_IPL1_SOFTINT0;
         return 1;
+    }
 
     return 0;
 }
 
 int next_intr_acknowledge(int level)
 {
+    /* Auto-clear softint on acknowledge — edge-triggered behavior.
+     * When the CPU enters the ISR, the pending bit clears so the
+     * interrupt doesn't re-fire immediately when the handler returns.
+     * The kernel re-triggers by writing SCR2 again if needed. */
+    if (level == 1)
+        intr_status &= ~I_IPL1_SOFTINT0;
+    else if (level == 2)
+        intr_status &= ~I_IPL2_SOFTINT1;
     return -1;  /* autovector */
 }
 
@@ -1012,6 +1024,16 @@ void next_io_write_8(uint32_t address, uint8_t value)
         return;
     }
 
+    /* SCR2 byte writes — kernel clears softint via byte write to SCR2+0.
+     * Reconstruct 32-bit value with the changed byte and process as 32-bit. */
+    if (address >= P_SCR2 && address < P_SCR2 + 4) {
+        int byte_off = address - P_SCR2;
+        int shift = 8 * (3 - byte_off);
+        uint32_t new_val = (scr2_value & ~(0xFF << shift)) | ((uint32_t)value << shift);
+        next_io_write_32(P_SCR2, new_val);
+        return;
+    }
+
     /* Brightness: accept silently */
     if (address == P_BRIGHTNESS)
         return;
@@ -1087,6 +1109,37 @@ void next_io_write_32(uint32_t address, uint32_t value)
             scr2_log_count++;
         }
         next_rtc_scr2_write(value, scr2_value);
+
+        /* Software interrupts: kernel sets SCR2 SOFTINT bits to trigger
+         * IPL1 (softint0) and IPL2 (softint1). These wake the kernel's
+         * softint_thread which delivers deferred Mach IPC messages. */
+        if ((value ^ scr2_value) & SCR2_SOFTINT0) {
+            static int si0_log = 0;
+            if (si0_log < 5) {
+                xil_printf("[SOFTINT0] %s val=$%08X old=$%08X PC=$%08X\r\n",
+                    (value & SCR2_SOFTINT0) ? "SET" : "CLR", value, scr2_value,
+                    m68k_get_reg(NULL, M68K_REG_PC));
+                si0_log++;
+            }
+            if (value & SCR2_SOFTINT0)
+                next_intr_set(I_IPL1_SOFTINT0);
+            else
+                next_intr_clear(I_IPL1_SOFTINT0);
+        }
+        if ((value ^ scr2_value) & SCR2_SOFTINT1) {
+            static int si1_log = 0;
+            if (si1_log < 5) {
+                xil_printf("[SOFTINT1] %s val=$%08X old=$%08X PC=$%08X\r\n",
+                    (value & SCR2_SOFTINT1) ? "SET" : "CLR", value, scr2_value,
+                    m68k_get_reg(NULL, M68K_REG_PC));
+                si1_log++;
+            }
+            if (value & SCR2_SOFTINT1)
+                next_intr_set(I_IPL2_SOFTINT1);
+            else
+                next_intr_clear(I_IPL2_SOFTINT1);
+        }
+
         scr2_value = value;
         return;
     }

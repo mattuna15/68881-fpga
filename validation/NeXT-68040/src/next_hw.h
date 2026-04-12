@@ -94,7 +94,9 @@
      (0u << 2) |                /* reserved */ \
      (2u << 0))                 /* cpu_clock = 25 MHz */
 
-/* SCR2 bit definitions */
+/* SCR2 bit definitions (32-bit big-endian register) */
+#define SCR2_SOFTINT0   0x01000000  /* bit 0 of high byte → IPL1 */
+#define SCR2_SOFTINT1   0x02000000  /* bit 1 of high byte → IPL2 */
 #define SCR2_EKG_LED    0x00000001
 #define SCR2_OVERLAY    0x00000080
 #define SCR2_RTCE       0x00000100

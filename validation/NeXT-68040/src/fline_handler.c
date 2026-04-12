@@ -806,6 +806,7 @@ static int handle_fmove_ctrl(unsigned int opword, unsigned int cmd,
     int ea_mode   = EA_MODE(opword);
     int ea_reg    = EA_REG(opword);
 
+
     if (ea_mode == 0) {
         /* Data register direct: Dn ↔ single control register */
         int dn = M68K_REG_D0 + ea_reg;

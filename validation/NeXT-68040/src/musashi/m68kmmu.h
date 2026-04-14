@@ -839,70 +839,66 @@ void mmu040_dump_regs(void)
 
 /* Translate a virtual address through a SPECIFIC root pointer.
  * Independent of current CPU state — used by trap-log dumpers to walk a
- * page-table tree captured at trap entry (URP may have changed since). */
+ * page-table tree captured at trap entry (URP may have changed since).
+ *
+ * Mirrors pmmu_walk_040 but NEVER faults or writes back U/M bits — pure
+ * observer.  Returns the input VA unchanged if any level fails, so the
+ * caller can detect failure via `result == va`. */
 uint mmu040_translate_with_urp(uint urp, uint va)
 {
 	uint tc = m68ki_cpu.mmu_040_tc;
 	if (!(tc & 0x8000)) return va;  /* MMU disabled */
 	if (urp == 0)       return va;
 	int page_8k = (tc & 0x4000) ? 1 : 0;
-	uint page_shift = page_8k ? 13 : 12;
-	uint page_mask = (1u << page_shift) - 1;
-	int l1_shift = 25;
-	int l2_shift = 18;
-	int l3_shift = page_shift;
-	uint l1_idx = (va >> l1_shift) & 0x7F;
+
+	/* L1: root table — bits 31-25, 128 entries, L2 ptr aligned to 512 */
+	uint l1_idx = (va >> 25) & 0x7F;
 	uint l1_desc = next_phys_read_32(urp + l1_idx * 4);
-	if (!(l1_desc & 0x2)) return va;
+	if ((l1_desc & 2) == 0) return va;
 	uint l2_base = l1_desc & 0xFFFFFE00;
-	uint l2_idx = (va >> l2_shift) & 0x7F;
+
+	/* L2: pointer table — bits 24-18, 128 entries, L3 ptr aligned to
+	 * 256 bytes for 4K pages or 128 bytes for 8K pages. Using the same
+	 * 0xFFFFFE00 mask as L1 leaves stray bits and walks into garbage. */
+	uint l2_idx = (va >> 18) & 0x7F;
 	uint l2_desc = next_phys_read_32(l2_base + l2_idx * 4);
-	if (!(l2_desc & 0x2)) return va;
-	uint l3_base = l2_desc & 0xFFFFFE00;
-	uint l3_bits = page_8k ? 5 : 6;
-	uint l3_idx = (va >> l3_shift) & ((1 << l3_bits) - 1);
-	uint l3_desc = next_phys_read_32(l3_base + l3_idx * 4);
-	if (!(l3_desc & 0x1)) return va;
-	uint phys_base = l3_desc & ~page_mask;
-	return phys_base | (va & page_mask);
+	if ((l2_desc & 2) == 0) return va;
+
+	/* L3: page table */
+	uint l3_base, l3_idx, page_mask;
+	if (page_8k) {
+		l3_base  = l2_desc & 0xFFFFFF80;
+		l3_idx   = (va >> 13) & 0x1F;
+		page_mask = 0x1FFF;
+	} else {
+		l3_base  = l2_desc & 0xFFFFFF00;
+		l3_idx   = (va >> 12) & 0x3F;
+		page_mask = 0x0FFF;
+	}
+	uint l3_addr = l3_base + l3_idx * 4;
+	uint l3_desc = next_phys_read_32(l3_addr);
+
+	/* Indirect page descriptor (PDT=10) — follow the pointer */
+	if ((l3_desc & 3) == 2) {
+		l3_addr = l3_desc & 0xFFFFFFFC;
+		l3_desc = next_phys_read_32(l3_addr);
+	}
+
+	/* Resident page (bit 0 set)? */
+	if ((l3_desc & 1) == 0) return va;
+
+	uint page_addr = page_8k ? (l3_desc & 0xFFFFE000)
+	                         : (l3_desc & 0xFFFFF000);
+	return page_addr | (va & page_mask);
 }
 
 /* Expose the current URP for trap-time snapshotting. */
 unsigned int fh_get_urp(void) { return m68ki_cpu.mmu_040_urp; }
 
-/* Translate a user-mode virtual address through URP page tables.
- * This does a manual 3-level walk, independent of current CPU state. */
+/* Translate a user-mode virtual address through the CURRENT URP.
+ * Thin wrapper around mmu040_translate_with_urp. */
 uint mmu040_translate_user(uint va)
 {
-	uint tc = m68ki_cpu.mmu_040_tc;
-	if (!(tc & 0x8000)) return va;  /* MMU disabled */
-
-	uint urp = m68ki_cpu.mmu_040_urp;
-	int page_8k = (tc & 0x4000) ? 1 : 0;
-	uint page_shift = page_8k ? 13 : 12;
-	uint page_mask = (1u << page_shift) - 1;
-
-	/* 3-level walk: 7-bit L1, 7-bit L2, 5/6-bit L3 */
-	int l1_shift = page_8k ? 25 : 25;  /* bits 31-25 */
-	int l2_shift = page_8k ? 18 : 18;  /* bits 24-18 */
-	int l3_shift = page_shift;          /* bits 17-12 or 17-13 */
-
-	uint l1_idx = (va >> l1_shift) & 0x7F;
-	uint l1_desc = next_phys_read_32(urp + l1_idx * 4);
-	if (!(l1_desc & 0x2)) return va;  /* invalid */
-
-	uint l2_base = l1_desc & 0xFFFFFE00;
-	uint l2_idx = (va >> l2_shift) & 0x7F;
-	uint l2_desc = next_phys_read_32(l2_base + l2_idx * 4);
-	if (!(l2_desc & 0x2)) return va;  /* invalid */
-
-	uint l3_base = l2_desc & 0xFFFFFE00;
-	uint l3_bits = page_8k ? 5 : 6;
-	uint l3_idx = (va >> l3_shift) & ((1 << l3_bits) - 1);
-	uint l3_desc = next_phys_read_32(l3_base + l3_idx * 4);
-	if (!(l3_desc & 0x1)) return va;  /* invalid (page descriptor uses bit 0) */
-
-	uint phys_base = l3_desc & ~page_mask;
-	return phys_base | (va & page_mask);
+	return mmu040_translate_with_urp(m68ki_cpu.mmu_040_urp, va);
 }
 

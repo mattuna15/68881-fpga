@@ -837,6 +837,39 @@ void mmu040_dump_regs(void)
 		m68ki_cpu.mmu_040_dtt0, m68ki_cpu.mmu_040_dtt1);
 }
 
+/* Translate a virtual address through a SPECIFIC root pointer.
+ * Independent of current CPU state — used by trap-log dumpers to walk a
+ * page-table tree captured at trap entry (URP may have changed since). */
+uint mmu040_translate_with_urp(uint urp, uint va)
+{
+	uint tc = m68ki_cpu.mmu_040_tc;
+	if (!(tc & 0x8000)) return va;  /* MMU disabled */
+	if (urp == 0)       return va;
+	int page_8k = (tc & 0x4000) ? 1 : 0;
+	uint page_shift = page_8k ? 13 : 12;
+	uint page_mask = (1u << page_shift) - 1;
+	int l1_shift = 25;
+	int l2_shift = 18;
+	int l3_shift = page_shift;
+	uint l1_idx = (va >> l1_shift) & 0x7F;
+	uint l1_desc = next_phys_read_32(urp + l1_idx * 4);
+	if (!(l1_desc & 0x2)) return va;
+	uint l2_base = l1_desc & 0xFFFFFE00;
+	uint l2_idx = (va >> l2_shift) & 0x7F;
+	uint l2_desc = next_phys_read_32(l2_base + l2_idx * 4);
+	if (!(l2_desc & 0x2)) return va;
+	uint l3_base = l2_desc & 0xFFFFFE00;
+	uint l3_bits = page_8k ? 5 : 6;
+	uint l3_idx = (va >> l3_shift) & ((1 << l3_bits) - 1);
+	uint l3_desc = next_phys_read_32(l3_base + l3_idx * 4);
+	if (!(l3_desc & 0x1)) return va;
+	uint phys_base = l3_desc & ~page_mask;
+	return phys_base | (va & page_mask);
+}
+
+/* Expose the current URP for trap-time snapshotting. */
+unsigned int fh_get_urp(void) { return m68ki_cpu.mmu_040_urp; }
+
 /* Translate a user-mode virtual address through URP page tables.
  * This does a manual 3-level walk, independent of current CPU state. */
 uint mmu040_translate_user(uint va)

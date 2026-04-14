@@ -64,9 +64,24 @@ static struct {
     uint32_t arg1;     /* USP+4: first stack arg (Unix syscalls) */
     uint32_t arg2;     /* USP+8: second stack arg */
     uint32_t arg3;     /* USP+12: third stack arg */
+    uint32_t urp;      /* URP at trap time — for per-process VA translation */
     uint16_t sr;       /* SR before trap (bit 13 = user/super) */
     uint8_t  trap_num; /* TRAP #N (0-15) */
 } trap_log[TRAP_LOG_SIZE];
+
+extern unsigned int fh_get_urp(void);
+extern unsigned int mmu040_translate_with_urp(unsigned int urp, unsigned int va);
+extern unsigned int mmu040_translate_user(unsigned int va);
+
+/* Best-effort MMU-translated 32-bit read: walks the given URP, then hits
+ * the physical callback.  On translation failure, returns 0xFFFFFFFF so
+ * the diagnostic dumper can show "no mapping" without faulting. */
+static uint32_t trap_read_u32(uint32_t urp, uint32_t va)
+{
+    uint32_t pa = mmu040_translate_with_urp(urp, va);
+    if (pa == va) return 0xFFFFFFFFu;  /* translation failed */
+    return next_phys_read_32(pa);
+}
 static int trap_log_idx = 0;
 static int trap_log_total = 0;
 
@@ -90,20 +105,22 @@ void emu_trap_log(unsigned int trap_num, unsigned int pc,
     trap_log[idx].sp = sp;
     trap_log[idx].sr = (uint16_t)sr;
     trap_log[idx].trap_num = (uint8_t)trap_num;
+    trap_log[idx].urp = fh_get_urp();
+    uint32_t urp = trap_log[idx].urp;
     /* For Unix syscalls (TRAP#4), capture args from user stack.
-     * BSD convention: args at USP+4, USP+8, USP+12 */
+     * BSD convention: args at USP+4, USP+8, USP+12.  User VAs — must go
+     * through the current URP before hitting the physical callback. */
     if (trap_num == 4 && sp >= 0x1000) {
-        trap_log[idx].arg1 = m68k_read_memory_32(sp + 4);
-        trap_log[idx].arg2 = m68k_read_memory_32(sp + 8);
-        trap_log[idx].arg3 = m68k_read_memory_32(sp + 12);
+        trap_log[idx].arg1 = trap_read_u32(urp, sp + 4);
+        trap_log[idx].arg2 = trap_read_u32(urp, sp + 8);
+        trap_log[idx].arg3 = trap_read_u32(urp, sp + 12);
     } else if (trap_num == 3 && (d0 == 0x15 || d0 == 0x16 || d0 == 0x14)) {
-        /* Mach msg traps: D1 = msg header pointer.
-         * msg_local_port at offset 12 = the port being used.
-         * D0=$14=msg_send, $15=msg_receive, $16=msg_rpc */
+        /* Mach msg traps: D1 = msg header pointer (user VA).
+         * msg_local_port at offset 12, remote at 16, id at 20. */
         if (d1 >= 0x1000) {
-            trap_log[idx].arg1 = m68k_read_memory_32(d1 + 12); /* msg_local_port */
-            trap_log[idx].arg2 = m68k_read_memory_32(d1 + 16); /* msg_remote_port */
-            trap_log[idx].arg3 = m68k_read_memory_32(d1 + 20); /* msg_id */
+            trap_log[idx].arg1 = trap_read_u32(urp, d1 + 12);
+            trap_log[idx].arg2 = trap_read_u32(urp, d1 + 16);
+            trap_log[idx].arg3 = trap_read_u32(urp, d1 + 20);
         } else {
             trap_log[idx].arg1 = 0;
             trap_log[idx].arg2 = 0;
@@ -220,32 +237,37 @@ void trap_log_dump(void) {
                        trap_log[idx].pc, trap_log[idx].sp, trap_log[idx].sr);
         }
     }
-    /* Dump msg_header for the last msg_recv/msg_rpc using URP walker */
-    {
-        extern unsigned int mmu040_translate_user(unsigned int va);
-        for (int i = count - 1; i >= 0; i--) {
-            int idx2 = ((start + i) % TRAP_LOG_SIZE);
-            if (trap_log[idx2].trap_num == 3 &&
-                (trap_log[idx2].d0 == 0x15 || trap_log[idx2].d0 == 0x16) &&
-                trap_log[idx2].d1 >= 0x1000) {
-                uint32_t msg_va = trap_log[idx2].d1;
-                xil_printf("[MSG-HDR] %s buf at VA=$%08X:\r\n",
-                           trap_log[idx2].d0 == 0x15 ? "msg_recv" : "msg_rpc",
-                           msg_va);
-                for (int j = 0; j < 24; j += 4) {
-                    uint32_t pa = mmu040_translate_user(msg_va + j);
-                    uint32_t val = next_phys_read_32(pa);
-                    const char *fname = "";
-                    if (j == 0)  fname = " (simple+unused)";
-                    if (j == 4)  fname = " (msg_size)";
-                    if (j == 8)  fname = " (msg_type)";
-                    if (j == 12) fname = " (local_port)";
-                    if (j == 16) fname = " (remote_port)";
-                    if (j == 20) fname = " (msg_id)";
+    /* Dump msg_header for the last msg_recv/msg_rpc.  We walk the URP
+     * captured at trap entry, because "current" URP at dump time is some
+     * other process (we hang in kernel context after many context
+     * switches).  Without the per-trap URP the walk goes through empty
+     * L1 slots and we see "read from unmapped" even though the buffer
+     * was fully mapped when the trap fired. */
+    for (int i = count - 1; i >= 0; i--) {
+        int idx2 = ((start + i) % TRAP_LOG_SIZE);
+        if (trap_log[idx2].trap_num == 3 &&
+            (trap_log[idx2].d0 == 0x15 || trap_log[idx2].d0 == 0x16) &&
+            trap_log[idx2].d1 >= 0x1000) {
+            uint32_t msg_va = trap_log[idx2].d1;
+            uint32_t urp    = trap_log[idx2].urp;
+            xil_printf("[MSG-HDR] %s buf at VA=$%08X (URP=$%08X):\r\n",
+                       trap_log[idx2].d0 == 0x15 ? "msg_recv" : "msg_rpc",
+                       msg_va, urp);
+            for (int j = 0; j < 24; j += 4) {
+                uint32_t val = trap_read_u32(urp, msg_va + j);
+                const char *fname = "";
+                if (j == 0)  fname = " (simple+unused)";
+                if (j == 4)  fname = " (msg_size)";
+                if (j == 8)  fname = " (msg_type)";
+                if (j == 12) fname = " (local_port)";
+                if (j == 16) fname = " (remote_port)";
+                if (j == 20) fname = " (msg_id)";
+                if (val == 0xFFFFFFFFu)
+                    xil_printf("  +%02d: <unmapped>%s\r\n", j, fname);
+                else
                     xil_printf("  +%02d: $%08X%s\r\n", j, val, fname);
-                }
-                break;
             }
+            break;
         }
     }
 }

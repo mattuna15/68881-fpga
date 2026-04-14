@@ -11720,13 +11720,23 @@ static void m68k_op_cpscc_32(void)
 
 static void m68k_op_cptrapcc_32(void)
 {
+	/* CRITICAL: the $F1F8 / $F078 mask-base combination used by the
+	 * table builder matches the $F4xx cache-management opcode space
+	 * (CINV/CPUSH) on 68040 CPUs as well as the original 68020/030
+	 * cpTRAPcc encoding.  On 68040+ the real instruction is a 1-word
+	 * cache op with no following operand word, so the "REG_PC += 4"
+	 * fall-through below eats the next instruction and misaligns the
+	 * entire instruction stream.  Short-circuit to a no-op here — our
+	 * emulator has no cache so CINV/CPUSH are safe no-ops anyway. */
+	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
+		return;
 	if(CPU_TYPE_IS_EC020_PLUS(CPU_TYPE))
 	{
 		M68K_DO_LOG((M68K_LOG_FILEHANDLE "%s at %08x: called unimplemented instruction %04x (%s)\n",
 					 m68ki_cpu_names[CPU_TYPE], ADDRESS_68K(REG_PC - 2), REG_IR,
 					 m68k_disassemble_quick(ADDRESS_68K(REG_PC - 2))));
         // JFF: unsupported, but at least if the trap doesn't occur, app should still work, so at least PC increase is correct
-        REG_PC += 4;  
+        REG_PC += 4;
 		return;
 	}
 	m68ki_exception_1111();
@@ -28196,9 +28206,7 @@ static void m68k_op_cinv_32(void)
 static void m68k_op_cpush_32(void)
 {
 	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
-	{
 		return;
-	}
 	m68ki_exception_1111();
 }
 

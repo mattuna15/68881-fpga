@@ -7,8 +7,9 @@
  *   bits 7-6 = leftmost pixel, bits 1-0 = rightmost pixel
  *   00 = white, 01 = light grey, 10 = dark grey, 11 = black
  *
- * Stride: VIDEO_MW (1152) pixels / 4 = 288 bytes per scanline.
- * Only 1120 of 1152 pixels per line are visible.
+ * Stride: set by NEXT_VIDEO_NBPL in next_video.h.
+ *   Turbo:   280 bytes/line (1120 px / 4, no padding).
+ *   Classic: 288 bytes/line (1152 px / 4, with 32-px right-edge padding).
  *
  * We render into a 1920x1080 ABGR8888 buffer (SCREEN_W x SCREEN_H
  * from text_fb.h).  The NeXT image is centred with black borders.

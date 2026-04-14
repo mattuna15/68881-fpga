@@ -307,6 +307,44 @@ tick, giving the kernel time to set polling flags.
 - **SCR2 byte-level writes** routed through 32-bit handler for softint detection
 - **Syscall trap logging** (TRAP#3-6, 256-entry ring buffer, Mach IPC decode)
 - **F-line FMOVEM.X handler** (cmd_type 6/7, predecrement/postincrement)
+- **F-line MMU translation** (critical for user-mode FPU)
+  — `fline_handler.c` was calling `m68k_read/write_memory_*` directly,
+  which are physical-address callbacks that bypass `pmmu_translate_addr`.
+  Under user-mode MMU, every FPU operand read/write (ext-word
+  displacements, `(d16,An)`, absolute, `FMOVE FPCR,(d16,An)`, etc.)
+  hit the wrong physical address — decoding garbage displacements and
+  scribbling over random memory. Symptom: `ILLG $008C` reported at user
+  PC=`$00004EE0` after a flurry of ATC faults.
+  Fix: thin `fh_read_*` / `fh_write_*` wrappers at the top of
+  `fline_handler.c` that call `pmmu_translate_addr()` when the PMMU is
+  enabled. All 47 call sites rewritten. A new `m68kcpu_pmmu_shim.h`
+  exports `fh_pmmu_enabled()` so the handler can check `PMMU_ENABLED`
+  without pulling in private Musashi headers.
+- **Musashi cptrapcc $F1F8/$F078 vs 68040 CINV collision** — the
+  generated opcode table matched `$F478` (CINVA BC, 1-word on 68040)
+  against `cptrapcc_32`, whose fallback did `REG_PC += 4`, eating two
+  words of real code and corrupting A7 via stale ORI.B side effects.
+  Fix: short-circuit `m68k_op_cptrapcc_32` to no-op on
+  `CPU_TYPE_IS_040_PLUS` (we have no cache).
+- **Turbo 4-bank RAM aliasing** — real Turbo decodes RAM as 4×32MB
+  banks with address bit 27 (`$07FFFFFF` mask) selecting bank. ROM's
+  memory sizer walks the aliased image; without aliasing it treats
+  each bank as independent and crashes. Fix: `NEXT_RAM_BANK_MASK` in
+  `next_memory.c`, all read/write paths use `ram_offset(addr)`, SIMM
+  config 4×32MB, stub writer and SCSI DMA paths updated.
+- **TMC SCR1 separated from system SCR1** — P_SCR1 at `$0200C000`
+  (`$F0004000`) is the system SCR1; TMC SCR1 at `$02200000`
+  (`$0FFF4FAF` with `TURBOSCR_FMASK`) is the chip's own register.
+  Both must be present; conflating them made the ROM's Turbo probe
+  disagree with itself.
+- **FPU F-line PC-advancement test ROM** — `test/fpu_test.s` exercises
+  11 supervisor + 6 user-mode F-line encodings including the exact
+  `$F228 $BC00 $008C` sequence seen crashing on hardware. Build with
+  `cmake -DTEST_ROM=ON -DFPU_TEST_ROM=ON`. Runs under QEMU without
+  needing an SD card image or the MC68882 FPGA hardware — verifies
+  that `fline_handler` advances PC past full instruction length for
+  every form (reg-reg, dyadic, FMOVE immediate L/W/S, FMOVE FPn→Dn,
+  FMOVEM.X predec/postinc, FMOVE ctrl→(d16,An), absolute.L).
 - **Debug: `I` keypress** — verbose I/O register logging with PC
 - **Debug: `U` keypress** — trap log dump (last 256 syscalls with args)
 - **Debug: `X` keypress** — MMU-translated stack dump, SRP/URP/TC/TT registers

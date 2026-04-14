@@ -64,6 +64,7 @@ static void io_log(const char *rw, uint32_t addr, uint32_t val, int size)
 /* ------------------------------------------------------------------ */
 static uint32_t scr1_value;
 static uint32_t scr2_value;
+static uint32_t tmc_scr1_value;  /* Turbo-only, separate from system SCR1 */
 
 /* P_MON register: the ROM stores its mon_global pointer here */
 static uint32_t p_mon_value;
@@ -213,6 +214,133 @@ static struct {
 } adb;
 
 /* ------------------------------------------------------------------ */
+/* MB8795 / AT&T 7213 Ethernet controller stub (Turbo variant)         */
+/* Base: $02006000.  Matches Previous's ethernet.c register layout so  */
+/* POST and kernel probe both succeed.  No real packet transfer — we   */
+/* report the link as disconnected so the driver gives up politely.   */
+/* ------------------------------------------------------------------ */
+#define EN_REG_TX_STATUS    0x0
+#define EN_REG_TX_MASK      0x1
+#define EN_REG_RX_STATUS    0x2
+#define EN_REG_RX_MASK      0x3
+#define EN_REG_TX_MODE      0x4
+#define EN_REG_RX_MODE      0x5
+#define EN_REG_CONTROL      0x6   /* Turbo Control reg (was Reset on classic) */
+#define EN_REG_COUNTER_LO   0x7
+#define EN_REG_MAC0         0x8
+#define EN_REG_MAC1         0x9
+#define EN_REG_MAC2         0xA
+#define EN_REG_MAC3         0xB
+#define EN_REG_MAC4         0xC
+#define EN_REG_MAC5         0xD
+#define EN_REG_COUNTER_HI   0xF
+
+/* Status bits (from Previous) */
+#define EN_TXSTAT_READY     0x80
+#define EN_RESET            0x80
+#define EN_ENCTRL_TPE       0x40
+
+static struct {
+    uint8_t tx_status;
+    uint8_t tx_mask;
+    uint8_t rx_status;
+    uint8_t rx_mask;
+    uint8_t tx_mode;
+    uint8_t rx_mode;
+    uint8_t control;   /* reset on classic, control on Turbo */
+    uint8_t mac[6];
+} enet_stub = {
+    /* tx_status starts ready on classic, 0 on Turbo — we are Turbo */
+    .tx_status = 0,
+    .tx_mask   = 0,
+    .rx_status = 0,
+    .rx_mask   = 0,
+    .tx_mode   = 0,
+    .rx_mode   = 0,
+    .control   = EN_RESET,   /* held in reset until kernel clears */
+    /* NeXT OUI 00:00:0F, rest arbitrary */
+    .mac       = { 0x00, 0x00, 0x0F, 0x12, 0x34, 0x56 },
+};
+
+static uint8_t enet_reg_read(uint32_t reg)
+{
+    switch (reg) {
+    case EN_REG_TX_STATUS:  return enet_stub.tx_status;
+    case EN_REG_TX_MASK:    return enet_stub.tx_mask & 0xAF;
+    case EN_REG_RX_STATUS:  return enet_stub.rx_status;
+    case EN_REG_RX_MASK:    return enet_stub.rx_mask & 0x9F;
+    case EN_REG_TX_MODE:    return enet_stub.tx_mode;
+    case EN_REG_RX_MODE:    return enet_stub.rx_mode;
+    case EN_REG_CONTROL:
+        /* Turbo Control read: report TPE set (disconnected) + current reset */
+        return enet_stub.control | EN_ENCTRL_TPE;
+    case EN_REG_MAC0:       return enet_stub.mac[0];
+    case EN_REG_MAC1:       return enet_stub.mac[1];
+    case EN_REG_MAC2:       return enet_stub.mac[2];
+    case EN_REG_MAC3:       return enet_stub.mac[3];
+    case EN_REG_MAC4:       return enet_stub.mac[4];
+    case EN_REG_MAC5:       return enet_stub.mac[5];
+    case EN_REG_COUNTER_LO:
+    case EN_REG_COUNTER_HI: return 0;   /* TX buffer empty */
+    default:                return 0;
+    }
+}
+
+static void enet_reg_write(uint32_t reg, uint8_t val)
+{
+    switch (reg) {
+    case EN_REG_TX_STATUS:
+        /* Turbo: write-1-to-clear */
+        enet_stub.tx_status &= ~val;
+        break;
+    case EN_REG_TX_MASK:
+        enet_stub.tx_mask = val;
+        break;
+    case EN_REG_RX_STATUS:
+        enet_stub.rx_status &= ~(val & 0x8F);
+        break;
+    case EN_REG_RX_MASK:
+        enet_stub.rx_mask = val;
+        break;
+    case EN_REG_TX_MODE:
+        enet_stub.tx_mode = val;
+        break;
+    case EN_REG_RX_MODE:
+        enet_stub.rx_mode = val;
+        break;
+    case EN_REG_CONTROL:
+        /* Turbo: bit 7 is reset.  When kernel clears reset and starts the
+         * controller, stay "ready to transmit" so it doesn't spin. */
+        enet_stub.control = val & EN_RESET;
+        if (val & EN_RESET) {
+            enet_stub.tx_status = 0;   /* Turbo: cleared on reset */
+            enet_stub.rx_status = 0;
+        }
+        break;
+    case EN_REG_MAC0:       enet_stub.mac[0] = val; break;
+    case EN_REG_MAC1:       enet_stub.mac[1] = val; break;
+    case EN_REG_MAC2:       enet_stub.mac[2] = val; break;
+    case EN_REG_MAC3:       enet_stub.mac[3] = val; break;
+    case EN_REG_MAC4:       enet_stub.mac[4] = val; break;
+    case EN_REG_MAC5:       enet_stub.mac[5] = val; break;
+    default: break;
+    }
+}
+
+/* Raise or release the ADB interrupt (shared with disk on I_IPL3_DISK)
+ * based on whether any unmasked status bit is asserted.  Matches
+ * Previous's adb_interrupt()/adb_intstatus_write() behaviour. */
+static void adb_update_irq(void)
+{
+    if (adb.intstatus & adb.intmask) {
+        next_intr_set(I_IPL3_DISK);
+    } else if (!(tmc_vir & TMC_VI_INTERRUPT)) {
+        /* Only release the shared IPL3 disk line if VBL isn't also pending */
+        next_intr_clear(I_IPL3_DISK);
+    }
+}
+
+/* ------------------------------------------------------------------ */
 /* Live I/O activity tracker — dump with 'D' to see what CPU accesses  */
 /* ------------------------------------------------------------------ */
 static struct {
@@ -238,39 +366,48 @@ void io_track(uint32_t addr) {
  * Then dump the struct following it to show sfah_busy. */
 void sfa_dump(void) {
     extern uint8_t next_ram[];
-    #define RD32(o) ((uint32_t)((next_ram[o]<<24)|(next_ram[(o)+1]<<16)|(next_ram[(o)+2]<<8)|next_ram[(o)+3]))
+    /* Virtual-address indexer — applies the bank-mask offset used by
+     * the main memory accessors in next_memory.c.  Required because
+     * VA $04xxxxxx doesn't map to next_ram[$00xxxxxx] anymore; it maps
+     * to next_ram[$04xxxxxx]. */
+    #define RDVA32(va) ((uint32_t)(                                             \
+        (next_ram[(va)   & 0x07FFFFFFu] << 24) |                                \
+        (next_ram[((va)+1) & 0x07FFFFFFu] << 16) |                              \
+        (next_ram[((va)+2) & 0x07FFFFFFu] <<  8) |                              \
+         next_ram[((va)+3) & 0x07FFFFFFu]))
     int found = 0;
     /* sf_access_head has: queue_head(8), lock(4), wait_cnt(4), flags(4), last_dev(4), excl_q(4), busy(4)
      * For an empty queue: q.next == q.prev == &q (self-pointer)
      * For a non-empty queue: q.next and q.prev are different kernel pointers */
-    for (uint32_t off = 0; off < 0x00200000 && found < 5; off += 4) {
-        uint32_t addr = 0x04000000 + off;
-        uint32_t w0 = RD32(off);
-        uint32_t w1 = RD32(off+4);
+    for (uint32_t va = 0x04000000;
+         va < 0x04000000 + 0x00200000 && found < 5; va += 4) {
+        uint32_t addr = va;
+        uint32_t w0 = RDVA32(va);
+        uint32_t w1 = RDVA32(va+4);
         /* Check for self-referencing queue (empty) or two valid kernel pointers */
         if (w0 == addr && w1 == addr) {
             /* Empty queue — both next and prev point to queue head itself.
              * Check that following fields look like sfah (small integers). */
-            uint32_t wait_cnt = RD32(off+0x0C);
-            uint32_t flags = RD32(off+0x10);
-            uint32_t last_dev = RD32(off+0x14);
-            uint32_t excl_q = RD32(off+0x18);
-            uint32_t busy = RD32(off+0x1C);
+            uint32_t wait_cnt = RDVA32(va+0x0C);
+            uint32_t flags = RDVA32(va+0x10);
+            uint32_t last_dev = RDVA32(va+0x14);
+            uint32_t excl_q = RDVA32(va+0x18);
+            uint32_t busy = RDVA32(va+0x1C);
             if (wait_cnt < 100 && flags < 100 && last_dev < 100 && excl_q < 100 && busy < 100) {
                 xil_printf("[SFA-HEAD] @$%08X: q={self,self} lock=%d wait=%d flags=%d last=%d excl=%d BUSY=%d\r\n",
-                           addr, RD32(off+8), wait_cnt, flags, last_dev, excl_q, busy);
+                           addr, RDVA32(va+8), wait_cnt, flags, last_dev, excl_q, busy);
                 found++;
             }
         }
         /* Also check non-empty queue: two different kernel ptrs, followed by small ints */
         else if (w0 >= 0x04000000 && w0 < 0x04200000 &&
                  w1 >= 0x04000000 && w1 < 0x04200000 && w0 != w1) {
-            uint32_t lock = RD32(off+8);
-            uint32_t wait_cnt = RD32(off+0x0C);
-            uint32_t flags = RD32(off+0x10);
-            uint32_t last_dev = RD32(off+0x14);
-            uint32_t excl_q = RD32(off+0x18);
-            uint32_t busy = RD32(off+0x1C);
+            uint32_t lock = RDVA32(va+8);
+            uint32_t wait_cnt = RDVA32(va+0x0C);
+            uint32_t flags = RDVA32(va+0x10);
+            uint32_t last_dev = RDVA32(va+0x14);
+            uint32_t excl_q = RDVA32(va+0x18);
+            uint32_t busy = RDVA32(va+0x1C);
             if (lock == 0 && wait_cnt > 0 && wait_cnt < 10 &&
                 flags < 10 && last_dev < 10 && excl_q < 10 && busy > 0 && busy < 10) {
                 xil_printf("[SFA-HEAD] @$%08X: q={$%08X,$%08X} lock=%d wait=%d flags=%d last=%d excl=%d BUSY=%d\r\n",
@@ -281,7 +418,7 @@ void sfa_dump(void) {
     }
     if (!found)
         xil_printf("[SFA-HEAD] No sf_access_head found in kernel RAM!\r\n");
-    #undef RD32
+    #undef RDVA32
 }
 
 void io_activity_dump(void) {
@@ -338,11 +475,27 @@ static uint32_t bmap_regs[BMAP_REG_COUNT];
 
 void next_devs_init(void)
 {
-    /* SCR1: NeXT_WARP9 (68040 NeXTstation), board rev 0, 25 MHz */
-    scr1_value = SCR1_VALUE(NeXT_WARP9, 0);
+    /* On Turbo there are TWO distinct SCR1 registers (Previous keeps
+     * them in sysReg.c and tmc.c respectively):
+     *
+     *   $0200C000 (P_SCR1)    : "system SCR1"
+     *      = SCR1_TURBO | 0xF0000000   (slot id F for non-cube)
+     *      = $F0004000
+     *
+     *   $02200000 (TMC reg 0) : "Turbo SCR1"  — encodes cpu/mem speeds,
+     *      cpu type, FMASK always-on bits.  The early ROM code at
+     *      $00CC reads this register and feeds it into ISP/MSP setup.
+     *      = TURBOSCR_FMASK ($0FFF0F08) | $4000 (Turbo mono)
+     *        | $A0 (mem 80ns) | $07 (cpu 33 MHz)
+     *      = $0FFF4FAF
+     *
+     * The two values must be different and live in different registers. */
+    scr1_value = 0xF0004000;       /* P_SCR1 at $0200C000 */
+    tmc_scr1_value = 0x0FFF4FAF;   /* TMC SCR1 at $02200000 (Turbo mono, 33 MHz, 80ns) */
 
-    /* SCR2: zeroed at power-on, 4x1M DRAM banks */
-    scr2_value = (0x0F << 16);  /* s_dram_1M = 4 banks */
+    /* SCR2: Turbo init values from Previous (scr2_2=0x10, scr2_3=0x80) |
+     * 4x1M DRAM banks in the high word. */
+    scr2_value = (0x0F << 16) | 0x00001080;
 
     /* P_MON: ROM stores mon_global pointer here */
     p_mon_value = 0;
@@ -372,10 +525,13 @@ void next_devs_init(void)
     /* ADB: all zeroed (no devices) */
     memset(&adb, 0, sizeof(adb));
 
-    /* DMA: all channels idle + complete (internal 8-bit state) */
+    /* DMA: all channels fully zeroed.
+     * Previous inits dma[ch].csr = 0 (no bits set).  We previously set
+     * DMA_COMPLETE (bit 3) here but that causes the Turbo ROM's early
+     * POST to see channel 0/whatever channel it probes as "completion
+     * pending", branch into an error-handling path, and eventually
+     * take a bus error that lands in the $010005AE panic handler. */
     memset(dma_csr, 0, sizeof(dma_csr));
-    for (int i = 0; i < NUM_DMA_CHANNELS; i++)
-        dma_csr[i] = 0x08;  /* DMA_COMPLETE */
 
     /* BMAP chip */
     memset(bmap_regs, 0, sizeof(bmap_regs));
@@ -532,6 +688,17 @@ int next_intr_acknowledge(int level)
 void next_intr_set(uint32_t bit)
 {
     extern int next_debug_scsi;
+    {
+        static int irq_set_log = 0;
+        if (irq_set_log < 40) {
+            xil_printf("[IRQ+] set $%08X PC=$%08X SR=$%04X (prev status=$%08X)\r\n",
+                       bit,
+                       m68k_get_reg(NULL, M68K_REG_PC),
+                       m68k_get_reg(NULL, M68K_REG_SR) & 0xFFFF,
+                       intr_status);
+            irq_set_log++;
+        }
+    }
     intr_status |= bit;
     /* For SCSI interrupts: defer m68k_set_irq to the main loop tick.
      * Our synchronous ESP model completes commands instantly during the
@@ -649,9 +816,19 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == 0x02014021)
         return next_esp_dma_status_read();
 
-    /* Ethernet (MB8795): 0x02006000-0x0200600F */
-    if (address >= 0x02006000 && address < 0x02006010)
-        return 0;
+    /* Ethernet (MB8795 / AT&T 7213): 0x02006000-0x0200600F */
+    if (address >= 0x02006000 && address < 0x02006010) {
+        uint32_t reg = address - 0x02006000;
+        uint8_t val = enet_reg_read(reg);
+        static int en_r_log = 0;
+        if (en_r_log < 40) {
+            xil_printf("[ENET] R8 @%08X reg=$%X val=$%02X PC=$%08X\r\n",
+                       address, reg, val,
+                       m68k_get_reg(NULL, M68K_REG_PC));
+            en_r_log++;
+        }
+        return val;
+    }
 
     /* Printer (NeXTlaser): 0x0200F000-0x0200F003 (byte CSRs) */
     if (address >= 0x0200F000 && address <= 0x0200F003)
@@ -758,6 +935,18 @@ uint8_t next_io_read_8(uint32_t address)
         return (scr2_value >> (8 * (3 - byte_off))) & 0xFF;
     }
 
+    /* TMC/ADB byte reads — route through 32-bit and extract byte */
+    if (address >= 0x02200000 && address < 0x02210000) {
+        uint32_t aligned = address & ~3u;
+        uint32_t val32 = next_io_read_32(aligned);
+        int shift = 8 * (3 - (address & 3));
+        if (address >= 0x02208000 && address < 0x02208100)
+            xil_printf("[ADB] R8  @%08X val=$%02X PC=$%08X\r\n",
+                       address, (val32 >> shift) & 0xFF,
+                       m68k_get_reg(NULL, M68K_REG_PC));
+        return (val32 >> shift) & 0xFF;
+    }
+
     {
         static int unknown8_log = 0;
         if (unknown8_log < 20) {
@@ -790,6 +979,22 @@ uint32_t next_io_read_32(uint32_t address)
     address = next_io_canon(address);
     io_track(address);
     if (next_debug_io) io_log("R", address, 0, 4);
+    /* VBR / A7 change sentinel: sampled on I/O accesses (hot path).
+     * Logs whenever VBR changes value so we can see when the vector
+     * table gets relocated. */
+    {
+        static uint32_t last_vbr = 0xDEADBEEF;
+        static int vbr_log = 0;
+        uint32_t vbr = m68k_get_reg(NULL, M68K_REG_VBR);
+        if (vbr != last_vbr && vbr_log < 15) {
+            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+            uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
+            xil_printf("[VBR] change $%08X -> $%08X at PC=$%08X A7=$%08X\r\n",
+                       last_vbr, vbr, pc, sp);
+            last_vbr = vbr;
+            vbr_log++;
+        }
+    }
 
     /* Device probe detection — fires once per phase (ROM=phase 0, kernel=phase 1) */
     {
@@ -854,9 +1059,27 @@ uint32_t next_io_read_32(uint32_t address)
     if (address >= P_MON && address < P_MON + 16) {
         static int pmon_log = 0;
         static int pmon_late = 0;
+        static uint32_t pmon_last_pc = 0;
+        static int pmon_same_pc = 0;
+        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
         if (pmon_log < 5)
-            xil_printf("[PMON] R32 @%08X → KMS offset %X\r\n", address, address - P_MON);
+            xil_printf("[PMON] R32 @%08X → KMS off %X PC=$%08X\r\n",
+                       address, address - P_MON, pc);
         pmon_log++;
+        if (pc == pmon_last_pc) {
+            pmon_same_pc++;
+            /* Fire synthetic response very early — the ROM's KMS command
+             * latency on real hardware is tiny, and polling here wastes
+             * emulator cycles on every command cycle. */
+            if (pmon_same_pc == 8)
+                next_kms_force_response();
+            if (pmon_same_pc == 5000)
+                xil_printf("[KMS-LOOP] PC=$%08X still spinning on KMS off %X\r\n",
+                           pc, address - P_MON);
+        } else {
+            pmon_last_pc = pc;
+            pmon_same_pc = 0;
+        }
         /* Detect kernel phase polling (console input wait) */
         if (pmon_log > 100 && !pmon_late) {
             pmon_late = 1;
@@ -890,6 +1113,10 @@ uint32_t next_io_read_32(uint32_t address)
             /* SCSI channel: use dedicated DMA module */
             if (ch == 0)
                 return next_scsi_dma_csr_read();
+            if (ch == 7 || ch == 8)
+                xil_printf("[ENET-DMA] R32 @%08X ch=%d csr=$%02X PC=$%08X\r\n",
+                           address, ch, dma_csr[ch],
+                           m68k_get_reg(NULL, M68K_REG_PC));
             return (uint32_t)dma_csr[ch] << 24;
         }
     }
@@ -907,9 +1134,12 @@ uint32_t next_io_read_32(uint32_t address)
     /* TMC space: $02200000-$0220FFFF */
     if (address >= 0x02200000 && address < 0x02210000) {
         uint32_t tmc_off = address - 0x02200000;
-        /* TMC SCR1 at $02200000 — same as P_SCR1 */
+        /* TMC SCR1 at $02200000 — Turbo-specific value, NOT P_SCR1.
+         * The early ROM stack-pointer init at $00CC reads this and
+         * feeds it into MOVEC ISP/MSP, so the value must encode the
+         * Turbo cpu type / speeds / FMASK bits exactly. */
         if (tmc_off < 4)
-            return scr1_value;
+            return tmc_scr1_value;
         /* TMC Control at $02200010 — Turbo memory controller config.
          * Previous returns $0D17038F. Kernel reads this during device init.
          * Bits: parity, burst mode, memory config. */
@@ -931,17 +1161,21 @@ uint32_t next_io_read_32(uint32_t address)
         /* ADB registers at TMC+$8000-$80FF (mapped via $02208xxx) */
         if (tmc_off >= 0x8000 && tmc_off < 0x8100) {
             uint32_t adb_reg = tmc_off - 0x8000;
+            uint32_t val = 0;
             switch (adb_reg) {
-            case ADB_REG_INTSTATUS: return adb.intstatus;
-            case ADB_REG_INTMASK:   return adb.intmask;
-            case ADB_REG_CONFIG:    return adb.config;
-            case ADB_REG_STATUS:    return adb.status;
-            case ADB_REG_CMD:       return adb.command;
-            case ADB_REG_COUNT:     return adb.bitcount;
-            case ADB_REG_DATA0:     return adb.data0;
-            case ADB_REG_DATA1:     return adb.data1;
-            default:                return 0;
+            case ADB_REG_INTSTATUS: val = adb.intstatus; break;
+            case ADB_REG_INTMASK:   val = adb.intmask;   break;
+            case ADB_REG_CONFIG:    val = adb.config;    break;
+            case ADB_REG_STATUS:    val = adb.status;    break;
+            case ADB_REG_CMD:       val = adb.command;   break;
+            case ADB_REG_COUNT:     val = adb.bitcount;  break;
+            case ADB_REG_DATA0:     val = adb.data0;     break;
+            case ADB_REG_DATA1:     val = adb.data1;     break;
+            default:                val = 0;             break;
             }
+            xil_printf("[ADB] R32 @%08X reg=$%02X val=$%08X PC=$%08X\r\n",
+                       address, adb_reg, val, m68k_get_reg(NULL, M68K_REG_PC));
+            return val;
         }
         return 0;  /* other TMC registers */
     }
@@ -1001,6 +1235,20 @@ void next_io_write_8(uint32_t address, uint8_t value)
         return;
     }
 
+    /* Ethernet (MB8795 / AT&T 7213): 0x02006000-0x0200600F */
+    if (address >= 0x02006000 && address < 0x02006010) {
+        uint32_t reg = address - 0x02006000;
+        static int en_w_log = 0;
+        if (en_w_log < 40) {
+            xil_printf("[ENET] W8 @%08X reg=$%X val=$%02X PC=$%08X\r\n",
+                       address, reg, value,
+                       m68k_get_reg(NULL, M68K_REG_PC));
+            en_w_log++;
+        }
+        enet_reg_write(reg, value);
+        return;
+    }
+
     /* ESP/SCSI registers (byte-wide): 0x02014000-0x0201400F */
     if (address >= P_SCSI && address < P_SCSI + 0x10) {
         next_esp_write(address - P_SCSI, value);
@@ -1017,10 +1265,17 @@ void next_io_write_8(uint32_t address, uint8_t value)
         return;
     }
 
-    /* P_MON / KMS byte writes — mon_csr_and/mon_csr_or in monitor.s do
-     * byte read-modify-write at P_MON+0 (sound DMA enable/ovr bits). */
+    /* P_MON / KMS byte writes — monitor.s does byte read-modify-write
+     * on individual fields of mon_csr.  Reconstruct the 32-bit value
+     * with the byte updated in the correct position, then hand to
+     * next_kms_write so its per-field semantics are preserved. */
     if (address >= P_MON && address < P_MON + 16) {
-        next_kms_write((address - P_MON) & ~3, (uint32_t)value);
+        uint32_t aligned = (address - P_MON) & ~3;
+        int byte_off = (address - P_MON) & 3;
+        int shift = 8 * (3 - byte_off);
+        uint32_t cur = next_kms_read(aligned);
+        uint32_t newv = (cur & ~(0xFFu << shift)) | ((uint32_t)value << shift);
+        next_kms_write(aligned, newv);
         return;
     }
 
@@ -1066,6 +1321,19 @@ void next_io_write_8(uint32_t address, uint8_t value)
         }
         /* Writing CSR clears timer interrupt */
         next_intr_clear(I_IPL6_TIMER);
+        return;
+    }
+
+    /* TMC/ADB byte writes — read-modify-write through 32-bit handler */
+    if (address >= 0x02200000 && address < 0x02210000) {
+        uint32_t aligned = address & ~3u;
+        int shift = 8 * (3 - (address & 3));
+        uint32_t cur = next_io_read_32(aligned);
+        uint32_t newv = (cur & ~(0xFFu << shift)) | ((uint32_t)value << shift);
+        if (address >= 0x02208000 && address < 0x02208100)
+            xil_printf("[ADB] W8  @%08X val=$%02X PC=$%08X\r\n",
+                       address, value, m68k_get_reg(NULL, M68K_REG_PC));
+        next_io_write_32(aligned, newv);
         return;
     }
 
@@ -1120,12 +1388,26 @@ void next_io_write_32(uint32_t address, uint32_t value)
          * IPL1 (softint0) and IPL2 (softint1). These wake the kernel's
          * softint_thread which delivers deferred Mach IPC messages. */
         if (softint_enabled && ((value ^ scr2_value) & SCR2_SOFTINT0)) {
+            static int si0_log = 0;
+            if (si0_log < 10) {
+                xil_printf("[SI0] %s PC=$%08X\r\n",
+                    (value & SCR2_SOFTINT0) ? "SET" : "CLR",
+                    m68k_get_reg(NULL, M68K_REG_PC));
+                si0_log++;
+            }
             if (value & SCR2_SOFTINT0)
                 next_intr_set(I_IPL1_SOFTINT0);
             else
                 next_intr_clear(I_IPL1_SOFTINT0);
         }
         if (softint_enabled && ((value ^ scr2_value) & SCR2_SOFTINT1)) {
+            static int si1_log = 0;
+            if (si1_log < 10) {
+                xil_printf("[SI1] %s PC=$%08X\r\n",
+                    (value & SCR2_SOFTINT1) ? "SET" : "CLR",
+                    m68k_get_reg(NULL, M68K_REG_PC));
+                si1_log++;
+            }
             if (value & SCR2_SOFTINT1)
                 next_intr_set(I_IPL2_SOFTINT1);
             else
@@ -1179,6 +1461,10 @@ void next_io_write_32(uint32_t address, uint32_t value)
                 next_scsi_dma_csr_write(value);
                 return;
             }
+            if (ch == 7 || ch == 8)
+                xil_printf("[ENET-DMA] W32 @%08X ch=%d val=$%08X PC=$%08X\r\n",
+                           address, ch, value,
+                           m68k_get_reg(NULL, M68K_REG_PC));
             /* Decode Turbo write bits and update internal state,
              * same logic as SCSI DMA CSR write */
             if (value & 0x00100000)  /* TDMA_RESET */
@@ -1254,15 +1540,20 @@ void next_io_write_32(uint32_t address, uint32_t value)
         /* ADB registers at TMC+$8000-$80FF */
         if (tmc_off >= 0x8000 && tmc_off < 0x8100) {
             uint32_t adb_reg = tmc_off - 0x8000;
+            xil_printf("[ADB] W32 @%08X reg=$%02X val=$%08X PC=$%08X\r\n",
+                       address, adb_reg, value, m68k_get_reg(NULL, M68K_REG_PC));
             switch (adb_reg) {
             case ADB_REG_INTSTATUS:
                 adb.intstatus &= ~value;  /* write-1-to-clear */
+                adb_update_irq();
                 break;
             case ADB_REG_INTMASK:
                 adb.intmask = value;
+                adb_update_irq();
                 break;
             case ADB_REG_SETINT:
                 adb.intstatus |= value;
+                adb_update_irq();
                 break;
             case ADB_REG_CONFIG:
                 adb.config = value;
@@ -1291,6 +1582,7 @@ void next_io_write_32(uint32_t address, uint32_t value)
                     else
                         adb.status |= ADB_STAT_POLL_EN;
                 }
+                adb_update_irq();
                 break;
             case ADB_REG_CMD:
                 adb.command = value;
@@ -1317,3 +1609,4 @@ void next_io_write_32(uint32_t address, uint32_t value)
 }
 
 uint32_t next_get_mon_global(void) { return p_mon_value; }
+uint32_t next_scr1_get(void) { return scr1_value; }

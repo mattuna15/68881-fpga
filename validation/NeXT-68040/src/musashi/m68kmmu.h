@@ -445,16 +445,8 @@ uint pmmu_translate_addr_040(uint addr_in)
 			tt_hit = 4;
 	}
 	if (tt_hit) {
-		/* Warn if TT maps to physical address outside RAM */
-		if (addr_in >= 0x05000000 && addr_in < 0x08000000) {
-			static int tt_oob_count = 0;
-			if (tt_oob_count < 20) {
-				xil_printf("[TT-OOB] %s%d VA=$%08X → PA=$%08X (outside 16MB RAM!) FC=%d PC=$%08X\r\n",
-					is_data ? "DTT" : "ITT", (tt_hit <= 2) ? (tt_hit-1) : (tt_hit-3),
-					addr_in, addr_in, fc, REG_PPC);
-				tt_oob_count++;
-			}
-		}
+		/* RAM is now the full 128 MB Turbo window ($04000000-$0BFFFFFF),
+		 * ending exactly at the VRAM base — no hole to warn about. */
 		return addr_in;
 	}
 

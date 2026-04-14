@@ -31,12 +31,14 @@
  * may differ between compiler versions. We build the structure by
  * writing bytes directly into emulated RAM. */
 
-/* Write a big-endian 32-bit value into RAM at physical address */
+/* Write a big-endian 32-bit value into RAM at physical address.
+ * Uses the same bank-masked offset as the main memory read/write
+ * paths in next_memory.c so the CPU sees the same bytes we wrote. */
 static void ram_wr32(uint32_t addr, uint32_t val)
 {
     if (addr < NEXT_RAM_BASE || addr >= NEXT_RAM_BASE + NEXT_RAM_SIZE)
         return;
-    uint32_t off = addr - NEXT_RAM_BASE;
+    uint32_t off = addr & 0x07FFFFFFu;
     next_ram[off + 0] = (val >> 24) & 0xFF;
     next_ram[off + 1] = (val >> 16) & 0xFF;
     next_ram[off + 2] = (val >>  8) & 0xFF;
@@ -47,7 +49,7 @@ static void ram_wr8(uint32_t addr, uint8_t val)
 {
     if (addr < NEXT_RAM_BASE || addr >= NEXT_RAM_BASE + NEXT_RAM_SIZE)
         return;
-    next_ram[addr - NEXT_RAM_BASE] = val;
+    next_ram[addr & 0x07FFFFFFu] = val;
 }
 
 uint32_t next_mon_build(uint32_t mg_addr, uint32_t ram_base,
@@ -56,16 +58,19 @@ uint32_t next_mon_build(uint32_t mg_addr, uint32_t ram_base,
     /* Zero the mon_global area (512 bytes should cover the structure) */
     uint32_t mg_size = 512;
     if (mg_addr >= NEXT_RAM_BASE && mg_addr + mg_size <= NEXT_RAM_BASE + NEXT_RAM_SIZE) {
-        memset(&next_ram[mg_addr - NEXT_RAM_BASE], 0, mg_size);
+        /* Zero via the per-byte write helper so we go through the
+         * bank-mask offset like every other writer. */
+        for (uint32_t i = 0; i < mg_size; i++)
+            ram_wr8(mg_addr + i, 0);
     }
 
     /* mg_simm[0..3]: SIMM configuration.
-     * Each byte encodes the SIMM size: 0x04 = 4MB, 0x01 = 1MB, 0x00 = empty.
-     * We report 4x 4MB SIMMs = 16 MB total. */
-    ram_wr8(mg_addr + 0x00, 0x04);  /* SIMM 0: 4 MB */
-    ram_wr8(mg_addr + 0x01, 0x04);  /* SIMM 1: 4 MB */
-    ram_wr8(mg_addr + 0x02, 0x04);  /* SIMM 2: 4 MB */
-    ram_wr8(mg_addr + 0x03, 0x04);  /* SIMM 3: 4 MB */
+     * Each byte encodes the SIMM size: 0x20 = 32MB, 0x10 = 16MB, 0x04 = 4MB,
+     * 0x01 = 1MB, 0x00 = empty. We report 4x 32MB SIMMs = 128 MB total. */
+    ram_wr8(mg_addr + 0x00, 0x20);  /* SIMM 0: 32 MB */
+    ram_wr8(mg_addr + 0x01, 0x20);  /* SIMM 1: 32 MB */
+    ram_wr8(mg_addr + 0x02, 0x20);  /* SIMM 2: 32 MB */
+    ram_wr8(mg_addr + 0x03, 0x20);  /* SIMM 3: 32 MB */
 
     /* mg_flags (offset 0x04): boot flags */
     ram_wr8(mg_addr + 0x04, 0x00);

@@ -214,31 +214,53 @@ void next_rtc_init(void)
      *   [30-31] ni_cksum (ones-complement checksum)
      */
     {
-        /* Use the Previous emulator's proven NVRAM defaults
-         * (from previous/src/rtcnvram.c nvram_default[]).
-         * These are known to work for both Turbo and non-Turbo ROMs. */
-        static const uint8_t nvram_default[32] = {
-            0x94, 0x0f, 0x40, 0x00,             /* byte 0-3:   volume/brightness/reset=9 */
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 4-9:   hw password/ethernet */
-            0xFD, 0xB6,                          /* byte 10-11: SIMM config (4x4MB page-mode) */
-            0x00, 0x00,                          /* byte 12-13: adobe */
-            0x00, 0x00, 0x00,                    /* byte 14-16: POT=0x00 (all tests disabled) */
-            0x00,                                /* byte 17:    clock chip flags */
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 18-29: boot command (empty) */
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00                           /* byte 30-31: checksum (recomputed below) */
-        };
-        memcpy(rtc_regs, nvram_default, 32);
+        /* Build Turbo NVRAM layout.  Bytes 0-3 config, 10-11 SIMM
+         * (Turbo encoding), 18-19 boot command, rest zero.  Matches
+         * Previous's nvram_init() output for a 64 MB Turbo system. */
+        memset(rtc_regs, 0, 32);
 
-        /* Set ni_new_clock_chip for MCS1850 (Turbo RTC) */
-        rtc_regs[17] |= 0x80;
+        /* Bytes 0-3: 0x940F4000 = reset=9 | brightness=0x3D<<14 | allow_eject=0
+         * Matches Previous's base config value. */
+        rtc_regs[0] = 0x94;
+        rtc_regs[1] = 0x0F;
+        rtc_regs[2] = 0x40;
+        rtc_regs[3] = 0x00;
+
+        /* Bytes 10-11: SIMM config for Turbo.
+         * Layout: SIMMconfig = (parity<<8) | (simm3<<9) | (simm2<<6) |
+         *                      (simm1<<3)  |  simm0
+         * Turbo parity bits = 0.  For 64 MB as 4×16MB (two SIMM_32MB_T
+         * pairs), each simm field = SIMM_32MB_T (0x1).
+         * = (0) | (1<<9)|(1<<6)|(1<<3)|1 = 0x249 → byte10=0x02 byte11=0x49 */
+        rtc_regs[10] = 0x02;
+        rtc_regs[11] = 0x49;
+
+        /* Byte 14 (ni_pot): POT_ON (0x01) | BOOT_POT (0x20) = skip all
+         * self-tests and boot directly.  Without BOOT_POT the ROM still
+         * runs the short POST sequence and displays "testing system…"
+         * before branching to the boot path; with it set the ROM takes
+         * the express boot path straight out of the reset handler.
+         *
+         * Bits (from Previous rtcnvram.c):
+         *   0x01 POT_ON           master enable (required for flags to matter)
+         *   0x02 EXTENDED_POT     extended tests
+         *   0x04 LOOP_POT         loop forever
+         *   0x08 VERBOSE_POT      verbose test output
+         *   0x10 TEST_DRAM_POT    DRAM test
+         *   0x20 BOOT_POT         skip tests, boot immediately
+         *   0x40 TEST_MONITOR_POT monitor test */
+        rtc_regs[14] = 0x21;  /* POT_ON | BOOT_POT */
+
+        /* Byte 17: ni_new_clock_chip bit 7 = MCS1850 */
+        rtc_regs[17] = 0x80;
+
+        /* Bytes 18-19: boot command "sd" → SCSI auto-boot */
+        rtc_regs[18] = 's';
+        rtc_regs[19] = 'd';
 
         /* Set ni_alt_cons for serial console on both QEMU and hardware.
          * Without this, the ROM takes a video console init path that
-         * includes a timing calibration failing on hardware (error 4).
-         * Display output still works: the ROM renders to the bitmap
-         * console regardless of ni_alt_cons (POST output goes to VRAM).
-         * ni_alt_cons only affects the input source (serial vs keyboard). */
+         * includes a timing calibration failing on hardware (error 4). */
         rtc_regs[0] |= 0x08;  /* bit 27 = ni_alt_cons */
 
         /* Recompute ones-complement checksum */

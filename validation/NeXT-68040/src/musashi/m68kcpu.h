@@ -1923,11 +1923,29 @@ static inline void m68ki_stack_frame_1011(uint sr, uint vector, uint pc)
 }
 
 
+/* Compact exception entry logger.  Dumps vector, PPC/PC, SR, A7 for
+ * the first N exceptions of any kind so we can see exactly what the
+ * CPU is throwing and from where. */
+static inline void emu_exc_log(const char *kind, uint vec)
+{
+	static int exc_log = 0;
+	if (exc_log < 30) {
+		xil_printf("[EXC] %s vec=%d PPC=$%08X PC=$%08X SR=$%04X A7=$%08X\r\n",
+		           kind, vec,
+		           (unsigned int)ADDRESS_68K(REG_PPC),
+		           (unsigned int)ADDRESS_68K(REG_PC),
+		           (unsigned int)(m68ki_get_sr() & 0xFFFF),
+		           (unsigned int)REG_A[7]);
+		exc_log++;
+	}
+}
+
 /* Used for Group 2 exceptions.
  * These stack a type 2 frame on the 020.
  */
 static inline void m68ki_exception_trap(uint vector)
 {
+	emu_exc_log("TRAP", vector);
 	uint sr = m68ki_init_exception();
 
 	if(CPU_TYPE_IS_010_LESS(CPU_TYPE))
@@ -1997,6 +2015,7 @@ static inline void m68ki_exception_trace(void)
 /* Exception for privilege violation */
 static inline void m68ki_exception_privilege_violation(void)
 {
+	emu_exc_log("PRIV", EXCEPTION_PRIVILEGE_VIOLATION);
 	uint sr = m68ki_init_exception();
 
 	#if M68K_EMULATE_ADDRESS_ERROR == M68K_OPT_ON
@@ -2022,6 +2041,7 @@ static inline void m68ki_exception_bus_error(void)
 {
 	int i;
 
+	emu_exc_log("BUSERR", EXCEPTION_BUS_ERROR);
 	/* If we were processing a bus error, address error, or reset,
 	 * while writing the stack frame, this is a catastrophic failure.
 	 * Halt the CPU
@@ -2058,6 +2078,7 @@ extern int cpu_log_enabled;
 /* Exception for A-Line instructions */
 static inline void m68ki_exception_1010(void)
 {
+	emu_exc_log("ALINE", EXCEPTION_1010);
 	uint sr;
 #if M68K_LOG_1010_1111 == M68K_OPT_ON
 	M68K_DO_LOG_EMU((M68K_LOG_FILEHANDLE "%s at %08x: called 1010 instruction %04x (%s)\n",
@@ -2076,6 +2097,7 @@ static inline void m68ki_exception_1010(void)
 /* Exception for F-Line instructions */
 static inline void m68ki_exception_1111(void)
 {
+	emu_exc_log("FLINE", EXCEPTION_1111);
 	uint sr;
 
 #if M68K_LOG_1010_1111 == M68K_OPT_ON
@@ -2118,6 +2140,7 @@ extern int m68ki_trap_callback(int);
 /* Exception for illegal instructions */
 static inline void m68ki_exception_illegal(void)
 {
+	emu_exc_log("ILLEG", EXCEPTION_ILLEGAL_INSTRUCTION);
 	uint sr;
 
 	M68K_DO_LOG((M68K_LOG_FILEHANDLE "%s at %08x: illegal instruction %04x (%s)\n",
@@ -2130,8 +2153,15 @@ static inline void m68ki_exception_illegal(void)
 	if (!FLAG_S) {
 		static int illg_user_log = 0;
 		if (illg_user_log < 10) {
+			unsigned int ppc = ADDRESS_68K(REG_PPC);
 			xil_printf("[ILLG-USER] illegal $%04X at PC=$%08X\r\n",
-				REG_IR, ADDRESS_68K(REG_PPC));
+				REG_IR, ppc);
+			/* Dump surrounding words so we can decode the real instruction */
+			for (int i = -8; i <= 8; i += 2) {
+				unsigned int a = ppc + i;
+				xil_printf("  $%08X: %04X\r\n", a,
+					m68k_read_memory_16(a));
+			}
 			illg_user_log++;
 		}
 	}
@@ -2155,6 +2185,7 @@ static inline void m68ki_exception_illegal(void)
 /* Exception for format errror in RTE */
 static inline void m68ki_exception_format_error(void)
 {
+	emu_exc_log("FORMAT", EXCEPTION_FORMAT_ERROR);
 	uint sr = m68ki_init_exception();
 	m68ki_stack_frame_0000(REG_PC, sr, EXCEPTION_FORMAT_ERROR);
 	m68ki_jump_vector(EXCEPTION_FORMAT_ERROR);
@@ -2166,6 +2197,7 @@ static inline void m68ki_exception_format_error(void)
 /* Exception for address error */
 static inline void m68ki_exception_address_error(void)
 {
+	emu_exc_log("ADDRERR", EXCEPTION_ADDRESS_ERROR);
 	uint sr = m68ki_init_exception();
 
 	/* If we were processing a bus error, address error, or reset,

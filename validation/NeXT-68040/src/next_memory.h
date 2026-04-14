@@ -19,9 +19,12 @@
 #include "xil_printf.h"
 #include <stdint.h>
 
-/* Main RAM: 16 MB at 0x04000000 */
+/* Main RAM: 128 MB at 0x04000000.  Turbo NeXTstation supports up to
+ * 128 MB, ending exactly at the Turbo VRAM base ($0C000000).  Using
+ * the full window eliminates the RAM hole the Turbo ROM memory-sizing
+ * probe otherwise walks into. */
 #define NEXT_RAM_BASE   0x04000000
-#define NEXT_RAM_SIZE   (16 * 1024 * 1024)
+#define NEXT_RAM_SIZE   (128 * 1024 * 1024)
 
 /* EPROM: 128 KB at 0x00000000, also mirrored at 0x01000000 (BMAP) */
 #define NEXT_ROM_BASE   0x00000000
@@ -64,22 +67,46 @@ void         m68k_write_memory_16(unsigned int address, unsigned int value);
 void         m68k_write_memory_32(unsigned int address, unsigned int value);
 
 /* Physical memory read — bypasses MMU translation.
- * Used by the 68040 page table walker to read descriptors. */
+ * Used by the 68040 page table walker to read descriptors, and by the
+ * debug dumper to inspect stack/code contents without re-entering the
+ * MMU. */
 static inline uint32_t next_phys_read_32(uint32_t addr)
 {
     addr &= 0x7FFFFFFF;  /* strip TT bit 31 */
     if (addr >= NEXT_RAM_BASE && addr + 3 < NEXT_RAM_BASE + NEXT_RAM_SIZE) {
-        uint32_t off = addr - NEXT_RAM_BASE;
+        /* Bank-masked offset — match next_memory.c::ram_offset(). */
+        uint32_t off = addr & 0x07FFFFFFu;
         return ((uint32_t)next_ram[off] << 24) |
                ((uint32_t)next_ram[off+1] << 16) |
                ((uint32_t)next_ram[off+2] << 8) |
                 (uint32_t)next_ram[off+3];
     }
+    /* VRAM — both the classic and Turbo aliases map to next_vram[] */
+    if ((addr >= 0x0B000000 && addr + 3 < 0x0B000000 + NEXT_VRAM_SIZE) ||
+        (addr >= NEXT_VRAM_TURBO_BASE &&
+         addr + 3 < NEXT_VRAM_TURBO_BASE + NEXT_VRAM_SIZE)) {
+        uint32_t off = addr & (NEXT_VRAM_SIZE - 1);
+        return ((uint32_t)next_vram[off]   << 24) |
+               ((uint32_t)next_vram[off+1] << 16) |
+               ((uint32_t)next_vram[off+2] <<  8) |
+                (uint32_t)next_vram[off+3];
+    }
+    /* ROM base ($00000000..$0001FFFF) and mirror ($01000000..$0101FFFF).
+     * The CPU usually fetches from the mirror once MMU is up, so the
+     * debug dumper must handle both. */
     if (addr + 3 < NEXT_ROM_SIZE) {
         return ((uint32_t)next_rom[addr] << 24) |
                ((uint32_t)next_rom[addr+1] << 16) |
                ((uint32_t)next_rom[addr+2] << 8) |
                 (uint32_t)next_rom[addr+3];
+    }
+    if (addr >= NEXT_ROM_BMAP &&
+        addr + 3 < NEXT_ROM_BMAP + NEXT_ROM_SIZE) {
+        uint32_t off = addr - NEXT_ROM_BMAP;
+        return ((uint32_t)next_rom[off]   << 24) |
+               ((uint32_t)next_rom[off+1] << 16) |
+               ((uint32_t)next_rom[off+2] <<  8) |
+                (uint32_t)next_rom[off+3];
     }
     /* Unmapped address — log first few occurrences to aid debugging */
     {
@@ -98,7 +125,8 @@ static inline void next_phys_write_32(uint32_t addr, uint32_t val)
 {
     addr &= 0x7FFFFFFF;  /* strip TT bit 31 */
     if (addr >= NEXT_RAM_BASE && addr + 3 < NEXT_RAM_BASE + NEXT_RAM_SIZE) {
-        uint32_t off = addr - NEXT_RAM_BASE;
+        /* Bank-masked offset — match next_memory.c::ram_offset(). */
+        uint32_t off = addr & 0x07FFFFFFu;
         next_ram[off]   = (val >> 24) & 0xFF;
         next_ram[off+1] = (val >> 16) & 0xFF;
         next_ram[off+2] = (val >>  8) & 0xFF;

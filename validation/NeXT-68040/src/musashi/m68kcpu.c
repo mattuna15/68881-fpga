@@ -59,6 +59,11 @@ int  m68ki_initial_cycles;
 int  m68ki_remaining_cycles = 0;                     /* Number of clocks remaining */
 uint m68ki_tracing = 0;
 int  rte_format7_count = 0;                          /* Format 7 RTE completions */
+
+/* Exported accessor for fline_handler.c — it needs to know whether the
+ * PMMU is engaged, to decide if F-line operand addresses must be
+ * translated through pmmu_translate_addr() before the user callback. */
+int fh_pmmu_enabled(void) { return m68ki_cpu.pmmu_enabled; }
 int  mmu040_fault_total = 0;                         /* Total ATC faults */
 int  mmu040_fault_reset_at = 0;                      /* ATC fault count at last BUSRST */
 int  mmu040_write_pending = 0;                       /* 1 during write translations */

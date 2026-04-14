@@ -239,9 +239,15 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
             if (phys >= NEXT_RAM_BASE && phys < NEXT_RAM_BASE + NEXT_RAM_SIZE) {
                 uint32_t ram_avail = (NEXT_RAM_BASE + NEXT_RAM_SIZE) - phys;
                 if (chunk > ram_avail) chunk = ram_avail;
+                /* Bank-masked offset (matches next_memory.c::ram_offset).
+                 * Only the bank 1→bank 2 boundary at $08000000 is
+                 * non-contiguous in the flat buffer, so clip chunk to
+                 * stop before $08000000 if we'd cross it. */
+                if (phys < 0x08000000u && phys + chunk > 0x08000000u)
+                    chunk = 0x08000000u - phys;
                 uint8_t *src = next_scsi_get_buffer_ptr();
                 if (src) {
-                    memcpy(&next_ram[phys - NEXT_RAM_BASE], src, chunk);
+                    memcpy(&next_ram[phys & 0x07FFFFFFu], src, chunk);
                 } else {
                     DPRINTF("[DMA] NULL src at phys=$%08X\r\n", phys);
                     break;
@@ -316,7 +322,7 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
             uint32_t verify_addr = (dma.next - total) & 0x7FFFFFFF;
             if (verify_addr >= NEXT_RAM_BASE &&
                 verify_addr + 8 <= NEXT_RAM_BASE + NEXT_RAM_SIZE) {
-                uint32_t off = verify_addr - NEXT_RAM_BASE;
+                uint32_t off = verify_addr & 0x07FFFFFFu;
                 xil_printf("[DMA-V] %d bytes → $%08X: %02X %02X %02X %02X %02X %02X %02X %02X\r\n",
                     total, verify_addr,
                     next_ram[off], next_ram[off+1], next_ram[off+2], next_ram[off+3],

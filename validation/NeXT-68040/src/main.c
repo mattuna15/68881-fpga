@@ -20,7 +20,9 @@
 #include "next_mon_stub.h"
 #include "next_hw.h"
 #ifdef TEST_ROM
-#ifdef MMU_TEST_ROM
+#ifdef FPU_TEST_ROM
+#include "../test/fpu_test_rom.h"
+#elif defined(MMU_TEST_ROM)
 #include "../test/mmu_test_rom.h"
 #else
 #include "../test/timer_test_rom.h"
@@ -254,8 +256,35 @@ void trap_log_dump(void) {
  * Rev 2.5 v66 (68040):  discovered at runtime from mg_putc field */
 static uint32_t rom_putc_addr = 0;  /* 0 = not yet discovered */
 
+/* Sliding 16-entry ring buffer of recent PCs.  Dumped on the first OOB
+ * fetch trap so we can see the last ~16 instructions the CPU executed
+ * before running off into garbage. */
+#define PC_RING_SIZE 16
+static uint32_t pc_ring[PC_RING_SIZE];
+static uint32_t pc_ring_idx;
+
+void emu_dump_pc_ring(const char *why)
+{
+    xil_printf("[PCRING] %s — last %d PCs (oldest→newest):\r\n", why, PC_RING_SIZE);
+    for (int i = 0; i < PC_RING_SIZE; i++) {
+        uint32_t p = pc_ring[(pc_ring_idx + i) % PC_RING_SIZE];
+        xil_printf("  %2d: $%08X\r\n", i, p);
+    }
+}
+
 void emu_instr_hook(unsigned int pc)
 {
+    pc_ring[pc_ring_idx % PC_RING_SIZE] = pc;
+    pc_ring_idx++;
+
+    /* Track A7 change around the specific ROM routine whose RTS is
+     * popping garbage.  Log PC + A7 when PC is in the helper/caller
+     * range AND A7 is near the crashed slot. */
+    {
+        uint32_t a7 = m68k_get_reg(NULL, M68K_REG_A7);
+        (void)a7;  /* A7 tracking now disabled — root cause fixed */
+    }
+
     /* Track user-mode instruction count (only after first syscall fires) */
     if (trap_log_total > 0) {
         uint16_t sr = m68k_get_reg(NULL, M68K_REG_SR);
@@ -343,24 +372,28 @@ void emu_instr_hook(unsigned int pc)
              * search for "errno " in physical RAM. */
             if (!errno_search_done) {
                 errno_search_done = 1;
-                for (uint32_t off = 0; off < 0x00C00000 && !errno_str_addr; off += 2) {
-                    if (next_ram[off]   == 'e' && next_ram[off+1] == 'r' &&
-                        next_ram[off+2] == 'r' && next_ram[off+3] == 'n' &&
-                        next_ram[off+4] == 'o' && next_ram[off+5] == ' ') {
-                        /* Check for "Load of" nearby (within 64 bytes before) */
+                /* Kernel text/data lives in bank 0 ($04000000..$04C00000).
+                 * Iterate virtual addresses so the bank-mask offset is
+                 * applied correctly for every byte read. */
+                #define RAM_B(va) (next_ram[(va) & 0x07FFFFFFu])
+                for (uint32_t va = NEXT_RAM_BASE;
+                     va < NEXT_RAM_BASE + 0x00C00000 && !errno_str_addr;
+                     va += 2) {
+                    if (RAM_B(va)   == 'e' && RAM_B(va+1) == 'r' &&
+                        RAM_B(va+2) == 'r' && RAM_B(va+3) == 'n' &&
+                        RAM_B(va+4) == 'o' && RAM_B(va+5) == ' ') {
                         for (int back = 4; back < 64; back++) {
-                            if (off >= (uint32_t)back &&
-                                next_ram[off-back]   == 'L' &&
-                                next_ram[off-back+1] == 'o' &&
-                                next_ram[off-back+2] == 'a' &&
-                                next_ram[off-back+3] == 'd') {
-                                errno_str_addr = NEXT_RAM_BASE + off - back;
+                            if (va >= NEXT_RAM_BASE + (uint32_t)back &&
+                                RAM_B(va-back)   == 'L' &&
+                                RAM_B(va-back+1) == 'o' &&
+                                RAM_B(va-back+2) == 'a' &&
+                                RAM_B(va-back+3) == 'd') {
+                                errno_str_addr = va - back;
                                 xil_printf("[EXEC-FIND] 'Load of...errno' string at VA=$%08X\r\n",
                                            errno_str_addr);
-                                /* Dump 64 bytes of the string */
                                 xil_printf("[EXEC-FIND] ");
                                 for (int j = 0; j < 64; j++) {
-                                    uint8_t ch = next_ram[off - back + j];
+                                    uint8_t ch = RAM_B(va - back + j);
                                     if (ch >= 0x20 && ch < 0x7F) xil_printf("%c", ch);
                                     else if (ch == 0) { xil_printf("\\0"); break; }
                                     else xil_printf(".");
@@ -371,6 +404,7 @@ void emu_instr_hook(unsigned int pc)
                         }
                     }
                 }
+                #undef RAM_B
                 if (!errno_str_addr)
                     xil_printf("[EXEC-FIND] 'errno' string NOT found in kernel RAM\r\n");
             }
@@ -481,6 +515,20 @@ static void poll_uart_rx(void);
 int emu_int_ack_callback(int int_level)
 {
     int vec = next_intr_acknowledge(int_level);
+    {
+        static int iack_log = 0;
+        if (iack_log < 40) {
+            uint32_t pc  = m68k_get_reg(NULL, M68K_REG_PC);
+            uint32_t vbr = m68k_get_reg(NULL, M68K_REG_VBR);
+            int vnum = (vec >= 0) ? vec : (24 + int_level);
+            uint32_t handler = next_phys_read_32(vbr + vnum * 4);
+            xil_printf("[IACK] ipl=%d vec=%d(%s) PC=$%08X VBR=$%08X handler=$%08X\r\n",
+                       int_level, vnum,
+                       (vec >= 0) ? "user" : "auto",
+                       pc, vbr, handler);
+            iack_log++;
+        }
+    }
     if (vec >= 0)
         return vec;
     return M68K_INT_ACK_AUTOVECTOR;
@@ -537,10 +585,15 @@ static void next_boot(void)
         next_ufs_diagnose();
     } else
         xil_printf("[NEXT] SCSI disk: no disk image found\r\n");
-    xil_printf("[NEXT] Device stubs: SCR1=%08X (WARP9/040)\r\n",
-               SCR1_VALUE(NeXT_WARP9, 0));
+    {
+        extern uint32_t next_scr1_get(void);
+        xil_printf("[NEXT] Device stubs: SCR1=%08X (Turbo)\r\n",
+                   next_scr1_get());
+    }
 
-    /* Build ROM monitor stub (mon_global) in RAM */
+    /* Build ROM monitor stub (mon_global) in RAM.  Machine type stays
+     * WARP9 — Turbo is indicated via the SCR1_TURBO bit (0x4000) which we
+     * set in next_devs_init(). */
     uint32_t mg_addr = next_mon_build(MON_GLOBAL_ADDR,
                                        NEXT_RAM_BASE, NEXT_RAM_SIZE,
                                        NeXT_WARP9);
@@ -608,7 +661,9 @@ static void next_boot(void)
     render_core1_start(pixel_buf, dp_ok);
 #endif
 
-    /* Initialise Musashi as 68LC040 (68040 without internal FPU) */
+    /* Initialise Musashi as 68LC040 (68040 without internal FPU).
+     * Interrupt-ack and illegal/F-line callbacks are bound at compile
+     * time via m68kconf.h (emu_int_ack_callback, fline_illg_callback). */
     m68k_set_cpu_type(M68K_CPU_TYPE_68LC040);
     m68k_init();
     m68k_pulse_reset();

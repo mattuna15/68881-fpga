@@ -518,18 +518,16 @@ static void esp_transfer_info(void)
 
 static void esp_initiator_command_complete(void)
 {
-    /* Get status byte from SCSI target */
+    /* ICCS drives the bus from STATUS → MSG-IN explicitly.
+     * Matches Previous's architecture where the ESP layer owns phase
+     * transitions (see previous/src/esp.c: esp_message_accepted et al). */
     uint8_t st = next_scsi_send_status();
     esp_fifo_write(st);
 
-    if (next_scsi_get_phase() != SCSI_PHASE_MI) {
-        esp_command_clear();
-        esp.intstatus = INTR_BS;
-        esp_raise_irq();
-        return;
-    }
+    /* Advance bus to MSG-IN so the follow-up FIFO read hands over the
+     * command-complete message byte. */
+    next_scsi_set_phase(SCSI_PHASE_MI);
 
-    /* Get message byte */
     uint8_t msg = next_scsi_send_message();
     esp_fifo_write(msg);
 

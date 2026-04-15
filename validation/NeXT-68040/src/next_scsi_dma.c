@@ -15,6 +15,7 @@
 #include "next_devs.h"
 #include "xil_printf.h"
 #include <string.h>
+#include <stdbool.h>
 
 /* Quiet mode: all DMA prints go through debug toggle */
 extern int next_debug_scsi;
@@ -307,8 +308,15 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
                 dma.next, dma.limit, direction);
     }
 
-    /* Signal completion only if data was actually transferred without error */
-    if (total > 0 && !(dma.csr & DMA_BUSEXC)) {
+    /* Signal completion whenever the ESP counter drained or the DMA
+     * window filled, regardless of how many bytes moved. Previous
+     * (esp.c:758-762) always raises the done-interrupt when
+     * esp_counter==0 — gating ours on `total>0` meant that phase-change
+     * transfers and zero-length transfer_info commands silently left
+     * DMA_COMPLETE clear, and the driver IRQ handler would never see
+     * "done" for this cycle. */
+    bool done = (*esp_counter == 0) || (dma.next >= dma.limit);
+    if (done && !(dma.csr & DMA_BUSEXC)) {
         dma.csr |= DMA_COMPLETE;
         dma.csr &= ~DMA_ENABLE;
         next_intr_set(I_IPL6_SCSI_DMA);

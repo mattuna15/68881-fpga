@@ -1168,6 +1168,16 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
  * We read the 68882 frame from hardware and translate to 68040 format
  * for the 68K memory, since the Turbo ROM expects 68040 frames.
  */
+/* NOTE: ideally these would be $41... to match real MC68040 (and
+ * Previous with fpu_model=68040 — see previous/src/cpu/fpp.c:1039),
+ * which would make the NeXT kernel print "FPU version 0x41". But the
+ * NeXT monitor ROM does its own early FPSP-style FSAVE probe very
+ * early in init (~PC $01004xxx) and uses exact `cmpi.l #$40000000`
+ * compares against the frame — giving it a $41... frame makes it spin
+ * forever in the ROM delay loop at $0100411E. Until we can either
+ * patch the ROM detect path or distinguish monitor-context vs
+ * kernel-context FSAVEs, stay at $40... and accept that locore.s will
+ * print "FPU version 0x40". */
 #define FMT_68040_NULL   0x00000000u
 #define FMT_68040_IDLE   0x40000000u
 #define FMT_68040_UNIMP  0x40280000u

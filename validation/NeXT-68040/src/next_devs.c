@@ -593,8 +593,18 @@ int next_timer_tick(int cycles)
     if (usecs == 0)
         return 0;
 
-    /* Advance the live 16-bit counter (1 µs per tick) */
-    timer_counter += (uint16_t)usecs;
+    /* Advance the live 16-bit counter. On real hardware this ticks at
+     * 1 MHz (1 µs per tick). We run it at 1024× real rate so the ROM's
+     * POST calibration loop at $010040F0..$0100413C — which reads the
+     * counter, runs a nested DBEQ delay, reads again, and picks a delay
+     * constant from the ratio — sees "enormous progress per tick" and
+     * converges on the first outer-loop pass. Without this scaling,
+     * emulator throughput (≪ real 25 MHz) makes the ROM's outer DBEQ
+     * retry run tens of thousands of times before the target delta is
+     * reached, and every subsequent delay blocks for many seconds.
+     * Downstream code that uses P_TIMER only reads deltas, so the
+     * absolute rate doesn't matter. */
+    timer_counter += (uint16_t)(usecs * 1024);
 
     /* Advance the event counter (used by kernel DELAY/event_get).
      * Multiplied by 4096 to speed up the bit-19 boundary check used by

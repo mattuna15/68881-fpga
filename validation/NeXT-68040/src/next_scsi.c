@@ -626,7 +626,9 @@ void next_scsi_receive_data(uint8_t val)
 
 uint8_t next_scsi_send_status(void)
 {
-    disk.phase = SCSI_PHASE_MI;
+    /* Return status byte only. Phase management is the ESP layer's job
+     * (matches Previous's architecture — phase is mutated explicitly in
+     * esp.c, not as a side effect of an accessor). */
     return disk.status;
 }
 

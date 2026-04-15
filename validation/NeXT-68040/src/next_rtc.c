@@ -91,8 +91,16 @@ static int      rtc_prev_clk;   /* previous RTCLK state */
 /* ------------------------------------------------------------------ */
 /* Backend: read the seconds counter                                   */
 /* ------------------------------------------------------------------ */
-/* Default epoch: 2024-01-01 00:00:00 UTC in NeXT epoch seconds */
-#define NEXT_EPOCH_DEFAULT  3913401600u
+/* Default time value: 2024-01-01 00:00:00 UTC expressed as UNIX
+ * seconds (seconds since 1970-01-01).  The NeXT kernel's rtc_get()
+ * (next/clock.c:378) takes CNTR0..CNTR3 as a big-endian 32-bit value
+ * and assigns it DIRECTLY to tv.tv_sec — i.e. it treats the RTC
+ * counter as UNIX seconds, not as seconds since some NeXT-specific
+ * epoch.  Previously we used 3913401600 (2024 from a 1900 base),
+ * which the kernel interpreted as year 2094 and flagged as
+ * "preposterous time in Real Time Clock -- CHECK AND RESET THE DATE!"
+ * — a warning visible on the VRAM console but not serial. */
+#define NEXT_EPOCH_DEFAULT  1704067200u   /* 2024-01-01 00:00:00 UTC */
 
 static uint32_t rtc_backend_read_seconds(void)
 {
@@ -180,10 +188,12 @@ static void rtc_reg_write(uint8_t addr, uint8_t val)
 
     /* NVRAM and other registers */
     if (addr < RTC_REG_COUNT) {
-        /* Log POST error code writes (ni_pot[1]=oldest, ni_pot[2]=newest) */
-        if (addr == 15 || addr == 16)
-            xil_printf("[RTC] POST error code: ni_pot[%d] ← $%02X\r\n",
-                       addr - 14, val);
+        static int rtc_write_log = 0;
+        if (rtc_write_log < 400) {
+            uint8_t old_val = rtc_regs[addr];
+            xil_printf("[RTC] W $%02X: $%02X->$%02X\r\n", addr, old_val, val);
+            rtc_write_log++;
+        }
         rtc_regs[addr] = val;
     }
 }
@@ -280,6 +290,16 @@ void next_rtc_init(void)
         uint16_t cksum = ~((uint16_t)sum);
         rtc_regs[30] = (cksum >> 8) & 0xFF;
         rtc_regs[31] = cksum & 0xFF;
+
+        /* Dump the final 32-byte NVRAM image so we can compare against
+         * what the ROM reads via bit-bang — any discrepancy in the
+         * readback path points straight at the broken register. */
+        xil_printf("[RTC] NVRAM dump (32 bytes):\r\n  ");
+        for (int i = 0; i < 32; i++) {
+            xil_printf("%02X ", rtc_regs[i]);
+            if (i == 15) xil_printf("\r\n  ");
+        }
+        xil_printf("\r\n[RTC] stored cksum word = $%04X\r\n", cksum);
     }
 
     rtc_phase    = RTC_IDLE;
@@ -323,8 +343,8 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
     /* CE rising edge: start new transaction */
     if (ce && !old_ce) {
         static int rtc_trans_count = 0;
-        if (rtc_trans_count < 3)
-            xil_printf("[RTC] CE rise — transaction #%d\r\n", rtc_trans_count);
+        if (rtc_trans_count < 400)
+            xil_printf("[RTC] CE#%d\r\n", rtc_trans_count);
         rtc_trans_count++;
         rtc_phase     = RTC_ADDR_PHASE;
         rtc_bit_count = 0;
@@ -360,8 +380,9 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
         return;
     }
 
-    /* Detect RTCLK falling edge (1 → 0): this is when data is latched */
+    /* Detect RTCLK edges */
     int clk_fall = (rtc_prev_clk && !clk);
+    int clk_rise = (!rtc_prev_clk && clk);
     rtc_prev_clk = clk;
 
     if (rtc_phase == RTC_ADDR_PHASE) {
@@ -381,16 +402,26 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
                 rtc_shift_in  = 0;
 
                 if (!rtc_is_write) {
-                    /* Read: load the register value into shift-out */
+                    /* Read: load the register value into shift-out.
+                     * Do NOT pre-load rtc_data_bit here — it will be
+                     * latched on the first CLK rising edge of the data
+                     * phase (see clk_rise handler below). */
                     rtc_shift_out = rtc_reg_read(rtc_address);
-                    /* Pre-load first bit (MSB) */
-                    rtc_data_bit = (rtc_shift_out >> 7) & 1;
                     {
                         static int rtc_read_log = 0;
-                        if (rtc_read_log < 5)
-                            xil_printf("[RTC] read reg $%02X → $%02X\r\n",
+                        if (rtc_read_log < 400)
+                            xil_printf("[RTC] R $%02X=$%02X\r\n",
                                        rtc_address & 0x3F, rtc_shift_out);
                         rtc_read_log++;
+                    }
+                } else {
+                    /* Log the start of a write transaction so we can see
+                     * the ROM bit-bang the address byte and data byte. */
+                    static int rtc_wstart_log = 0;
+                    if (rtc_wstart_log < 400) {
+                        xil_printf("[RTC] W-addr $%02X\r\n",
+                                   rtc_address & 0x3F);
+                        rtc_wstart_log++;
                     }
                 }
             }
@@ -411,25 +442,29 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
                 }
             }
         } else {
-            /* Read: the ROM samples RTDATA after the FALLING edge.
-             * Protocol from clock.c:
-             *   write RTCLK=1, delay, write RTCLK=0, delay, read RTDATA
-             * So we present the data bit and advance on FALLING edge. */
-            if (clk_fall) {
-                /* Current bit is already in rtc_data_bit.
-                 * Advance to next bit for the next clock cycle. */
-                rtc_bit_count++;
-                rtc_shift_out <<= 1;
-                if (rtc_bit_count < 8) {
-                    rtc_data_bit = (rtc_shift_out >> 7) & 1;
-                } else {
-                    /* Byte complete — for block reads, load next byte */
+            /* Read: the ROM's protocol (ROM disasm at $0100885A..$0100886A):
+             *   write RTCLK=1 (rise) -> delay -> write RTCLK=0 (fall)
+             *   -> delay -> sample RTDATA
+             *
+             * So at sample time (after the fall) the chip must be presenting
+             * the CURRENT bit. We therefore latch the next bit on the RISING
+             * edge (the start of each new clock cycle), and do nothing on
+             * the fall — the host samples whatever rtc_data_bit already
+             * holds. Previously we advanced on fall, which shifted out bit
+             * 7 before the host could sample it and the host saw bit 6 as
+             * its first bit (entire byte off-by-one -> checksum mismatch
+             * -> death beep). */
+            if (clk_rise) {
+                if (rtc_bit_count == 8) {
+                    /* Block read: finished previous byte, auto-advance */
                     rtc_address = (rtc_address & RTC_WRITE) |
                                   (((rtc_address & 0x3F) + 1) & 0x3F);
                     rtc_shift_out = rtc_reg_read(rtc_address);
-                    rtc_data_bit = (rtc_shift_out >> 7) & 1;
                     rtc_bit_count = 0;
                 }
+                rtc_data_bit = (rtc_shift_out >> 7) & 1;
+                rtc_shift_out <<= 1;
+                rtc_bit_count++;
             }
         }
     }

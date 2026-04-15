@@ -11860,6 +11860,14 @@ static void m68k_op_dbf_16(void)
 	if(res != 0xffff)
 	{
 		uint offset = OPER_I_16();
+		/* Self-branch shortcut: DBF Dn,* is a pure countdown loop
+		 * with nothing else to do. Fast-forward. */
+		if(offset == 0xfffe)
+		{
+			*r_dst = MASK_OUT_BELOW_16(*r_dst) | 0xffff;
+			USE_CYCLES(CYC_DBCC_F_EXP);
+			return;
+		}
 		REG_PC -= 2;
 		m68ki_trace_t0();			   /* auto-disable (see m68kcpu.h) */
 		m68ki_branch_16(offset);
@@ -12007,6 +12015,17 @@ static void m68k_op_dbeq_16(void)
 		if(res != 0xffff)
 		{
 			uint offset = OPER_I_16();
+			/* Self-branch shortcut: DBEQ Dn,* with displacement -2
+			 * can never change Z (the loop body is just the DBEQ
+			 * itself), so it's a pure countdown. Fast-forward by
+			 * setting Dn.W = 0xFFFF and falling through. Saves
+			 * millions of emulated cycles on ROM busy-waits. */
+			if(offset == 0xfffe)
+			{
+				*r_dst = MASK_OUT_BELOW_16(*r_dst) | 0xffff;
+				USE_CYCLES(CYC_DBCC_F_EXP);
+				return;
+			}
 			REG_PC -= 2;
 			m68ki_trace_t0();			   /* auto-disable (see m68kcpu.h) */
 			m68ki_branch_16(offset);

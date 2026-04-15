@@ -112,6 +112,60 @@ static struct {
 static FATFS fatfs_inst;
 
 /* ------------------------------------------------------------------ */
+/* Sector cache — direct-mapped, 4096 slots × 512 B = 2 MB.            */
+/* Why: the NeXT kernel demand-pages heavily during boot, reading the  */
+/* same library and kernel-data pages over and over via SCSI.  Each    */
+/* miss costs a full ESP/DMA round-trip plus FatFs seek+read, which    */
+/* dominates early-boot wall time.  The cache turns repeat reads into  */
+/* memcpy hits and makes cold-cache boot progress thousands of times   */
+/* faster.                                                             */
+/* ------------------------------------------------------------------ */
+#define SCACHE_SLOTS      4096u
+#define SCACHE_EMPTY_LBA  0xFFFFFFFFu
+static uint32_t scache_tag[SCACHE_SLOTS];
+static uint8_t  scache_data[SCACHE_SLOTS][SCSI_BLOCKSIZE];
+
+static void scache_reset(void)
+{
+    for (unsigned i = 0; i < SCACHE_SLOTS; i++)
+        scache_tag[i] = SCACHE_EMPTY_LBA;
+}
+
+static inline unsigned scache_slot(uint32_t lba)
+{
+    /* Mix a bit so clustered linear reads spread across the set. */
+    uint32_t h = lba ^ (lba >> 13);
+    return h & (SCACHE_SLOTS - 1);
+}
+
+/* Try to fill scsi_buf.data[] from cache. Returns true on hit. */
+static bool scache_try_read(uint32_t lba)
+{
+    unsigned s = scache_slot(lba);
+    if (scache_tag[s] == lba) {
+        memcpy(scsi_buf.data, scache_data[s], SCSI_BLOCKSIZE);
+        return true;
+    }
+    return false;
+}
+
+/* Install scsi_buf.data[] into the cache for lba. */
+static void scache_install(uint32_t lba)
+{
+    unsigned s = scache_slot(lba);
+    scache_tag[s] = lba;
+    memcpy(scache_data[s], scsi_buf.data, SCSI_BLOCKSIZE);
+}
+
+/* Invalidate on write so the cache never serves stale data. */
+static void scache_invalidate(uint32_t lba)
+{
+    unsigned s = scache_slot(lba);
+    if (scache_tag[s] == lba)
+        scache_tag[s] = SCACHE_EMPTY_LBA;
+}
+
+/* ------------------------------------------------------------------ */
 /* INQUIRY response data                                               */
 /* ------------------------------------------------------------------ */
 static uint8_t inquiry_bytes[] = {
@@ -143,22 +197,25 @@ static void scsi_read_one_sector(void)
     uint64_t offset = (uint64_t)disk.lba * SCSI_BLOCKSIZE;
 
     if (offset < disk.size) {
-        UINT br;
-        FRESULT res = f_lseek(&disk.fil, (FSIZE_t)offset);
-        if (res != FR_OK) {
-            DPRINTF("[SCSI] f_lseek error %d at LBA %u\r\n", res, disk.lba);
-            disk.status = STAT_CHECK_COND;
-            disk.sense.code = SC_NOT_READY;
-            disk.phase = SCSI_PHASE_ST;
-            return;
-        }
-        res = f_read(&disk.fil, scsi_buf.data, SCSI_BLOCKSIZE, &br);
-        if (res != FR_OK || br != SCSI_BLOCKSIZE) {
-            DPRINTF("[SCSI] f_read error %d (got %u) at LBA %u\r\n", res, br, disk.lba);
-            disk.status = STAT_CHECK_COND;
-            disk.sense.code = SC_NOT_READY;
-            disk.phase = SCSI_PHASE_ST;
-            return;
+        if (!scache_try_read(disk.lba)) {
+            UINT br;
+            FRESULT res = f_lseek(&disk.fil, (FSIZE_t)offset);
+            if (res != FR_OK) {
+                DPRINTF("[SCSI] f_lseek error %d at LBA %u\r\n", res, disk.lba);
+                disk.status = STAT_CHECK_COND;
+                disk.sense.code = SC_NOT_READY;
+                disk.phase = SCSI_PHASE_ST;
+                return;
+            }
+            res = f_read(&disk.fil, scsi_buf.data, SCSI_BLOCKSIZE, &br);
+            if (res != FR_OK || br != SCSI_BLOCKSIZE) {
+                DPRINTF("[SCSI] f_read error %d (got %u) at LBA %u\r\n", res, br, disk.lba);
+                disk.status = STAT_CHECK_COND;
+                disk.sense.code = SC_NOT_READY;
+                disk.phase = SCSI_PHASE_ST;
+                return;
+            }
+            scache_install(disk.lba);
         }
         scsi_buf.limit = scsi_buf.size = SCSI_BLOCKSIZE;
         disk.status = STAT_GOOD;
@@ -371,12 +428,6 @@ static void scsi_read_sector(uint8_t *cdb)
     scsi_buf.is_disk = true;
     scsi_buf.size = 0;
     disk.phase = SCSI_PHASE_DI;
-    /* Log reads — counter resets after kernel bus reset */
-    if (scsi_read_log < 200)
-        xil_printf("[SCSI-RD] LBA=%u cnt=%u (byte=%llu)\r\n",
-                   disk.lba, disk.blockcounter,
-                   (unsigned long long)disk.lba * SCSI_BLOCKSIZE);
-    scsi_read_log++;
     scsi_read_one_sector();
 }
 
@@ -390,8 +441,10 @@ static void scsi_write_sector(uint8_t *cdb)
     disk.lba = (uint32_t)scsi_get_offset(cdb[0], cdb);
     disk.blockcounter = scsi_get_count(cdb[0], cdb);
     disk.write_pending = disk.blockcounter * SCSI_BLOCKSIZE;
-    xil_printf("[SCSI-WR] LBA=%u cnt=%u (discard)\r\n",
-               disk.lba, disk.blockcounter);
+    /* Invalidate cached copies so a later read sees the new (writes are
+     * discarded, but host buffers may hold data the cache must not mask). */
+    for (uint32_t i = 0; i < disk.blockcounter; i++)
+        scache_invalidate(disk.lba + i);
     disk.status = STAT_GOOD;
     disk.phase = SCSI_PHASE_DO;  /* host sends data to us */
 }
@@ -453,6 +506,7 @@ int next_scsi_init(void)
                 if (res == FR_OK) {
                     disk.size = f_size(&disk.fil);
                     disk.mounted = true;
+                    scache_reset();
                     xil_printf("[SCSI] Opened %s: %llu bytes (%u sectors)\r\n",
                                path, disk.size, (unsigned)(disk.size / SCSI_BLOCKSIZE));
                     return 0;

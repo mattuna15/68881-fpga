@@ -314,23 +314,6 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
         next_intr_set(I_IPL6_SCSI_DMA);
     }
 
-    /* Verify DMA data: log destination and first bytes of transferred data.
-     * Counter is reset by next_scsi_dma_reset_log() after kernel BUSRST. */
-    if (total > 0 && direction) {
-        extern int dma_verify_log;
-        if (dma_verify_log < 200) {
-            uint32_t verify_addr = (dma.next - total) & 0x7FFFFFFF;
-            if (verify_addr >= NEXT_RAM_BASE &&
-                verify_addr + 8 <= NEXT_RAM_BASE + NEXT_RAM_SIZE) {
-                uint32_t off = verify_addr & 0x07FFFFFFu;
-                xil_printf("[DMA-V] %d bytes → $%08X: %02X %02X %02X %02X %02X %02X %02X %02X\r\n",
-                    total, verify_addr,
-                    next_ram[off], next_ram[off+1], next_ram[off+2], next_ram[off+3],
-                    next_ram[off+4], next_ram[off+5], next_ram[off+6], next_ram[off+7]);
-            }
-            dma_verify_log++;
-        }
-    }
 
     DPRINTF("[DMA] Transfer done: %d bytes, next=$%08X\r\n", total, dma.next);
     return total;

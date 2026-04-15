@@ -418,10 +418,7 @@ static void esp_select(bool atn)
         static int sel_count = 0;
         sel_count++;
         esp_cmds_since_last_sel = 0;  /* reset counter */
-        if (sel_count > 60)
-            xil_printf("[SEL#%d] target=%d\r\n", sel_count, target);
-        if (sel_count == 100)
-            esp_post_probe = 1;  /* enable detailed logging after 100 SELECTs */
+        (void)sel_count;
     }
     bool timeout = next_scsi_select(target);
 
@@ -588,11 +585,8 @@ static void esp_start_command(uint8_t cmd)
     esp.cmd_state |= ESP_CMD_INPROGRESS;
 
     /* Log all ESP commands after probe phase */
-    if (esp_post_probe) {
+    if (esp_post_probe)
         esp_cmds_since_last_sel++;
-        xil_printf("[ESP-CMD] $%02X stat=$%02X int=$%02X dma=$%02X\r\n",
-                   cmd, esp.status, esp.intstatus, esp.dma_control);
-    }
 
     /* Load counter for DMA commands */
     if (cmd & CMD_DMA) {
@@ -689,9 +683,6 @@ uint8_t next_esp_read(uint32_t offset)
         if (next_debug_scsi)
             DPRINTF("[ESP] R intrstat=$%02X stat=$%02X (INT=%d)\r\n",
                        val, esp.status, !!(esp.status & STAT_INT));
-        if (esp_post_probe)
-            xil_printf("[ESP-ACK] intrstat=$%02X stat=$%02X\r\n",
-                       val, esp.status);
         if (esp.status & STAT_INT) {
             esp.intstatus = 0;
             esp.status &= ~(STAT_VGC | STAT_PE | STAT_GE);
@@ -774,10 +765,7 @@ void next_esp_dma_ctrl_write(uint8_t value)
     uint8_t old_ctrl = esp.dma_control;
     esp.dma_control = value;
 
-    if (esp_post_probe && (value != old_ctrl || (value & (ESPCTRL_RESET|ESPCTRL_FLUSH)))) {
-        xil_printf("[ESP-DMA] ctrl=$%02X (was $%02X) stat=$%02X int=$%02X\r\n",
-                   value, old_ctrl, esp.status, esp.intstatus);
-    }
+    (void)old_ctrl;
 
     if (value & ESPCTRL_FLUSH) {
         /* DMA flush — no action needed in our synchronous model */

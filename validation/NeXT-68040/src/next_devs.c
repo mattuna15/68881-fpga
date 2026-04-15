@@ -92,6 +92,8 @@ static uint8_t scc_wr_reg_ptr;  /* WR register pointer (set by ctrl write) */
 /* ------------------------------------------------------------------ */
 static uint8_t  hardclock0;         /* staging high byte (written at P_TIMER)   */
 static uint8_t  hardclock1;         /* staging low byte  (written at P_TIMER+1) */
+uint32_t timer_fires_total = 0;
+uint32_t timer_acks_total = 0;
 static uint8_t  hardclock_csr;      /* CSR: bit 7=ENABLE, bit 6=LATCH          */
 static int      latch_hardclock;    /* latched period in microseconds           */
 static int      hardclock_accum;    /* accumulated microseconds toward next IRQ */
@@ -603,12 +605,26 @@ int next_timer_tick(int cycles)
     eventc_us += usecs * 4096;
     eventc_batch_base = 0;  /* reset: next batch starts from 0 */
 
-    /* Periodic hardclock interrupt */
+    /* Periodic hardclock interrupt.
+     *
+     * Previous schedules a one-shot per period via CycInt; we accumulate.
+     * The critical bit: if multiple periods elapsed in a single tick batch
+     * (long idle slice), we must still raise the interrupt — any lost tick
+     * means a callout gets skipped which breaks alarm()/setitimer() and
+     * stalls wait loops that rely on periodic wakeups.
+     *
+     * We only raise once per tick_batch even if several periods elapsed,
+     * because the kernel handler is level-sensitive and runs the callout
+     * wheel once per entry, but we make sure a pending fire is never
+     * dropped: if accum >= latch_hardclock, set the interrupt and keep
+     * the remainder — the next tick_batch will evaluate again. */
     if ((hardclock_csr & HARDCLOCK_ENABLE) && latch_hardclock > 0) {
         hardclock_accum += usecs;
         if (hardclock_accum >= latch_hardclock) {
             hardclock_accum %= latch_hardclock;
             next_intr_set(I_IPL6_TIMER);
+            extern uint32_t timer_fires_total;
+            timer_fires_total++;
         }
     }
 
@@ -877,6 +893,8 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == P_TIMER_CSR) {
         /* Reading CSR clears timer interrupt (kernel does this in us_timer_int) */
         uint8_t val = hardclock_csr;
+        if (intr_status & I_IPL6_TIMER)
+            timer_acks_total++;
         next_intr_clear(I_IPL6_TIMER);
         return val;
     }
@@ -1035,17 +1053,8 @@ uint32_t next_io_read_32(uint32_t address)
         return next_rtc_scr2_read(scr2_value);
 
     /* Interrupt status */
-    if (address == P_INTRSTAT) {
-        /* Log scintr's goto-again check at line 1325 */
-        static int intrstat_total = 0;
-        if (++intrstat_total > 500) {
-            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
-            if (pc == 0x0408A45E)  /* scintr *intrstat check */
-                xil_printf("[SCINTR-CHK] status=$%08X scsi=%d\r\n",
-                           intr_status, !!(intr_status & I_IPL3_SCSI));
-        }
+    if (address == P_INTRSTAT)
         return intr_status;
-    }
 
     /* Interrupt mask */
     if (address == P_INTRMASK)
@@ -1230,10 +1239,8 @@ void next_io_write_8(uint32_t address, uint8_t value)
     }
 
     /* Floppy controller (82077): 0x02014100-0x02014108 */
-    if (address >= 0x02014100 && address <= 0x02014108) {
-        xil_printf("[FLP-W] @%08X = $%02X\r\n", address, value);
+    if (address >= 0x02014100 && address <= 0x02014108)
         return;
-    }
 
     /* Ethernet (MB8795 / AT&T 7213): 0x02006000-0x0200600F */
     if (address >= 0x02006000 && address < 0x02006010) {

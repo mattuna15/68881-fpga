@@ -267,75 +267,17 @@ unsigned int m68k_read_memory_8(unsigned int address)
  * every single write that lands in those bytes, in order. */
 static inline void ret_slot_watch(unsigned int address, unsigned int value, int width)
 {
-    uint32_t last = address + ((width == 8) ? 0 : (width == 16 ? 1 : 3));
-    if (address > 0x0C03F691u || last < 0x0C03F68Eu)
-        return;
-    static int n = 0;
-    if (n < 200) {
-        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PPC);
-        uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
-        xil_printf("[RET%d] @%08X = %08X PC=$%08X A7=$%08X n=%d\r\n",
-                   width, address, value, pc, sp, n);
-        n++;
-    }
+    (void)address; (void)value; (void)width;
 }
 
-/* Read-side watchpoint: log every read from the same 4-byte slot. */
 static inline void ret_slot_read_watch(unsigned int address, unsigned int value, int width)
 {
-    uint32_t last = address + ((width == 8) ? 0 : (width == 16 ? 1 : 3));
-    if (address > 0x0C03F691u || last < 0x0C03F68Eu)
-        return;
-    static int n = 0;
-    if (n < 60) {
-        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PPC);
-        uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
-        xil_printf("[RETR%d] @%08X = %08X PC=$%08X A7=$%08X n=%d\r\n",
-                   width, address, value, pc, sp, n);
-        n++;
-    }
+    (void)address; (void)value; (void)width;
 }
 
 static inline void stack_watch(unsigned int address, unsigned int value, int width)
 {
-    ret_slot_watch(address, value, width);
-    /* Two windows of interest:
-     *   (a) $0C03F680..$0C03F6A0 — the return-address slot at $0C03F68E
-     *       is where the RTS at $01003F1C pops $380C0400.  Find the
-     *       instruction that puts $380C0400 there.
-     *   (b) $0C03F5E0..$0C03F640 — local-variable area in the nested
-     *       function frame where we see the $01 pattern build-up.
-     */
-    int in_ret = (address >= 0x0C03F680 && address < 0x0C03F6A4);
-    int in_loc = (address >= 0x0C03F5E0 && address < 0x0C03F640);
-    if (!in_ret && !in_loc)
-        return;
-
-    uint32_t pc = m68k_get_reg(NULL, M68K_REG_PPC);
-    /* Known-good loops — exclude so we have budget for the real writes. */
-    if (pc == 0x01003C88 || pc == 0x01003D08 || pc == 0x01003C90 ||
-        pc == 0x0100474E || pc == 0x01004752)
-        return;
-    /* Also filter ordinary stack push/pop: any write where dest is very
-     * close to current A7 (within 256 bytes).  Those are almost always
-     * legitimate function-frame pushes. */
-    {
-        uint32_t sp_now = m68k_get_reg(NULL, M68K_REG_A7);
-        int32_t diff = (int32_t)(address - sp_now);
-        if (diff >= -4 && diff < 256)
-            return;
-    }
-    /* Separate counters so the two windows don't starve each other. */
-    static int ret_log = 0;
-    static int loc_log = 0;
-    int *counter = in_ret ? &ret_log : &loc_log;
-    int cap = in_ret ? 120 : 10;
-    if (*counter < cap) {
-        uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
-        xil_printf("[STKW%d] @%08X = %08X PC=$%08X A7=$%08X\r\n",
-                   width, address, value, pc, sp);
-        (*counter)++;
-    }
+    (void)address; (void)value; (void)width;
 }
 
 void m68k_write_memory_8(unsigned int address, unsigned int value)
@@ -497,18 +439,6 @@ static unsigned int m68k_read_memory_32_impl(unsigned int address)
      * is an exception dispatch picking up a handler address — log it
      * with the current PC / PPC so we can see which exception fired
      * and from what instruction. */
-    if (address >= 0x0C03FC00 && address < 0x0C040000) {
-        static int vec_log = 0;
-        if (vec_log < 20) {
-            uint32_t pc  = m68k_get_reg(NULL, M68K_REG_PC);
-            uint32_t ppc = m68k_get_reg(NULL, M68K_REG_PPC);
-            uint32_t sp  = m68k_get_reg(NULL, M68K_REG_A7);
-            int vec = (address - 0x0C03FC00) / 4;
-            xil_printf("[VEC] fetch vec%d @%08X PC=$%08X PPC=$%08X A7=$%08X\r\n",
-                       vec, address, pc, ppc, sp);
-            vec_log++;
-        }
-    }
     /* Fast path: RAM — all four bytes must land in the same bank. */
     if (in_ram(address) && in_ram(address + 3) &&
         (ram_offset(address) + 3 == ram_offset(address + 3))) {

@@ -271,17 +271,43 @@ void trap_log_dump(void) {
                 trap_log[idx].d1 >= 0x1000) {
                 int id = trap_log[idx].arg3;
                 const char *rname = NULL;
-                if (id == 2076) rname = "task_suspend";
-                else if (id == 2077) rname = "task_resume";
-                else if (id == 2078) rname = "task_get_special_port";
-                else if (id == 2079) rname = "task_set_special_port";
-                else if (id == 2030) rname = "vm_deallocate";
-                else if (id == 2028) rname = "vm_allocate";
-                else if (id == 2036) rname = "vm_region";
-                else if (id == 2015) rname = "task_terminate";
-                else if (id == 2023) rname = "thread_terminate";
-                else if (id == 2082) rname = "thread_suspend";
-                else if (id == 2083) rname = "thread_resume";
+                /* mach subsystem base 2000. Verified against the SERVER
+                 * dispatch table at kern/mach_server.c:6494 — use that,
+                 * not the .defs file (which contains obsolete placeholder
+                 * routines that skew simple counting). */
+                if (id == 2007) rname = "task_create";
+                else if (id == 2008) rname = "task_terminate";
+                else if (id == 2011) rname = "task_threads";
+                else if (id == 2016) rname = "thread_terminate";
+                else if (id == 2021) rname = "vm_allocate";
+                else if (id == 2023) rname = "vm_deallocate";
+                else if (id == 2024) rname = "vm_protect";
+                else if (id == 2026) rname = "vm_read";
+                else if (id == 2027) rname = "vm_write";
+                else if (id == 2029) rname = "vm_region";
+                else if (id == 2030) rname = "vm_statistics";
+                else if (id == 2031) rname = "task_by_unix_pid";
+                else if (id == 2056) rname = "task_suspend";
+                else if (id == 2057) rname = "task_resume";
+                else if (id == 2058) rname = "task_get_special_port";
+                else if (id == 2059) rname = "task_set_special_port";
+                else if (id == 2060) rname = "task_info";
+                else if (id == 2062) rname = "thread_suspend";
+                else if (id == 2063) rname = "thread_resume";
+                else if (id == 2064) rname = "thread_abort";
+                else if (id == 2067) rname = "thread_get_special_port";
+                else if (id == 2068) rname = "thread_set_special_port";
+                else if (id == 2073) rname = "port_names";
+                else if (id == 2074) rname = "port_type";
+                else if (id == 2075) rname = "port_rename";
+                else if (id == 2076) rname = "port_allocate";
+                else if (id == 2077) rname = "port_deallocate";
+                else if (id == 2078) rname = "port_set_backlog";
+                else if (id == 2079) rname = "port_status";
+                else if (id == 2080) rname = "port_set_allocate";
+                else if (id == 2082) rname = "port_set_add";
+                else if (id == 2085) rname = "port_insert_send";
+                else if (id == 2087) rname = "port_insert_receive";
                 xil_printf("      ~ %s body:",
                            rname ? rname : "(unknown)");
                 for (int k = 0; k < 8; k++)
@@ -289,10 +315,40 @@ void trap_log_dump(void) {
                 xil_printf("\r\n");
             }
         } else {
-            xil_printf("  [%d] TRAP#%d (%s) D0=$%08X D1=$%08X PC=$%08X SP=$%08X SR=$%04X\r\n",
-                       i, trap_log[idx].trap_num, kind,
-                       trap_log[idx].d0, trap_log[idx].d1,
-                       trap_log[idx].pc, trap_log[idx].sp, trap_log[idx].sr);
+            /* Decode the mach trap selector for TRAP#3 entries (per
+             * kern/syscall_sw.c:155 mach_trap_table). */
+            const char *mname = NULL;
+            if (trap_log[idx].trap_num == 3) {
+                switch (trap_log[idx].d0) {
+                    case 10: mname = "task_self"; break;
+                    case 11: mname = "thread_reply"; break;
+                    case 12: mname = "task_notify"; break;
+                    case 13: mname = "thread_self"; break;
+                    case 20: mname = "msg_send"; break;
+                    case 21: mname = "msg_receive"; break;
+                    case 22: mname = "msg_rpc"; break;
+                    case 33: mname = "task_by_pid"; break;
+                    case 40: mname = "mach_swapon"; break;
+                    case 41: mname = "init_process"; break;
+                    case 43: mname = "map_fd"; break;
+                    case 51: mname = "kern_timestamp"; break;
+                    case 55: mname = "host_self"; break;
+                    case 56: mname = "host_priv_self"; break;
+                    case 59: mname = "swtch_pri"; break;
+                    case 60: mname = "swtch"; break;
+                    case 61: mname = "thread_switch"; break;
+                }
+            }
+            if (mname)
+                xil_printf("  [%d] TRAP#%d (%s/%s) D1=$%08X PC=$%08X SP=$%08X SR=$%04X\r\n",
+                           i, trap_log[idx].trap_num, kind, mname,
+                           trap_log[idx].d1,
+                           trap_log[idx].pc, trap_log[idx].sp, trap_log[idx].sr);
+            else
+                xil_printf("  [%d] TRAP#%d (%s) D0=$%08X D1=$%08X PC=$%08X SP=$%08X SR=$%04X\r\n",
+                           i, trap_log[idx].trap_num, kind,
+                           trap_log[idx].d0, trap_log[idx].d1,
+                           trap_log[idx].pc, trap_log[idx].sp, trap_log[idx].sr);
         }
     }
     /* Dump msg_header for the last msg_recv/msg_rpc.  We walk the URP

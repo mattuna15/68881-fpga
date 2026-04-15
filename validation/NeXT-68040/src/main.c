@@ -92,6 +92,18 @@ static uint32_t user_last_urp = 0;  /* URP active during last user instruction *
 static int user_last_idx = 0;
 int emu_user_mode_flag = 0;
 
+/* URP switch log — each entry records a user-mode URP change (thread/proc
+ * switch visible from user mode).  Helps diagnose "stuck in msg_recv"
+ * stalls: if no URPs rotate, no other thread is being scheduled. */
+#define URP_LOG_SIZE 32
+static struct {
+    uint32_t instr_count;  /* user_instr_count at the switch */
+    uint32_t urp;          /* new URP */
+    uint32_t pc;           /* user PC at the switch */
+} urp_log[URP_LOG_SIZE];
+static int urp_log_idx = 0;
+static int urp_log_total = 0;
+
 /* Called from Musashi's m68ki_exception_trapN — before SR goes supervisor */
 void emu_trap_log(unsigned int trap_num, unsigned int pc,
                   unsigned int sr, unsigned int d0, unsigned int d1,
@@ -150,7 +162,11 @@ void trap_log_dump(void) {
             uint32_t pa = mmu040_translate_user(last_upc & ~1);
             xil_printf("[USER] Code at last user PC $%08X (PA=$%08X):\r\n  ",
                        last_upc, pa);
-            for (int i = -4; i < 12; i++) {
+            /* Wide window: -48..+16 words around the trap site so we can
+             * disassemble the calling function and its prologue. */
+            for (int i = -48; i < 16; i++) {
+                if (i > -48 && (i % 16) == 0)
+                    xil_printf("\r\n  ");
                 uint32_t a = mmu040_translate_user((last_upc & ~1) + i*2);
                 uint16_t w = (next_phys_read_32(a & ~3) >> (((a & 2) ? 0 : 16))) & 0xFFFF;
                 if (i == 0) xil_printf("[");
@@ -270,6 +286,20 @@ void trap_log_dump(void) {
             break;
         }
     }
+    /* URP-switch log: shows thread/process rotations seen from user mode.
+     * If this is empty or has only 1 entry after the stall, the scheduler
+     * is not rotating threads — the "stuck in msg_recv" is actually a
+     * single-thread busy wait or missed wakeup. */
+    xil_printf("[URP-LOG] %d switches total, %u user instrs:\r\n",
+               urp_log_total, user_instr_count);
+    int ustart = urp_log_total < URP_LOG_SIZE ? 0 : urp_log_idx;
+    int ucount = urp_log_total < URP_LOG_SIZE ? urp_log_total : URP_LOG_SIZE;
+    for (int i = 0; i < ucount; i++) {
+        int idx = (ustart + i) % URP_LOG_SIZE;
+        xil_printf("  [%d] instr=%u URP=$%08X PC=$%08X\r\n",
+                   i, urp_log[idx].instr_count,
+                   urp_log[idx].urp, urp_log[idx].pc);
+    }
 }
 
 /* Intercept ROM's mg_putc to mirror bitmap console output to serial.
@@ -316,6 +346,17 @@ void emu_instr_hook(unsigned int pc)
             user_instr_count++;
             user_last_pc[user_last_idx & 3] = pc;
             user_last_idx++;
+
+            uint32_t cur_urp = fh_get_urp();
+            if (cur_urp != user_last_urp) {
+                int ui = urp_log_idx;
+                urp_log[ui].instr_count = user_instr_count;
+                urp_log[ui].urp = cur_urp;
+                urp_log[ui].pc  = pc;
+                urp_log_idx = (urp_log_idx + 1) % URP_LOG_SIZE;
+                urp_log_total++;
+                user_last_urp = cur_urp;
+            }
         }
     }
 
@@ -441,6 +482,16 @@ void emu_instr_hook(unsigned int pc)
                         m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
                         m68k_get_reg(NULL, M68K_REG_A0), m68k_get_reg(NULL, M68K_REG_A6),
                         m68k_get_reg(NULL, M68K_REG_A7));
+                    /* Dump 64 bytes of code starting 16 bytes before the hit
+                     * so we can identify the function prologue. */
+                    xil_printf("[W@54c] code -16..+48:");
+                    for (int i = -8; i < 24; i++) {
+                        uint32_t a = (0x0405454c + i*2) & 0x07FFFFFFu;
+                        uint16_t w = ((uint16_t)next_ram[a] << 8) | next_ram[a+1];
+                        if ((i + 8) % 8 == 0) xil_printf("\r\n  +%02d:", i*2);
+                        xil_printf(" %04X", w);
+                    }
+                    xil_printf("\r\n");
                     w54c_n++;
                 }
                 /* 0x0405fef6 — return addr in exec chain */
@@ -537,20 +588,6 @@ static void poll_uart_rx(void);
 int emu_int_ack_callback(int int_level)
 {
     int vec = next_intr_acknowledge(int_level);
-    {
-        static int iack_log = 0;
-        if (iack_log < 40) {
-            uint32_t pc  = m68k_get_reg(NULL, M68K_REG_PC);
-            uint32_t vbr = m68k_get_reg(NULL, M68K_REG_VBR);
-            int vnum = (vec >= 0) ? vec : (24 + int_level);
-            uint32_t handler = next_phys_read_32(vbr + vnum * 4);
-            xil_printf("[IACK] ipl=%d vec=%d(%s) PC=$%08X VBR=$%08X handler=$%08X\r\n",
-                       int_level, vnum,
-                       (vec >= 0) ? "user" : "auto",
-                       pc, vbr, handler);
-            iack_log++;
-        }
-    }
     if (vec >= 0)
         return vec;
     return M68K_INT_ACK_AUTOVECTOR;
@@ -883,6 +920,12 @@ static void poll_uart_rx(void)
             uint16_t sr = m68k_get_reg(NULL, M68K_REG_SR);
             uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
             xil_printf("\r\n[DUMP] PC=$%08X SR=$%04X SP=$%08X\r\n", pc, sr, sp);
+            {
+                extern uint32_t timer_fires_total, timer_acks_total;
+                xil_printf("[DUMP] timer fires=%u acks=%u pending=%u\r\n",
+                           timer_fires_total, timer_acks_total,
+                           timer_fires_total - timer_acks_total);
+            }
             xil_printf("[DUMP] D0=$%08X D1=$%08X D2=$%08X D3=$%08X\r\n",
                 m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
                 m68k_get_reg(NULL, M68K_REG_D2), m68k_get_reg(NULL, M68K_REG_D3));

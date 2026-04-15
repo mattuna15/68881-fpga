@@ -67,6 +67,10 @@ static struct {
     uint32_t urp;      /* URP at trap time — for per-process VA translation */
     uint16_t sr;       /* SR before trap (bit 13 = user/super) */
     uint8_t  trap_num; /* TRAP #N (0-15) */
+    uint32_t body[8];  /* msg_rpc/msg_send body captured at trap entry —
+                        * 32 bytes starting at (D1 + 24), translated through
+                        * the per-trap URP. Only populated for TRAP#3 with
+                        * d0 = 0x14/0x16 and d1 >= 0x1000. */
 } trap_log[TRAP_LOG_SIZE];
 
 extern unsigned int fh_get_urp(void);
@@ -133,15 +137,27 @@ void emu_trap_log(unsigned int trap_num, unsigned int pc,
             trap_log[idx].arg1 = trap_read_u32(urp, d1 + 12);
             trap_log[idx].arg2 = trap_read_u32(urp, d1 + 16);
             trap_log[idx].arg3 = trap_read_u32(urp, d1 + 20);
+            /* Snapshot 32 bytes of body past the 24-byte header.  The
+             * user stack gets reused after this trap returns, so by the
+             * time trap_log_dump runs the live bytes would be stale.
+             * Capture them NOW while the caller's frame is still live. */
+            if (d0 == 0x16 || d0 == 0x14) {
+                for (int k = 0; k < 8; k++)
+                    trap_log[idx].body[k] = trap_read_u32(urp, d1 + 24 + k*4);
+            } else {
+                for (int k = 0; k < 8; k++) trap_log[idx].body[k] = 0;
+            }
         } else {
             trap_log[idx].arg1 = 0;
             trap_log[idx].arg2 = 0;
             trap_log[idx].arg3 = 0;
+            for (int k = 0; k < 8; k++) trap_log[idx].body[k] = 0;
         }
     } else {
         trap_log[idx].arg1 = 0;
         trap_log[idx].arg2 = 0;
         trap_log[idx].arg3 = 0;
+        for (int k = 0; k < 8; k++) trap_log[idx].body[k] = 0;
     }
     trap_log_idx = (trap_log_idx + 1) % TRAP_LOG_SIZE;
     trap_log_total++;
@@ -246,6 +262,32 @@ void trap_log_dump(void) {
                        i, mname,
                        trap_log[idx].arg1, trap_log[idx].arg2, trap_log[idx].arg3,
                        trap_log[idx].d1, trap_log[idx].pc);
+            /* Print the 32 bytes of body captured at trap entry for
+             * msg_rpc/msg_send calls.  Captured in emu_trap_log before
+             * the user stack got reused.  Annotate known mach-subsystem
+             * routine ids — remember the DESTINATION is arg2 (remote),
+             * not arg1 (which is the reply port for msg_rpc). */
+            if ((trap_log[idx].d0 == 0x16 || trap_log[idx].d0 == 0x14) &&
+                trap_log[idx].d1 >= 0x1000) {
+                int id = trap_log[idx].arg3;
+                const char *rname = NULL;
+                if (id == 2076) rname = "task_suspend";
+                else if (id == 2077) rname = "task_resume";
+                else if (id == 2078) rname = "task_get_special_port";
+                else if (id == 2079) rname = "task_set_special_port";
+                else if (id == 2030) rname = "vm_deallocate";
+                else if (id == 2028) rname = "vm_allocate";
+                else if (id == 2036) rname = "vm_region";
+                else if (id == 2015) rname = "task_terminate";
+                else if (id == 2023) rname = "thread_terminate";
+                else if (id == 2082) rname = "thread_suspend";
+                else if (id == 2083) rname = "thread_resume";
+                xil_printf("      ~ %s body:",
+                           rname ? rname : "(unknown)");
+                for (int k = 0; k < 8; k++)
+                    xil_printf(" %08X", trap_log[idx].body[k]);
+                xil_printf("\r\n");
+            }
         } else {
             xil_printf("  [%d] TRAP#%d (%s) D0=$%08X D1=$%08X PC=$%08X SP=$%08X SR=$%04X\r\n",
                        i, trap_log[idx].trap_num, kind,

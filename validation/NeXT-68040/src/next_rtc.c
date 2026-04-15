@@ -249,7 +249,11 @@ void next_rtc_init(void)
          *   0x10 TEST_DRAM_POT    DRAM test
          *   0x20 BOOT_POT         skip tests, boot immediately
          *   0x40 TEST_MONITOR_POT monitor test */
-        rtc_regs[14] = 0x21;  /* POT_ON | BOOT_POT */
+        /* POT_ON | BOOT_POT = skip tests, boot immediately.  Flip to
+         * 0x5B (POT_ON|EXTENDED|VERBOSE|TEST_DRAM|TEST_MONITOR) to run
+         * the full POST suite — useful for debugging but adds minutes
+         * to boot wall time at emulation speed. */
+        rtc_regs[14] = 0x21;
 
         /* Byte 17: ni_new_clock_chip bit 7 = MCS1850 */
         rtc_regs[17] = 0x80;

@@ -8367,7 +8367,13 @@ static void m68k_op_cas_8_ai(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8396,7 +8402,13 @@ static void m68k_op_cas_8_pi(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8425,7 +8437,13 @@ static void m68k_op_cas_8_pi7(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8454,7 +8472,13 @@ static void m68k_op_cas_8_pd(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8483,7 +8507,13 @@ static void m68k_op_cas_8_pd7(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8512,7 +8542,13 @@ static void m68k_op_cas_8_di(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8541,7 +8577,13 @@ static void m68k_op_cas_8_ix(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8570,7 +8612,13 @@ static void m68k_op_cas_8_aw(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8599,7 +8647,13 @@ static void m68k_op_cas_8_al(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8628,7 +8682,10 @@ static void m68k_op_cas_16_ai(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8657,7 +8714,10 @@ static void m68k_op_cas_16_pi(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8686,7 +8746,10 @@ static void m68k_op_cas_16_pd(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8715,7 +8778,10 @@ static void m68k_op_cas_16_di(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8744,7 +8810,10 @@ static void m68k_op_cas_16_ix(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8773,7 +8842,10 @@ static void m68k_op_cas_16_aw(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8802,7 +8874,10 @@ static void m68k_op_cas_16_al(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8831,7 +8906,10 @@ static void m68k_op_cas_32_ai(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8860,7 +8938,10 @@ static void m68k_op_cas_32_pi(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8889,7 +8970,10 @@ static void m68k_op_cas_32_pd(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8918,7 +9002,10 @@ static void m68k_op_cas_32_di(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8947,7 +9034,10 @@ static void m68k_op_cas_32_ix(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8976,7 +9066,10 @@ static void m68k_op_cas_32_aw(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -9005,7 +9098,10 @@ static void m68k_op_cas_32_al(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -9056,6 +9152,9 @@ static void m68k_op_cas2_16(void)
 		}
 		*compare1 = BIT_1F(word2) ? (uint)MAKE_INT_16(dest1) : MASK_OUT_BELOW_16(*compare1) | dest1;
 		*compare2 = BIT_F(word2) ? (uint)MAKE_INT_16(dest2) : MASK_OUT_BELOW_16(*compare2) | dest2;
+		/* 68040: complete the RMW write phase on both operands */
+		m68ki_write_16(ea1, dest1);
+		m68ki_write_16(ea2, dest2);
 		return;
 	}
 	m68ki_exception_illegal();
@@ -9101,6 +9200,9 @@ static void m68k_op_cas2_32(void)
 		}
 		*compare1 = dest1;
 		*compare2 = dest2;
+		/* 68040: complete the RMW write phase on both operands */
+		m68ki_write_32(ea1, dest1);
+		m68ki_write_32(ea2, dest2);
 		return;
 	}
 	m68ki_exception_illegal();
@@ -29519,9 +29621,6 @@ rte_loop:
 				m68ki_fake_pull_16();	/* format word */
 				REG_A[7] += 52;		/* skip EA, SSW, WBnS, FA, WBnA/D, PDn */
 				rte_format7_count++;
-				if (rte_format7_count <= 5 || (rte_format7_count % 100) == 0)
-					xil_printf("[RTE-F7] #%d resume PC=$%08X SR=$%04X\r\n",
-					           rte_format7_count, new_pc, new_sr);
 				m68ki_jump(new_pc);
 				m68ki_set_sr(new_sr);
 				CPU_INSTR_MODE = INSTRUCTION_YES;

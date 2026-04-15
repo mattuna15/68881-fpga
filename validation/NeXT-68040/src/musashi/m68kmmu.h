@@ -496,14 +496,9 @@ uint pmmu_translate_addr_040(uint addr_in)
 		         | ((mmu040_access_size & 3) << 5)     /* SIZE bits 6-5 */
 		         | fc;                                  /* TM = function code */
 
-		static int fault_fire_log = 0;
 		mmu040_fault_total++;
 		int since_reset = mmu040_fault_total - mmu040_fault_reset_at;
-		if (fault_fire_log < 200 || (since_reset > 0 && since_reset <= 10)) {
-			xil_printf("[MMU040] ATC FAULT #%d (+%d): VA=$%08X SSW=$%04X PC=$%08X FC=%d\r\n",
-			           mmu040_fault_total, since_reset, addr_in, ssw, REG_PPC, fc);
-			fault_fire_log++;
-		}
+		(void)since_reset;
 
 		/* Detect infinite fault loop (double bus fault → CPU halt).
 		 * On real 68040 this halts the CPU; we stop the emulator. */

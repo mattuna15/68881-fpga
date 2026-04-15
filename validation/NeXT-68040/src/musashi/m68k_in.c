@@ -9299,9 +9299,6 @@ rte_loop:
 				m68ki_fake_pull_16();	/* format word */
 				REG_A[7] += 52;		/* skip EA, SSW, WBnS, FA, WBnA/D, PDn */
 				rte_format7_count++;
-				if (rte_format7_count <= 5 || (rte_format7_count % 100) == 0)
-					xil_printf("[RTE-F7] #%d resume PC=$%08X SR=$%04X\r\n",
-					           rte_format7_count, new_pc, new_sr);
 				m68ki_jump(new_pc);
 				m68ki_set_sr(new_sr);
 				CPU_INSTR_MODE = INSTRUCTION_YES;

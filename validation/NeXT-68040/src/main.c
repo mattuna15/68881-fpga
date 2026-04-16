@@ -35,13 +35,18 @@
 #include "next_dsp.h"
 #include "next_kms.h"
 #include "next_scsi.h"
+#include "next_scsi_dma.h"
+#include "next_esp.h"
 #include "next_ufs_diag.h"
 #include "next_video.h"
 #include "text_fb.h"
 #include "dp_video.h"
 #include "render_core1.h"
 
-/* Number of M68K instructions to execute per main-loop tick */
+/* Number of M68K instructions to execute per main-loop tick.
+ * Interrupt delivery latency is no longer gated by this value —
+ * next_intr_set() now calls m68k_set_irq() immediately so interrupts
+ * fire on the very next instruction, just like real hardware. */
 #define EMU_CYCLES_PER_TICK  10000
 
 /* ------------------------------------------------------------------ */
@@ -74,6 +79,7 @@ static struct {
 } trap_log[TRAP_LOG_SIZE];
 
 extern unsigned int fh_get_urp(void);
+extern unsigned int fh_get_srp(void);
 extern unsigned int mmu040_translate_with_urp(unsigned int urp, unsigned int va);
 extern unsigned int mmu040_translate_user(unsigned int va);
 
@@ -89,12 +95,19 @@ static uint32_t trap_read_u32(uint32_t urp, uint32_t va)
 static int trap_log_idx = 0;
 static int trap_log_total = 0;
 
+/* Counter: set by next_intr_set for SCSI interrupts.  Counts down each
+ * instruction; delivers when it reaches 0.  10 instructions gives the
+ * polling code time to set STF_POLL_IP after splx, while still being
+ * fast enough to prevent the SVF_ACTIVE / biowait deadlock. */
+volatile int next_irq_pending_update = 0;
+
 /* User-mode execution tracker — counts instructions + last 4 PCs + URP */
 static uint32_t user_instr_count = 0;
 static uint32_t user_last_pc[4];
 static uint32_t user_last_urp = 0;  /* URP active during last user instruction */
 static int user_last_idx = 0;
 int emu_user_mode_flag = 0;
+int emu_idle_entered = 0;  /* set by instr hook when idle_thread detected */
 
 /* URP switch log — each entry records a user-mode URP change (thread/proc
  * switch visible from user mode).  Helps diagnose "stuck in msg_recv"
@@ -424,6 +437,17 @@ void emu_dump_pc_ring(const char *why)
 
 void emu_instr_hook(unsigned int pc)
 {
+    /* Deliver deferred SCSI interrupts after a short countdown.
+     * The polling code (scsi_pollcmd) needs ~10 instructions after the
+     * ESP command write to execute splx and set STF_POLL_IP.  Delivering
+     * too soon causes the interrupt to fire before the flag is set,
+     * breaking the generic SCSI probe.  Delivering too late (10K insns)
+     * causes the SVF_ACTIVE / biowait deadlock. */
+    if (next_irq_pending_update > 0) {
+        if (--next_irq_pending_update == 0)
+            m68k_set_irq(next_intr_pending_ipl());
+    }
+
     pc_ring[pc_ring_idx % PC_RING_SIZE] = pc;
     pc_ring_idx++;
 
@@ -505,150 +529,368 @@ void emu_instr_hook(unsigned int pc)
         m68k_set_reg(M68K_REG_D3, 0);
     }
 
+    /* Watch for TRAP #4 (UNIX syscall) — log every one we see, with
+     * D0 (syscall number), D1/D2/D3 (register args), and for syscall
+     * 5 (open) also try to read the path string through URP.
+     *
+     * We don't pre-read the opcode because at some instruction boundaries
+     * m68k_read_memory_16 may go through a cache path that doesn't match
+     * the exec stream. Instead, catch TRAP #4 by its known PCs from the
+     * trap log: $00012C98, $0000C564, $0000C320, $0000CAC6, $00013ACE.
+     * Any instruction that's ABOUT to execute at one of these addresses
+     * in user mode IS our TRAP #4. */
+    /* Set once we observe the open("/dev/console") trap — turns on the
+     * supervisor-side PC sampler below so we can locate where the kernel
+     * blocks inside cnopen. */
+    static int console_open_trace = 0;
+    {
+        static int trap4_seen[10];
+        static int trap4_count = 0;
+        uint32_t trap_sr = m68k_get_reg(NULL, M68K_REG_SR);
+        int is_user = !(trap_sr & 0x2000);
+        int is_trap4_pc = (pc == 0x0000CAC6 || pc == 0x0000C320 ||
+                           pc == 0x0000C564 || pc == 0x00012C98 ||
+                           pc == 0x00013ACE);
+        if (is_user && is_trap4_pc && trap4_count < 10) {
+            int already = 0;
+            for (int k = 0; k < trap4_count; k++)
+                if (trap4_seen[k] == (int)pc) { already = 1; break; }
+            if (!already) {
+                trap4_seen[trap4_count++] = (int)pc;
+                uint32_t d0 = m68k_get_reg(NULL, M68K_REG_D0);
+                uint32_t d1 = m68k_get_reg(NULL, M68K_REG_D1);
+                uint32_t d2 = m68k_get_reg(NULL, M68K_REG_D2);
+                uint32_t d3 = m68k_get_reg(NULL, M68K_REG_D3);
+                xil_printf("[SYSCALL] D0=%u (trap#4) D1=$%08X D2=$%08X D3=$%08X PC=$%08X\r\n",
+                           (unsigned)d0, d1, d2, d3, pc);
+                if (d0 == 5) {                    /* open */
+                    /* Dump context window $d1-32 .. $d1+64 so we see
+                     * what's before/after the pointer — if the real
+                     * filename is just off by a few bytes we'll spot
+                     * it. Cross-check via direct-phys read
+                     * (next_phys_read_32 → skips Musashi memory layer)
+                     * vs m68k_read_memory_8 (goes through Musashi). */
+                    xil_printf("[OPEN] context window $%08X-32..+64:\r\n",
+                               d1);
+                    for (int row = 0; row < 6; row++) {
+                        uint32_t base = (d1 & ~3u) - 32 + row*16;
+                        xil_printf("  $%08X: ", base);
+                        /* Phys read via URP translation */
+                        for (int col = 0; col < 16; col += 4) {
+                            uint32_t pa = mmu040_translate_user(base + col);
+                            if (pa == 0xFFFFFFFFu) {
+                                xil_printf("-------- ");
+                            } else {
+                                uint32_t w = next_phys_read_32(pa);
+                                xil_printf("%08X ", w);
+                            }
+                        }
+                        /* ASCII sidebar */
+                        xil_printf("| ");
+                        for (int col = 0; col < 16; col++) {
+                            uint32_t pa = mmu040_translate_user(base + col);
+                            if (pa == 0xFFFFFFFFu) {
+                                xil_printf(".");
+                            } else {
+                                uint8_t b = next_phys_read_32(pa & ~3u) >>
+                                            ((3 - (col & 3)) * 8);
+                                if (b >= 0x20 && b < 0x7F)
+                                    xil_printf("%c", b);
+                                else
+                                    xil_printf(".");
+                            }
+                        }
+                        xil_printf("\r\n");
+                    }
+                    /* Also the null-terminated string at d1, via BOTH
+                     * read paths for cross-check. */
+                    char via_musashi[65], via_phys[65];
+                    int i;
+                    for (i = 0; i < 64; i++) {
+                        uint32_t pa = mmu040_translate_user(d1 + i);
+                        if (pa == 0xFFFFFFFFu) {
+                            via_musashi[i] = via_phys[i] = 0;
+                            break;
+                        }
+                        via_musashi[i] = m68k_read_memory_8(d1 + i);
+                        uint32_t word = next_phys_read_32(pa & ~3u);
+                        via_phys[i] = (word >> ((3 - ((d1 + i) & 3)) * 8))
+                                       & 0xFF;
+                        if (via_phys[i] == 0) {
+                            via_musashi[i + 1] = via_phys[i + 1] = 0;
+                            break;
+                        }
+                    }
+                    via_musashi[64] = via_phys[64] = 0;
+                    xil_printf("[OPEN] via m68k_read_memory_8: \"%s\"\r\n",
+                               via_musashi);
+                    xil_printf("[OPEN] via next_phys_read_32:  \"%s\"\r\n",
+                               via_phys);
+                    /* If this is /dev/console, turn on the supervisor
+                     * PC sampler so we can see where the kernel blocks. */
+                    if (via_phys[0] == '/' && via_phys[1] == 'd' &&
+                        via_phys[2] == 'e' && via_phys[3] == 'v') {
+                        console_open_trace = 1;
+                        xil_printf("[OPEN] tracing kernel after this trap\r\n");
+                    }
+                }
+            }
+        }
+    }
+
+    /* Supervisor PC sampler — once the open("/dev/console") trap fires,
+     * sample kernel PC periodically so we can locate the sleep/wait site.
+     * Also tracks unique PCs seen in a small ring so we can tell whether
+     * the kernel is looping or advancing. */
+    if (console_open_trace) {
+        uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+        int is_super = (sr & 0x2000) != 0;
+        static int banner = 0;
+        /* Linear PC history: record distinct PCs until full OR until we
+         * first hit the idle range. Non-circular — we want the FIRST
+         * PCs after the trap (sys_open path), not the most recent
+         * (scheduler/idle housekeeping). */
+        #define KHIST_MAX 2048
+        static uint32_t hist[KHIST_MAX];
+        static int hist_count = 0;
+        static int hist_frozen = 0;
+        static int idle_dumped = 0;
+        static uint32_t prev_pc = 0;
+        if (is_super) {
+            if (!banner) {
+                banner = 1;
+                xil_printf("[KTRACE] entered supervisor after open trap PC=$%08X\r\n", pc);
+            }
+            int in_idle = (pc >= 0x040674D0 && pc <= 0x04067504);
+            /* Snapshot registers each time we enter the scheduler
+             * ($0406B6F8).  The LAST snapshot before idle is the
+             * blocking sleep's call site — its stack has the sleep
+             * channel and return address chain. */
+            static uint32_t sched_sp = 0, sched_a6 = 0, sched_d0 = 0,
+                            sched_d1 = 0, sched_a0 = 0, sched_a1 = 0;
+            static int sched_snaps = 0;
+            if (pc == 0x0406B6F8) {
+                sched_sp = m68k_get_reg(NULL, M68K_REG_A7);
+                sched_a6 = m68k_get_reg(NULL, M68K_REG_A6);
+                sched_d0 = m68k_get_reg(NULL, M68K_REG_D0);
+                sched_d1 = m68k_get_reg(NULL, M68K_REG_D1);
+                sched_a0 = m68k_get_reg(NULL, M68K_REG_A0);
+                sched_a1 = m68k_get_reg(NULL, M68K_REG_A1);
+                sched_snaps++;
+            }
+            if (!hist_frozen && pc != prev_pc) {
+                if (in_idle || hist_count >= KHIST_MAX) {
+                    hist_frozen = 1;
+                } else {
+                    hist[hist_count++] = pc;
+                    prev_pc = pc;
+                }
+            }
+            if (!idle_dumped && in_idle) {
+                idle_dumped = 1;
+                emu_idle_entered = 1;  /* signal main loop heartbeat */
+                xil_printf("[KTRACE] entering idle loop — first %d PCs after trap:\r\n",
+                           hist_count);
+                for (int k = 0; k < hist_count; k++) {
+                    xil_printf("  [%4d] $%08X\r\n", k, hist[k]);
+                }
+                /* Also dump A6 frame chain at this moment */
+                uint32_t a6 = m68k_get_reg(NULL, M68K_REG_A6);
+                xil_printf("[KTRACE] A6 chain at idle entry:\r\n");
+                for (int i = 0; i < 12 && a6 >= 0x04000000 && a6 < 0x12000000; i++) {
+                    uint32_t ret = next_phys_read_32((a6 + 4) & 0x07FFFFFFu);
+                    uint32_t nxt = next_phys_read_32(a6 & 0x07FFFFFFu);
+                    xil_printf("  A6=$%08X  ret=$%08X\r\n", a6, ret);
+                    if (nxt <= a6 || nxt > a6 + 0x4000) break;
+                    a6 = nxt;
+                }
+                /* SCSI/DMA/interrupt state at idle entry — the key
+                 * diagnostic: if scsi_read_log is 0, the kernel never
+                 * issued a disk read during sys_open, so the block is
+                 * a lock/port wait, not buffer I/O. */
+                {
+                    extern int scsi_read_log_count(void);
+                    extern void esp_dump_state(void);
+                    xil_printf("[IDLE-SCSI] SCSI reads since BUSRST: %d\r\n",
+                               scsi_read_log_count());
+                    esp_dump_state();
+                    xil_printf("[IDLE-SCSI] DMA CSR=$%08X\r\n",
+                               next_scsi_dma_csr_read());
+                    xil_printf("[IDLE-SCSI] intr_status=$%08X intr_mask=$%08X pending_ipl=%d\r\n",
+                               next_intr_get_status(), next_intr_get_mask(),
+                               next_intr_pending_ipl());
+                }
+                /* Dump the LAST scheduler entry's register snapshot.
+                 * This is the blocking sleep's stack — SP+0 = return
+                 * addr into sleep/assert_wait, SP+4/+8 = args. */
+                if (sched_snaps > 0) {
+                    /* Kernel thread stacks are at $10xxxxxx, mapped only
+                     * through SRP (supervisor root pointer), NOT URP.
+                     * pmmu_translate_addr uses URP for user VAs, so we
+                     * must use mmu040_translate_with_urp(SRP, va) to
+                     * walk the kernel page table explicitly. */
+                    uint32_t srp = fh_get_srp();
+                    xil_printf("[BLOCK] Last sched entry (#%d) regs (SRP=$%08X):\r\n",
+                               sched_snaps, srp);
+                    xil_printf("[BLOCK] D0=$%08X D1=$%08X A0=$%08X A1=$%08X\r\n",
+                               sched_d0, sched_d1, sched_a0, sched_a1);
+                    xil_printf("[BLOCK] SP=$%08X A6=$%08X\r\n", sched_sp, sched_a6);
+                    /* Helper: translate VA through SRP, fall back to
+                     * identity mapping for low kernel VAs ($04xxxxxx). */
+                    #define KXLAT(va) ({ \
+                        uint32_t _v = (va); \
+                        uint32_t _p = mmu040_translate_with_urp(srp, _v); \
+                        (_p == _v && _v >= 0x10000000u) ? 0 : _p; \
+                    })
+                    xil_printf("[BLOCK] Stack at last sched entry (SRP-xlated):\r\n");
+                    for (int i = 0; i < 48; i++) {
+                        uint32_t va = sched_sp + i*4;
+                        uint32_t pa = KXLAT(va);
+                        if (pa != 0) {
+                            uint32_t val = next_phys_read_32(pa);
+                            xil_printf("  SP+%02X: $%08X  (VA=$%08X PA=$%08X)\r\n",
+                                       i*4, val, va, pa);
+                        } else {
+                            xil_printf("  SP+%02X: ????????  (VA=$%08X no-xlat)\r\n",
+                                       i*4, va);
+                            break;
+                        }
+                    }
+                    /* A6 chain from the blocking frame */
+                    xil_printf("[BLOCK] A6 chain:\r\n");
+                    uint32_t fa6 = sched_a6;
+                    for (int i = 0; i < 16; i++) {
+                        uint32_t pa = KXLAT(fa6);
+                        if (pa == 0) {
+                            xil_printf("  A6=$%08X  (no translation)\r\n", fa6);
+                            break;
+                        }
+                        uint32_t ret_pa = KXLAT(fa6 + 4);
+                        uint32_t ret = ret_pa ? next_phys_read_32(ret_pa) : 0;
+                        uint32_t nxt = next_phys_read_32(pa);
+                        xil_printf("  A6=$%08X  ret=$%08X\r\n", fa6, ret);
+                        if (nxt == 0 || nxt == fa6) break;
+                        fa6 = nxt;
+                    }
+                    #undef KXLAT
+                    /* Dump 64 bytes at the sleep channel (A0 from last
+                     * sched snapshot) to identify the data structure. */
+                    if (sched_a0 >= 0x04000000u && sched_a0 < 0x0C000000u) {
+                        xil_printf("[BLOCK] Sleep channel $%08X dump:\r\n", sched_a0);
+                        for (int row = 0; row < 4; row++) {
+                            uint32_t base = sched_a0 + row*16;
+                            xil_printf("  $%08X: ", base);
+                            for (int col = 0; col < 16; col += 4)
+                                xil_printf("%08X ", next_phys_read_32(base + col));
+                            xil_printf("| ");
+                            for (int col = 0; col < 16; col++) {
+                                uint8_t b = (next_phys_read_32((base+col) & ~3u) >>
+                                            ((3 - (col & 3)) * 8)) & 0xFF;
+                                xil_printf("%c", (b >= 0x20 && b < 0x7F) ? b : '.');
+                            }
+                            xil_printf("\r\n");
+                        }
+                    }
+                    /* Dump code at the key return addresses from the
+                     * blocking stack — these identify the functions in
+                     * the sleep call chain. */
+                    {
+                    /* Scan the stack for return-address-looking values
+                     * ($04xxxxxx in kernel text range) and dump code
+                     * around each unique one. */
+                    xil_printf("[BLOCK] Code at stack return addresses:\r\n");
+                    uint32_t seen_ret[16]; int n_ret = 0;
+                    for (int i = 0; i < 48 && n_ret < 16; i++) {
+                        uint32_t va = sched_sp + i*4;
+                        uint32_t pa = mmu040_translate_with_urp(srp, va);
+                        if (pa == 0 || (pa == va && va >= 0x10000000u)) continue;
+                        uint32_t val = next_phys_read_32(pa);
+                        /* Is this a kernel text address? */
+                        if (val >= 0x04001000u && val < 0x040B0000u) {
+                            int dup = 0;
+                            for (int j = 0; j < n_ret; j++)
+                                if (seen_ret[j] == val) { dup = 1; break; }
+                            if (!dup) {
+                                seen_ret[n_ret++] = val;
+                                /* Dump 32 bytes around the return address */
+                                uint32_t a = val - 16;
+                                xil_printf("  SP+%02X ret=$%08X:\r\n    ", i*4, val);
+                                for (int w = 0; w < 8; w++)
+                                    xil_printf("%08X ", next_phys_read_32(a + w*4));
+                                xil_printf("\r\n");
+                            }
+                        }
+                    }
+                    /* Read sleep()'s arguments from its LINK frame.
+                     * sleep's saved A6 is at SP+6C on the blocked stack.
+                     * sleep(chan, pri): A6+8=chan, A6+12=pri on 68K. */
+                    {
+                        uint32_t sleep_a6_va = 0;
+                        /* Find SP+6C value (sleep's frame pointer) */
+                        uint32_t va6c = sched_sp + 0x6C;
+                        uint32_t pa6c = mmu040_translate_with_urp(srp, va6c);
+                        if (pa6c && pa6c != va6c)
+                            sleep_a6_va = next_phys_read_32(pa6c);
+                        if (sleep_a6_va >= 0x10000000u) {
+                            /* Read chan at A6+8, pri at A6+12, caller_ret at A6+4 */
+                            uint32_t pa_ret = mmu040_translate_with_urp(srp, sleep_a6_va + 4);
+                            uint32_t pa_chan = mmu040_translate_with_urp(srp, sleep_a6_va + 8);
+                            uint32_t pa_pri = mmu040_translate_with_urp(srp, sleep_a6_va + 12);
+                            uint32_t caller = pa_ret ? next_phys_read_32(pa_ret) : 0;
+                            uint32_t chan = pa_chan ? next_phys_read_32(pa_chan) : 0;
+                            uint32_t pri = pa_pri ? next_phys_read_32(pa_pri) : 0;
+                            xil_printf("[BLOCK] sleep() frame at A6=$%08X:\r\n", sleep_a6_va);
+                            xil_printf("[BLOCK]   caller ret=$%08X  chan=$%08X  pri=%d\r\n",
+                                       caller, chan, pri);
+                            /* If chan looks like a kernel address, dump 32 bytes there */
+                            if (chan >= 0x04000000u && chan < 0x0C000000u) {
+                                xil_printf("[BLOCK]   sleep channel @$%08X: ", chan);
+                                for (int w = 0; w < 8; w++)
+                                    xil_printf("%08X ", next_phys_read_32(chan + w*4));
+                                xil_printf("\r\n");
+                            }
+                            /* Dump code at the caller to identify the function */
+                            if (caller >= 0x04001000u && caller < 0x040B0000u) {
+                                xil_printf("[BLOCK]   caller code @$%08X-16:\r\n    ", caller);
+                                for (int w = 0; w < 8; w++)
+                                    xil_printf("%08X ", next_phys_read_32(caller - 16 + w*4));
+                                xil_printf("\r\n");
+                            }
+                        }
+                    }
+                    }
+                }
+                /* Dump machine code at the LAST 20 unique PCs before
+                 * idle — these are the blocking call site.  With 68K
+                 * disassembly this identifies sleep/assert_wait/thread_block. */
+                if (hist_count >= 20) {
+                    xil_printf("[KTRACE] code at last 20 PCs before idle:\r\n");
+                    for (int k = hist_count - 20; k < hist_count; k++) {
+                        uint32_t a = hist[k] & 0x07FFFFFFu;
+                        xil_printf("  $%08X: ", hist[k]);
+                        for (int w = 0; w < 5; w++) {
+                            uint32_t d = next_phys_read_32(a + w*4);
+                            xil_printf("%08X ", d);
+                        }
+                        xil_printf("\r\n");
+                    }
+                }
+            }
+        }
+    }
+
     /* REMOVED: cthread hack at $00004EDE — caused ILLG-USER at $00004EE0
      * because $008C (FPU displacement word) was executed as opcode.
      * The real problem is all threads blocked in msg_recv with no
      * wakeup source — need to investigate what's missing. */
 
-    /* Watch for kernel exec path — all call stack addresses from panic.
-     * Also search for "errno" string in kernel to find the printf caller. */
+    /* Kernel phase detection — used elsewhere to gate instrumentation
+     * that should only run after the kernel has taken over in RAM. */
     {
-        static int exec_watch_armed = 0;
-        static int exec_watch_hits = 0;
-        static uint32_t errno_str_addr = 0;
-        static int errno_search_done = 0;
-        static int kernel_phase = 0;  /* 0=boot, 1=kernel running */
-
-        /* Arm after kernel starts executing in RAM */
-        if (!exec_watch_armed && pc >= 0x04000000 && pc < 0x04100000)
-            exec_watch_armed = 1;
-        /* Detect kernel phase: after timer set to 500us, the kernel is running.
-         * PC=$040013A6 is PFLUSH right after SRP setup — marks kernel takeover. */
+        static int kernel_phase = 0;
         if (kernel_phase == 0 && pc == 0x040013A6)
             kernel_phase = 1;
-
-        if (exec_watch_armed) {
-            /* One-time search: find "errno" string in kernel text/data.
-             * The kernel prints "Load of /etc/mach_init, errno 13" —
-             * search for "errno " in physical RAM. */
-            if (!errno_search_done) {
-                errno_search_done = 1;
-                /* Kernel text/data lives in bank 0 ($04000000..$04C00000).
-                 * Iterate virtual addresses so the bank-mask offset is
-                 * applied correctly for every byte read. */
-                #define RAM_B(va) (next_ram[(va) & 0x07FFFFFFu])
-                for (uint32_t va = NEXT_RAM_BASE;
-                     va < NEXT_RAM_BASE + 0x00C00000 && !errno_str_addr;
-                     va += 2) {
-                    if (RAM_B(va)   == 'e' && RAM_B(va+1) == 'r' &&
-                        RAM_B(va+2) == 'r' && RAM_B(va+3) == 'n' &&
-                        RAM_B(va+4) == 'o' && RAM_B(va+5) == ' ') {
-                        for (int back = 4; back < 64; back++) {
-                            if (va >= NEXT_RAM_BASE + (uint32_t)back &&
-                                RAM_B(va-back)   == 'L' &&
-                                RAM_B(va-back+1) == 'o' &&
-                                RAM_B(va-back+2) == 'a' &&
-                                RAM_B(va-back+3) == 'd') {
-                                errno_str_addr = va - back;
-                                xil_printf("[EXEC-FIND] 'Load of...errno' string at VA=$%08X\r\n",
-                                           errno_str_addr);
-                                xil_printf("[EXEC-FIND] ");
-                                for (int j = 0; j < 64; j++) {
-                                    uint8_t ch = RAM_B(va - back + j);
-                                    if (ch >= 0x20 && ch < 0x7F) xil_printf("%c", ch);
-                                    else if (ch == 0) { xil_printf("\\0"); break; }
-                                    else xil_printf(".");
-                                }
-                                xil_printf("\r\n");
-                                break;
-                            }
-                        }
-                    }
-                }
-                #undef RAM_B
-                if (!errno_str_addr)
-                    xil_printf("[EXEC-FIND] 'errno' string NOT found in kernel RAM\r\n");
-            }
-
-            /* Watch exec-related call stack addresses — each with own counter.
-             * Only after kernel takes over (kernel_phase=1). */
-            if (kernel_phase) {
-                static int w54c_n=0, wfef6_n=0, w2504_n=0, w7884_n=0;
-                /* 0x0405454c — in exec call chain */
-                if (pc == 0x0405454c && w54c_n < 5) {
-                    xil_printf("[W@54c] D0=$%08X D1=$%08X A0=$%08X A6=$%08X SP=$%08X\r\n",
-                        m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
-                        m68k_get_reg(NULL, M68K_REG_A0), m68k_get_reg(NULL, M68K_REG_A6),
-                        m68k_get_reg(NULL, M68K_REG_A7));
-                    /* Dump 64 bytes of code starting 16 bytes before the hit
-                     * so we can identify the function prologue. */
-                    xil_printf("[W@54c] code -16..+48:");
-                    for (int i = -8; i < 24; i++) {
-                        uint32_t a = (0x0405454c + i*2) & 0x07FFFFFFu;
-                        uint16_t w = ((uint16_t)next_ram[a] << 8) | next_ram[a+1];
-                        if ((i + 8) % 8 == 0) xil_printf("\r\n  +%02d:", i*2);
-                        xil_printf(" %04X", w);
-                    }
-                    xil_printf("\r\n");
-                    w54c_n++;
-                }
-                /* 0x0405fef6 — return addr in exec chain */
-                if (pc == 0x0405fef6 && wfef6_n < 5) {
-                    xil_printf("[W@fef6] D0=$%08X D1=$%08X A0=$%08X SP=$%08X\r\n",
-                        m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
-                        m68k_get_reg(NULL, M68K_REG_A0), m68k_get_reg(NULL, M68K_REG_A7));
-                    wfef6_n++;
-                }
-                /* 0x04072504 — load_init_program caller return */
-                if (pc == 0x04072504 && w2504_n < 5) {
-                    xil_printf("[W@2504] D0=$%08X D1=$%08X SP=$%08X\r\n",
-                        m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
-                        m68k_get_reg(NULL, M68K_REG_A7));
-                    w2504_n++;
-                }
-                /* 0x04067884 — kernel init caller */
-                if (pc == 0x04067884 && w7884_n < 5) {
-                    xil_printf("[W@7884] D0=$%08X D1=$%08X SP=$%08X\r\n",
-                        m68k_get_reg(NULL, M68K_REG_D0), m68k_get_reg(NULL, M68K_REG_D1),
-                        m68k_get_reg(NULL, M68K_REG_A7));
-                    w7884_n++;
-                }
-
-                /* Watch for PEA $040A6980 or MOVE.L #$040A6980 — loading
-                 * the "Load of...errno" format string for printf.
-                 * Detect by checking if any data register or address reg
-                 * contains the string address. Check every 10000 PCs. */
-                {
-                    static int errno_printf_n = 0;
-                    static uint32_t last_errno_check = 0;
-                    if (errno_str_addr && errno_printf_n < 2 &&
-                        pc >= 0x04060000 && pc <= 0x040A0000) {
-                        /* Check A0 for the format string address */
-                        uint32_t a0 = m68k_get_reg(NULL, M68K_REG_A0);
-                        if (a0 == errno_str_addr) {
-                            uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
-                            xil_printf("\r\n[ERRNO-PRINTF] PC=$%08X A0=$%08X (format str!)\r\n", pc, a0);
-                            xil_printf("[ERRNO-PRINTF] SP=$%08X stack:\r\n", sp);
-                            for (int i = 0; i < 10; i++)
-                                xil_printf("  SP+%02X: $%08X\r\n", i*4,
-                                    m68k_read_memory_32(sp + i*4));
-                            /* Dump string at the filename arg (likely SP+4 or SP+8) */
-                            uint32_t fn = m68k_read_memory_32(sp + 4);
-                            if (fn > 0x04000000 && fn < 0x05000000) {
-                                xil_printf("[ERRNO-PRINTF] filename: ");
-                                for (int j = 0; j < 30; j++) {
-                                    uint8_t ch = m68k_read_memory_8(fn + j);
-                                    if (ch == 0) break;
-                                    if (ch >= 0x20 && ch < 0x7F) xil_printf("%c", ch);
-                                }
-                                xil_printf("\r\n");
-                            }
-                            errno_printf_n++;
-                        }
-                    }
-                }
-            }
-        }
+        (void)kernel_phase;
     }
 
     if (trace_count < TRACE_LIMIT) {
@@ -990,6 +1232,36 @@ static void next_boot(void)
                     if (dp_ok) dp_video_refresh();
                 }
 #endif
+            }
+        }
+
+        /* Idle heartbeat — once idle_thread is detected after the
+         * open("/dev/console") stall, periodically report whether any
+         * new SCSI activity has occurred.  This is the key diagnostic:
+         * if SCSI reads tick up, the kernel IS doing disk I/O (and it's
+         * either completing or hanging mid-transfer).  If the count is
+         * flat, the block is a lock/port wait with no disk involvement. */
+        {
+            static int heartbeat_counter = 0;
+            static int last_scsi_reads = -1;
+            extern int emu_idle_entered;
+            if (emu_idle_entered) {
+                if (last_scsi_reads < 0) {
+                    /* First tick after idle — snapshot baseline */
+                    extern int scsi_read_log_count(void);
+                    last_scsi_reads = scsi_read_log_count();
+                }
+                if (++heartbeat_counter >= 2500) {  /* ~every 5 seconds */
+                    heartbeat_counter = 0;
+                    extern int scsi_read_log_count(void);
+                    int cur = scsi_read_log_count();
+                    uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+                    xil_printf("[IDLE-HB] PC=$%08X scsi_reads=%d (delta=%d) intr=$%08X mask=$%08X ipl=%d\r\n",
+                               pc, cur, cur - last_scsi_reads,
+                               next_intr_get_status(), next_intr_get_mask(),
+                               next_intr_pending_ipl());
+                    last_scsi_reads = cur;
+                }
             }
         }
 

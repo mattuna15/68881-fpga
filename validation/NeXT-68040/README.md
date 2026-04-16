@@ -220,10 +220,53 @@ Root cause was 68040 MMU bugs: supervisor detection used wrong flag
 instead of SRP. Fixed across 5 MMU commits (see below). PLOAD instruction
 was also unimplemented, causing a fault loop at VA=$01.
 
-### Mach Kernel Boot — mach_init Running (Current)
+### Mach Kernel Boot — init blocks on open("/dev/console") (Current)
 
-With MMU fixes applied, the kernel now **fully boots and starts user
-processes**:
+With the RTC/NVRAM bit-bang direction fix, SCSI DMA completion fix and
+the VBL-IRQ storm disabled, the kernel now boots **through `root on sd0`
+and into user space**. `init` runs five syscalls (144, 108, 20, 6, 6)
+and traps on syscall 5 = `open("/dev/console", 0, 0666)` at user
+PC=`$0000CAC6`. The kernel handles the trap (walks ~2048 distinct PCs)
+then parks forever in `idle_thread()` at `$040674D0-$04067504`.
+
+**Key fixes this phase:**
+- **RTC bit-bang direction** (`next_rtc.c`): data bits latched on CLK
+  *rising* edge, not falling. ROM samples RTDATA after the fall, so
+  each byte was rotated by one bit — NVRAM checksum failed, ROM went
+  to the death-beep fallback path. Fix unblocked the whole boot chain.
+- **VBL IRQ storm** (`next_devs.c`): `I_IPL3_DISK` was being set by
+  the VBL simulator but the kernel has no VBL handler, so the bit
+  stayed asserted and the ISR spun reading `P_INTRSTAT` 866× per
+  sample window. Gated out with `#if 0`.
+- **SCSI DMA completion** (`next_scsi_dma.c`): `DMA_COMPLETE` now fires
+  whenever `*esp_counter == 0` OR `dma.next >= dma.limit`, matching
+  Previous `esp.c:758-762`. Previously gated on `total>0`, so zero-
+  length/phase-change transfers silently dropped the done interrupt.
+- **DBEQ/DBF self-branch shortcut** in Musashi's `m68kops.c` — tight
+  `DBcc Dn,$-2` loops now decrement D7 to $FFFF in one step.
+- **`/dev/console` identified** as the blocking open. Diagnostic: user
+  D1=$00014ECE points into rodata; reading the string via
+  `next_phys_read_32` after `mmu040_translate_user` yields
+  `"/dev/console"`, confirmed.
+
+**Sleep path ruled out via NeXTMach source (`mk-108.1/nextdev/zs.c`,
+`km.c`, `next/cons.c`):**
+- `cnopen` is a pure dispatcher. With `alt_cons=1`, cons.t_dev =
+  `makedev(11,0)` → `zsopen` channel A.
+- `zsopen` would sleep at line 440 on carrier, but only if
+  `ZSHARDCAR(m) = m&0x40`, and minor 0 = 0 → `!ZSHARDCAR` forces
+  `TS_CARR_ON` at line 435 and the sleep is bypassed.
+- `km.c` has zero `sleep`/`tsleep` calls.
+- `ttyopen` sets state only, no sleeps.
+
+**So the block is earlier in `sys_open`** — most likely `namei` reading
+a directory block from disk and waiting on a buffer I/O that never
+completes, or a vnode lock held by a non-runnable thread. Next
+diagnostic is to watch for SCSI DMA activity while stuck (if no disk
+I/O fires, it's a lock/port wait, not buffer I/O).
+
+**Earlier phase retained for context — user space was previously
+reached via a separate path and stalled on Mach IPC:**
 
 1. `load_init_program` returns D0=0 (SUCCESS) — confirmed via `[W@2504]` watchpoint
 2. Separate user address space created: URP=$04215200 ≠ SRP=$040CAA00
@@ -352,6 +395,10 @@ tick, giving the kernel time to set polling flags.
 
 ### Next Steps
 
+0. Watch SCSI DMA activity during the `/dev/console` open stall. If no
+   disk I/O fires, the wait is a lock/port, not `namei` buffer I/O. If
+   a disk I/O goes out and never completes, our SCSI stub is missing a
+   completion path for some edge case (odd block count, sparse region).
 1. Fix softint delivery model — investigate level-sensitive vs one-shot.
    The kernel's softint handler may need persistent interrupt to process
    all deferred callouts before clearing SCR2.

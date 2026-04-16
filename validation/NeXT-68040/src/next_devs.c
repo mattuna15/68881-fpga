@@ -638,7 +638,23 @@ int next_timer_tick(int cycles)
         }
     }
 
-    /* VBL interrupt — 68 Hz via TMC, fires through I_IPL3_DISK */
+    /* VBL interrupt — 68 Hz via TMC, was firing through I_IPL3_DISK.
+     *
+     * DISABLED: I_IPL3_DISK is the optical-disk / floppy line, and the
+     * kernel's IRQ dispatcher handles it through a driver path that
+     * does NOT write to TMC VIR to clear the VBL bit — so once we
+     * assert I_IPL3_DISK, the kernel's ISR reads P_INTRSTAT, sees it
+     * set, fails to clear, returns, and the CPU immediately re-enters
+     * the ISR. Interrupt storm: the kernel polls P_INTRSTAT hundreds of
+     * times per sample window and `idle_thread` appears to spin at
+     * $04067xxx because every instruction is interrupted by a spurious
+     * IRQ. VBL is only needed for cosmetic things (cursor blink,
+     * screen saver), so we skip it entirely. When/if the kernel
+     * actually enables and handles VBL with the correct clear path,
+     * we can route it through a dedicated bit instead of sharing
+     * I_IPL3_DISK. */
+    (void)vbl_accum;
+#if 0
     vbl_accum += usecs;
     if (vbl_accum >= VBL_PERIOD_US) {
         vbl_accum -= VBL_PERIOD_US;
@@ -647,6 +663,7 @@ int next_timer_tick(int cycles)
             next_intr_set(I_IPL3_DISK);
         }
     }
+#endif
 
     return 0;
 }
@@ -726,21 +743,19 @@ void next_intr_set(uint32_t bit)
         }
     }
     intr_status |= bit;
-    /* For SCSI interrupts: defer m68k_set_irq to the main loop tick.
-     * Our synchronous ESP model completes commands instantly during the
-     * register write instruction. If we deliver the interrupt immediately,
-     * it fires during splx() BEFORE the kernel sets its polling flags
-     * (e.g., STF_POLL_IP in the tape driver). This causes a race where
-     * stdone clears the flag, then the kernel re-sets it, and the polling
-     * loop never exits. Deferring lets at least one instruction execute
-     * between the ESP write and the interrupt delivery.
-     * The kernel's scintr goto-again loop still works because it checks
-     * *intrstat (which reads intr_status directly, not m68k IRQ level). */
-    if (bit == I_IPL3_SCSI) {
-        if (next_debug_scsi)
-            xil_printf("[IRQ+] set $%08X → status=$%08X (DEFERRED)\r\n",
-                       bit, intr_status);
-        return;  /* don't call m68k_set_irq — main loop will pick it up */
+    /* SCSI interrupts: do NOT call m68k_set_irq here.  The I/O callback
+     * fires mid-instruction during the ESP register write.  If we deliver
+     * immediately, it races with the tape driver's STF_POLL_IP flag setup
+     * (set AFTER splx, but the interrupt fires DURING splx).
+     *
+     * Instead, set a flag that emu_instr_hook checks on the NEXT instruction.
+     * This gives exactly 1-instruction deferral — enough for splx to
+     * complete, but not the 10,000-instruction deferral that caused the
+     * biowait deadlock on open("/dev/console"). */
+    if (bit == I_IPL3_SCSI || bit == I_IPL6_SCSI_DMA) {
+        extern volatile int next_irq_pending_update;
+        next_irq_pending_update = 10;  /* deliver after ~10 instructions */
+        return;
     }
     int ipl = next_intr_pending_ipl();
     if (next_debug_scsi && bit != I_IPL6_TIMER)
@@ -1223,9 +1238,20 @@ void next_io_write_8(uint32_t address, uint8_t value)
         uint32_t off = address - P_SCC;
         switch (off) {
         case SCC_CHAN_A_CTRL:
-            /* First write sets register pointer, subsequent writes go
-             * to that register. We only care about accepting writes. */
-            scc_wr_reg_ptr = value & 0x07;
+            /* Z8530 two-write protocol: first write selects the register
+             * (bits 0-2 = reg, bits 3-5 = command, with "point high"
+             * command 001 setting bit 3 of the reg pointer for regs 8-15).
+             * Second write is the data for that register.  We only track
+             * the pointer; register data is accepted and discarded. */
+            if (scc_wr_reg_ptr == 0) {
+                /* First write: extract register pointer */
+                scc_wr_reg_ptr = (value & 0x07)
+                    | (((value & 0x38) == 0x08) ? 0x08 : 0x00);
+            } else {
+                /* Second write: data for the selected register — accept
+                 * and reset pointer to 0 (auto-return to RR0/WR0). */
+                scc_wr_reg_ptr = 0;
+            }
             break;
         case SCC_CHAN_A_DATA:
             /* Console TX: send to ARM UART */

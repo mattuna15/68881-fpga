@@ -887,8 +887,9 @@ uint mmu040_translate_with_urp(uint urp, uint va)
 	return page_addr | (va & page_mask);
 }
 
-/* Expose the current URP for trap-time snapshotting. */
+/* Expose the current URP/SRP for trap-time snapshotting. */
 unsigned int fh_get_urp(void) { return m68ki_cpu.mmu_040_urp; }
+unsigned int fh_get_srp(void) { return m68ki_cpu.mmu_040_srp; }
 
 /* Translate a user-mode virtual address through the CURRENT URP.
  * Thin wrapper around mmu040_translate_with_urp. */

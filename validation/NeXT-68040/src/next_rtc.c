@@ -272,9 +272,16 @@ void next_rtc_init(void)
         rtc_regs[18] = 's';
         rtc_regs[19] = 'd';
 
-        /* Set ni_alt_cons for serial console on both QEMU and hardware.
-         * Without this, the ROM takes a video console init path that
-         * includes a timing calibration failing on hardware (error 4). */
+        /* ni_alt_cons=1 routes console_i to SCC_A. We use this to get
+         * kernel printf visibility on our serial mirror without having
+         * to hook km_putc directly. In a prior test with alt_cons=0 the
+         * boot was running blind (kernel output going only to VRAM via
+         * km_putc which our hook doesn't see) and we could only infer
+         * progress from PC sampling — restored to alt_cons=1 to keep
+         * kernel-phase serial output. zsopen's DCD carrier-wait sleep
+         * is bypassed for minor 0 by !ZSHARDCAR, so this path does
+         * reach user space (verified: 2584 user instructions in the
+         * previous alt_cons=1 run). */
         rtc_regs[0] |= 0x08;  /* bit 27 = ni_alt_cons */
 
         /* Recompute ones-complement checksum */

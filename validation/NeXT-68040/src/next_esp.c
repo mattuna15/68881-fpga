@@ -14,6 +14,7 @@
 #include "next_scsi_dma.h"
 #include "next_devs.h"
 #include "next_hw.h"
+#include "next_debug.h"
 #include "musashi/m68k.h"
 #include "xil_printf.h"
 #include <string.h>
@@ -97,6 +98,16 @@ extern int next_debug_scsi;
 
 /* Max CDB size */
 #define SCSI_CDB_MAX_SIZE   12
+
+#if NEXT_DEBUG_ESP_TRACE
+/* Trace flag: set by DMA loop detector, counts down ESP accesses to log */
+int esp_loop_trace = 0;
+
+/* Sticky flag: once the DMA tight-loop detector fires, every ESP cmd write
+ * is logged with an instruction timestamp so we can correlate ESP activity
+ * (or the lack of it) against the RESET-only loop on the DMA side. */
+int esp_tight_trace = 0;
+#endif
 
 /* ------------------------------------------------------------------ */
 /* ESP FIFO                                                            */
@@ -339,6 +350,8 @@ static void esp_reset_soft(void)
     esp.state = ESP_DISCONNECTED;
 }
 
+static void esp_select_timeout_cancel(void);
+
 static void esp_reset_hard(void)
 {
     DPRINTF("[ESP] Hard reset\r\n");
@@ -351,6 +364,7 @@ static void esp_reset_hard(void)
     next_intr_clear(I_IPL3_SCSI);
     esp.intstatus = 0x00;
     esp.status &= ~(STAT_VGC | STAT_PE | STAT_GE);
+    esp_select_timeout_cancel();
     esp_reset_soft();
     esp_finish_command();
 }
@@ -405,6 +419,45 @@ static void esp_bus_reset(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* Deferred SELECT TIMEOUT                                             */
+/* ------------------------------------------------------------------ */
+/* Matches Previous's CycInt_AddRelativeInterruptUs(seltout, 0, ESP)
+ * semantics: the real 53C9x waits ~250 µs (the programmed
+ * selecttimeout × 8192 × clockconv / ESP_CLOCK_FREQ) before signalling
+ * DISCONNECT on selection timeout.  During those microseconds the
+ * kernel's scstart → sfa_arbitrate → sc_dostart → scsi_expectintr →
+ * scsi_pollcmd return path completes.  Our previous implementation
+ * fired the IRQ ~10 instructions after the CMD_SELATN write — which
+ * lands mid-way through sc_dostart, before scsi_expectintr sets
+ * sc_expectintr=1, so scintr gets confused.  Defer by a constant
+ * instruction count instead; the ~500 tick value is empirically chosen
+ * to cover sc_dostart's remaining lines + returns + scsi_pollcmd's
+ * first splx/DELAY entry. */
+
+#define ESP_SELECT_TIMEOUT_DEFER_TICKS  500
+
+static struct {
+    int pending;
+    int countdown;
+} esp_select_to_deferred;
+
+int next_esp_select_timeout_tick(void)
+{
+    if (!esp_select_to_deferred.pending)
+        return 0;
+    if (--esp_select_to_deferred.countdown > 0)
+        return 0;
+    esp_select_to_deferred.pending = 0;
+    esp_raise_irq();
+    return 1;
+}
+
+static void esp_select_timeout_cancel(void)
+{
+    esp_select_to_deferred.pending = 0;
+}
+
+/* ------------------------------------------------------------------ */
 /* Select with/without ATN                                             */
 /* ------------------------------------------------------------------ */
 
@@ -423,13 +476,20 @@ static void esp_select(bool atn)
     bool timeout = next_scsi_select(target);
 
     if (timeout) {
+        /* State is visible immediately (consistent with a register
+         * read in the window), but the IRQ is deferred. */
         esp.intstatus = INTR_DC;
         esp_command_clear();
         esp.state = ESP_DISCONNECTED;
-        DPRINTF("[ESP] Select target %d: timeout\r\n", target);
-        esp_raise_irq();
+        DPRINTF("[ESP] Select target %d: timeout (deferred %d ticks)\r\n",
+                target, ESP_SELECT_TIMEOUT_DEFER_TICKS);
+        esp_select_to_deferred.pending   = 1;
+        esp_select_to_deferred.countdown = ESP_SELECT_TIMEOUT_DEFER_TICKS;
         return;
     }
+
+    /* Non-timeout path: a previously scheduled timeout would be stale. */
+    esp_select_timeout_cancel();
 
     /* Read identify message and CDB from FIFO */
     uint8_t identify_msg = 0;
@@ -451,6 +511,59 @@ static void esp_select(bool atn)
     DPRINTF("[ESP] Select: target=%d, CDB size=%d, opcode=$%02X\r\n",
                target, cmd_size, cmd_size > 0 ? commandbuf[0] : 0xFF);
 
+#if NEXT_DEBUG_ESP_TRACE
+    /* CDB logging — distinguishes "kernel retrying same read (static LBA)"
+     * vs "kernel progressing through sectors (incrementing LBA)" vs
+     * "kernel stopped issuing CDBs (abort-wait)". */
+    {
+        static int cdb_log;
+        if (cdb_log < 200 || (cdb_log % 500) == 0) {
+            const char *opname = "?";
+            uint32_t lba = 0, xferlen = 0;
+            if (cmd_size > 0) {
+                uint8_t op = commandbuf[0];
+                switch (op) {
+                case 0x00: opname = "TUR";        break;
+                case 0x03: opname = "REQ_SENSE";  break;
+                case 0x08: opname = "READ(6)";
+                    lba = ((uint32_t)(commandbuf[1] & 0x1F) << 16)
+                        | ((uint32_t)commandbuf[2] << 8)
+                        |  (uint32_t)commandbuf[3];
+                    xferlen = commandbuf[4] ? commandbuf[4] : 256;
+                    break;
+                case 0x0A: opname = "WRITE(6)";   break;
+                case 0x12: opname = "INQUIRY";    xferlen = commandbuf[4]; break;
+                case 0x15: opname = "MODE_SELECT(6)"; break;
+                case 0x1A: opname = "MODE_SENSE(6)";  xferlen = commandbuf[4]; break;
+                case 0x25: opname = "READ_CAPACITY";  break;
+                case 0x28: opname = "READ(10)";
+                    lba = ((uint32_t)commandbuf[2] << 24)
+                        | ((uint32_t)commandbuf[3] << 16)
+                        | ((uint32_t)commandbuf[4] << 8)
+                        |  (uint32_t)commandbuf[5];
+                    xferlen = ((uint32_t)commandbuf[7] << 8) | commandbuf[8];
+                    break;
+                case 0x2A: opname = "WRITE(10)";
+                    lba = ((uint32_t)commandbuf[2] << 24)
+                        | ((uint32_t)commandbuf[3] << 16)
+                        | ((uint32_t)commandbuf[4] << 8)
+                        |  (uint32_t)commandbuf[5];
+                    xferlen = ((uint32_t)commandbuf[7] << 8) | commandbuf[8];
+                    break;
+                }
+            }
+            xil_printf("[ESP-CDB] #%d tgt=%d %s op=$%02X lba=%u len=%u cdb:",
+                       cdb_log, target, opname,
+                       cmd_size > 0 ? commandbuf[0] : 0xFF,
+                       lba, xferlen);
+            for (int i = 0; i < cmd_size && i < 12; i++)
+                xil_printf(" %02X", commandbuf[i]);
+            xil_printf(" instr=%u\r\n", (uint32_t)emu_instr_count);
+        }
+        cdb_log++;
+    }
+#endif
+
     next_scsi_receive_command(commandbuf, cmd_size, identify_msg);
     esp.seqstep = 4;
     esp_command_clear();
@@ -469,22 +582,18 @@ static void esp_transfer_info(void)
     uint8_t phase = next_scsi_get_phase();
 
     if (esp.mode_dma) {
-        /* DMA transfer */
+        /* Defer DMA transfer so the completion interrupt fires on a
+         * later instruction boundary.  Synchronous completion inside
+         * this write-callback meant the DMA_COMPLETE bit was set and
+         * then cleared by the kernel's very next RESET instruction
+         * before the CPU could take the interrupt.  Deferring by even
+         * 2 instructions lets the CPU sample the IRQ6 line first. */
         int direction = (phase == SCSI_PHASE_DI) ? 1 : 0;
-        int transferred = next_scsi_dma_transfer(direction, &esp.counter);
-
-        DPRINTF("[ESP] TI DMA: phase=%d, transferred=%d, counter=%u\r\n",
-                   phase, transferred, esp.counter);
-
-        if (esp.counter == 0) {
-            esp.intstatus = INTR_FC;
-            esp.status |= STAT_TC;
-        } else {
-            /* Phase change or data exhausted */
-            esp_command_clear();
-            esp.intstatus = INTR_BS;
-        }
-        esp_raise_irq();
+        DPRINTF("[ESP] TI DMA: phase=%d, counter=%u — deferring\r\n",
+                   phase, esp.counter);
+        next_scsi_dma_start_deferred(direction, esp.counter);
+        /* Don't raise IRQ yet — esp_deferred_dma_complete will do it */
+        return;
     } else {
         /* PIO transfer */
         switch (phase) {
@@ -510,6 +619,27 @@ static void esp_transfer_info(void)
             break;
         }
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Deferred DMA completion callback (called from DMA tick)             */
+/* ------------------------------------------------------------------ */
+
+void esp_deferred_dma_complete(uint32_t remaining, int bytes)
+{
+    esp.counter = remaining;
+
+    DPRINTF("[ESP] Deferred DMA done: %d bytes, counter=%u\r\n",
+               bytes, remaining);
+
+    if (esp.counter == 0) {
+        esp.intstatus = INTR_FC;
+        esp.status |= STAT_TC;
+    } else {
+        esp_command_clear();
+        esp.intstatus = INTR_BS;
+    }
+    esp_raise_irq();
 }
 
 /* ------------------------------------------------------------------ */
@@ -620,6 +750,28 @@ static void esp_start_command(uint8_t cmd)
         DPRINTF("[ESP] Select with ATN\r\n");
         esp_select(true);
         break;
+    case CMD_SELATNS:
+        /* Select with ATN + Stop after identify/message byte.  A driver
+         * uses this to send a message before issuing the CDB.  The NeXT
+         * SCSI driver never issues it (it uses plain CMD_SELATN), but
+         * Previous (esp.c:496-499) calls abort() here — we instead flag
+         * it as illegal so an emulator mistake doesn't take down the
+         * whole process. */
+        DPRINTF("[ESP] Select-with-ATN-and-stop not implemented\r\n");
+        esp_command_clear();
+        esp.intstatus |= INTR_ILL;
+        esp_raise_irq();
+        break;
+    case CMD_RESEL:
+        /* Enable reselection as a target.  NeXT is a single-initiator
+         * bus; the kernel never puts the ESP into target mode.  Flag
+         * as illegal (matches Previous's abort()) rather than silently
+         * ignoring. */
+        DPRINTF("[ESP] Reselect (target mode) not implemented\r\n");
+        esp_command_clear();
+        esp.intstatus |= INTR_ILL;
+        esp_raise_irq();
+        break;
     case CMD_TI:
         esp_transfer_info();
         break;
@@ -673,11 +825,29 @@ uint8_t next_esp_read(uint32_t offset)
     case 0x03: /* Command */
         return esp.command[0];
     case 0x04: /* Status */
-        return (esp.status & ~STAT_PHASE) | (next_scsi_get_phase() & STAT_PHASE);
+    {
+        uint8_t sval = (esp.status & ~STAT_PHASE) | (next_scsi_get_phase() & STAT_PHASE);
+#if NEXT_DEBUG_ESP_TRACE
+        if (esp_loop_trace > 0) {
+            esp_loop_trace--;
+            xil_printf("[ESP-T] R status=$%02X PC=$%08X\r\n", sval,
+                       m68k_get_reg(NULL, M68K_REG_PC));
+        }
+#endif
+        return sval;
+    }
     case 0x05: /* Interrupt Status — reading clears interrupt */
     {
         extern int next_debug_scsi;
         uint8_t val = esp.intstatus;
+#if NEXT_DEBUG_ESP_TRACE
+        if (esp_loop_trace > 0) {
+            esp_loop_trace--;
+            xil_printf("[ESP-T] R intrstatus=$%02X STAT_INT=%d PC=$%08X\r\n",
+                       val, !!(esp.status & STAT_INT),
+                       m68k_get_reg(NULL, M68K_REG_PC));
+        }
+#endif
         if (next_debug_scsi)
             DPRINTF("[ESP] R intrstat=$%02X stat=$%02X (INT=%d)\r\n",
                        val, esp.status, !!(esp.status & STAT_INT));
@@ -718,6 +888,23 @@ void next_esp_write(uint32_t offset, uint8_t value)
         esp_fifo_write(value);
         break;
     case 0x03: /* Command */
+#if NEXT_DEBUG_ESP_TRACE
+        if (esp_loop_trace > 0) {
+            esp_loop_trace--;
+            xil_printf("[ESP-T] W cmd=$%02X PC=$%08X\r\n", value,
+                       m68k_get_reg(NULL, M68K_REG_PC));
+        }
+        if (esp_tight_trace) {
+            static int tight_cmd_log = 0;
+            if (tight_cmd_log < 200) {
+                xil_printf("[ESP-CMD] #%d cmd=$%02X mode_dma=%d PC=$%08X instr=%u\r\n",
+                           tight_cmd_log, value, esp.mode_dma,
+                           m68k_get_reg(NULL, M68K_REG_PC),
+                           (uint32_t)emu_instr_count);
+                tight_cmd_log++;
+            }
+        }
+#endif
         esp_command_write(value);
         break;
     case 0x04: /* Select Bus ID (write) */
@@ -726,6 +913,15 @@ void next_esp_write(uint32_t offset, uint8_t value)
     case 0x05: /* Select Timeout (write) */
         esp.selecttimeout = value;
         break;
+    /* Sync Period / Sync Offset are stored for readback only.  A real
+     * 53C90A applies them during the SDTR (Synchronous Data Transfer
+     * Request) message-in/out negotiation that precedes each data
+     * transfer.  We don't emulate the message-phase handshake — all
+     * data transfers run through esp_transfer_info which drives the
+     * SCSI buffer directly — so the synchronous-mode timing these
+     * registers control is irrelevant.  NeXT uses asynchronous mode
+     * anyway (syncoffset stays at 0); we store the values so the
+     * driver's write-then-read sanity check succeeds. */
     case 0x06: /* Sync Period (write) */
         esp.syncperiod = value;
         break;
@@ -733,6 +929,13 @@ void next_esp_write(uint32_t offset, uint8_t value)
         esp.syncoffset = value;
         break;
     case 0x08: /* Configuration */
+#if NEXT_DEBUG_ESP_TRACE
+        if (esp_loop_trace > 0) {
+            esp_loop_trace--;
+            xil_printf("[ESP-T] W config=$%02X PC=$%08X\r\n", value,
+                       m68k_get_reg(NULL, M68K_REG_PC));
+        }
+#endif
         esp.configuration = value;
         break;
     case 0x09: /* Clock Conversion */
@@ -776,6 +979,15 @@ void next_esp_dma_ctrl_write(uint8_t value)
     uint8_t old_ctrl = esp.dma_control;
     esp.dma_control = value;
 
+#if NEXT_DEBUG_ESP_TRACE
+    if (esp_loop_trace > 0) {
+        esp_loop_trace--;
+        xil_printf("[ESP-T] W dma_ctrl=$%02X (old=$%02X) STAT_INT=%d PC=$%08X\r\n",
+                   value, old_ctrl, !!(esp.status & STAT_INT),
+                   m68k_get_reg(NULL, M68K_REG_PC));
+    }
+#endif
+
     (void)old_ctrl;
 
     if (value & ESPCTRL_FLUSH) {
@@ -786,13 +998,16 @@ void next_esp_dma_ctrl_write(uint8_t value)
         esp_reset_hard();
     }
     if (value & ESPCTRL_ENABLE_INT) {
-        /* Only raise system interrupt on 0→1 transition of INT enable,
-         * not when already enabled (avoids spurious re-raise during
-         * DMA flush writes while scintr is processing). */
-        if (!(old_ctrl & ESPCTRL_ENABLE_INT)) {
-            if (esp.status & STAT_INT)
-                next_intr_set(I_IPL3_SCSI);
-        }
+        /* Level-sensitive: whenever ENABLE_INT is written and STAT_INT
+         * is pending in the ESP, assert the system interrupt.  Real
+         * hardware holds the interrupt line active as long as both
+         * conditions are true.  The previous edge-triggered (0→1 only)
+         * implementation missed re-assertions when the kernel wrote
+         * ENABLE_INT while it was already set, causing the screset →
+         * scsi_restart loop to spin without ever delivering the SCSI
+         * interrupt. */
+        if (esp.status & STAT_INT)
+            next_intr_set(I_IPL3_SCSI);
     } else {
         next_intr_clear(I_IPL3_SCSI);
     }

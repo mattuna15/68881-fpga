@@ -13,6 +13,7 @@
 #include "next_memory.h"
 #include "next_hw.h"
 #include "next_devs.h"
+#include "next_debug.h"
 #include "xil_printf.h"
 #include <string.h>
 #include <stdbool.h>
@@ -68,6 +69,65 @@ static struct {
 #define DMA_DEV2M       0x04
 
 /* ------------------------------------------------------------------ */
+/* Deferred DMA completion                                             */
+/* ------------------------------------------------------------------ */
+/* On real hardware, DMA takes many bus cycles. Our synchronous model
+ * completes instantly inside the ESP command write callback, which means
+ * the DMA_COMPLETE interrupt is set before Musashi finishes the current
+ * instruction. The kernel's very next instruction writes RESET to DMA
+ * CSR, clearing the interrupt before the CPU ever takes it.
+ *
+ * Fix: buffer the transfer parameters when ESP issues TI+DMA, and
+ * complete the transfer from the instruction hook after a short delay.
+ * This lets the CPU take the DMA interrupt naturally. */
+
+static struct {
+    int      pending;       /* non-zero if a deferred transfer is waiting */
+    int      countdown;     /* instructions remaining before completion */
+    int      direction;     /* 0=mem→dev, 1=dev→mem */
+    uint32_t esp_counter;   /* ESP transfer counter (copied from ESP) */
+} dma_deferred;
+
+#define DMA_DEFER_TICKS  20 /* complete after 20 instructions — must be long
+                             * enough that the CPU takes the IPL6 DMA interrupt
+                             * before the kernel code path reaches the next
+                             * dma_start → DMA CSR RESET write.  Musashi checks
+                             * interrupts at instruction END, not START, so the
+                             * tick (which fires at instruction start) needs at
+                             * least 1 extra instruction after setting IRQ. */
+
+#if NEXT_DEBUG_DMA
+/* ------------------------------------------------------------------ */
+/* CSR-write ring buffer for post-mortem diagnostics                   */
+/* ------------------------------------------------------------------ */
+#define DMA_WR_RING_SIZE 64
+static struct {
+    uint32_t instr;
+    uint32_t value;
+    uint32_t pc;
+} dma_wr_ring[DMA_WR_RING_SIZE];
+static int dma_wr_ring_idx;
+
+uint32_t next_scsi_dma_get_csr(void)      { return dma.csr; }
+int      next_scsi_dma_get_pending(void)  { return dma_deferred.pending; }
+int      next_scsi_dma_get_countdown(void){ return dma_deferred.countdown; }
+
+void next_scsi_dma_dump_write_ring(void)
+{
+    xil_printf("[DMA-RING] recent CSR writes (oldest→newest):\r\n");
+    for (int i = 0; i < DMA_WR_RING_SIZE; i++) {
+        int k = (dma_wr_ring_idx + i) % DMA_WR_RING_SIZE;
+        if (dma_wr_ring[k].pc == 0 && dma_wr_ring[k].value == 0)
+            continue;
+        xil_printf("  instr=%u val=$%08X PC=$%08X\r\n",
+                   dma_wr_ring[k].instr,
+                   dma_wr_ring[k].value,
+                   dma_wr_ring[k].pc);
+    }
+}
+#endif /* NEXT_DEBUG_DMA */
+
+/* ------------------------------------------------------------------ */
 /* Init                                                                */
 /* ------------------------------------------------------------------ */
 
@@ -75,6 +135,7 @@ void next_scsi_dma_init(void)
 {
     memset(&dma, 0, sizeof(dma));
     dma.csr = DMA_COMPLETE;
+    memset(&dma_deferred, 0, sizeof(dma_deferred));
 }
 
 /* ------------------------------------------------------------------ */
@@ -142,20 +203,249 @@ void next_scsi_dma_reg_write(uint32_t addr, uint32_t value)
 
 uint32_t next_scsi_dma_csr_read(void)
 {
-    /* Turbo CSR read format: internal state bits shifted to upper byte.
-     * The kernel's get_dma_state() masks with DMASTATE_MASK (0x1B000000)
-     * to extract ENABLE/SUPDATE/COMPLETE/BUSEXC from bits 24-31. */
-    uint32_t val = (uint32_t)dma.csr << 24;
+    /* Turbo CSR read format: state bits in upper byte (bits 24-31),
+     * burst buffer hardware status in lower bits (0-9).
+     *
+     * The kernel's get_dma_state() for chip 313 spins:
+     *   while ((state = ddp->dd_csr) == 0) continue;
+     * This checks the ENTIRE 32-bit value, not just the state bits.
+     * On real Turbo DMA hardware the burst buffer status (byte count,
+     * write/read pointers, dirty bits, bufsel) in the lower 10 bits
+     * is always non-zero, so the full CSR is never $00000000 even
+     * after reset.  We must return non-zero lower bits to prevent
+     * the chip 313 workaround from spinning forever. */
+    uint32_t val = ((uint32_t)dma.csr << 24) | 0x00000040;
     extern int next_debug_scsi;
     if (next_debug_scsi) {
         uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
         DPRINTF("[DMA] CSR read → $%08X (csr=$%02X) PC=$%08X\r\n", val, dma.csr, pc);
     }
+#if NEXT_DEBUG_DMA
+    /* Sample dc_state on kernel CSR reads.  If A6+8 looks like a pointer
+     * into the kernel data region, dereference it as a struct dma_chan
+     * and print dc_state (+$24).  Helps distinguish "DMA completes but
+     * kernel's dc_state never transitions" from "kernel never enters
+     * the DMA-complete handler at all." */
+    {
+        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+        if (pc >= 0x04000000 && pc < 0x08000000) {
+            static int rd_state_log = 0;
+            if (rd_state_log < 40 || (rd_state_log % 500) == 0) {
+                uint32_t a6   = m68k_get_reg(NULL, M68K_REG_A6);
+                uint32_t dcp  = next_phys_read_32(a6 + 8);
+                if (dcp >= 0x04000000 && dcp < 0x08000000) {
+                    uint32_t dc_state   = next_phys_read_32(dcp + 0x24);
+                    uint32_t dc_flags   = next_phys_read_32(dcp + 0x2C);
+                    uint32_t dc_current = next_phys_read_32(dcp + 0x08);
+                    xil_printf("[DMA-RDSTATE] #%d PC=$%08X dcp=$%08X "
+                               "dc_state=$%08X dc_flags=$%08X dc_current=$%08X "
+                               "our_csr=$%08X\r\n",
+                               rd_state_log, pc, dcp,
+                               dc_state, dc_flags, dc_current, val);
+                }
+            }
+            rd_state_log++;
+        }
+    }
+#endif
     return val;
 }
 
 void next_scsi_dma_csr_write(uint32_t value)
 {
+#if NEXT_DEBUG_DMA
+    /* Capture every write into the ring — dumped when RESET-loop trigger fires.
+     * Also watch for a tight-loop pattern (same kernel PC writing bare RESET
+     * repeatedly with no intervening different-PC writes) and dump the stack
+     * and recent-PC ring the first time we detect it. */
+    {
+        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+
+        /* Unknown-bits probe: log any bit we're not explicitly handling in
+         * next_scsi_dma_csr_write.  The kernel writes $00940000 where
+         * $00800000 is NOT one of our TDMA_* macros — this tells us
+         * whether we're silently swallowing a bit the kernel relies on. */
+        {
+            const uint32_t known_mask =
+                0x00010000 /* TDMA_SETENABLE  */ |
+                0x00020000 /* TDMA_SETSUPDATE */ |
+                0x00040000 /* TDMA_DEV2M      */ |
+                0x00080000 /* TDMA_CLRCOMPLETE*/ |
+                0x00100000 /* TDMA_RESET      */ ;
+            uint32_t unknown = value & ~known_mask;
+            if (unknown) {
+                static uint32_t last_unknown_bits;
+                static uint32_t last_unknown_val;
+                if (unknown != last_unknown_bits || value != last_unknown_val) {
+                    xil_printf("[DMA-UNKBIT] val=$%08X unknown=$%08X PC=$%08X\r\n",
+                               value, unknown, pc);
+                    last_unknown_bits = unknown;
+                    last_unknown_val  = value;
+                }
+            }
+        }
+
+        /* Per-iteration probe: dump dc_flags each time a kernel bare-RESET
+         * is written.  We read the first stack argument (dcp) via A6+8
+         * and follow it to read dc_flags / dc_queue.dq_head / dc_current
+         * / dc_state.  Log first 5 occurrences then every 50th to avoid
+         * flooding. */
+        if (value == 0x00100000 && pc >= 0x04000000 && pc < 0x08000000) {
+            static int flags_log = 0;
+            if (flags_log < 5 || (flags_log % 50) == 0) {
+                uint32_t a6  = m68k_get_reg(NULL, M68K_REG_A6);
+                uint32_t dcp = next_phys_read_32(a6 + 8);
+                if (dcp >= 0x04000000 && dcp < 0x08000000) {
+                    uint32_t dq_head  = next_phys_read_32(dcp + 0x00);
+                    uint32_t dc_cur   = next_phys_read_32(dcp + 0x08);
+                    uint32_t dc_state = next_phys_read_32(dcp + 0x24);
+                    uint32_t dc_flag  = next_phys_read_32(dcp + 0x2C);
+                    xil_printf("[DMA-FLAGS] #%d PC=$%08X dcp=$%08X flags=$%08X "
+                               "head=$%08X current=$%08X dc_state=$%08X\r\n",
+                               flags_log, pc, dcp, dc_flag, dq_head, dc_cur,
+                               dc_state);
+                } else {
+                    xil_printf("[DMA-FLAGS] #%d PC=$%08X dcp=$%08X (OOR)\r\n",
+                               flags_log, pc, dcp);
+                }
+            }
+            flags_log++;
+        }
+
+        static uint32_t tight_last_pc;
+        static int      tight_count;
+        static int      tight_dumped;
+        if (pc == tight_last_pc && value == 0x00100000 && pc >= 0x04000000) {
+            tight_count++;
+            if (tight_count == 5 && !tight_dumped) {
+                tight_dumped = 1;
+                xil_printf("[DMA-TIGHT] 5 consecutive bare-RESETs from PC=$%08X — stack:\r\n", pc);
+                uint32_t a6_orig = m68k_get_reg(NULL, M68K_REG_A6);
+                uint32_t a6 = a6_orig;
+                for (int i = 0; i < 10 && a6 >= 0x04000000 && a6 < 0x08000000; i++) {
+                    uint32_t ret  = next_phys_read_32(a6 + 4);
+                    uint32_t prev = next_phys_read_32(a6);
+                    xil_printf("  frame %d: A6=$%08X ret=$%08X\r\n", i, a6, ret);
+                    a6 = prev;
+                }
+
+                /* Register snapshot */
+                xil_printf("[DMA-TIGHT] D0=$%08X D1=$%08X D2=$%08X D3=$%08X\r\n",
+                           m68k_get_reg(NULL, M68K_REG_D0),
+                           m68k_get_reg(NULL, M68K_REG_D1),
+                           m68k_get_reg(NULL, M68K_REG_D2),
+                           m68k_get_reg(NULL, M68K_REG_D3));
+                xil_printf("[DMA-TIGHT] D4=$%08X D5=$%08X D6=$%08X D7=$%08X\r\n",
+                           m68k_get_reg(NULL, M68K_REG_D4),
+                           m68k_get_reg(NULL, M68K_REG_D5),
+                           m68k_get_reg(NULL, M68K_REG_D6),
+                           m68k_get_reg(NULL, M68K_REG_D7));
+                xil_printf("[DMA-TIGHT] A0=$%08X A1=$%08X A2=$%08X A3=$%08X\r\n",
+                           m68k_get_reg(NULL, M68K_REG_A0),
+                           m68k_get_reg(NULL, M68K_REG_A1),
+                           m68k_get_reg(NULL, M68K_REG_A2),
+                           m68k_get_reg(NULL, M68K_REG_A3));
+                xil_printf("[DMA-TIGHT] A4=$%08X A5=$%08X A6=$%08X A7=$%08X\r\n",
+                           m68k_get_reg(NULL, M68K_REG_A4),
+                           m68k_get_reg(NULL, M68K_REG_A5),
+                           a6_orig,
+                           m68k_get_reg(NULL, M68K_REG_A7));
+
+                /* Dump caller's loop body (24 bytes before & after the JSR).
+                 * The JSR that called us sits just before ret in the caller. */
+                uint32_t caller_ret = next_phys_read_32(a6_orig + 4);
+                xil_printf("[DMA-TIGHT] caller code near ret=$%08X:\r\n", caller_ret);
+                for (int off = -24; off < 24; off += 8) {
+                    uint32_t addr = caller_ret + off;
+                    if (addr < 0x04000000 || addr >= 0x08000000) continue;
+                    xil_printf("  $%08X: %08X %08X\r\n", addr,
+                               next_phys_read_32(addr),
+                               next_phys_read_32(addr + 4));
+                }
+
+                /* First stack argument is *(A6+8) — likely dcp pointer.
+                 * Dump 64 bytes to cover dc_flags at offset 0x2C. */
+                uint32_t arg1 = next_phys_read_32(a6_orig + 8);
+                xil_printf("[DMA-TIGHT] stack arg1=$%08X\r\n", arg1);
+                if (arg1 >= 0x04000000 && arg1 < 0x08000000) {
+                    xil_printf("[DMA-TIGHT] arg1 struct head (64 bytes):\r\n");
+                    for (int off = 0; off < 64; off += 8) {
+                        xil_printf("  +$%02X: $%08X $%08X\r\n", off,
+                                   next_phys_read_32(arg1 + off),
+                                   next_phys_read_32(arg1 + off + 4));
+                    }
+                }
+
+                /* Dump function entry code at $0407C6C8 so we can identify it. */
+                xil_printf("[DMA-TIGHT] callee entry code:\r\n");
+                for (int off = 0; off < 32; off += 8) {
+                    uint32_t addr = 0x0407C6C8 + off;
+                    xil_printf("  $%08X: %08X %08X\r\n", addr,
+                               next_phys_read_32(addr),
+                               next_phys_read_32(addr + 4));
+                }
+
+                /* Dump outermost polling loop code at $0409F5C0..$0409F5F0. */
+                xil_printf("[DMA-TIGHT] outer poll code at $0409F5xx:\r\n");
+                for (int off = 0; off < 48; off += 8) {
+                    uint32_t addr = 0x0409F5C0 + off;
+                    xil_printf("  $%08X: %08X %08X\r\n", addr,
+                               next_phys_read_32(addr),
+                               next_phys_read_32(addr + 4));
+                }
+
+                /* Dump the OUTER loop body at $040146xx — this is where the
+                 * hang actually lives.  PC ring shows backward jump from
+                 * $040146C2 → $0401469C each iteration.  Dump 64 bytes
+                 * covering the loop body plus exit test. */
+                xil_printf("[DMA-TIGHT] OUTER loop body at $040146xx:\r\n");
+                for (int off = 0; off < 64; off += 8) {
+                    uint32_t addr = 0x04014690 + off;
+                    xil_printf("  $%08X: %08X %08X\r\n", addr,
+                               next_phys_read_32(addr),
+                               next_phys_read_32(addr + 4));
+                }
+
+                /* Also dump $0408ACxx and $0408A6xx — the layers between the
+                 * outer loop and dma_abort.  Each might contain the real
+                 * exit test if $040146xx is just plumbing. */
+                xil_printf("[DMA-TIGHT] $0408ACxx layer:\r\n");
+                for (int off = 0; off < 48; off += 8) {
+                    uint32_t addr = 0x0408ACF0 + off;
+                    xil_printf("  $%08X: %08X %08X\r\n", addr,
+                               next_phys_read_32(addr),
+                               next_phys_read_32(addr + 4));
+                }
+                xil_printf("[DMA-TIGHT] $0408A6xx layer:\r\n");
+                for (int off = 0; off < 48; off += 8) {
+                    uint32_t addr = 0x0408A650 + off;
+                    xil_printf("  $%08X: %08X %08X\r\n", addr,
+                               next_phys_read_32(addr),
+                               next_phys_read_32(addr + 4));
+                }
+
+                extern void emu_dump_pc_ring(const char *why);
+                emu_dump_pc_ring("DMA tight-loop trigger");
+#if NEXT_DEBUG_ESP_TRACE
+                /* Arm sticky ESP-cmd trace so we see whether the driver
+                 * keeps issuing new commands during the RESET loop. */
+                extern int esp_tight_trace;
+                esp_tight_trace = 1;
+                xil_printf("[DMA-TIGHT] Sticky ESP-cmd trace armed\r\n");
+#endif
+            }
+        } else {
+            tight_count = 0;
+            tight_last_pc = pc;
+        }
+
+        dma_wr_ring[dma_wr_ring_idx].instr = (uint32_t)emu_instr_count;
+        dma_wr_ring[dma_wr_ring_idx].value = value;
+        dma_wr_ring[dma_wr_ring_idx].pc    = pc;
+        dma_wr_ring_idx = (dma_wr_ring_idx + 1) % DMA_WR_RING_SIZE;
+    }
+#endif /* NEXT_DEBUG_DMA */
+
     extern int next_debug_scsi;
     if (next_debug_scsi) {
         uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
@@ -189,9 +479,33 @@ void next_scsi_dma_csr_write(uint32_t value)
     dma.direction = (value & TDMA_DEV2M) ? DMA_DEV2M : 0;
 
     if (value & TDMA_RESET) {
+#if NEXT_DEBUG_DMA
+        static int kernel_reset_count = 0;
+        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+        if (pc >= 0x04000000) {
+            kernel_reset_count++;
+            /* Enable ESP trace logging once we detect the hang pattern */
+            if (kernel_reset_count == 20) {
+                extern void esp_dump_state(void);
+                extern void emu_dump_pc_ring(const char *why);
+                uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+                xil_printf("[DMA-LOOP] 20 consecutive kernel RESETs! PC=$%08X SR=$%04X\r\n", pc, sr);
+                esp_dump_state();
+                next_scsi_dma_dump_write_ring();
+                emu_dump_pc_ring("DMA-LOOP trigger");
+#if NEXT_DEBUG_ESP_TRACE
+                extern int esp_loop_trace;
+                xil_printf("[DMA-LOOP] Enabling ESP trace for next 100 accesses\r\n");
+                esp_loop_trace = 100;
+#endif
+            }
+        } else {
+            kernel_reset_count = 0;
+        }
+#endif /* NEXT_DEBUG_DMA */
         dma.csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE);
         next_intr_clear(I_IPL6_SCSI_DMA);
-        DPRINTF("[DMA] reset\r\n");
+        DPRINTF("[DMA] reset → csr=$%02X\r\n", dma.csr);
     }
     if (value & TDMA_SETSUPDATE) {
         dma.csr |= DMA_SUPDATE;
@@ -308,21 +622,67 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
                 dma.next, dma.limit, direction);
     }
 
-    /* Signal completion whenever the ESP counter drained or the DMA
-     * window filled, regardless of how many bytes moved. Previous
-     * (esp.c:758-762) always raises the done-interrupt when
-     * esp_counter==0 — gating ours on `total>0` meant that phase-change
-     * transfers and zero-length transfer_info commands silently left
-     * DMA_COMPLETE clear, and the driver IRQ handler would never see
-     * "done" for this cycle. */
-    bool done = (*esp_counter == 0) || (dma.next >= dma.limit);
-    if (done && !(dma.csr & DMA_BUSEXC)) {
+    /* Signal completion whenever the ESP counter drained, the DMA window
+     * filled, or a bus error was observed.  Previous (dma.c:457-461,
+     * 488-492) always raises the done-interrupt on bus error with
+     * DMA_COMPLETE and DMA_BUSEXC set together and DMA_ENABLE cleared
+     * — otherwise the kernel's bus-error handler never runs and the
+     * device driver stalls waiting for a completion that never comes. */
+    bool done = (*esp_counter == 0) || (dma.next >= dma.limit)
+                || (dma.csr & DMA_BUSEXC);
+    if (done) {
         dma.csr |= DMA_COMPLETE;
         dma.csr &= ~DMA_ENABLE;
         next_intr_set(I_IPL6_SCSI_DMA);
+#if NEXT_DEBUG_DMA
+        /* Track DMA completion for interrupt delivery diagnosis */
+        {
+            static int dma_complete_count = 0;
+            dma_complete_count++;
+            if (dma_complete_count <= 30 || (dma_complete_count % 100) == 0) {
+                uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+                xil_printf("[DMA-DONE] #%d total=%d bytes, next=$%08X SR=$%04X IPL=%d busexc=%d\r\n",
+                           dma_complete_count, total, dma.next, sr & 0xFFFF,
+                           (sr >> 8) & 7, !!(dma.csr & DMA_BUSEXC));
+            }
+        }
+#endif /* NEXT_DEBUG_DMA */
     }
 
 
     DPRINTF("[DMA] Transfer done: %d bytes, next=$%08X\r\n", total, dma.next);
     return total;
+}
+
+/* ------------------------------------------------------------------ */
+/* Deferred DMA: start / tick                                          */
+/* ------------------------------------------------------------------ */
+
+void next_scsi_dma_start_deferred(int direction, uint32_t esp_counter)
+{
+    dma_deferred.direction   = direction;
+    dma_deferred.esp_counter = esp_counter;
+    dma_deferred.countdown   = DMA_DEFER_TICKS;
+    dma_deferred.pending     = 1;
+}
+
+int next_scsi_dma_tick(void)
+{
+    if (!dma_deferred.pending)
+        return 0;
+
+    if (--dma_deferred.countdown > 0)
+        return 0;
+
+    /* Time's up — execute the DMA transfer now */
+    dma_deferred.pending = 0;
+
+    uint32_t counter = dma_deferred.esp_counter;
+    int transferred = next_scsi_dma_transfer(dma_deferred.direction, &counter);
+
+    /* Tell the ESP the result via callback */
+    extern void esp_deferred_dma_complete(uint32_t remaining, int bytes);
+    esp_deferred_dma_complete(counter, transferred);
+
+    return 1;
 }

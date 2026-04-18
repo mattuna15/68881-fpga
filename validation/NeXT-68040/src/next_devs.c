@@ -19,6 +19,7 @@
 #include "next_kms.h"
 #include "next_esp.h"
 #include "next_scsi_dma.h"
+#include "next_debug.h"
 #include "xil_printf.h"
 
 /* Debug toggle — toggled by 'D' keypress in main loop */
@@ -39,12 +40,14 @@ static void io_log(const char *rw, uint32_t addr, uint32_t val, int size)
     if (addr >= P_EVENTC && addr <= P_EVENTC + 3) return;      /* event counter */
     if (addr >= P_SCR2 && addr < P_SCR2 + 4) return;           /* RTC bit-bang */
     if (addr == P_INTRSTAT) return;                             /* idle loop polls */
-    uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+    uint32_t pc  = m68k_get_reg(NULL, M68K_REG_PC);
+    uint32_t ppc = m68k_get_reg(NULL, M68K_REG_PPC);
     if (rw[0] == 'R')
-        xil_printf("[IO] R%d $%08X  PC=$%08X\r\n", size*8, addr, pc);
+        xil_printf("[IO] R%d $%08X  PC=$%08X PPC=$%08X\r\n",
+                   size*8, addr, pc, ppc);
     else
-        xil_printf("[IO] W%d $%08X = $%0*X  PC=$%08X\r\n",
-                   size*8, addr, size*2, val, pc);
+        xil_printf("[IO] W%d $%08X = $%08X  PC=$%08X PPC=$%08X\r\n",
+                   size*8, addr, val, pc, ppc);
     if (++io_log_count >= IO_LOG_LIMIT) {
         next_debug_io = 0;
         xil_printf("[IO] auto-stop after %d entries\r\n", IO_LOG_LIMIT);
@@ -122,10 +125,12 @@ static int timer_accum;
 static int     vbl_accum;       /* accumulated µs toward next VBL */
 static uint8_t tmc_vir;         /* VIR register (bits 0-1) */
 
-/* Softint gating: suppress softint during kernel init (timer calibration).
- * Our event counter is cycle-based, not wall-clock, so softint handler
- * cycles corrupt the timing measurement. Enable after first user-mode exec. */
-static int softint_enabled = 0;
+/* Softint delivery.  Originally gated to avoid perturbing timer
+ * calibration, but calibration runs during ROM init — long before the
+ * kernel's SCSI DMA completion path calls softint_sched.  Disabling
+ * softints during device init prevented scdmaintr from firing, causing
+ * the DMA reset loop.  Now always enabled. */
+static int softint_enabled = 1;
 
 void next_softint_enable(void)
 {
@@ -135,12 +140,33 @@ void next_softint_enable(void)
 /* Event counter — emulated microseconds derived from CPU cycles.
  * The kernel's DELAY() and event_get() use this to measure time.
  * Must advance with emulated CPU time (25 MHz → 1 µs per 25 cycles),
- * NOT wall time, because the emulated CPU runs much faster than real time. */
+ * NOT wall time, because the emulated CPU runs much faster than real time.
+ *
+ * Speedup multipliers (see TIMER_COUNTER_BOOST / EVENTC_BOOST):
+ * We lack Previous's cycle-accurate cycInt scheduler, so both the 16-bit
+ * live timer counter (used by ROM POST calibration) and the 32-bit event
+ * counter (used by the kernel's event_timeout / scsi_pollcmd) need to
+ * "advance faster than real emulated cycles" or the ROM POST takes minutes
+ * and kernel timeouts take ~500 real seconds. The boosts are applied
+ * uniformly to keep the counters' ratio internally consistent even though
+ * it diverges from the real NeXT rate.
+ *
+ * Proper fix: port a cycInt-equivalent scheduler so real emulated time
+ * progresses via scheduled events rather than raw CPU cycle counts.
+ * Until then, any code that cross-references these counters against
+ * the hardclock (I_IPL6_TIMER) or wall-clock time will skew. */
+#define EVENTC_PRESCALE      25  /* 25 MHz / 25 = 1 MHz (1 µs per tick) */
+#define EVENTC_BOOST       4096  /* multiply emulated µs progress; without
+                                  * this, kernel's event_timeout bit-19
+                                  * check takes ~500 real seconds. */
+#define TIMER_COUNTER_BOOST 1024 /* multiply 16-bit live-counter progress;
+                                  * without this, ROM POST calibration
+                                  * outer DBEQ retries for tens of seconds. */
+
 static uint32_t eventc_us;           /* emulated microseconds counter           */
 static uint32_t event_latch;         /* snapshot taken when eventc_latch is read */
 static int      eventc_accum;        /* fractional cycle accumulator             */
 static int      eventc_batch_base;   /* cycles_run snapshot at last sync         */
-#define EVENTC_PRESCALE  25          /* 25 MHz / 25 = 1 MHz (1 µs per tick)     */
 
 /* Sync event counter from within m68k_execute() — call before reading eventc.
  * Uses m68k_cycles_run() to account for cycles elapsed within the current batch
@@ -150,7 +176,7 @@ static uint32_t eventc_synced(void)
     int run = m68k_cycles_run();
     int delta = run - eventc_batch_base;
     if (delta < 0) delta = 0;  /* safety: handle batch boundary */
-    return eventc_us + (uint32_t)(delta / EVENTC_PRESCALE) * 4096;
+    return eventc_us + (uint32_t)(delta / EVENTC_PRESCALE) * EVENTC_BOOST;
 }
 
 /* ------------------------------------------------------------------ */
@@ -593,26 +619,19 @@ int next_timer_tick(int cycles)
     if (usecs == 0)
         return 0;
 
-    /* Advance the live 16-bit counter. On real hardware this ticks at
-     * 1 MHz (1 µs per tick). We run it at 1024× real rate so the ROM's
-     * POST calibration loop at $010040F0..$0100413C — which reads the
-     * counter, runs a nested DBEQ delay, reads again, and picks a delay
-     * constant from the ratio — sees "enormous progress per tick" and
-     * converges on the first outer-loop pass. Without this scaling,
-     * emulator throughput (≪ real 25 MHz) makes the ROM's outer DBEQ
-     * retry run tens of thousands of times before the target delta is
-     * reached, and every subsequent delay blocks for many seconds.
-     * Downstream code that uses P_TIMER only reads deltas, so the
-     * absolute rate doesn't matter. */
-    timer_counter += (uint16_t)(usecs * 1024);
+    /* Advance the live 16-bit counter.  See TIMER_COUNTER_BOOST above —
+     * on real hardware this ticks at 1 MHz (1 µs per tick), but ROM POST
+     * calibration at $010040F0..$0100413C would spin for tens of seconds
+     * if driven at true rate given our emulator throughput. Downstream
+     * code that uses P_TIMER only reads deltas, so the absolute rate
+     * doesn't matter. */
+    timer_counter += (uint16_t)(usecs * TIMER_COUNTER_BOOST);
 
-    /* Advance the event counter (used by kernel DELAY/event_get).
-     * Multiplied by 4096 to speed up the bit-19 boundary check used by
-     * this kernel's event_timeout(). Without this, each scsi_pollcmd
-     * timeout takes ~500 seconds (bit-19 = 524288 µs per check).
-     * With 4096x speedup, it takes ~0.13 seconds. The timer (hardclock)
-     * uses a separate counter and is NOT affected. */
-    eventc_us += usecs * 4096;
+    /* Advance the event counter. See EVENTC_BOOST above — kernel's
+     * event_timeout() bit-19 boundary check would take ~500 real
+     * seconds per scsi_pollcmd without the boost. Hardclock uses a
+     * separate counter and is NOT affected. */
+    eventc_us += usecs * EVENTC_BOOST;
     eventc_batch_base = 0;  /* reset: next batch starts from 0 */
 
     /* Periodic hardclock interrupt.
@@ -728,6 +747,13 @@ int next_intr_acknowledge(int level)
 /* Interrupt set/clear (used by ESP and DMA modules)                    */
 /* ------------------------------------------------------------------ */
 
+#if NEXT_DEBUG_DMA
+/* Last-clear timestamp for DMA IPL6 — lets next_intr_set print Δ-instr
+ * between a clear and the next assertion.  A short delta means the IRQ
+ * is being re-raised immediately, which is the candidate fault mode. */
+static uint64_t dma_irq_last_clear_instr;
+#endif
+
 void next_intr_set(uint32_t bit)
 {
     extern int next_debug_scsi;
@@ -742,6 +768,29 @@ void next_intr_set(uint32_t bit)
             irq_set_log++;
         }
     }
+
+#if NEXT_DEBUG_DMA
+    /* Extra diagnostic for DMA IPL6: correlate the set with our deferred
+     * state and the elapsed instructions since the previous clear. */
+    if (bit == I_IPL6_SCSI_DMA) {
+        static int dma_set_log = 0;
+        if (dma_set_log < 60 || (dma_set_log % 100) == 0) {
+            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+            uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+            uint64_t dt = emu_instr_count - dma_irq_last_clear_instr;
+            xil_printf("[DMA-IRQ+] #%d PC=$%08X SR=$%04X csr=$%02X "
+                       "pending=%d cd=%d instr=%u Δclr=%u\r\n",
+                       dma_set_log, pc, sr & 0xFFFF,
+                       next_scsi_dma_get_csr(),
+                       next_scsi_dma_get_pending(),
+                       next_scsi_dma_get_countdown(),
+                       (uint32_t)emu_instr_count,
+                       (uint32_t)dt);
+        }
+        dma_set_log++;
+    }
+#endif /* NEXT_DEBUG_DMA */
+
     intr_status |= bit;
     /* SCSI interrupts: do NOT call m68k_set_irq here.  The I/O callback
      * fires mid-instruction during the ESP register write.  If we deliver
@@ -752,11 +801,16 @@ void next_intr_set(uint32_t bit)
      * This gives exactly 1-instruction deferral — enough for splx to
      * complete, but not the 10,000-instruction deferral that caused the
      * biowait deadlock on open("/dev/console"). */
-    if (bit == I_IPL3_SCSI || bit == I_IPL6_SCSI_DMA) {
+    if (bit == I_IPL3_SCSI) {
         extern volatile int next_irq_pending_update;
         next_irq_pending_update = 10;  /* deliver after ~10 instructions */
         return;
     }
+    /* DMA completion (IPL6) must be delivered immediately — the kernel's
+     * dma_start writes RESET to DMA CSR as its first step, which clears
+     * the DMA interrupt bit.  If delivery is deferred even 10 instructions,
+     * the RESET fires before the CPU takes the interrupt, and dma_intr
+     * never runs → scdmaintr never fires → SCSI state machine stalls. */
     int ipl = next_intr_pending_ipl();
     if (next_debug_scsi && bit != I_IPL6_TIMER)
         xil_printf("[IRQ+] set $%08X → status=$%08X ipl=%d\r\n",
@@ -767,6 +821,21 @@ void next_intr_set(uint32_t bit)
 void next_intr_clear(uint32_t bit)
 {
     extern int next_debug_scsi;
+#if NEXT_DEBUG_DMA
+    /* Track DMA interrupt clears to diagnose lost interrupts */
+    if (bit == I_IPL6_SCSI_DMA && (intr_status & I_IPL6_SCSI_DMA)) {
+        static int dma_clr_log = 0;
+        if (dma_clr_log < 30 || (dma_clr_log % 100) == 0) {
+            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+            uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+            xil_printf("[DMA-CLR] #%d PC=$%08X SR=$%04X status=$%08X instr=%u\r\n",
+                       dma_clr_log, pc, sr & 0xFFFF, intr_status,
+                       (uint32_t)emu_instr_count);
+        }
+        dma_clr_log++;
+        dma_irq_last_clear_instr = emu_instr_count;
+    }
+#endif /* NEXT_DEBUG_DMA */
     intr_status &= ~bit;
     int ipl = next_intr_pending_ipl();
     if (next_debug_scsi && bit != I_IPL6_TIMER)
@@ -1134,8 +1203,18 @@ uint32_t next_io_read_32(uint32_t address)
     if (address >= 0x02004000 && address < 0x02004400) {
         uint32_t off = address & 0x3FF;
         /* SCSI channel: dedicated handler for active regs + init */
-        if (off <= 0x01C || off == 0x210)
-            return next_scsi_dma_reg_read(address);
+        if (off <= 0x01C || off == 0x210) {
+            uint32_t val = next_scsi_dma_reg_read(address);
+#if NEXT_DEBUG_DMA
+            static int dma_reg_rd_log = 0;
+            if (dma_reg_rd_log < 20) {
+                xil_printf("[DMA-REG] R @$%08X off=$%03X → $%08X PC=$%08X\r\n",
+                           address, off, val, m68k_get_reg(NULL, M68K_REG_PC));
+                dma_reg_rd_log++;
+            }
+#endif
+            return val;
+        }
         /* All other channels: generic scratchpad */
         return dma_scratch[off >> 2];
     }
@@ -1145,13 +1224,25 @@ uint32_t next_io_read_32(uint32_t address)
         int ch = dma_channel_for_addr(address);
         if (ch >= 0) {
             /* SCSI channel: use dedicated DMA module */
-            if (ch == 0)
-                return next_scsi_dma_csr_read();
+            if (ch == 0) {
+                uint32_t val = next_scsi_dma_csr_read();
+#if NEXT_DEBUG_DMA
+                static int dma_rd_log = 0;
+                uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+                /* Log first 20 kernel reads */
+                if (pc >= 0x04000000 && dma_rd_log < 20) {
+                    xil_printf("[DMA-RD] ch0 CSR→$%08X PC=$%08X\r\n",
+                               val, pc);
+                    dma_rd_log++;
+                }
+#endif
+                return val;
+            }
             if (ch == 7 || ch == 8)
                 xil_printf("[ENET-DMA] R32 @%08X ch=%d csr=$%02X PC=$%08X\r\n",
                            address, ch, dma_csr[ch],
                            m68k_get_reg(NULL, M68K_REG_PC));
-            return (uint32_t)dma_csr[ch] << 24;
+            return ((uint32_t)dma_csr[ch] << 24) | 0x00000040;
         }
     }
 
@@ -1490,6 +1581,16 @@ void next_io_write_32(uint32_t address, uint32_t value)
             dma_scratch[off >> 2] = value;
             return;
         }
+#if NEXT_DEBUG_DMA
+        {
+            static int dma_reg_wr_log = 0;
+            if (dma_reg_wr_log < 20) {
+                xil_printf("[DMA-REG] W @$%08X off=$%03X ← $%08X PC=$%08X\r\n",
+                           address, off, value, m68k_get_reg(NULL, M68K_REG_PC));
+                dma_reg_wr_log++;
+            }
+        }
+#endif
         /* SCSI channel: dedicated handler */
         next_scsi_dma_reg_write(address, value);
         return;
@@ -1501,6 +1602,19 @@ void next_io_write_32(uint32_t address, uint32_t value)
         if (ch >= 0) {
             /* SCSI channel: use dedicated DMA module */
             if (ch == 0) {
+#if NEXT_DEBUG_DMA
+                static int dma_wr_reset_cnt = 0;
+                if (value & 0x00100000) { /* TDMA_RESET */
+                    dma_wr_reset_cnt++;
+                    if (dma_wr_reset_cnt <= 10 || (dma_wr_reset_cnt % 1000) == 0) {
+                        uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
+                        xil_printf("[DMA-WR] RESET #%d val=$%08X PC=$%08X\r\n",
+                                   dma_wr_reset_cnt, value, pc);
+                    }
+                } else {
+                    dma_wr_reset_cnt = 0; /* reset counter on non-reset write */
+                }
+#endif
                 next_scsi_dma_csr_write(value);
                 return;
             }

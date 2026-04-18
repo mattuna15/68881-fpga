@@ -410,6 +410,85 @@ tick, giving the kernel time to set polling flags.
    May need /dev/console tty emulation beyond SCC.
 5. USB HID keyboard integration (from hello_world project)
 
+## Known Issues / Technical Debt
+
+Tracked gaps vs the reference Previous emulator. All of these are ways
+in which our implementation cuts corners compared to Previous's
+cycle-accurate cycInt-driven model.
+
+### High
+
+- **No cycInt-equivalent scheduler.** Previous schedules device events
+  (ESP completion, DMA interrupt, VBL, hardclock) against a precise
+  emulated µs clock. We have no such queue; SCSI DMA completion is
+  deferred by a fixed `DMA_DEFER_TICKS=20` instruction countdown
+  (`next_scsi_dma.c`) and IPL3_SCSI is deferred by a `next_irq_pending_update=10`
+  countdown (`next_devs.c`). These constants are fragile — any change
+  in kernel instruction mix (MMU walks, CAS, FSAVE/FRESTORE) can
+  invalidate the window. The proper fix is a small scheduling queue;
+  most of the other items in this section dissolve once it lands.
+
+- **Event counter and live timer counter are boosted by 4096× / 1024×.**
+  See `EVENTC_BOOST` and `TIMER_COUNTER_BOOST` in `next_devs.c`. Needed
+  because our emulator runs well below true 25 MHz and the kernel's
+  `event_timeout()` bit-19 boundary check would take ~500 real seconds
+  per `scsi_pollcmd` at true rate. The boosts are intentional but they
+  diverge eventc from hardclock (I_IPL6_TIMER), so any kernel code that
+  cross-references the two will see skewed ratios. Replace with a
+  cycInt-equivalent scheduler when that lands.
+
+- **DMA CSR returns `| 0x40` in the lower bits.** In `next_scsi_dma.c`
+  and the channel-0 path in `next_devs.c`, we OR `0x00000040` into the
+  CSR read value to keep the kernel's chip 313 workaround
+  (`while ((state = ddp->dd_csr) == 0);`) from spinning. Previous returns
+  pure `csr<<24` and the same kernel boots fine, so the lower bits are
+  not the real issue — the underlying bug is DMA/IRQ state timing.
+  Remove the OR once the timing is fixed.
+
+- **VBL (68 Hz) interrupt disabled.** The `#if 0`'d block in
+  `next_timer_tick` (`next_devs.c`) used to raise I_IPL3_DISK, but the
+  kernel's IPL3_DISK ISR doesn't write TMC VIR to clear the VBL bit,
+  causing an interrupt storm. When we need VBL (cursor blink, screen
+  saver, scheduler cadence once userland runs) route it through a
+  dedicated bit instead of sharing I_IPL3_DISK.
+
+### Medium
+
+- **F-line page-fault re-entry may infinite-loop.** `fline_handler.c`
+  operand accessors longjmp via `pmmu_translate_addr`. If the fault
+  hits the F-line opword or displacement fetch (not just the operand
+  EA), Musashi restarts from PPC which still points at the same F-line,
+  and the kernel's fault handler re-enters it forever. Needs an
+  F-line-aware exception frame so the retry converges.
+
+- **68040 MMU descriptor type 3 (pre-set U/M) treated as type 1.** In
+  `m68kmmu.h`, resident descriptors with bits=`11` get the same
+  writeback as type 1, which is technically wrong. NEXTSTEP 3.3 uses
+  type 1 everywhere so this is quiescent for now; guest kernels that
+  pre-set U/M will spuriously fault.
+
+- **RTC returns a fixed epoch.** `next_rtc.c` returns
+  `NEXT_EPOCH_DEFAULT` (2024-01-01 UTC) rather than a live counter.
+  Documented workaround for the "preposterous time" warning, but any
+  userland that measures wall-clock deltas will see time stand still.
+
+### Low
+
+- **FSAVE/FRESTORE BUSY frames discarded.** `fline_handler.c` maps
+  68881/68882 BUSY frames to 68040 IDLE, dropping in-progress FPU
+  state. Safe for Mach's thread-boundary checkpoints; hostile to user
+  code that checkpoints a live FPU.
+
+- **KMS has keyboard only.** No mouse, no sound DMA. Fine for boot
+  monitor; needed before running any desktop userland.
+
+- **DSP56001 is a POST-passes stub.** `next_dsp.c` hardcodes ICR/ISR
+  values so probing succeeds; any kernel path that loads DSP programs
+  (`/dev/dsp`) will hang.
+
+- **Ethernet / ADB / printer are stubs.** Drivers probe cleanly, no
+  device response. Acceptable for boot; needed for NEXTSTEP workflows.
+
 ## Memory Map (Turbo 68040)
 
 Derived from analysis of the [Previous NeXT emulator](https://github.com/previous-emulator/previous)

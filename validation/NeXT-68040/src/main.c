@@ -17,6 +17,7 @@
 #include "musashi/m68k.h"
 #include "next_memory.h"
 #include "next_devs.h"
+#include "next_debug.h"
 #include "next_mon_stub.h"
 #include "next_hw.h"
 #ifdef TEST_ROM
@@ -422,9 +423,12 @@ static uint32_t rom_putc_addr = 0;  /* 0 = not yet discovered */
 /* Sliding 16-entry ring buffer of recent PCs.  Dumped on the first OOB
  * fetch trap so we can see the last ~16 instructions the CPU executed
  * before running off into garbage. */
-#define PC_RING_SIZE 16
+#define PC_RING_SIZE 64
 static uint32_t pc_ring[PC_RING_SIZE];
 static uint32_t pc_ring_idx;
+
+/* Global instruction counter for cross-module timing diagnostics. */
+uint64_t emu_instr_count;
 
 void emu_dump_pc_ring(const char *why)
 {
@@ -448,8 +452,50 @@ void emu_instr_hook(unsigned int pc)
             m68k_set_irq(next_intr_pending_ipl());
     }
 
+    /* Deferred DMA completion: the synchronous ESP model completes DMA
+     * inside the ESP command write callback, but the resulting interrupt
+     * must fire on a separate instruction boundary so the CPU can take
+     * it before the kernel's next DMA RESET clears it. */
+    next_scsi_dma_tick();
+
+    /* Deferred SELECT TIMEOUT: the real 53C9x waits ~250 µs before
+     * signalling DISCONNECT on select timeout.  Defer ~500 instructions
+     * so the kernel's scsi_pollcmd setup finishes before scintr runs. */
+    next_esp_select_timeout_tick();
+
+    emu_instr_count++;
     pc_ring[pc_ring_idx % PC_RING_SIZE] = pc;
     pc_ring_idx++;
+
+#if NEXT_DEBUG_OUTER_BTST
+    /* Probe: identify the OUTER-loop polling target.  PC=$040146BC is the
+     * BTST.B #0, (0x67, A3) instruction at the top of the loop.  Log A3
+     * and the byte at A3+$67 the first few times, plus every 5000th after. */
+    if (pc == 0x040146BC) {
+        static int btst_log = 0;
+        if (btst_log < 8 || (btst_log % 5000) == 0) {
+            uint32_t a3 = m68k_get_reg(NULL, M68K_REG_A3);
+            uint32_t flagbyte_addr = a3 + 0x67;
+            uint32_t word = next_phys_read_32(flagbyte_addr & ~3);
+            int shift = ((flagbyte_addr & 3) ^ 3) * 8;
+            uint8_t flagbyte = (word >> shift) & 0xFF;
+            xil_printf("[OUTER-BTST] #%d A3=$%08X (A3+$67)=$%08X val=$%02X instr=%u\r\n",
+                       btst_log, a3, flagbyte_addr, flagbyte,
+                       (uint32_t)emu_instr_count);
+            /* Also dump 32 bytes around A3+$67 so we can see neighbouring
+             * fields (might be a whole flags word). */
+            if (btst_log < 3) {
+                for (int off = -16; off < 24; off += 8) {
+                    uint32_t addr = (a3 + 0x67 + off) & ~3;
+                    xil_printf("  $%08X: %08X %08X\r\n", addr,
+                               next_phys_read_32(addr),
+                               next_phys_read_32(addr + 4));
+                }
+            }
+        }
+        btst_log++;
+    }
+#endif /* NEXT_DEBUG_OUTER_BTST */
 
     /* Track A7 change around the specific ROM routine whose RTS is
      * popping garbage.  Log PC + A7 when PC is in the helper/caller

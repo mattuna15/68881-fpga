@@ -27,4 +27,11 @@ void esp_dump_irq_log(void);
 /* Debug: dump full ESP + DMA state snapshot */
 void esp_dump_state(void);
 
+/* Tick the deferred select-timeout counter from the instruction hook.
+ * Mirrors Previous's CycInt_AddRelativeInterruptUs scheduling for
+ * SELECT TIMEOUT so the IRQ fires AFTER the kernel's sc_dostart +
+ * scsi_expectintr setup has returned, instead of mid-way through it.
+ * Returns 1 if a deferred timeout fired this tick, 0 otherwise. */
+int next_esp_select_timeout_tick(void);
+
 #endif /* NEXT_ESP_H */

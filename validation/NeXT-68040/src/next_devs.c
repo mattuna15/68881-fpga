@@ -138,30 +138,36 @@ void next_softint_enable(void)
 }
 
 /* Event counter — emulated microseconds derived from CPU cycles.
- * The kernel's DELAY() and event_get() use this to measure time.
- * Must advance with emulated CPU time (25 MHz → 1 µs per 25 cycles),
- * NOT wall time, because the emulated CPU runs much faster than real time.
+ * The kernel's DELAY(), event_get(), and us_delay() use this to measure
+ * elapsed time, and `event_sync()` in us_timer_int maintains the
+ * software-side high bits by catching the 20-bit hardware counter's
+ * bit-19 transitions at every hardclock tick.
  *
- * Speedup multipliers (see TIMER_COUNTER_BOOST / EVENTC_BOOST):
- * We lack Previous's cycle-accurate cycInt scheduler, so both the 16-bit
- * live timer counter (used by ROM POST calibration) and the 32-bit event
- * counter (used by the kernel's event_timeout / scsi_pollcmd) need to
- * "advance faster than real emulated cycles" or the ROM POST takes minutes
- * and kernel timeouts take ~500 real seconds. The boosts are applied
- * uniformly to keep the counters' ratio internally consistent even though
- * it diverges from the real NeXT rate.
+ * EVENTC_BOOST must stay at 1.  A previous version raised it to 4096 to
+ * make event_timeout's VM-metering bit-19 check complete quickly, but
+ * that caused the hardware counter to wrap ~256 times between hardclock
+ * ticks (268M emu-µs advance per 65535-µs tick).  event_sync only
+ * catches ONE wrap per call, so *event_middle drifted arbitrarily far
+ * from the real counter and event_get() returned garbage.  us_delay()
+ * stuck in its while loop (event_delta never exceeded usecs reliably),
+ * and kernel mount hung at vfs_mountroot.
  *
- * Proper fix: port a cycInt-equivalent scheduler so real emulated time
- * progresses via scheduled events rather than raw CPU cycle counts.
- * Until then, any code that cross-references these counters against
- * the hardclock (I_IPL6_TIMER) or wall-clock time will skew. */
-#define EVENTC_PRESCALE      25  /* 25 MHz / 25 = 1 MHz (1 µs per tick) */
-#define EVENTC_BOOST       4096  /* multiply emulated µs progress; without
-                                  * this, kernel's event_timeout bit-19
-                                  * check takes ~500 real seconds. */
-#define TIMER_COUNTER_BOOST 1024 /* multiply 16-bit live-counter progress;
-                                  * without this, ROM POST calibration
-                                  * outer DBEQ retries for tens of seconds. */
+ * With BOOST=1, eventc advances 1:1 with emulated µs (25 cycles each).
+ * event_sync sees at most a few thousand ticks between calls — far
+ * below half-wrap (0x80000) — so event_middle tracks accurately and
+ * event_get is always correct.  The trade-off: kernel code measuring
+ * long timeouts in eventc (event_timeout's 524288-µs window) advances
+ * at real emu-µs rate.  Works correctly, just paced to our throughput.
+ *
+ * TIMER_COUNTER_BOOST is separate: it drives the 16-bit live counter
+ * at P_TIMER that the ROM POST reads for its DBEQ calibration.  That
+ * code only looks at deltas over a tight loop (not long spans), and
+ * the 16-bit counter wraps too quickly to be an event-sync-style
+ * source of truth anyway — so keeping it boosted for ROM POST speed
+ * is safe. */
+#define EVENTC_PRESCALE        25  /* 25 MHz / 25 = 1 MHz (1 µs per tick) */
+#define EVENTC_BOOST            1  /* 1:1 with emulated µs — DO NOT RAISE */
+#define TIMER_COUNTER_BOOST  1024  /* 16-bit ROM-POST counter only */
 
 static uint32_t eventc_us;           /* emulated microseconds counter           */
 static uint32_t event_latch;         /* snapshot taken when eventc_latch is read */

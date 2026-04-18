@@ -428,14 +428,12 @@ cycle-accurate cycInt-driven model.
   invalidate the window. The proper fix is a small scheduling queue;
   most of the other items in this section dissolve once it lands.
 
-- **Event counter and live timer counter are boosted by 4096× / 1024×.**
-  See `EVENTC_BOOST` and `TIMER_COUNTER_BOOST` in `next_devs.c`. Needed
-  because our emulator runs well below true 25 MHz and the kernel's
-  `event_timeout()` bit-19 boundary check would take ~500 real seconds
-  per `scsi_pollcmd` at true rate. The boosts are intentional but they
-  diverge eventc from hardclock (I_IPL6_TIMER), so any kernel code that
-  cross-references the two will see skewed ratios. Replace with a
-  cycInt-equivalent scheduler when that lands.
+- **Live 16-bit timer counter is boosted 1024×** (`TIMER_COUNTER_BOOST`
+  in `next_devs.c`) so the ROM POST's DBEQ calibration converges
+  quickly. Only affects deltas over tight loops, so correctness is not
+  at risk. The event counter is now at true 1:1 rate (`EVENTC_BOOST=1`)
+  after a 4096× boost caused `event_sync` to miss counter wraps and
+  hung `us_delay`'s spin-wait inside `vfs_mountroot`.
 
 - **DMA CSR returns `| 0x40` in the lower bits.** In `next_scsi_dma.c`
   and the channel-0 path in `next_devs.c`, we OR `0x00000040` into the

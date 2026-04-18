@@ -1472,8 +1472,10 @@ int fline_illg_callback(int opcode)
     default:
         if (last_unhandled_pc != pc - 2) {
             last_unhandled_pc = pc - 2;
-            xil_printf("[FLINE] UNHANDLED type=%d PC=$%06X opword=$%04X\r\n",
-                       type, pc - 2, opword);
+            extern unsigned int fh_get_urp(void);
+            uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+            xil_printf("[FLINE] UNHANDLED type=%d PC=$%08X opword=$%04X URP=$%08X SR=$%04X\r\n",
+                       type, pc - 2, opword, fh_get_urp(), sr & 0xFFFF);
         }
         return 0;
     }

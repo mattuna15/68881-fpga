@@ -233,6 +233,14 @@ static int mmu040_log_count = 0;
 static int mmu040_atc_fault = 0;
 static uint32_t mmu040_fault_addr = 0;
 
+/* Ring of recent fault VAs — dumped pre-HALT to reveal cascade shape.
+ * 16 slots, pushed in the ATC-fault path of pmmu_translate_addr_040. */
+#define MMU040_FAULT_RING 16
+static uint32_t mmu040_fault_ring_va[MMU040_FAULT_RING];
+static uint32_t mmu040_fault_ring_ppc[MMU040_FAULT_RING];
+static uint16_t mmu040_fault_ring_ssw[MMU040_FAULT_RING];
+static int      mmu040_fault_ring_idx;
+
 /* Walk result info — set by pmmu_walk_040 for TLB fill */
 static uint mmu040_walk_wp = 0;        /* accumulated write-protect */
 static uint mmu040_walk_modified = 0;  /* M bit was set (write allowed) */
@@ -290,9 +298,9 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k, int write)
 
 	if ((l1_desc & 2) == 0) {  /* bit 1 must be set for valid UDT */
 		static int l1_fault_log = 0;
-		if (l1_fault_log < 10) {
-			xil_printf("[MMU040] L1 FAULT: VA=$%08X root=$%08X idx=%d desc=$%08X\r\n",
-			           addr_in, root_ptr, l1_idx, l1_desc);
+		if (l1_fault_log < 100) {
+			xil_printf("[MMU040] L1 FAULT: VA=$%08X root=$%08X idx=%d desc=$%08X PPC=$%08X\r\n",
+			           addr_in, root_ptr, l1_idx, l1_desc, REG_PPC);
 			l1_fault_log++;
 		}
 		mmu040_atc_fault = 1;
@@ -311,9 +319,9 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k, int write)
 
 	if ((l2_desc & 2) == 0) {
 		static int l2_fault_log = 0;
-		if (l2_fault_log < 10) {
-			xil_printf("[MMU040] L2 FAULT: VA=$%08X l2_base=$%08X idx=%d\r\n",
-			           addr_in, l2_base, l2_idx);
+		if (l2_fault_log < 100) {
+			xil_printf("[MMU040] L2 FAULT: VA=$%08X l2_base=$%08X idx=%d desc=$%08X PPC=$%08X\r\n",
+			           addr_in, l2_base, l2_idx, l2_desc, REG_PPC);
 			l2_fault_log++;
 		}
 		mmu040_atc_fault = 1;
@@ -348,9 +356,9 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k, int write)
 	/* Check for valid page descriptor (bit 0 = 1 → resident) */
 	if ((l3_desc & 1) == 0) {
 		static int l3_fault_log = 0;
-		if (l3_fault_log < 10) {
-			xil_printf("[MMU040] L3 FAULT: VA=$%08X l3_base=$%08X idx=%d desc=$%08X\r\n",
-			           addr_in, l3_base, l3_idx, l3_desc);
+		if (l3_fault_log < 100) {
+			xil_printf("[MMU040] L3 FAULT: VA=$%08X l3_base=$%08X idx=%d desc=$%08X PPC=$%08X\r\n",
+			           addr_in, l3_base, l3_idx, l3_desc, REG_PPC);
 			l3_fault_log++;
 		}
 		mmu040_atc_fault = 1;
@@ -500,10 +508,42 @@ uint pmmu_translate_addr_040(uint addr_in)
 		int since_reset = mmu040_fault_total - mmu040_fault_reset_at;
 		(void)since_reset;
 
+		/* Push into fault ring — used by HALT dump to show cascade shape. */
+		{
+			int ri = mmu040_fault_ring_idx & (MMU040_FAULT_RING - 1);
+			mmu040_fault_ring_va [ri] = addr_in;
+			mmu040_fault_ring_ppc[ri] = REG_PPC;
+			mmu040_fault_ring_ssw[ri] = (uint16_t)ssw;
+			mmu040_fault_ring_idx++;
+		}
+
 		/* Detect infinite fault loop (double bus fault → CPU halt).
-		 * On real 68040 this halts the CPU; we stop the emulator. */
-		if (mmu040_fault_total - mmu040_fault_reset_at > 500) {
-			xil_printf("[MMU040] HALT: >500 ATC faults — likely double bus fault\r\n");
+		 *
+		 * Heuristic: count faults that have NOT been matched by a
+		 * successful RTE-from-format-7.  A legitimate page-fault is
+		 * fault → buserr handler → vm_fault → pmap_enter → RTE, so
+		 * rte_format7_count rises in lock-step with mmu040_fault_total.
+		 *
+		 * An unresolved fault loop (kernel can't page the page in)
+		 * keeps faulting without matching RTEs — that's the signature
+		 * we want to catch.  A generous slack of 256 covers nested
+		 * faults (page-table page faults during a user fault walk)
+		 * and outstanding-in-flight faults.  During post-userspace
+		 * boot it is normal to accumulate thousands of total faults. */
+		int unresolved = mmu040_fault_total - rte_format7_count;
+		if (unresolved > 256) {
+			xil_printf("[MMU040] HALT: %d unresolved ATC faults (total=%d RTE7=%d)\r\n",
+			           unresolved, mmu040_fault_total, rte_format7_count);
+			xil_printf("[MMU040] URP=$%08X SRP=$%08X last %d fault VAs (oldest→newest):\r\n",
+			           m68ki_cpu.mmu_040_urp, m68ki_cpu.mmu_040_srp,
+			           MMU040_FAULT_RING);
+			for (int k = 0; k < MMU040_FAULT_RING; k++) {
+				int ri = (mmu040_fault_ring_idx + k) & (MMU040_FAULT_RING - 1);
+				xil_printf("  [%2d] VA=$%08X PPC=$%08X SSW=$%04X\r\n",
+				           k, mmu040_fault_ring_va[ri],
+				           mmu040_fault_ring_ppc[ri],
+				           mmu040_fault_ring_ssw[ri]);
+			}
 			m68k_end_timeslice();
 			m68k_pulse_halt();
 			return addr_in;

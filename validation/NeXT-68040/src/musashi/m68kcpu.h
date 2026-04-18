@@ -2114,9 +2114,9 @@ static inline void m68ki_exception_1111(void)
 	 * Log if this happens in user mode (potential FPU issue). */
 	if (!FLAG_S) {
 		static int fline_user_log = 0;
-		if (fline_user_log < 10) {
-			xil_printf("[FLINE-USER] unhandled F-line $%04X at PC=$%08X\r\n",
-				REG_IR, ADDRESS_68K(REG_PPC));
+		if (fline_user_log < 50) {
+			xil_printf("[FLINE-USER] unhandled F-line $%04X at PC=$%08X URP=$%08X\r\n",
+				REG_IR, ADDRESS_68K(REG_PPC), m68ki_cpu.mmu_040_urp);
 			fline_user_log++;
 		}
 	}

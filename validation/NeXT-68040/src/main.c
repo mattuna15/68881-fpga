@@ -1287,6 +1287,9 @@ static void next_boot(void)
          * if SCSI reads tick up, the kernel IS doing disk I/O (and it's
          * either completing or hanging mid-transfer).  If the count is
          * flat, the block is a lock/port wait with no disk involvement. */
+#if 0  /* [IDLE-HB] heartbeat — disabled now that boot reaches userspace.
+        * Was useful while diagnosing the open("/dev/console") hang;
+        * re-enable with #if 1 if a new idle-state stall needs tracking. */
         {
             static int heartbeat_counter = 0;
             static int last_scsi_reads = -1;
@@ -1310,6 +1313,7 @@ static void next_boot(void)
                 }
             }
         }
+#endif
 
         /* Feed ARM UART RX into SCC RX buffer */
         poll_uart_rx();

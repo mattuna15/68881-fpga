@@ -94,7 +94,9 @@
      (0u << 2) |                /* reserved */ \
      (2u << 0))                 /* cpu_clock = 25 MHz */
 
-/* SCR2 bit definitions */
+/* SCR2 bit definitions (32-bit big-endian register) */
+#define SCR2_SOFTINT0   0x01000000  /* bit 0 of high byte → IPL1 */
+#define SCR2_SOFTINT1   0x02000000  /* bit 1 of high byte → IPL2 */
 #define SCR2_EKG_LED    0x00000001
 #define SCR2_OVERLAY    0x00000080
 #define SCR2_RTCE       0x00000100
@@ -108,11 +110,6 @@
 #define DMACSR_COMPLETE  0x08000000
 #define DMACSR_ENABLE    0x01000000
 #define DMACSR_RESET     0x00100000
-
-/* Timer */
-#define TIMER_ENABLE    0x80
-#define TIMER_UPDATE    0x40
-#define TIMER_MAX       0xFFFF
 
 /* SCC (Zilog 8530) register offsets */
 #define SCC_CHAN_A_CTRL  1   /* Channel A control (byte offset from P_SCC) */

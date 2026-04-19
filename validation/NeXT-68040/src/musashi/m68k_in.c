@@ -6796,7 +6796,7 @@ M68KMAKE_OP(movec, 32, cr, .)
 			case 0x805:				/* MMUSR */
 				if(CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
-					/* TODO */
+					REG_DA[(word2 >> 12) & 15] = m68ki_cpu.mmu_040_mmusr;
 					return;
 				}
 				m68ki_exception_illegal();
@@ -9285,6 +9285,20 @@ rte_loop:
 				new_pc = m68ki_pull_32();
 				m68ki_fake_pull_16();	/* format word */
 				m68ki_fake_pull_32();	/* address */
+				m68ki_jump(new_pc);
+				m68ki_set_sr(new_sr);
+				CPU_INSTR_MODE = INSTRUCTION_YES;
+				CPU_RUN_MODE = RUN_MODE_NORMAL;
+				return;
+			case 7: /* 68040 Access Error (Format 7) — 30 words = 60 bytes.
+				 * Pop SR+PC+Format (8 bytes) then skip remaining 52 bytes.
+				 * The kernel's bus error handler has already resolved the
+				 * page fault; we just need to resume at the stacked PC. */
+				new_sr = m68ki_pull_16();
+				new_pc = m68ki_pull_32();
+				m68ki_fake_pull_16();	/* format word */
+				REG_A[7] += 52;		/* skip EA, SSW, WBnS, FA, WBnA/D, PDn */
+				rte_format7_count++;
 				m68ki_jump(new_pc);
 				m68ki_set_sr(new_sr);
 				CPU_INSTR_MODE = INSTRUCTION_YES;

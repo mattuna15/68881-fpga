@@ -58,6 +58,17 @@ extern void m68ki_build_opcode_table(void);
 int  m68ki_initial_cycles;
 int  m68ki_remaining_cycles = 0;                     /* Number of clocks remaining */
 uint m68ki_tracing = 0;
+int  rte_format7_count = 0;                          /* Format 7 RTE completions */
+
+/* Exported accessor for fline_handler.c — it needs to know whether the
+ * PMMU is engaged, to decide if F-line operand addresses must be
+ * translated through pmmu_translate_addr() before the user callback. */
+int fh_pmmu_enabled(void) { return m68ki_cpu.pmmu_enabled; }
+int  mmu040_fault_total = 0;                         /* Total ATC faults */
+int  mmu040_fault_reset_at = 0;                      /* ATC fault count at last BUSRST */
+int  mmu040_write_pending = 0;                       /* 1 during write translations */
+int  mmu040_access_size = 0;                         /* SSW SIZE: 0=long, 1=byte, 2=word */
+int  mmu040_halted = 0;                              /* Sticky flag set by MMU HALT path */
 uint m68ki_address_space;
 
 #ifdef M68K_LOG_ENABLE
@@ -998,6 +1009,28 @@ int m68k_execute(int num_cycles)
 			/* Record previous program counter */
 			REG_PPC = REG_PC;
 
+			/* PC trace (toggled by 'T' key) */
+			{
+				extern int next_trace_count;
+				if (next_trace_count > 0) {
+					extern void xil_printf(const char *fmt, ...);
+					extern uint32_t next_eventc_read_count;
+					/* On first trace, dump code at the loop PC */
+					if (next_trace_count == 200) {
+						extern unsigned int m68k_read_memory_32(unsigned int);
+						unsigned int lpc = REG_PC & ~3;
+						xil_printf("[CODE] at $%08X:", lpc);
+						int ci;
+						for (ci = -4; ci < 12; ci++)
+							xil_printf(" %08X", m68k_read_memory_32(lpc + ci*4));
+						xil_printf("\r\n");
+					}
+					xil_printf("PC=$%08X SR=$%04X ec=%u\r\n",
+					           REG_PC, m68ki_get_sr(), next_eventc_read_count);
+					next_trace_count--;
+				}
+			}
+
 			/* Record previous D/A register state (in case of bus error) */
 			for (i = 15; i >= 0; i--){
 				REG_DA_SAVE[i] = REG_DA[i];
@@ -1010,6 +1043,12 @@ int m68k_execute(int num_cycles)
 
 			/* Trace m68k_exception, if necessary */
 			m68ki_exception_if_trace(); /* auto-disable (see m68kcpu.h) */
+
+			/* Check for low-priority interrupts (IPL 1-5) between instructions.
+			 * IPL 6-7 (timer/NMI) are only checked at batch boundaries and
+			 * MOVE-to-SR to prevent pre-emption of lower-priority handlers. */
+			if(CPU_INT_LEVEL > FLAG_INT_MASK && (CPU_INT_LEVEL>>8) <= 5)
+				m68ki_exception_interrupt(CPU_INT_LEVEL>>8);
 		} while(GET_CYCLES() > 0);
 
 		/* set previous PC to current PC for the next entry into the loop */

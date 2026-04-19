@@ -33,6 +33,55 @@
 #include "xil_printf.h"
 
 /* ------------------------------------------------------------------ */
+/* MMU-aware memory accessors                                          */
+/*                                                                     */
+/* Musashi's m68k_read_memory_* / m68k_write_memory_* user callbacks   */
+/* operate on *physical* addresses and DO NOT pass through the 68040   */
+/* PMMU.  When an F-line instruction runs with the MMU enabled (user   */
+/* mode, and kernel code with TT regs not covering the target), the    */
+/* operand EA and any displacement ext word are *virtual* addresses    */
+/* that must be translated.                                            */
+/*                                                                     */
+/* pmmu_translate_addr() lives in m68kmmu.h — it walks page tables,    */
+/* updates the ATC, and on fault builds a format-7 stack frame and     */
+/* longjmps back to the main dispatch loop's setjmp.  The longjmp      */
+/* aborts whatever we were doing here; the kernel's bus-error handler  */
+/* resolves the page fault and RTEs, Musashi re-executes the F-line    */
+/* from its PPC and we run through again.                              */
+/* ------------------------------------------------------------------ */
+extern unsigned int pmmu_translate_addr(unsigned int addr_in);
+extern unsigned int m68ki_cpu_pmmu_enabled(void);  /* 0 if MMU off */
+
+/* PMMU_ENABLED lives in m68ki_cpu which is a local struct — export it
+ * via a small accessor in m68kcpu.c. */
+#include "musashi/m68kcpu_pmmu_shim.h"
+
+static inline unsigned int fh_read_8(unsigned int addr) {
+    if (fh_pmmu_enabled()) addr = pmmu_translate_addr(addr);
+    return m68k_read_memory_8(addr);
+}
+static inline unsigned int fh_read_16(unsigned int addr) {
+    if (fh_pmmu_enabled()) addr = pmmu_translate_addr(addr);
+    return m68k_read_memory_16(addr);
+}
+static inline unsigned int fh_read_32(unsigned int addr) {
+    if (fh_pmmu_enabled()) addr = pmmu_translate_addr(addr);
+    return m68k_read_memory_32(addr);
+}
+static inline void fh_write_8(unsigned int addr, unsigned int val) {
+    if (fh_pmmu_enabled()) addr = pmmu_translate_addr(addr);
+    m68k_write_memory_8(addr, val);
+}
+static inline void fh_write_16(unsigned int addr, unsigned int val) {
+    if (fh_pmmu_enabled()) addr = pmmu_translate_addr(addr);
+    m68k_write_memory_16(addr, val);
+}
+static inline void fh_write_32(unsigned int addr, unsigned int val) {
+    if (fh_pmmu_enabled()) addr = pmmu_translate_addr(addr);
+    m68k_write_memory_32(addr, val);
+}
+
+/* ------------------------------------------------------------------ */
 /* 68881 command word opcode mapping                                   */
 /* FPOP_* constants now use MC68881 native encoding directly —         */
 /* no translation needed.  map_opcode() is identity for valid opcodes. */
@@ -238,27 +287,27 @@ static fp80_t read_mem_operand(unsigned int addr, int fmt)
 
     switch (fmt) {
     case FMT_BYTE:
-        return byte_to_fp80(m68k_read_memory_8(addr));
+        return byte_to_fp80(fh_read_8(addr));
 
     case FMT_WORD:
-        return word_to_fp80(m68k_read_memory_16(addr));
+        return word_to_fp80(fh_read_16(addr));
 
     case FMT_LONG:
-        return long_to_fp80(m68k_read_memory_32(addr));
+        return long_to_fp80(fh_read_32(addr));
 
     case FMT_SINGLE:
-        return single_to_fp80(m68k_read_memory_32(addr));
+        return single_to_fp80(fh_read_32(addr));
 
     case FMT_DOUBLE:
-        w0 = m68k_read_memory_32(addr);
-        w1 = m68k_read_memory_32(addr + 4);
+        w0 = fh_read_32(addr);
+        w1 = fh_read_32(addr + 4);
         return double_to_fp80(w0, w1);
 
     case FMT_EXTENDED:
         /* 96-bit extended in memory: sign+exp(16) + zero(16) + sig(64) */
-        w0 = m68k_read_memory_32(addr);      /* [31:16]=exp, [15:0]=0 */
-        w1 = m68k_read_memory_32(addr + 4);  /* sig_hi */
-        w2 = m68k_read_memory_32(addr + 8);  /* sig_lo */
+        w0 = fh_read_32(addr);      /* [31:16]=exp, [15:0]=0 */
+        w1 = fh_read_32(addr + 4);  /* sig_hi */
+        w2 = fh_read_32(addr + 8);  /* sig_lo */
         return FP80((w0 >> 16) & 0xFFFF, w1, w2);
 
     case FMT_PACKED:
@@ -303,12 +352,12 @@ static unsigned int eval_ea(int mode, int reg, unsigned int *pc)
     case 4: /* -(An) — predecrement (caller must handle decrement) */
         return m68k_get_reg(NULL, M68K_REG_A0 + reg);
     case 5: /* (d16, An) */
-        ext = m68k_read_memory_16(*pc);
+        ext = fh_read_16(*pc);
         *pc += 2;
         addr = m68k_get_reg(NULL, M68K_REG_A0 + reg);
         return addr + (int)(short)ext;
     case 6: /* (d8, An, Xn) — brief extension word */
-        ext = m68k_read_memory_16(*pc);
+        ext = fh_read_16(*pc);
         *pc += 2;
         addr = m68k_get_reg(NULL, M68K_REG_A0 + reg);
         {
@@ -326,20 +375,20 @@ static unsigned int eval_ea(int mode, int reg, unsigned int *pc)
     case 7: /* special modes based on reg */
         switch (reg) {
         case 0: /* (xxx).W — absolute short */
-            ext = m68k_read_memory_16(*pc);
+            ext = fh_read_16(*pc);
             *pc += 2;
             return (unsigned int)(int)(short)ext;
         case 1: /* (xxx).L — absolute long */
-            addr = m68k_read_memory_32(*pc);
+            addr = fh_read_32(*pc);
             *pc += 4;
             return addr;
         case 2: /* (d16, PC) */
-            ext = m68k_read_memory_16(*pc);
+            ext = fh_read_16(*pc);
             addr = *pc + (int)(short)ext;
             *pc += 2;
             return addr;
         case 3: /* (d8, PC, Xn) */
-            ext = m68k_read_memory_16(*pc);
+            ext = fh_read_16(*pc);
             addr = *pc;
             *pc += 2;
             {
@@ -372,7 +421,7 @@ static unsigned int eval_ea(int mode, int reg, unsigned int *pc)
 /* ------------------------------------------------------------------ */
 static int handle_general(unsigned int opword, unsigned int pc)
 {
-    unsigned int cmd = m68k_read_memory_16(pc);
+    unsigned int cmd = fh_read_16(pc);
     pc += 2;
 
     int rm      = (cmd >> 14) & 1;
@@ -604,7 +653,7 @@ static int eval_fpu_condition(int condition)
 /* ------------------------------------------------------------------ */
 static int handle_fscc(unsigned int opword, unsigned int pc)
 {
-    unsigned int cmd = m68k_read_memory_16(pc);
+    unsigned int cmd = fh_read_16(pc);
     pc += 2;
     int condition = cmd & 0x3F;
     int ea_mode = EA_MODE(opword);
@@ -621,7 +670,7 @@ static int handle_fscc(unsigned int opword, unsigned int pc)
     } else {
         /* Memory EA */
         unsigned int addr = eval_ea(ea_mode, ea_reg, &pc);
-        m68k_write_memory_8(addr, byte_val);
+        fh_write_8(addr, byte_val);
     }
 
     m68k_set_reg(M68K_REG_PC, pc);
@@ -636,12 +685,12 @@ static int handle_fscc(unsigned int opword, unsigned int pc)
 /* ------------------------------------------------------------------ */
 static int handle_fdbcc(unsigned int opword, unsigned int pc)
 {
-    unsigned int cmd = m68k_read_memory_16(pc);
+    unsigned int cmd = fh_read_16(pc);
     pc += 2;
     int condition = cmd & 0x3F;
     int reg = opword & 7;
     unsigned int disp_pc = pc;  /* address of displacement word */
-    int16_t displacement = (int16_t)m68k_read_memory_16(pc);
+    int16_t displacement = (int16_t)fh_read_16(pc);
     pc += 2;
 
     if (eval_fpu_condition(condition)) {
@@ -681,11 +730,11 @@ static int handle_fbcc(unsigned int opword, unsigned int pc)
 
     if (size_bit == 0) {
         /* 16-bit displacement */
-        displacement = (int)(short)m68k_read_memory_16(pc);
+        displacement = (int)(short)fh_read_16(pc);
         pc += 2;
     } else {
         /* 32-bit displacement */
-        displacement = (int)m68k_read_memory_32(pc);
+        displacement = (int)fh_read_32(pc);
         pc += 4;
     }
 
@@ -697,6 +746,102 @@ static int handle_fbcc(unsigned int opword, unsigned int pc)
 }
 
 /* ------------------------------------------------------------------ */
+/* ------------------------------------------------------------------ */
+/* Handle FMOVEM (multiple FP data registers to/from memory)           */
+/* cmd_type 6 (110): EA → FP register list (restore)                   */
+/* cmd_type 7 (111): FP register list → EA (save)                      */
+/* Command word: 11 d mode[1:0] 0 register_list[7:0]                  */
+/*   d=0 (type 6): memory → registers                                  */
+/*   d=1 (type 7): registers → memory                                  */
+/*   mode 00/10: static register list                                  */
+/*   mode 01/11: dynamic (Dn holds mask)                               */
+/*   register_list: bit 7=FP0 .. bit 0=FP7 (or reversed for predec)   */
+/* Each FP register is 12 bytes in memory (96-bit extended)            */
+/* ------------------------------------------------------------------ */
+static int handle_fmovem_data(unsigned int opword, unsigned int cmd,
+                               unsigned int pc)
+{
+    int direction = (cmd >> 13) & 1;  /* 0=EA→regs, 1=regs→EA */
+    int mode_bits = (cmd >> 11) & 3;
+    int ea_mode = EA_MODE(opword);
+    int ea_reg  = EA_REG(opword);
+    uint8_t regmask;
+
+    if (mode_bits & 1) {
+        /* Dynamic: register list in Dn (bits 7-4 of mode field = reg#) */
+        int dn = (cmd >> 4) & 7;
+        regmask = (uint8_t)m68k_get_reg(NULL, M68K_REG_D0 + dn);
+    } else {
+        regmask = cmd & 0xFF;
+    }
+
+    /* For predecrement -(An), the register list is reversed:
+     * bit 0=FP0 .. bit 7=FP7 (opposite of normal order) */
+    int predec = (ea_mode == 4);
+
+    /* Count registers for predecrement address calculation */
+    int nregs = 0;
+    for (int i = 0; i < 8; i++)
+        if (regmask & (1 << i)) nregs++;
+
+    unsigned int ea_addr;
+    if (predec) {
+        unsigned int an = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+        an -= nregs * 12;
+        ea_addr = an;
+        m68k_set_reg(M68K_REG_A0 + ea_reg, an);
+    } else if (ea_mode == 3) {
+        /* Postincrement (An)+ */
+        ea_addr = m68k_get_reg(NULL, M68K_REG_A0 + ea_reg);
+    } else {
+        ea_addr = eval_ea(ea_mode, ea_reg, &pc);
+    }
+
+    /* Transfer registers */
+    unsigned int addr = ea_addr;
+    for (int i = 0; i < 8; i++) {
+        int reg_idx;
+        if (predec)
+            reg_idx = i;       /* bit 0=FP0 for predecrement */
+        else
+            reg_idx = 7 - i;   /* bit 7=FP0 for normal order */
+
+        if (!(regmask & (1 << i)))
+            continue;
+
+        if (direction) {
+            /* Registers → memory (save) */
+            fp80_t val = fp_reg_get(reg_idx);
+            /* Write 12 bytes: 4-byte exp+sign_hi, 4-byte mantissa_hi, 4-byte mantissa_lo */
+            uint32_t w0 = ((uint32_t)val.e << 16) | (val.h >> 16);
+            uint32_t w1 = (val.h << 16) | (val.l >> 16);
+            uint32_t w2 = (val.l << 16);
+            fh_write_32(addr, w0);
+            fh_write_32(addr + 4, w1);
+            fh_write_32(addr + 8, w2);
+        } else {
+            /* Memory → registers (restore) */
+            uint32_t w0 = fh_read_32(addr);
+            uint32_t w1 = fh_read_32(addr + 4);
+            uint32_t w2 = fh_read_32(addr + 8);
+            fp80_t val;
+            val.e = (w0 >> 16) & 0xFFFF;
+            val.h = (w0 << 16) | (w1 >> 16);
+            val.l = (w1 << 16) | (w2 >> 16);
+            fp_reg_set(reg_idx, val);
+        }
+        addr += 12;
+    }
+
+    /* Postincrement: advance An */
+    if (ea_mode == 3) {
+        m68k_set_reg(M68K_REG_A0 + ea_reg, ea_addr + nregs * 12);
+    }
+
+    m68k_set_reg(M68K_REG_PC, pc);
+    return 1;
+}
+
 /* Handle FMOVE to/from control registers (type 100/101)               */
 /* Command word: 10 d dr[2:0] 0000000000                               */
 /*   d=0 → ea to FPcr, d=1 → FPcr to ea                               */
@@ -709,6 +854,7 @@ static int handle_fmove_ctrl(unsigned int opword, unsigned int cmd,
     int regsel    = (cmd >> 10) & 7;  /* which control regs */
     int ea_mode   = EA_MODE(opword);
     int ea_reg    = EA_REG(opword);
+
 
     if (ea_mode == 0) {
         /* Data register direct: Dn ↔ single control register */
@@ -746,18 +892,18 @@ static int handle_fmove_ctrl(unsigned int opword, unsigned int cmd,
         /* EA (memory) → control register(s) */
         unsigned int ea_addr = eval_ea(ea_mode, ea_reg, &pc);
         if (regsel & 4) {
-            u32 val = m68k_read_memory_32(ea_addr);
+            u32 val = fh_read_32(ea_addr);
             ea_addr += 4;
             fp_reg_set_fpcr(val);
             fpu_write_fpcr(val);
         }
         if (regsel & 2) {
-            u32 val = m68k_read_memory_32(ea_addr);
+            u32 val = fh_read_32(ea_addr);
             ea_addr += 4;
             fp_reg_set_fpsr(val);
         }
         if (regsel & 1) {
-            u32 val = m68k_read_memory_32(ea_addr);
+            u32 val = fh_read_32(ea_addr);
             ea_addr += 4;
             fp_reg_set_fpiar(val);
             fpu_write_fpiar(val);
@@ -766,15 +912,15 @@ static int handle_fmove_ctrl(unsigned int opword, unsigned int cmd,
         /* Control register(s) → EA (memory) */
         unsigned int ea_addr = eval_ea(ea_mode, ea_reg, &pc);
         if (regsel & 4) {
-            m68k_write_memory_32(ea_addr, fp_reg_get_fpcr());
+            fh_write_32(ea_addr, fp_reg_get_fpcr());
             ea_addr += 4;
         }
         if (regsel & 2) {
-            m68k_write_memory_32(ea_addr, fp_reg_get_fpsr());
+            fh_write_32(ea_addr, fp_reg_get_fpsr());
             ea_addr += 4;
         }
         if (regsel & 1) {
-            m68k_write_memory_32(ea_addr, fp_reg_get_fpiar());
+            fh_write_32(ea_addr, fp_reg_get_fpiar());
             ea_addr += 4;
         }
     }
@@ -884,9 +1030,9 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
     switch (fmt) {
     case FMT_EXTENDED: {
         /* 96-bit: exp(16) + pad(16) + sig(64) */
-        m68k_write_memory_32(ea_addr,     (val.e << 16));
-        m68k_write_memory_32(ea_addr + 4, val.h);
-        m68k_write_memory_32(ea_addr + 8, val.l);
+        fh_write_32(ea_addr,     (val.e << 16));
+        fh_write_32(ea_addr + 4, val.h);
+        fh_write_32(ea_addr + 8, val.l);
         break;
     }
     case FMT_SINGLE: {
@@ -905,7 +1051,7 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
             s = (sign << 31) | 0x7F800000;  /* overflow → inf */
         else
             s = (sign << 31) | ((u32)exp << 23) | frac;
-        m68k_write_memory_32(ea_addr, s);
+        fh_write_32(ea_addr, s);
         break;
     }
     case FMT_DOUBLE: {
@@ -928,8 +1074,8 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
             hi = (sign << 31) | ((u32)exp << 20) | (u32)(sig >> 32);
             lo = (u32)sig;
         }
-        m68k_write_memory_32(ea_addr, hi);
-        m68k_write_memory_32(ea_addr + 4, lo);
+        fh_write_32(ea_addr, hi);
+        fh_write_32(ea_addr + 4, lo);
         break;
     }
     case FMT_LONG: {
@@ -947,7 +1093,7 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
             ival = (int)(sig >> shift);
             if (sign) ival = -ival;
         }
-        m68k_write_memory_32(ea_addr, (u32)ival);
+        fh_write_32(ea_addr, (u32)ival);
         break;
     }
     case FMT_WORD: {
@@ -964,7 +1110,7 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
             ival = (int)(sig >> shift);
             if (sign) ival = -ival;
         }
-        m68k_write_memory_16(ea_addr, (unsigned int)(short)ival);
+        fh_write_16(ea_addr, (unsigned int)(short)ival);
         break;
     }
     case FMT_BYTE: {
@@ -981,7 +1127,7 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
             ival = (int)(sig >> shift);
             if (sign) ival = -ival;
         }
-        m68k_write_memory_8(ea_addr, (unsigned int)(unsigned char)ival);
+        fh_write_8(ea_addr, (unsigned int)(unsigned char)ival);
         break;
     }
     default:
@@ -1022,6 +1168,16 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
  * We read the 68882 frame from hardware and translate to 68040 format
  * for the 68K memory, since the Turbo ROM expects 68040 frames.
  */
+/* NOTE: ideally these would be $41... to match real MC68040 (and
+ * Previous with fpu_model=68040 — see previous/src/cpu/fpp.c:1039),
+ * which would make the NeXT kernel print "FPU version 0x41". But the
+ * NeXT monitor ROM does its own early FPSP-style FSAVE probe very
+ * early in init (~PC $01004xxx) and uses exact `cmpi.l #$40000000`
+ * compares against the frame — giving it a $41... frame makes it spin
+ * forever in the ROM delay loop at $0100411E. Until we can either
+ * patch the ROM detect path or distinguish monitor-context vs
+ * kernel-context FSAVEs, stay at $40... and accept that locore.s will
+ * print "FPU version 0x40". */
 #define FMT_68040_NULL   0x00000000u
 #define FMT_68040_IDLE   0x40000000u
 #define FMT_68040_UNIMP  0x40280000u
@@ -1117,7 +1273,7 @@ static void handle_fsave(unsigned int opword, unsigned int pc)
     }
 
     /* 68040 frame: full 32-bit format longword */
-    m68k_write_memory_32(ea_addr, frame_040);
+    fh_write_32(ea_addr, frame_040);
 
     m68k_set_reg(M68K_REG_PC, pc);
 }
@@ -1138,7 +1294,7 @@ static void handle_frestore(unsigned int opword, unsigned int pc)
     }
 
     /* 68040 frame: full 32-bit format longword */
-    u32 frame_040 = m68k_read_memory_32(ea_addr);
+    u32 frame_040 = fh_read_32(ea_addr);
 
     /* Determine 68040 frame size for postincrement */
     int frame_040_data_bytes = 0;
@@ -1203,7 +1359,7 @@ static void handle_frestore(unsigned int opword, unsigned int pc)
         int n_words = (format_882 & 0xFF) / 4;
         if (n_words > 56) n_words = 56;
         for (int i = 0; i < n_words; i++) {
-            u32 data = m68k_read_memory_32(ea_addr + 4 + i * 4);
+            u32 data = fh_read_32(ea_addr + 4 + i * 4);
             cir_wr(OFF_CIR_OPERAND, data);
         }
     }
@@ -1233,8 +1389,18 @@ int fline_illg_callback(int opcode)
     unsigned int opword = (unsigned int)opcode & 0xFFFF;
 
     /* Check if this is an FPU instruction (CpID = 001) */
-    if ((opword & 0xF200) != 0xF200)
+    if ((opword & 0xF200) != 0xF200) {
+        static int non_fpu_log = 0;
+        if (non_fpu_log < 20) {
+            uint32_t pc = m68k_get_reg(NULL, M68K_REG_PPC);
+            uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
+            uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+            xil_printf("[ILLG] op=$%04X PPC=$%08X SR=$%04X A7=$%08X (non-FPU → vec4)\r\n",
+                       opword, pc, sr & 0xFFFF, sp);
+            non_fpu_log++;
+        }
         return 0;  /* not ours */
+    }
 
     unsigned int type = (opword >> 6) & 7;
     unsigned int pc = m68k_get_reg(NULL, M68K_REG_PC);
@@ -1248,7 +1414,7 @@ int fline_illg_callback(int opcode)
     switch (type) {
     case 0: {
         /* Type 000: general instructions (arithmetic, FMOVECR, etc.) */
-        unsigned int cmd = m68k_read_memory_16(pc);
+        unsigned int cmd = fh_read_16(pc);
 
         /* Check for FMOVECR first */
         if (is_fmovecr(cmd))
@@ -1258,6 +1424,10 @@ int fline_illg_callback(int opcode)
         int cmd_type = (cmd >> 13) & 7;
         if (cmd_type == 4 || cmd_type == 5)
             return handle_fmove_ctrl(opword, cmd, pc + 2);
+
+        /* FMOVEM: multiple FP data registers to/from memory */
+        if (cmd_type == 6 || cmd_type == 7)
+            return handle_fmovem_data(opword, cmd, pc + 2);
 
         /* FMOVE FPn → <ea> (cmd_type = 3 = 011) */
         if (cmd_type == 3)
@@ -1302,8 +1472,10 @@ int fline_illg_callback(int opcode)
     default:
         if (last_unhandled_pc != pc - 2) {
             last_unhandled_pc = pc - 2;
-            xil_printf("[FLINE] UNHANDLED type=%d PC=$%06X opword=$%04X\r\n",
-                       type, pc - 2, opword);
+            extern unsigned int fh_get_urp(void);
+            uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
+            xil_printf("[FLINE] UNHANDLED type=%d PC=$%08X opword=$%04X URP=$%08X SR=$%04X\r\n",
+                       type, pc - 2, opword, fh_get_urp(), sr & 0xFFFF);
         }
         return 0;
     }

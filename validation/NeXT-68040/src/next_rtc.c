@@ -12,6 +12,10 @@
  * Address bit 7 (RTC_WRITE = 0x80) selects write mode.
  * Address bits 5:0 select the register (0x00-0x3F).
  *
+ * Note: the MCS1850 (new clock chip) uses inverted bit 7 in the KERNEL
+ * (compiled with NCC), but the ROM firmware uses the SAME convention as
+ * the old chip (bit 7 = 1 → write). We follow the ROM convention here.
+ *
  * Register map (MCS1850 "new clock chip"):
  *   0x00-0x1F  NVRAM (32 bytes)
  *   0x20-0x23  RTC_CNTR0-3 (32-bit seconds counter, big-endian)
@@ -87,8 +91,16 @@ static int      rtc_prev_clk;   /* previous RTCLK state */
 /* ------------------------------------------------------------------ */
 /* Backend: read the seconds counter                                   */
 /* ------------------------------------------------------------------ */
-/* Default epoch: 2024-01-01 00:00:00 UTC in NeXT epoch seconds */
-#define NEXT_EPOCH_DEFAULT  3913401600u
+/* Default time value: 2024-01-01 00:00:00 UTC expressed as UNIX
+ * seconds (seconds since 1970-01-01).  The NeXT kernel's rtc_get()
+ * (next/clock.c:378) takes CNTR0..CNTR3 as a big-endian 32-bit value
+ * and assigns it DIRECTLY to tv.tv_sec — i.e. it treats the RTC
+ * counter as UNIX seconds, not as seconds since some NeXT-specific
+ * epoch.  Previously we used 3913401600 (2024 from a 1900 base),
+ * which the kernel interpreted as year 2094 and flagged as
+ * "preposterous time in Real Time Clock -- CHECK AND RESET THE DATE!"
+ * — a warning visible on the VRAM console but not serial. */
+#define NEXT_EPOCH_DEFAULT  1704067200u   /* 2024-01-01 00:00:00 UTC */
 
 static uint32_t rtc_backend_read_seconds(void)
 {
@@ -125,8 +137,18 @@ static uint8_t rtc_reg_read(uint8_t addr)
     if (addr == RTC_CNTR0)
         rtc_snapshot_counter();
 
-    if (addr < RTC_REG_COUNT)
+    if (addr < RTC_REG_COUNT) {
+        /* Log reads of POT flags (ni_pot[0] at offset 14) */
+        if (addr == 14) {
+            static int pot_read_log = 0;
+            if (pot_read_log < 3) {
+                xil_printf("[RTC] ni_pot[0] read → $%02X (POT_ON=%d)\r\n",
+                           rtc_regs[addr], rtc_regs[addr] & 0x01);
+                pot_read_log++;
+            }
+        }
         return rtc_regs[addr];
+    }
 
     return 0;
 }
@@ -165,8 +187,15 @@ static void rtc_reg_write(uint8_t addr, uint8_t val)
     }
 
     /* NVRAM and other registers */
-    if (addr < RTC_REG_COUNT)
+    if (addr < RTC_REG_COUNT) {
+        static int rtc_write_log = 0;
+        if (rtc_write_log < 400) {
+            uint8_t old_val = rtc_regs[addr];
+            xil_printf("[RTC] W $%02X: $%02X->$%02X\r\n", addr, old_val, val);
+            rtc_write_log++;
+        }
         rtc_regs[addr] = val;
+    }
 }
 
 /* ------------------------------------------------------------------ */
@@ -195,31 +224,64 @@ void next_rtc_init(void)
      *   [30-31] ni_cksum (ones-complement checksum)
      */
     {
-        /* Use the Previous emulator's proven NVRAM defaults
-         * (from previous/src/rtcnvram.c nvram_default[]).
-         * These are known to work for both Turbo and non-Turbo ROMs. */
-        static const uint8_t nvram_default[32] = {
-            0x94, 0x0f, 0x40, 0x00,             /* byte 0-3:   volume/brightness/reset=9 */
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 4-9:   hw password/ethernet */
-            0xFD, 0xB6,                          /* byte 10-11: SIMM config (4x4MB page-mode) */
-            0x00, 0x00,                          /* byte 12-13: adobe */
-            0x00, 0x00, 0x00,                    /* byte 14-16: POT=0x00 (all tests disabled) */
-            0x00,                                /* byte 17:    clock chip flags */
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00, /* byte 18-29: boot command */
-            0x00, 0x00, 0x00, 0x00, 0x00, 0x00,
-            0x00, 0x00                           /* byte 30-31: checksum (recomputed below) */
-        };
-        memcpy(rtc_regs, nvram_default, 32);
+        /* Build Turbo NVRAM layout.  Bytes 0-3 config, 10-11 SIMM
+         * (Turbo encoding), 18-19 boot command, rest zero.  Matches
+         * Previous's nvram_init() output for a 64 MB Turbo system. */
+        memset(rtc_regs, 0, 32);
 
-        /* Set ni_new_clock_chip for MCS1850 (Turbo RTC) */
-        rtc_regs[17] |= 0x80;
+        /* Bytes 0-3: 0x940F4000 = reset=9 | brightness=0x3D<<14 | allow_eject=0
+         * Matches Previous's base config value. */
+        rtc_regs[0] = 0x94;
+        rtc_regs[1] = 0x0F;
+        rtc_regs[2] = 0x40;
+        rtc_regs[3] = 0x00;
 
-        /* Set ni_alt_cons for serial console on both QEMU and hardware.
-         * Without this, the ROM takes a video console init path that
-         * includes a timing calibration failing on hardware (error 4).
-         * Display output still works: the ROM renders to the bitmap
-         * console regardless of ni_alt_cons (POST output goes to VRAM).
-         * ni_alt_cons only affects the input source (serial vs keyboard). */
+        /* Bytes 10-11: SIMM config for Turbo.
+         * Layout: SIMMconfig = (parity<<8) | (simm3<<9) | (simm2<<6) |
+         *                      (simm1<<3)  |  simm0
+         * Turbo parity bits = 0.  For 64 MB as 4×16MB (two SIMM_32MB_T
+         * pairs), each simm field = SIMM_32MB_T (0x1).
+         * = (0) | (1<<9)|(1<<6)|(1<<3)|1 = 0x249 → byte10=0x02 byte11=0x49 */
+        rtc_regs[10] = 0x02;
+        rtc_regs[11] = 0x49;
+
+        /* Byte 14 (ni_pot): POT_ON (0x01) | BOOT_POT (0x20) = skip all
+         * self-tests and boot directly.  Without BOOT_POT the ROM still
+         * runs the short POST sequence and displays "testing system…"
+         * before branching to the boot path; with it set the ROM takes
+         * the express boot path straight out of the reset handler.
+         *
+         * Bits (from Previous rtcnvram.c):
+         *   0x01 POT_ON           master enable (required for flags to matter)
+         *   0x02 EXTENDED_POT     extended tests
+         *   0x04 LOOP_POT         loop forever
+         *   0x08 VERBOSE_POT      verbose test output
+         *   0x10 TEST_DRAM_POT    DRAM test
+         *   0x20 BOOT_POT         skip tests, boot immediately
+         *   0x40 TEST_MONITOR_POT monitor test */
+        /* POT_ON | BOOT_POT = skip tests, boot immediately.  Flip to
+         * 0x5B (POT_ON|EXTENDED|VERBOSE|TEST_DRAM|TEST_MONITOR) to run
+         * the full POST suite — useful for debugging but adds minutes
+         * to boot wall time at emulation speed. */
+        rtc_regs[14] = 0x21;
+
+        /* Byte 17: ni_new_clock_chip bit 7 = MCS1850 */
+        rtc_regs[17] = 0x80;
+
+        /* Bytes 18-19: boot command "sd" → SCSI auto-boot */
+        rtc_regs[18] = 's';
+        rtc_regs[19] = 'd';
+
+        /* ni_alt_cons=1 routes console_i to SCC_A. We use this to get
+         * kernel printf visibility on our serial mirror without having
+         * to hook km_putc directly. In a prior test with alt_cons=0 the
+         * boot was running blind (kernel output going only to VRAM via
+         * km_putc which our hook doesn't see) and we could only infer
+         * progress from PC sampling — restored to alt_cons=1 to keep
+         * kernel-phase serial output. zsopen's DCD carrier-wait sleep
+         * is bypassed for minor 0 by !ZSHARDCAR, so this path does
+         * reach user space (verified: 2584 user instructions in the
+         * previous alt_cons=1 run). */
         rtc_regs[0] |= 0x08;  /* bit 27 = ni_alt_cons */
 
         /* Recompute ones-complement checksum */
@@ -235,6 +297,16 @@ void next_rtc_init(void)
         uint16_t cksum = ~((uint16_t)sum);
         rtc_regs[30] = (cksum >> 8) & 0xFF;
         rtc_regs[31] = cksum & 0xFF;
+
+        /* Dump the final 32-byte NVRAM image so we can compare against
+         * what the ROM reads via bit-bang — any discrepancy in the
+         * readback path points straight at the broken register. */
+        xil_printf("[RTC] NVRAM dump (32 bytes):\r\n  ");
+        for (int i = 0; i < 32; i++) {
+            xil_printf("%02X ", rtc_regs[i]);
+            if (i == 15) xil_printf("\r\n  ");
+        }
+        xil_printf("\r\n[RTC] stored cksum word = $%04X\r\n", cksum);
     }
 
     rtc_phase    = RTC_IDLE;
@@ -278,8 +350,8 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
     /* CE rising edge: start new transaction */
     if (ce && !old_ce) {
         static int rtc_trans_count = 0;
-        if (rtc_trans_count < 3)
-            xil_printf("[RTC] CE rise — transaction #%d\r\n", rtc_trans_count);
+        if (rtc_trans_count < 400)
+            xil_printf("[RTC] CE#%d\r\n", rtc_trans_count);
         rtc_trans_count++;
         rtc_phase     = RTC_ADDR_PHASE;
         rtc_bit_count = 0;
@@ -315,8 +387,9 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
         return;
     }
 
-    /* Detect RTCLK falling edge (1 → 0): this is when data is latched */
+    /* Detect RTCLK edges */
     int clk_fall = (rtc_prev_clk && !clk);
+    int clk_rise = (!rtc_prev_clk && clk);
     rtc_prev_clk = clk;
 
     if (rtc_phase == RTC_ADDR_PHASE) {
@@ -336,16 +409,26 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
                 rtc_shift_in  = 0;
 
                 if (!rtc_is_write) {
-                    /* Read: load the register value into shift-out */
+                    /* Read: load the register value into shift-out.
+                     * Do NOT pre-load rtc_data_bit here — it will be
+                     * latched on the first CLK rising edge of the data
+                     * phase (see clk_rise handler below). */
                     rtc_shift_out = rtc_reg_read(rtc_address);
-                    /* Pre-load first bit (MSB) */
-                    rtc_data_bit = (rtc_shift_out >> 7) & 1;
                     {
                         static int rtc_read_log = 0;
-                        if (rtc_read_log < 5)
-                            xil_printf("[RTC] read reg $%02X → $%02X\r\n",
+                        if (rtc_read_log < 400)
+                            xil_printf("[RTC] R $%02X=$%02X\r\n",
                                        rtc_address & 0x3F, rtc_shift_out);
                         rtc_read_log++;
+                    }
+                } else {
+                    /* Log the start of a write transaction so we can see
+                     * the ROM bit-bang the address byte and data byte. */
+                    static int rtc_wstart_log = 0;
+                    if (rtc_wstart_log < 400) {
+                        xil_printf("[RTC] W-addr $%02X\r\n",
+                                   rtc_address & 0x3F);
+                        rtc_wstart_log++;
                     }
                 }
             }
@@ -366,25 +449,29 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
                 }
             }
         } else {
-            /* Read: the ROM samples RTDATA after the FALLING edge.
-             * Protocol from clock.c:
-             *   write RTCLK=1, delay, write RTCLK=0, delay, read RTDATA
-             * So we present the data bit and advance on FALLING edge. */
-            if (clk_fall) {
-                /* Current bit is already in rtc_data_bit.
-                 * Advance to next bit for the next clock cycle. */
-                rtc_bit_count++;
-                rtc_shift_out <<= 1;
-                if (rtc_bit_count < 8) {
-                    rtc_data_bit = (rtc_shift_out >> 7) & 1;
-                } else {
-                    /* Byte complete — for block reads, load next byte */
+            /* Read: the ROM's protocol (ROM disasm at $0100885A..$0100886A):
+             *   write RTCLK=1 (rise) -> delay -> write RTCLK=0 (fall)
+             *   -> delay -> sample RTDATA
+             *
+             * So at sample time (after the fall) the chip must be presenting
+             * the CURRENT bit. We therefore latch the next bit on the RISING
+             * edge (the start of each new clock cycle), and do nothing on
+             * the fall — the host samples whatever rtc_data_bit already
+             * holds. Previously we advanced on fall, which shifted out bit
+             * 7 before the host could sample it and the host saw bit 6 as
+             * its first bit (entire byte off-by-one -> checksum mismatch
+             * -> death beep). */
+            if (clk_rise) {
+                if (rtc_bit_count == 8) {
+                    /* Block read: finished previous byte, auto-advance */
                     rtc_address = (rtc_address & RTC_WRITE) |
                                   (((rtc_address & 0x3F) + 1) & 0x3F);
                     rtc_shift_out = rtc_reg_read(rtc_address);
-                    rtc_data_bit = (rtc_shift_out >> 7) & 1;
                     rtc_bit_count = 0;
                 }
+                rtc_data_bit = (rtc_shift_out >> 7) & 1;
+                rtc_shift_out <<= 1;
+                rtc_bit_count++;
             }
         }
     }

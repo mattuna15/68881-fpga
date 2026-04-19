@@ -98,6 +98,75 @@ static void build_reverse_map(void)
 }
 
 /* ------------------------------------------------------------------ */
+/* KMS command transmit state                                          */
+/* ------------------------------------------------------------------ */
+
+/*
+ * The NeXT monitor chip has CTX (command transmit) and DTX (data transmit)
+ * status bits.  mon_send_nodma() in the kernel spins:
+ *     while (mon->mon_csr.ctx) ;
+ * waiting for CTX to go LOW, then writes cmd+data.
+ *
+ * CTX HIGH = command shift register is busy (still shifting out).
+ * CTX LOW  = command shift register is idle (ready for new command).
+ *
+ * Since we don't have real serial shift hardware, we just:
+ *   - Return CTX=0 (idle) on reads so mon_send_nodma doesn't spin.
+ *   - Accept writes silently (command is "instantly transmitted").
+ *
+ * DTX works the same way for data; return 0 = idle.
+ * CTX_PEND/DTX_PEND likewise return 0 = nothing pending.
+ */
+
+/* ------------------------------------------------------------------ */
+/* mon_csr byte-1 (K/M status) bit layout — matches Previous's kms.c   */
+/* ------------------------------------------------------------------ */
+#define KBD_INT         0x80
+#define KBD_RECEIVED    0x40
+#define KBD_OVERRUN     0x20
+#define NMI_RECEIVED    0x10
+#define KMS_INT         0x08
+#define KMS_RECEIVED    0x04
+#define KMS_OVERRUN     0x02
+
+/* Live copy of byte 1 of mon_csr. Set when a KMS command response is
+ * "received", cleared when the kernel reads the km_data register. */
+static uint8_t kms_stat_km = 0;
+
+/* Latched km_data response — "no response error | user poll |
+ * device invalid" pattern, mirrors Previous's kms_response() default
+ * value exactly so the ROM POST code sees the device as absent.
+ *
+ *   bit 30 = NO_RESPONSE_ERR (0x40000000)
+ *   bit 29 = USER_POLL       (0x20000000)
+ *   bit 28 = DEVICE_INVALID  (0x10000000)
+ */
+#define KM_DATA_NO_RESPONSE  0x70000000u
+static uint32_t kms_km_data_reg = 0;
+
+/* Record the last command byte written to the KMS command register
+ * (byte 3 of mon_csr, $0200E003) so writes to the data register can
+ * dispatch. */
+static uint8_t kms_cmd_byte = 0;
+
+/* Synthesize a "no response" reply: update km_data + assert the two
+ * K/M status bits the ROM polls on. */
+static void kms_synth_response(void)
+{
+    kms_km_data_reg = KM_DATA_NO_RESPONSE;
+    kms_stat_km |= (KBD_RECEIVED | KBD_INT);
+}
+
+/* Called from the KMS poll detector in next_devs.c when the same PC
+ * has read mon_csr enough times that it is clearly waiting on a
+ * response we never produced (e.g. post-reset self-test).  Auto-fire
+ * a no-response reply to unblock it. */
+void next_kms_force_response(void)
+{
+    kms_synth_response();
+}
+
+/* ------------------------------------------------------------------ */
 /* Keyboard event queue                                                */
 /* ------------------------------------------------------------------ */
 
@@ -212,18 +281,40 @@ uint32_t next_kms_read(int offset)
 {
     static int kms_read_log = 0;
     if (kms_read_log < 10) {
-        xil_printf("[KMS] read offset=$%X queue_empty=%d\r\n", offset, kms_queue_empty());
+        xil_printf("[KMS] read offset=$%X stat_km=$%02X queue_empty=%d\r\n",
+                   offset, kms_stat_km, kms_queue_empty());
         kms_read_log++;
     }
 
     switch (offset) {
-    case 0x00: /* mon_csr */
+    case 0x00: /* mon_csr (full 32-bit) */
+    {
+        /* Byte 0 = sound DMA status (empty)
+         * Byte 1 = K/M status (kms_stat_km — includes synthesized responses
+         *          and real keyboard queue state)
+         * Byte 2 = TX state — report idle + KMS_ENABLE set so driver knows
+         *          the chip is out of reset
+         * Byte 3 = last command byte */
+        uint8_t stat_km = kms_stat_km;
         if (!kms_queue_empty())
-            return 0x00400000; /* KM_DAV bit 22 */
-        return 0;
+            stat_km |= KBD_RECEIVED | KBD_INT;  /* real keyboard data */
+        return ((uint32_t)0       << 24) |  /* snd_dma idle */
+               ((uint32_t)stat_km << 16) |
+               ((uint32_t)0x02    <<  8) |  /* KMS_ENABLE: chip ready */
+               ((uint32_t)kms_cmd_byte);
+    }
 
-    case 0x08: /* mon_km_data */
-        return kms_queue_pop();
+    case 0x08: /* mon_km_data (32-bit) — reading clears KBD_RECEIVED/KBD_INT */
+    {
+        uint32_t val;
+        if (!kms_queue_empty()) {
+            val = kms_queue_pop();
+        } else {
+            val = kms_km_data_reg;
+        }
+        kms_stat_km &= ~(KBD_RECEIVED | KBD_INT);
+        return val;
+    }
 
     case 0x04: /* mon_data */
     case 0x0C: /* mon_sound_data */
@@ -234,7 +325,37 @@ uint32_t next_kms_read(int offset)
 
 void next_kms_write(int offset, uint32_t value)
 {
-    (void)offset;
-    (void)value;
-    /* Accept ROM commands silently (MON_KM_POLL, etc.) */
+    static int kms_write_log = 0;
+    if (kms_write_log < 20) {
+        xil_printf("[KMS] write offset=$%X val=$%08X\r\n", offset, value);
+        kms_write_log++;
+    }
+
+    switch (offset) {
+    case 0x00:
+        /* mon_csr write: clear acknowledged bits from byte 1.
+         * Matches Previous's KMS_Ctrl_KM_Write behaviour. */
+    {
+        uint8_t ack = (value >> 16) & 0xFF;
+        if (ack & KBD_OVERRUN)
+            kms_stat_km &= ~(KBD_RECEIVED | KBD_OVERRUN | KBD_INT);
+        if (ack & NMI_RECEIVED)
+            kms_stat_km &= ~NMI_RECEIVED;
+        if (ack & KMS_OVERRUN)
+            kms_stat_km &= ~(KMS_RECEIVED | KMS_OVERRUN | KMS_INT);
+        /* Byte 3 = command to be latched for next data write */
+        kms_cmd_byte = value & 0xFF;
+        break;
+    }
+
+    case 0x04:
+        /* mon_data write: issues the KMS command.  We don't actually
+         * execute the command but we DO synthesize a "no response"
+         * reply so the ROM/kernel's poll loop makes progress. */
+        kms_synth_response();
+        break;
+
+    default:
+        break;
+    }
 }

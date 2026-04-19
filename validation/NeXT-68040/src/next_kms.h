@@ -37,4 +37,9 @@ uint32_t next_kms_read(int offset);
 /* Write KMS registers (accept ROM commands silently) */
 void next_kms_write(int offset, uint32_t value);
 
+/* Force a "no response" reply into the km_data register.  Called when
+ * the CPU is spinning on a KMS poll without having sent a command
+ * (e.g. post-reset self-test that real hardware auto-posts). */
+void next_kms_force_response(void);
+
 #endif /* NEXT_KMS_H */

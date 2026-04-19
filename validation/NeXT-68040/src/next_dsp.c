@@ -80,8 +80,8 @@ void next_dsp_init(void)
 {
     dsp_icr  = 0;
     dsp_cvr  = 0;
-    /* DSP comes up with TX empty and TX ready */
-    dsp_isr  = ISR_TXDE | ISR_TRDY;
+    /* DSP comes up with all ready bits set */
+    dsp_isr  = ISR_HREQ | ISR_TXDE | ISR_TRDY;
     dsp_ivr  = 0x0F;   /* default vector = 15 */
     dsp_data = 0;
     memset(dsp_mem, 0, sizeof(dsp_mem));
@@ -114,13 +114,14 @@ void next_dsp_write(uint32_t offset, uint8_t value)
     switch (offset) {
     case 0: /* ICR */
         if ((value & ICR_INIT) && !(dsp_icr & ICR_INIT)) {
-            /* ICR_INIT rising edge: reset DSP, set all ready bits */
-            dsp_isr = ISR_TXDE | ISR_TRDY | ISR_HF2 | ISR_HF3;
+            /* ICR_INIT rising edge: reset DSP, set all ready/request bits.
+             * The real DSP56001 auto-clears ICR_INIT when reset completes.
+             * dsp_probe() spins: while (regs->icr & ICR_INIT) DELAY(1);
+             * so we must NOT leave ICR_INIT set. */
+            dsp_isr = ISR_HREQ | ISR_TXDE | ISR_TRDY | ISR_HF2 | ISR_HF3;
             dsp_cvr = 0;
             dsp_data = 0;
-#ifdef NEXT_IO_DEBUG
-            xil_printf("[DSP] ICR_INIT: DSP reset, ISR=$%02X\r\n", dsp_isr);
-#endif
+            value &= ~ICR_INIT;  /* auto-clear: reset is "instant" */
         }
         dsp_icr = value;
         break;

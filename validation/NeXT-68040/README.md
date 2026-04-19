@@ -193,11 +193,299 @@ d0: 000006E4              ; 1764 = 42 × 42 ✓
 Full stack: serial keystroke → KMS → ROM monitor → 68K code → F-line
 trap → ARM fline_handler → AXI-Lite → MC68881 FPGA → result to D0.
 
+### Mach Kernel Boot — Root Filesystem Mounted
+
+The Mach kernel (NEXTSTEP 3.3) boots from a SCSI disk image on SD card,
+completes all device probing, mounts the UFS root filesystem, and
+attempts to exec `/etc/mach_init`. The same disk image boots successfully
+on the Previous emulator — the issue is in our emulator.
+
+**Boot sequence completed:**
+1. ROM monitor: `b sd` → probes SCSI targets 0-7, finds disk at target 6
+2. ROM reads boot blocks, disk label, kernel binary from SCSI disk
+3. Kernel starts: MMU enabled (3-level 68040 page tables), timer at 500 µs
+4. ESP bus reset, SCSI re-probe: 53C90A, disk at target 6 (INQUIRY, READ CAPACITY)
+5. Tape/generic SCSI probes: targets 0-7 scanned for st and sg drivers
+6. Ethernet (en0), printer (np0), sound (sound0) probed
+7. UFS root filesystem mounted from sd0
+8. Kernel execs `/etc/mach_init` → **errno 13 (EACCES)**
+9. Falls back to `/etc/init` → **errno 13 (EACCES)**
+10. Page fault at VA=0xa10000 → bus error panic (downstream of exec failure)
+
+**Previous issue (RESOLVED): EACCES on exec**
+
+The kernel was failing to exec `/etc/mach_init` with errno 13 (EACCES).
+Root cause was 68040 MMU bugs: supervisor detection used wrong flag
+(0x2000 instead of SFLAG_SET=4), making all page table walks use URP
+instead of SRP. Fixed across 5 MMU commits (see below). PLOAD instruction
+was also unimplemented, causing a fault loop at VA=$01.
+
+### Mach Kernel Boot — init blocks on open("/dev/console") (Current)
+
+With the RTC/NVRAM bit-bang direction fix, SCSI DMA completion fix and
+the VBL-IRQ storm disabled, the kernel now boots **through `root on sd0`
+and into user space**. `init` runs five syscalls (144, 108, 20, 6, 6)
+and traps on syscall 5 = `open("/dev/console", 0, 0666)` at user
+PC=`$0000CAC6`. The kernel handles the trap (walks ~2048 distinct PCs)
+then parks forever in `idle_thread()` at `$040674D0-$04067504`.
+
+**Key fixes this phase:**
+- **RTC bit-bang direction** (`next_rtc.c`): data bits latched on CLK
+  *rising* edge, not falling. ROM samples RTDATA after the fall, so
+  each byte was rotated by one bit — NVRAM checksum failed, ROM went
+  to the death-beep fallback path. Fix unblocked the whole boot chain.
+- **VBL IRQ storm** (`next_devs.c`): `I_IPL3_DISK` was being set by
+  the VBL simulator but the kernel has no VBL handler, so the bit
+  stayed asserted and the ISR spun reading `P_INTRSTAT` 866× per
+  sample window. Gated out with `#if 0`.
+- **SCSI DMA completion** (`next_scsi_dma.c`): `DMA_COMPLETE` now fires
+  whenever `*esp_counter == 0` OR `dma.next >= dma.limit`, matching
+  Previous `esp.c:758-762`. Previously gated on `total>0`, so zero-
+  length/phase-change transfers silently dropped the done interrupt.
+- **DBEQ/DBF self-branch shortcut** in Musashi's `m68kops.c` — tight
+  `DBcc Dn,$-2` loops now decrement D7 to $FFFF in one step.
+- **`/dev/console` identified** as the blocking open. Diagnostic: user
+  D1=$00014ECE points into rodata; reading the string via
+  `next_phys_read_32` after `mmu040_translate_user` yields
+  `"/dev/console"`, confirmed.
+
+**Sleep path ruled out via NeXTMach source (`mk-108.1/nextdev/zs.c`,
+`km.c`, `next/cons.c`):**
+- `cnopen` is a pure dispatcher. With `alt_cons=1`, cons.t_dev =
+  `makedev(11,0)` → `zsopen` channel A.
+- `zsopen` would sleep at line 440 on carrier, but only if
+  `ZSHARDCAR(m) = m&0x40`, and minor 0 = 0 → `!ZSHARDCAR` forces
+  `TS_CARR_ON` at line 435 and the sleep is bypassed.
+- `km.c` has zero `sleep`/`tsleep` calls.
+- `ttyopen` sets state only, no sleeps.
+
+**So the block is earlier in `sys_open`** — most likely `namei` reading
+a directory block from disk and waiting on a buffer I/O that never
+completes, or a vnode lock held by a non-runnable thread. Next
+diagnostic is to watch for SCSI DMA activity while stuck (if no disk
+I/O fires, it's a lock/port wait, not buffer I/O).
+
+**Earlier phase retained for context — user space was previously
+reached via a separate path and stalled on Mach IPC:**
+
+1. `load_init_program` returns D0=0 (SUCCESS) — confirmed via `[W@2504]` watchpoint
+2. Separate user address space created: URP=$04215200 ≠ SRP=$040CAA00
+3. User stack pointer configured: USP=$000FFFDC
+4. ~160 ATC page faults serviced via demand paging (~130 SCSI reads)
+5. User-mode code executing at VAs $0000xxxx-$0001xxxx (FC=2)
+6. Multiple user tasks exist (3 different URP values = mach_init forked)
+7. Kernel code paged in at VAs $0500xxxx-$050Axxxx (mapped kernel text)
+8. 1915 syscalls complete (TRAP#3 Mach IPC, TRAP#4 BSD, TRAP#5/6 thread regs)
+9. System idles — all threads blocked on msg_recv, scheduler polling P_INTRSTAT
+
+**Syscall sequence decoded (256-entry window of 1915 total):**
+- Phase 1: Close all fds $D0-$FF (BSD fd cleanup after fork)
+- Phase 2: open/ioctl/close on /dev/console
+- Phase 3: execve(59) — loads installer program
+- Phase 4: Bootstrap registration (task_self, thread_reply, msg_rpc)
+- Phase 5: Signal setup (sigvec×8, sigblock, sigstack)
+- Phase 6: Dynamic linker init (getuid, second bootstrap round)
+- Phase 7: Network (socket, sendto — UDP packets, no response needed)
+- Phase 8: Bootstrap RPC loop, config file reads
+- Phase 9: STALL — msg_recv blocks forever, two child threads do TRAP#6
+
+**SCSI write support added:** Writes accepted and discarded. Prevents
+buffer cache deadlock from dirty metadata blocking demand paging.
+
+**TMC VBL interrupt (68 Hz):** Fires through I_IPL3_DISK matching
+Previous's tmc_video_interrupt(). VIR register at TMC+$80 with
+write-1-to-clear status + direct-write mask. Kernel never enables
+VBL during text-mode boot — not the stall cause.
+
+**SCR2 software interrupts:** SOFTINT0 (bit 24→IPL1) and SOFTINT1
+(bit 25→IPL2) trigger when kernel writes SCR2. Matches Previous's
+sysReg.c. Uses one-shot delivery (auto-clear on report) to prevent
+interrupt storms during timer calibration. Softint fires correctly
+but alone doesn't unblock the msg_recv stall.
+
+**Current stall analysis:** All threads blocked on msg_receive().
+The kernel's softint_thread should deliver deferred Mach IPC messages,
+but one-shot softint delivery may not give the handler enough cycles
+to process the full deferred work queue. Real hardware uses level-
+sensitive softint (stays pending until handler clears SCR2 bit).
+
+**Likely blockers for further progress:**
+- Softint delivery model: one-shot vs level-sensitive. The handler may
+  need the interrupt to stay pending while processing multiple callouts.
+- Mach IPC: msg_recv waits on an uninitialized port — the bootstrap
+  server may not have completed registration.
+- Console I/O: zero write(4) syscalls — program never outputs text.
+
+**68040 MMU and bus error implementation:**
+Full 3-level page table walk with TLB (256 entries, direct-mapped).
+Transparent Translation registers (ITT0/1, DTT0/1). Format 7 access
+error stack frame (56 bytes / 28 words) with correct field layout:
+separate FA and WB3A fields, SSW with ATC=1, RW=1, TT=00 (normal),
+SIZE=10 (long). Infinite fault guard halts CPU after 500 ATC faults.
+
+**Key fix: deferred SCSI interrupt delivery.** The tape driver's `stcmd`
+sets `STF_POLL_IP` after `splx()`. Our synchronous ESP model completes
+commands instantly, causing the interrupt to fire during `splx()` before
+the flag is set. Fix: defer `I_IPL3_SCSI` delivery to the main loop
+tick, giving the kernel time to set polling flags.
+
+**Fixes applied (cumulative):**
+- DMA CSR Turbo format (`csr << 24`)
+- ESP DMA ctrl INT enable edge detection
+- SELECT timeout phase matching
+- ADB stub (ADB_INT_REJECT)
+- ESP 53C90A config2 register
+- TMC SCR1 read support
+- Per-instruction IPL ≤ 5 interrupt check in Musashi
+- Event counter 4096x speedup for kernel timeouts
+- Interrupt mask write recalculates pending IPL
+- **Deferred SCSI interrupt delivery** (fixed probe hang)
+- TMC address canonicalization fix (PR review)
+- **68040 MMU: indirect descriptors + U/M bits + WP/S checks**
+- **68040 MMU: SSW encoding, RTE Format 7, PTEST, PLOAD (5 commits)**
+- **68040 MMU: SFLAG_SET supervisor detection fix** (was using 0x2000, correct is 4)
+- **SCSI write support** (accept and discard — prevents buffer cache deadlock)
+- **TMC VBL interrupt** (68 Hz via I_IPL3_DISK, VIR write-1-to-clear)
+- **SCR2 software interrupts** (SOFTINT0→IPL1, SOFTINT1→IPL2, one-shot delivery)
+- **SCR2 byte-level writes** routed through 32-bit handler for softint detection
+- **Syscall trap logging** (TRAP#3-6, 256-entry ring buffer, Mach IPC decode)
+- **F-line FMOVEM.X handler** (cmd_type 6/7, predecrement/postincrement)
+- **F-line MMU translation** (critical for user-mode FPU)
+  — `fline_handler.c` was calling `m68k_read/write_memory_*` directly,
+  which are physical-address callbacks that bypass `pmmu_translate_addr`.
+  Under user-mode MMU, every FPU operand read/write (ext-word
+  displacements, `(d16,An)`, absolute, `FMOVE FPCR,(d16,An)`, etc.)
+  hit the wrong physical address — decoding garbage displacements and
+  scribbling over random memory. Symptom: `ILLG $008C` reported at user
+  PC=`$00004EE0` after a flurry of ATC faults.
+  Fix: thin `fh_read_*` / `fh_write_*` wrappers at the top of
+  `fline_handler.c` that call `pmmu_translate_addr()` when the PMMU is
+  enabled. All 47 call sites rewritten. A new `m68kcpu_pmmu_shim.h`
+  exports `fh_pmmu_enabled()` so the handler can check `PMMU_ENABLED`
+  without pulling in private Musashi headers.
+- **Musashi cptrapcc $F1F8/$F078 vs 68040 CINV collision** — the
+  generated opcode table matched `$F478` (CINVA BC, 1-word on 68040)
+  against `cptrapcc_32`, whose fallback did `REG_PC += 4`, eating two
+  words of real code and corrupting A7 via stale ORI.B side effects.
+  Fix: short-circuit `m68k_op_cptrapcc_32` to no-op on
+  `CPU_TYPE_IS_040_PLUS` (we have no cache).
+- **Turbo 4-bank RAM aliasing** — real Turbo decodes RAM as 4×32MB
+  banks with address bit 27 (`$07FFFFFF` mask) selecting bank. ROM's
+  memory sizer walks the aliased image; without aliasing it treats
+  each bank as independent and crashes. Fix: `NEXT_RAM_BANK_MASK` in
+  `next_memory.c`, all read/write paths use `ram_offset(addr)`, SIMM
+  config 4×32MB, stub writer and SCSI DMA paths updated.
+- **TMC SCR1 separated from system SCR1** — P_SCR1 at `$0200C000`
+  (`$F0004000`) is the system SCR1; TMC SCR1 at `$02200000`
+  (`$0FFF4FAF` with `TURBOSCR_FMASK`) is the chip's own register.
+  Both must be present; conflating them made the ROM's Turbo probe
+  disagree with itself.
+- **FPU F-line PC-advancement test ROM** — `test/fpu_test.s` exercises
+  11 supervisor + 6 user-mode F-line encodings including the exact
+  `$F228 $BC00 $008C` sequence seen crashing on hardware. Build with
+  `cmake -DTEST_ROM=ON -DFPU_TEST_ROM=ON`. Runs under QEMU without
+  needing an SD card image or the MC68882 FPGA hardware — verifies
+  that `fline_handler` advances PC past full instruction length for
+  every form (reg-reg, dyadic, FMOVE immediate L/W/S, FMOVE FPn→Dn,
+  FMOVEM.X predec/postinc, FMOVE ctrl→(d16,An), absolute.L).
+- **Debug: `I` keypress** — verbose I/O register logging with PC
+- **Debug: `U` keypress** — trap log dump (last 256 syscalls with args)
+- **Debug: `X` keypress** — MMU-translated stack dump, SRP/URP/TC/TT registers
+- **Debug: `T` keypress** — PC trace (200 instructions with SR)
+
 ### Next Steps
 
-1. Boot a kernel via the ROM's `b` command
-2. Implement MCS1850 protocol support (bit 7 inversion for new clock chip reads/writes)
-3. USB HID keyboard integration (from hello_world project)
+0. Watch SCSI DMA activity during the `/dev/console` open stall. If no
+   disk I/O fires, the wait is a lock/port, not `namei` buffer I/O. If
+   a disk I/O goes out and never completes, our SCSI stub is missing a
+   completion path for some edge case (odd block count, sparse region).
+1. Fix softint delivery model — investigate level-sensitive vs one-shot.
+   The kernel's softint handler may need persistent interrupt to process
+   all deferred callouts before clearing SCR2.
+2. Investigate what msg_recv port the init process blocks on — is the
+   bootstrap name server fully operational?
+3. Check if the kernel expects INTRSTAT register to reflect softint bits
+   (not just SCR2 edge-trigger via intr_status)
+4. Console device: zero write() syscalls — program never outputs text.
+   May need /dev/console tty emulation beyond SCC.
+5. USB HID keyboard integration (from hello_world project)
+
+## Known Issues / Technical Debt
+
+Tracked gaps vs the reference Previous emulator. All of these are ways
+in which our implementation cuts corners compared to Previous's
+cycle-accurate cycInt-driven model.
+
+### High
+
+- **No cycInt-equivalent scheduler.** Previous schedules device events
+  (ESP completion, DMA interrupt, VBL, hardclock) against a precise
+  emulated µs clock. We have no such queue; SCSI DMA completion is
+  deferred by a fixed `DMA_DEFER_TICKS=20` instruction countdown
+  (`next_scsi_dma.c`) and IPL3_SCSI is deferred by a `next_irq_pending_update=10`
+  countdown (`next_devs.c`). These constants are fragile — any change
+  in kernel instruction mix (MMU walks, CAS, FSAVE/FRESTORE) can
+  invalidate the window. The proper fix is a small scheduling queue;
+  most of the other items in this section dissolve once it lands.
+
+- **Live 16-bit timer counter is boosted 1024×** (`TIMER_COUNTER_BOOST`
+  in `next_devs.c`) so the ROM POST's DBEQ calibration converges
+  quickly. Only affects deltas over tight loops, so correctness is not
+  at risk. The event counter is now at true 1:1 rate (`EVENTC_BOOST=1`)
+  after a 4096× boost caused `event_sync` to miss counter wraps and
+  hung `us_delay`'s spin-wait inside `vfs_mountroot`.
+
+- **DMA CSR returns `| 0x40` in the lower bits.** In `next_scsi_dma.c`
+  and the channel-0 path in `next_devs.c`, we OR `0x00000040` into the
+  CSR read value to keep the kernel's chip 313 workaround
+  (`while ((state = ddp->dd_csr) == 0);`) from spinning. Previous returns
+  pure `csr<<24` and the same kernel boots fine, so the lower bits are
+  not the real issue — the underlying bug is DMA/IRQ state timing.
+  Remove the OR once the timing is fixed.
+
+- **VBL (68 Hz) interrupt disabled.** The `#if 0`'d block in
+  `next_timer_tick` (`next_devs.c`) used to raise I_IPL3_DISK, but the
+  kernel's IPL3_DISK ISR doesn't write TMC VIR to clear the VBL bit,
+  causing an interrupt storm. When we need VBL (cursor blink, screen
+  saver, scheduler cadence once userland runs) route it through a
+  dedicated bit instead of sharing I_IPL3_DISK.
+
+### Medium
+
+- **F-line page-fault re-entry may infinite-loop.** `fline_handler.c`
+  operand accessors longjmp via `pmmu_translate_addr`. If the fault
+  hits the F-line opword or displacement fetch (not just the operand
+  EA), Musashi restarts from PPC which still points at the same F-line,
+  and the kernel's fault handler re-enters it forever. Needs an
+  F-line-aware exception frame so the retry converges.
+
+- **68040 MMU descriptor type 3 (pre-set U/M) treated as type 1.** In
+  `m68kmmu.h`, resident descriptors with bits=`11` get the same
+  writeback as type 1, which is technically wrong. NEXTSTEP 3.3 uses
+  type 1 everywhere so this is quiescent for now; guest kernels that
+  pre-set U/M will spuriously fault.
+
+- **RTC returns a fixed epoch.** `next_rtc.c` returns
+  `NEXT_EPOCH_DEFAULT` (2024-01-01 UTC) rather than a live counter.
+  Documented workaround for the "preposterous time" warning, but any
+  userland that measures wall-clock deltas will see time stand still.
+
+### Low
+
+- **FSAVE/FRESTORE BUSY frames discarded.** `fline_handler.c` maps
+  68881/68882 BUSY frames to 68040 IDLE, dropping in-progress FPU
+  state. Safe for Mach's thread-boundary checkpoints; hostile to user
+  code that checkpoints a live FPU.
+
+- **KMS has keyboard only.** No mouse, no sound DMA. Fine for boot
+  monitor; needed before running any desktop userland.
+
+- **DSP56001 is a POST-passes stub.** `next_dsp.c` hardcodes ICR/ISR
+  values so probing succeeds; any kernel path that loads DSP programs
+  (`/dev/dsp`) will hang.
+
+- **Ethernet / ADB / printer are stubs.** Drivers probe cleanly, no
+  device response. Acceptable for boot; needed for NEXTSTEP workflows.
 
 ## Memory Map (Turbo 68040)
 

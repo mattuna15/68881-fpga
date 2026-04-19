@@ -8367,7 +8367,13 @@ static void m68k_op_cas_8_ai(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8396,7 +8402,13 @@ static void m68k_op_cas_8_pi(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8425,7 +8437,13 @@ static void m68k_op_cas_8_pi7(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8454,7 +8472,13 @@ static void m68k_op_cas_8_pd(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8483,7 +8507,13 @@ static void m68k_op_cas_8_pd7(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8512,7 +8542,13 @@ static void m68k_op_cas_8_di(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8541,7 +8577,13 @@ static void m68k_op_cas_8_ix(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8570,7 +8612,13 @@ static void m68k_op_cas_8_aw(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8599,7 +8647,13 @@ static void m68k_op_cas_8_al(void)
 		FLAG_C = CFLAG_8(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_8(*compare) | dest;
+			/* 68040: locked RMW always completes the write phase.
+			 * Write the unchanged dest value back so the bus cycle
+			 * side-effects (M-bit, watchpoints) fire identically. */
+			m68ki_write_8(ea, dest);
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8628,7 +8682,10 @@ static void m68k_op_cas_16_ai(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8657,7 +8714,10 @@ static void m68k_op_cas_16_pi(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8686,7 +8746,10 @@ static void m68k_op_cas_16_pd(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8715,7 +8778,10 @@ static void m68k_op_cas_16_di(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8744,7 +8810,10 @@ static void m68k_op_cas_16_ix(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8773,7 +8842,10 @@ static void m68k_op_cas_16_aw(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8802,7 +8874,10 @@ static void m68k_op_cas_16_al(void)
 		FLAG_C = CFLAG_16(res);
 
 		if(COND_NE())
+		{
 			*compare = MASK_OUT_BELOW_16(*compare) | dest;
+			m68ki_write_16(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8831,7 +8906,10 @@ static void m68k_op_cas_32_ai(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8860,7 +8938,10 @@ static void m68k_op_cas_32_pi(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8889,7 +8970,10 @@ static void m68k_op_cas_32_pd(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8918,7 +9002,10 @@ static void m68k_op_cas_32_di(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8947,7 +9034,10 @@ static void m68k_op_cas_32_ix(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -8976,7 +9066,10 @@ static void m68k_op_cas_32_aw(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -9005,7 +9098,10 @@ static void m68k_op_cas_32_al(void)
 		FLAG_C = CFLAG_SUB_32(*compare, dest, res);
 
 		if(COND_NE())
+		{
 			*compare = dest;
+			m68ki_write_32(ea, dest);  /* 68040: always complete RMW write */
+		}
 		else
 		{
 			USE_CYCLES(3);
@@ -9056,6 +9152,9 @@ static void m68k_op_cas2_16(void)
 		}
 		*compare1 = BIT_1F(word2) ? (uint)MAKE_INT_16(dest1) : MASK_OUT_BELOW_16(*compare1) | dest1;
 		*compare2 = BIT_F(word2) ? (uint)MAKE_INT_16(dest2) : MASK_OUT_BELOW_16(*compare2) | dest2;
+		/* 68040: complete the RMW write phase on both operands */
+		m68ki_write_16(ea1, dest1);
+		m68ki_write_16(ea2, dest2);
 		return;
 	}
 	m68ki_exception_illegal();
@@ -9101,6 +9200,9 @@ static void m68k_op_cas2_32(void)
 		}
 		*compare1 = dest1;
 		*compare2 = dest2;
+		/* 68040: complete the RMW write phase on both operands */
+		m68ki_write_32(ea1, dest1);
+		m68ki_write_32(ea2, dest2);
 		return;
 	}
 	m68ki_exception_illegal();
@@ -11720,13 +11822,23 @@ static void m68k_op_cpscc_32(void)
 
 static void m68k_op_cptrapcc_32(void)
 {
+	/* CRITICAL: the $F1F8 / $F078 mask-base combination used by the
+	 * table builder matches the $F4xx cache-management opcode space
+	 * (CINV/CPUSH) on 68040 CPUs as well as the original 68020/030
+	 * cpTRAPcc encoding.  On 68040+ the real instruction is a 1-word
+	 * cache op with no following operand word, so the "REG_PC += 4"
+	 * fall-through below eats the next instruction and misaligns the
+	 * entire instruction stream.  Short-circuit to a no-op here — our
+	 * emulator has no cache so CINV/CPUSH are safe no-ops anyway. */
+	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
+		return;
 	if(CPU_TYPE_IS_EC020_PLUS(CPU_TYPE))
 	{
 		M68K_DO_LOG((M68K_LOG_FILEHANDLE "%s at %08x: called unimplemented instruction %04x (%s)\n",
 					 m68ki_cpu_names[CPU_TYPE], ADDRESS_68K(REG_PC - 2), REG_IR,
 					 m68k_disassemble_quick(ADDRESS_68K(REG_PC - 2))));
         // JFF: unsupported, but at least if the trap doesn't occur, app should still work, so at least PC increase is correct
-        REG_PC += 4;  
+        REG_PC += 4;
 		return;
 	}
 	m68ki_exception_1111();
@@ -11748,6 +11860,14 @@ static void m68k_op_dbf_16(void)
 	if(res != 0xffff)
 	{
 		uint offset = OPER_I_16();
+		/* Self-branch shortcut: DBF Dn,* is a pure countdown loop
+		 * with nothing else to do. Fast-forward. */
+		if(offset == 0xfffe)
+		{
+			*r_dst = MASK_OUT_BELOW_16(*r_dst) | 0xffff;
+			USE_CYCLES(CYC_DBCC_F_EXP);
+			return;
+		}
 		REG_PC -= 2;
 		m68ki_trace_t0();			   /* auto-disable (see m68kcpu.h) */
 		m68ki_branch_16(offset);
@@ -11895,6 +12015,17 @@ static void m68k_op_dbeq_16(void)
 		if(res != 0xffff)
 		{
 			uint offset = OPER_I_16();
+			/* Self-branch shortcut: DBEQ Dn,* with displacement -2
+			 * can never change Z (the loop body is just the DBEQ
+			 * itself), so it's a pure countdown. Fast-forward by
+			 * setting Dn.W = 0xFFFF and falling through. Saves
+			 * millions of emulated cycles on ROM busy-waits. */
+			if(offset == 0xfffe)
+			{
+				*r_dst = MASK_OUT_BELOW_16(*r_dst) | 0xffff;
+				USE_CYCLES(CYC_DBCC_F_EXP);
+				return;
+			}
 			REG_PC -= 2;
 			m68ki_trace_t0();			   /* auto-disable (see m68kcpu.h) */
 			m68ki_branch_16(offset);
@@ -22019,6 +22150,7 @@ static void m68k_op_movec_32_rc(void)
 			case 0x003:			/* TC (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
+					{ extern void tlb040_flush(void); tlb040_flush(); }
 					m68ki_cpu.mmu_040_tc = REG_DA[(word2 >> 12) & 15];
 					if (m68ki_cpu.mmu_040_tc & 0x8000) {
 						m68ki_cpu.pmmu_enabled = 1;
@@ -22035,6 +22167,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_itt0 = REG_DA[(word2 >> 12) & 15];
+					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] ITT0=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_itt0, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22043,6 +22176,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_itt1 = REG_DA[(word2 >> 12) & 15];
+					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] ITT1=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_itt1, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22051,6 +22185,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_dtt0 = REG_DA[(word2 >> 12) & 15];
+					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] DTT0=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_dtt0, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22059,6 +22194,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_dtt1 = REG_DA[(word2 >> 12) & 15];
+					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] DTT1=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_dtt1, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22074,6 +22210,7 @@ static void m68k_op_movec_32_rc(void)
 			case 0x806:			/* URP (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
+					{ extern void tlb040_flush(void); tlb040_flush(); }
 					m68ki_cpu.mmu_040_urp = REG_DA[(word2 >> 12) & 15];
 					return;
 				}
@@ -22082,6 +22219,7 @@ static void m68k_op_movec_32_rc(void)
 			case 0x807:			/* SRP (040) */
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
+					{ extern void tlb040_flush(void); tlb040_flush(); }
 					m68ki_cpu.mmu_040_srp = REG_DA[(word2 >> 12) & 15];
 					xil_printf( "[MMU040] SRP=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_srp, REG_PC);
 					return;
@@ -28158,7 +28296,9 @@ static void m68k_op_pflush_32(void)
 {
 	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 	{
-		/* 68040 PFLUSH/PFLUSHA/PFLUSHN — no-op (no TLB cache to flush) */
+		/* 68040 PFLUSH/PFLUSHA/PFLUSHN — flush TLB */
+		extern void tlb040_flush(void);
+		tlb040_flush();
 		static int pflush_log = 0;
 		if (pflush_log < 5) { xil_printf( "[MMU040] PFLUSH at PC=$%08X\n", REG_PC); pflush_log++; }
 		return;
@@ -28187,9 +28327,7 @@ static void m68k_op_cinv_32(void)
 static void m68k_op_cpush_32(void)
 {
 	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
-	{
 		return;
-	}
 	m68ki_exception_1111();
 }
 
@@ -29488,6 +29626,20 @@ rte_loop:
 				new_pc = m68ki_pull_32();
 				m68ki_fake_pull_16();	/* format word */
 				m68ki_fake_pull_32();	/* address */
+				m68ki_jump(new_pc);
+				m68ki_set_sr(new_sr);
+				CPU_INSTR_MODE = INSTRUCTION_YES;
+				CPU_RUN_MODE = RUN_MODE_NORMAL;
+				return;
+			case 7: /* 68040 Access Error (Format 7) — 30 words = 60 bytes.
+				 * Pop SR+PC+Format (8 bytes) then skip remaining 52 bytes.
+				 * The kernel's bus error handler has already resolved the
+				 * page fault; we just need to resume at the stacked PC. */
+				new_sr = m68ki_pull_16();
+				new_pc = m68ki_pull_32();
+				m68ki_fake_pull_16();	/* format word */
+				REG_A[7] += 52;		/* skip EA, SSW, WBnS, FA, WBnA/D, PDn */
+				rte_format7_count++;
 				m68ki_jump(new_pc);
 				m68ki_set_sr(new_sr);
 				CPU_INSTR_MODE = INSTRUCTION_YES;
@@ -34445,6 +34597,8 @@ static const opcode_handler_struct m68k_opcode_handler_table[] =
 	{m68k_op_pmmu_32             , 0xfe00, 0xf000, {  0,   0,   8,   8,   8}},
 	{m68k_op_cinv_32             , 0xff20, 0xf400, {  0,   0,   0,   0,   4}},
 	{m68k_op_cpush_32            , 0xff20, 0xf420, {  0,   0,   0,   0,   4}},
+	{m68k_op_pmmu_32             , 0xfff8, 0xf548, {  0,   0,   0,   0,   4}},
+	{m68k_op_pmmu_32             , 0xfff8, 0xf568, {  0,   0,   0,   0,   4}},
 	{m68k_op_pflush_32           , 0xffe0, 0xf500, {  0,   0,   0,   0,   4}},
 	{m68k_op_bra_8               , 0xff00, 0x6000, { 10,  10,  10,  10,  10}},
 	{m68k_op_bsr_8               , 0xff00, 0x6100, { 18,  18,   7,   7,   7}},

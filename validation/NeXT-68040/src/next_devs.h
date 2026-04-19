@@ -51,11 +51,17 @@ static inline int is_next_io(uint32_t addr)
 }
 
 /* Normalise a NeXT I/O address: strip the SLOT_ID_BMAP offset so that
- * 0x021xxxxx / 0x022xxxxx addresses map back to canonical 0x020xxxxx. */
+ * 0x021xxxxx / 0x022xxxxx addresses map back to canonical 0x020xxxxx.
+ * Exception: TMC addresses (0x02200000-0x0220FFFF) are NOT remapped —
+ * the TMC/ADB handlers check for these addresses directly. */
 static inline uint32_t next_io_canon(uint32_t addr)
 {
-    if (addr >= 0x02200000 && addr < 0x02300000)
+    if (addr >= 0x02200000 && addr < 0x02300000) {
+        /* Preserve TMC range (0x02200000-0x0220FFFF) as-is */
+        if (addr < 0x02210000)
+            return addr;
         return addr - 0x00200000;
+    }
     if (addr >= 0x02100000 && addr < 0x02200000)
         return addr - 0x00100000;
     return addr;
@@ -67,5 +73,13 @@ uint32_t next_get_mon_global(void);
 /* Set/clear interrupt status bits (used by ESP and DMA modules) */
 void next_intr_set(uint32_t bit);
 void next_intr_clear(uint32_t bit);
+
+/* Enable softint delivery (call after timer calibration / first user exec) */
+void next_softint_enable(void);
+
+/* Debug accessors for interrupt state */
+uint32_t next_intr_get_status(void);
+uint32_t next_intr_get_mask(void);
+
 
 #endif /* NEXT_DEVS_H */

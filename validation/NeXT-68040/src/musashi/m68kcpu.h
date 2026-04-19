@@ -585,10 +585,12 @@ typedef uint32 uint64;
 	#define m68ki_use_program_space() m68ki_address_space = FUNCTION_CODE_USER_PROGRAM
 	#define m68ki_get_address_space() m68ki_address_space
 #else
-	#define m68ki_set_fc(A)
-	#define m68ki_use_data_space()
-	#define m68ki_use_program_space()
-	#define m68ki_get_address_space() FUNCTION_CODE_USER_DATA
+	/* FC emulation off, but m68ki_address_space must still be updated
+	 * for 68040 ATC fault SSW encoding (TM field = function code). */
+	#define m68ki_set_fc(A) m68ki_address_space = (A)
+	#define m68ki_use_data_space() m68ki_address_space = FUNCTION_CODE_USER_DATA
+	#define m68ki_use_program_space() m68ki_address_space = FUNCTION_CODE_USER_PROGRAM
+	#define m68ki_get_address_space() m68ki_address_space
 #endif /* M68K_EMULATE_FC */
 
 
@@ -1035,6 +1037,9 @@ extern const uint16   m68ki_shift_16_table[];
 extern const uint     m68ki_shift_32_table[];
 extern const uint8    m68ki_exception_cycle_table[][256];
 extern uint           m68ki_address_space;
+extern int            mmu040_write_pending;  /* 1 during write translations */
+extern int            mmu040_access_size;    /* SSW SIZE: 0=long, 1=byte, 2=word */
+extern int            mmu040_halted;         /* Sticky: set by MMU HALT path; read/write helpers skip bus access when set */
 extern const uint8    m68ki_ea_idx_cycle_table[];
 
 extern uint           m68ki_aerr_address;
@@ -1154,8 +1159,12 @@ static inline uint m68ki_read_8_fc(uint address, uint fc)
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 0;
+	    mmu040_access_size = 1; /* byte */
 	    address = pmmu_translate_addr(address);
+	    if (mmu040_halted) return 0xFF;  /* skip bus: MMU halt in progress */
+	}
 #endif
 
 	return m68k_read_memory_8(ADDRESS_68K(address));
@@ -1167,8 +1176,12 @@ static inline uint m68ki_read_16_fc(uint address, uint fc)
 	m68ki_check_address_error_010_less(address, MODE_READ, fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 0;
+	    mmu040_access_size = 2; /* word */
 	    address = pmmu_translate_addr(address);
+	    if (mmu040_halted) return 0xFFFF;
+	}
 #endif
 
 	return m68k_read_memory_16(ADDRESS_68K(address));
@@ -1180,8 +1193,12 @@ static inline uint m68ki_read_32_fc(uint address, uint fc)
 	m68ki_check_address_error_010_less(address, MODE_READ, fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 0;
+	    mmu040_access_size = 0; /* long */
 	    address = pmmu_translate_addr(address);
+	    if (mmu040_halted) return 0xFFFFFFFF;
+	}
 #endif
 
 	return m68k_read_memory_32(ADDRESS_68K(address));
@@ -1193,8 +1210,13 @@ static inline void m68ki_write_8_fc(uint address, uint fc, uint value)
 	m68ki_set_fc(fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 1;
+	    mmu040_access_size = 1; /* byte */
 	    address = pmmu_translate_addr(address);
+	    mmu040_write_pending = 0;
+	    if (mmu040_halted) return;
+	}
 #endif
 
 	m68k_write_memory_8(ADDRESS_68K(address), value);
@@ -1206,8 +1228,13 @@ static inline void m68ki_write_16_fc(uint address, uint fc, uint value)
 	m68ki_check_address_error_010_less(address, MODE_WRITE, fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 1;
+	    mmu040_access_size = 2; /* word */
 	    address = pmmu_translate_addr(address);
+	    mmu040_write_pending = 0;
+	    if (mmu040_halted) return;
+	}
 #endif
 
 	m68k_write_memory_16(ADDRESS_68K(address), value);
@@ -1219,8 +1246,13 @@ static inline void m68ki_write_32_fc(uint address, uint fc, uint value)
 	m68ki_check_address_error_010_less(address, MODE_WRITE, fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 1;
+	    mmu040_access_size = 0; /* long */
 	    address = pmmu_translate_addr(address);
+	    mmu040_write_pending = 0;
+	    if (mmu040_halted) return;
+	}
 #endif
 
 	m68k_write_memory_32(ADDRESS_68K(address), value);
@@ -1234,8 +1266,12 @@ static inline void m68ki_write_32_pd_fc(uint address, uint fc, uint value)
 	m68ki_check_address_error_010_less(address, MODE_WRITE, fc); /* auto-disable (see m68kcpu.h) */
 
 #if M68K_EMULATE_PMMU
-	if (PMMU_ENABLED)
+	if (PMMU_ENABLED) {
+	    mmu040_write_pending = 1;
+	    mmu040_access_size = 0; /* long */
 	    address = pmmu_translate_addr(address);
+	    mmu040_write_pending = 0;
+	}
 #endif
 
 	m68k_write_memory_32_pd(ADDRESS_68K(address), value);
@@ -1735,6 +1771,45 @@ static inline void m68ki_stack_frame_1000(uint pc, uint sr, uint vector)
 	m68ki_push_16(sr);
 }
 
+/* Format 7 RTE counter — tracks successful page fault returns.
+ * Defined in m68kcpu.c, used by RTE handler in m68kops.c/m68k_in.c. */
+extern int rte_format7_count;
+
+/* Format 7 stack frame (68040 access fault).
+ * Used for ATC faults (page table entry invalid) on 68040.
+ * 30 words = 60 bytes. The kernel's bus error handler reads
+ * the SSW and fault address to handle the page fault.
+ *
+ * SSW bits: bit 7=ATC, bit 6=LK, bit 5=RW(1=read), bits 2-0=TM(FC)
+ */
+static inline void m68ki_stack_frame_0111(uint pc, uint sr, uint addr, uint ssw)
+{
+	/* 68040 Format 7 Access Error frame — 30 words (60 bytes).
+	 * MC68040 User Manual Section 8.4.2.2, Table 8-5.
+	 * Push in reverse order (stack grows down). */
+
+	m68ki_push_32(0);     /* +$38: PD3 (Push Data 3) */
+	m68ki_push_32(0);     /* +$34: PD2 (Push Data 2) */
+	m68ki_push_32(0);     /* +$30: PD1 (Push Data 1) */
+	m68ki_push_32(0);     /* +$2C: WB1D/PD0 (Write-Back 1 Data / Push Data 0) */
+	m68ki_push_32(0);     /* +$28: WB1A/PD0A (Write-Back 1 Address) */
+	m68ki_push_32(0);     /* +$24: WB2D (Write-Back 2 Data) */
+	m68ki_push_32(0);     /* +$20: WB2A (Write-Back 2 Address) */
+	m68ki_push_32(0);     /* +$1C: WB3D (Write-Back 3 Data) */
+	m68ki_push_32(0);     /* +$18: WB3A (Write-Back 3 Address) */
+	m68ki_push_32(addr);  /* +$14: FA (Fault Address) */
+
+	m68ki_push_16(0);     /* +$12: WB1S (Write-Back 1 Status) */
+	m68ki_push_16(0);     /* +$10: WB2S (Write-Back 2 Status) */
+	m68ki_push_16(0);     /* +$0E: WB3S (Write-Back 3 Status) */
+	m68ki_push_16(ssw);   /* +$0C: SSW (Special Status Word) */
+
+	m68ki_push_32(addr);  /* +$08: EA (Effective Address) */
+	m68ki_push_16(0x7000 | (EXCEPTION_BUS_ERROR << 2));  /* +$06: Format/Vector */
+	m68ki_push_32(pc);    /* +$02: PC */
+	m68ki_push_16(sr);    /* +$00: SR */
+}
+
 /* Format A stack frame (short bus fault).
  * This is used only by 68020 for bus fault and address error
  * if the error happens at an instruction boundary.
@@ -1855,11 +1930,29 @@ static inline void m68ki_stack_frame_1011(uint sr, uint vector, uint pc)
 }
 
 
+/* Compact exception entry logger.  Dumps vector, PPC/PC, SR, A7 for
+ * the first N exceptions of any kind so we can see exactly what the
+ * CPU is throwing and from where. */
+static inline void emu_exc_log(const char *kind, uint vec)
+{
+	static int exc_log = 0;
+	if (exc_log < 30) {
+		xil_printf("[EXC] %s vec=%d PPC=$%08X PC=$%08X SR=$%04X A7=$%08X\r\n",
+		           kind, vec,
+		           (unsigned int)ADDRESS_68K(REG_PPC),
+		           (unsigned int)ADDRESS_68K(REG_PC),
+		           (unsigned int)(m68ki_get_sr() & 0xFFFF),
+		           (unsigned int)REG_A[7]);
+		exc_log++;
+	}
+}
+
 /* Used for Group 2 exceptions.
  * These stack a type 2 frame on the 020.
  */
 static inline void m68ki_exception_trap(uint vector)
 {
+	emu_exc_log("TRAP", vector);
 	uint sr = m68ki_init_exception();
 
 	if(CPU_TYPE_IS_010_LESS(CPU_TYPE))
@@ -1874,9 +1967,15 @@ static inline void m68ki_exception_trap(uint vector)
 }
 
 /* Trap#n stacks a 0 frame but behaves like group2 otherwise */
+extern void emu_trap_log(unsigned int trap_num, unsigned int pc,
+                         unsigned int sr, unsigned int d0, unsigned int d1,
+                         unsigned int sp);
 static inline void m68ki_exception_trapN(uint vector)
 {
 	uint t = REG_IR & 0xf;
+	/* Log user-mode traps before SR switches to supervisor */
+	if (!FLAG_S)
+		emu_trap_log(t, ADDRESS_68K(REG_PPC), m68ki_get_sr(), REG_D[0], REG_D[1], REG_A[7]);
 #if M68K_LOG_TRAP == M68K_OPT_ON
 	M68K_DO_LOG((M68K_LOG_FILEHANDLE "%s at %08x: trap %01x (%s)\n",
 				 m68ki_cpu_names[CPU_TYPE], ADDRESS_68K(REG_PPC), t,
@@ -1923,6 +2022,7 @@ static inline void m68ki_exception_trace(void)
 /* Exception for privilege violation */
 static inline void m68ki_exception_privilege_violation(void)
 {
+	emu_exc_log("PRIV", EXCEPTION_PRIVILEGE_VIOLATION);
 	uint sr = m68ki_init_exception();
 
 	#if M68K_EMULATE_ADDRESS_ERROR == M68K_OPT_ON
@@ -1948,6 +2048,7 @@ static inline void m68ki_exception_bus_error(void)
 {
 	int i;
 
+	emu_exc_log("BUSERR", EXCEPTION_BUS_ERROR);
 	/* If we were processing a bus error, address error, or reset,
 	 * while writing the stack frame, this is a catastrophic failure.
 	 * Halt the CPU
@@ -1984,6 +2085,7 @@ extern int cpu_log_enabled;
 /* Exception for A-Line instructions */
 static inline void m68ki_exception_1010(void)
 {
+	emu_exc_log("ALINE", EXCEPTION_1010);
 	uint sr;
 #if M68K_LOG_1010_1111 == M68K_OPT_ON
 	M68K_DO_LOG_EMU((M68K_LOG_FILEHANDLE "%s at %08x: called 1010 instruction %04x (%s)\n",
@@ -2002,6 +2104,7 @@ static inline void m68ki_exception_1010(void)
 /* Exception for F-Line instructions */
 static inline void m68ki_exception_1111(void)
 {
+	emu_exc_log("FLINE", EXCEPTION_1111);
 	uint sr;
 
 #if M68K_LOG_1010_1111 == M68K_OPT_ON
@@ -2013,6 +2116,17 @@ static inline void m68ki_exception_1111(void)
 	/* Allow illg callback to intercept F-line instructions (e.g. FPU trap) */
 	if (m68ki_illg_callback(REG_IR))
 		return;
+
+	/* F-line not handled by callback — falls to kernel's F-line handler.
+	 * Log if this happens in user mode (potential FPU issue). */
+	if (!FLAG_S) {
+		static int fline_user_log = 0;
+		if (fline_user_log < 50) {
+			xil_printf("[FLINE-USER] unhandled F-line $%04X at PC=$%08X URP=$%08X\r\n",
+				REG_IR, ADDRESS_68K(REG_PPC), m68ki_cpu.mmu_040_urp);
+			fline_user_log++;
+		}
+	}
 
 	sr = m68ki_init_exception();
 	m68ki_stack_frame_0000(REG_PPC, sr, EXCEPTION_1111);
@@ -2033,6 +2147,7 @@ extern int m68ki_trap_callback(int);
 /* Exception for illegal instructions */
 static inline void m68ki_exception_illegal(void)
 {
+	emu_exc_log("ILLEG", EXCEPTION_ILLEGAL_INSTRUCTION);
 	uint sr;
 
 	M68K_DO_LOG((M68K_LOG_FILEHANDLE "%s at %08x: illegal instruction %04x (%s)\n",
@@ -2040,6 +2155,23 @@ static inline void m68ki_exception_illegal(void)
 				 m68ki_disassemble_quick(ADDRESS_68K(REG_PPC))));
 	if (m68ki_illg_callback(REG_IR))
 	    return;
+
+	/* Log user-mode illegal instructions */
+	if (!FLAG_S) {
+		static int illg_user_log = 0;
+		if (illg_user_log < 10) {
+			unsigned int ppc = ADDRESS_68K(REG_PPC);
+			xil_printf("[ILLG-USER] illegal $%04X at PC=$%08X\r\n",
+				REG_IR, ppc);
+			/* Dump surrounding words so we can decode the real instruction */
+			for (int i = -8; i <= 8; i += 2) {
+				unsigned int a = ppc + i;
+				xil_printf("  $%08X: %04X\r\n", a,
+					m68k_read_memory_16(a));
+			}
+			illg_user_log++;
+		}
+	}
 
 	sr = m68ki_init_exception();
 
@@ -2060,6 +2192,7 @@ static inline void m68ki_exception_illegal(void)
 /* Exception for format errror in RTE */
 static inline void m68ki_exception_format_error(void)
 {
+	emu_exc_log("FORMAT", EXCEPTION_FORMAT_ERROR);
 	uint sr = m68ki_init_exception();
 	m68ki_stack_frame_0000(REG_PC, sr, EXCEPTION_FORMAT_ERROR);
 	m68ki_jump_vector(EXCEPTION_FORMAT_ERROR);
@@ -2071,6 +2204,7 @@ static inline void m68ki_exception_format_error(void)
 /* Exception for address error */
 static inline void m68ki_exception_address_error(void)
 {
+	emu_exc_log("ADDRERR", EXCEPTION_ADDRESS_ERROR);
 	uint sr = m68ki_init_exception();
 
 	/* If we were processing a bus error, address error, or reset,

@@ -35,6 +35,7 @@
 #include "next_rtc.h"
 #include "next_dsp.h"
 #include "next_kms.h"
+#include "usb_hid.h"
 #include "next_scsi.h"
 #include "next_scsi_dma.h"
 #include "next_esp.h"
@@ -546,11 +547,13 @@ void emu_instr_hook(unsigned int pc)
                     /* mg_console_i is at mg+792, mg_console_o at mg+796.
                      * ROM sets these to CONS_I_KBD(0) / CONS_O_BITMAP(0).
                      * Patch mg_console_i to CONS_I_SCC_A(1) so the ROM
-                     * monitor polls SCC serial instead of the keyboard. */
+                     * monitor polls SCC serial instead of the keyboard.
+                     * (Paired with ni_alt_cons=1 in NVRAM, this is the
+                     * known-good serial-console boot path.) */
                     uint32_t cons_i = m68k_read_memory_32(mg + 792);
                     if (cons_i == 0) {
                         m68k_write_memory_32(mg + 792, 1); /* CONS_I_SCC_A */
-                        xil_printf("[MG] patched mg_console_i: KBD→SCC_A\r\n");
+                        xil_printf("[MG] patched mg_console_i: KBD->SCC_A\r\n");
                     }
                 } else {
                     rom_putc_addr = 0;  /* invalid, keep searching */
@@ -1025,6 +1028,17 @@ static void next_boot(void)
     next_rtc_init();
     next_dsp_init();
     next_kms_init();
+
+#ifndef QEMU_MODE
+    /* USB HID host-mode bring-up (DWC3 @ 0xFE200000 -> xHCI).  Delivers
+     * USB keyboard/mouse reports into the NeXT KMS queue alongside the
+     * ARM UART fallback path.  Non-fatal if no device is plugged in. */
+    if (usb_hid_init() == 0)
+        xil_printf("[NEXT] USB HID: keyboard/mouse ready\r\n");
+    else
+        xil_printf("[NEXT] USB HID: no device (UART input still works)\r\n");
+#endif
+
     if (next_scsi_init() == 0) {
         xil_printf("[NEXT] SCSI disk: mounted from SD card\r\n");
         next_ufs_diagnose();
@@ -1319,6 +1333,12 @@ static void next_boot(void)
 
         /* Feed ARM UART RX into SCC RX buffer */
         poll_uart_rx();
+
+#ifndef QEMU_MODE
+        /* Poll USB HID: delivers keyboard/mouse reports straight into
+         * next_kms.  Non-blocking; no effect if init failed. */
+        usb_hid_poll();
+#endif
     }
 }
 

@@ -30,6 +30,27 @@ void next_kms_init(void);
  * builds a kybd_event, and queues it for the ROM to read. */
 void next_kms_push_ascii(uint8_t ch);
 
+/* Push a raw 8-byte HID boot-protocol keyboard report.
+ *   report[0] = modifier bitmap
+ *   report[1] = 0 (reserved)
+ *   report[2..7] = up to 6 HID Usage IDs of currently-pressed keys
+ * The function diffs against the previous report, translates HID Usage IDs
+ * into NeXT 7-bit key_codes via the internal hid_to_next[] table, and
+ * queues key-down / key-up events (with NeXT modifier bits) into the same
+ * 16-slot queue used by next_kms_push_ascii().  Used by the USB HID driver
+ * to deliver full-fidelity keyboard input (arrows, modifiers, command/alt)
+ * that the ASCII path cannot represent. */
+void next_kms_push_hid_report(const uint8_t report[8]);
+
+/* Push a mouse motion / button event.
+ *   dx, dy  = signed 8-bit displacement (HID format; saturated to NeXT's
+ *             7-bit signed range inside this function)
+ *   buttons = HID boot-protocol button bitmap:
+ *               bit 0 = left, bit 1 = right, bit 2 = middle
+ * Builds a mouse-format KMS event (see NeXTMach nextdev/kmreg.h struct
+ * mouse) and queues it alongside keyboard events. */
+void next_kms_push_mouse(int8_t dx, int8_t dy, uint8_t buttons);
+
 /* Read KMS registers (called from next_devs I/O handlers).
  * offset: 0=mon_csr, 4=mon_data, 8=mon_km_data, 12=mon_sound_data */
 uint32_t next_kms_read(int offset);

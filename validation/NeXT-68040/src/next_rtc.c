@@ -268,21 +268,32 @@ void next_rtc_init(void)
         /* Byte 17: ni_new_clock_chip bit 7 = MCS1850 */
         rtc_regs[17] = 0x80;
 
-        /* Bytes 18-19: boot command "sd" → SCSI auto-boot */
-        rtc_regs[18] = 's';
-        rtc_regs[19] = 'd';
+        /* Bytes 18-19: boot command.  The first two chars of ni_bootcmd
+         * (12-char NVRAM field at offsets 18-29) tell the NeXT ROM where
+         * to boot from:
+         *     "sd" -> SCSI auto-boot (target 6 LUN 0)
+         *     "en" -> ethernet (bootp/tftp)
+         *     "fd" -> floppy
+         *     "od" -> magneto-optical
+         *     0x00 -> drop into ROM monitor (NeXT> prompt)  [CURRENT]
+         *
+         * Set to 0x00 so power-on lands at the "NeXT>" ROM monitor for
+         * interactive debugging - user types 'b sd' manually from there. */
+        rtc_regs[18] = 0x00;
+        rtc_regs[19] = 0x00;
 
-        /* ni_alt_cons=1 routes console_i to SCC_A. We use this to get
-         * kernel printf visibility on our serial mirror without having
-         * to hook km_putc directly. In a prior test with alt_cons=0 the
-         * boot was running blind (kernel output going only to VRAM via
-         * km_putc which our hook doesn't see) and we could only infer
-         * progress from PC sampling — restored to alt_cons=1 to keep
-         * kernel-phase serial output. zsopen's DCD carrier-wait sleep
-         * is bypassed for minor 0 by !ZSHARDCAR, so this path does
-         * reach user space (verified: 2584 user instructions in the
-         * previous alt_cons=1 run). */
-        rtc_regs[0] |= 0x08;  /* bit 27 = ni_alt_cons */
+        /* ni_alt_cons (bit 27 of first u_int in nvram_info, SCC_ALT_CONS =
+         * 0x08000000): routes kernel console OUTPUT to either SCC serial
+         * (bit set) or bitmap/km (bit clear).
+         *
+         * Bit cleared: primary output = bitmap (km/kmpaint -> NeXT VRAM
+         * at P_VIDEOMEM, which the emulator mirrors to the DP output).
+         *
+         * This is paired with the cons_i KBD->SCC_A patch in main.c that
+         * keeps input routed to SCC serial (UART), so the hybrid is
+         * "OUTPUT on screen, INPUT on serial" - which gives on-screen
+         * visibility of the installer while keeping the known-good
+         * serial keyboard path for interactive use. */
 
         /* Recompute ones-complement checksum */
         rtc_regs[30] = 0;

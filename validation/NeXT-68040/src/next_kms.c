@@ -277,6 +277,277 @@ void next_kms_push_ascii(uint8_t ch)
     kms_queue_push(build_kybd_event(m->key_code, m->shift, 1));
 }
 
+/* ------------------------------------------------------------------ */
+/* HID USB boot-protocol -> NeXT key_code translation                  */
+/* ------------------------------------------------------------------ */
+/*
+ * Built from NeXTMach/mk-108.1/nextdev/keycodes.h (authoritative NeXT
+ * ASCII[] table) by walking HID Usage IDs (Keyboard/Keypad page 0x07)
+ * and mapping each to the NeXT 7-bit key_code that produces the same
+ * character.  Arrows and other non-ASCII NeXT keys (kc 9 = left, 15 =
+ * down, 16 = right, 22 = up) are set by hand.
+ *
+ * A value of 0xFF means "unmapped" and the event is dropped.
+ */
+#define NKC_NONE    0xFF
+#define HID_TABLE_SIZE 0xE8
+
+static const uint8_t hid_to_next[HID_TABLE_SIZE] = {
+    /* 0x00-0x03: reserved / rollover error */
+    [0x00 ... 0x03] = NKC_NONE,
+
+    /* Letters (HID 0x04-0x1D) */
+    [0x04] = 57,  /* a */
+    [0x05] = 53,  /* b */
+    [0x06] = 51,  /* c */
+    [0x07] = 59,  /* d */
+    [0x08] = 68,  /* e */
+    [0x09] = 60,  /* f */
+    [0x0A] = 61,  /* g */
+    [0x0B] = 64,  /* h */
+    [0x0C] = 6,   /* i */
+    [0x0D] = 63,  /* j */
+    [0x0E] = 62,  /* k */
+    [0x0F] = 45,  /* l */
+    [0x10] = 54,  /* m */
+    [0x11] = 55,  /* n */
+    [0x12] = 7,   /* o */
+    [0x13] = 8,   /* p */
+    [0x14] = 66,  /* q */
+    [0x15] = 69,  /* r */
+    [0x16] = 58,  /* s */
+    [0x17] = 72,  /* t */
+    [0x18] = 70,  /* u */
+    [0x19] = 52,  /* v */
+    [0x1A] = 67,  /* w */
+    [0x1B] = 50,  /* x */
+    [0x1C] = 71,  /* y */
+    [0x1D] = 49,  /* z */
+
+    /* Number row '1'-'0' (HID 0x1E-0x27) */
+    [0x1E] = 74,  /* 1 / ! */
+    [0x1F] = 75,  /* 2 / @ */
+    [0x20] = 76,  /* 3 / # */
+    [0x21] = 77,  /* 4 / $ */
+    [0x22] = 80,  /* 5 / % */
+    [0x23] = 79,  /* 6 / ^ */
+    [0x24] = 78,  /* 7 / & */
+    [0x25] = 30,  /* 8 / * */
+    [0x26] = 31,  /* 9 / ( */
+    [0x27] = 32,  /* 0 / ) */
+
+    /* Editing keys */
+    [0x28] = 42,  /* Enter/Return (main keyboard) */
+    [0x29] = 73,  /* Escape */
+    [0x2A] = 27,  /* Backspace/Delete (NeXT DEL/BS on kc 27) */
+    [0x2B] = 65,  /* Tab */
+    [0x2C] = 56,  /* Space */
+
+    /* Punctuation */
+    [0x2D] = 29,  /* - / _ */
+    [0x2E] = 28,  /* = / + */
+    [0x2F] = 5,   /* [ / { */
+    [0x30] = 4,   /* ] / } */
+    [0x31] = 3,   /* \ / | */
+    [0x32] = 3,   /* non-US # / ~ (treat as backslash) */
+    [0x33] = 44,  /* ; / : */
+    [0x34] = 43,  /* ' / " */
+    [0x35] = 38,  /* ` / ~ */
+    [0x36] = 46,  /* , / < */
+    [0x37] = 47,  /* . / > */
+    [0x38] = 48,  /* / / ? */
+    [0x39] = NKC_NONE,  /* Caps Lock (handled host-side for LEDs) */
+
+    /* F1-F12: no direct NeXT analogue on the basic keyset */
+    [0x3A ... 0x45] = NKC_NONE,
+
+    [0x46] = NKC_NONE,  /* PrintScreen */
+    [0x47] = NKC_NONE,  /* ScrollLock */
+    [0x48] = NKC_NONE,  /* Pause */
+    [0x49] = NKC_NONE,  /* Insert (no NeXT equivalent) */
+    [0x4A] = NKC_NONE,  /* Home */
+    [0x4B] = NKC_NONE,  /* PageUp */
+    [0x4C] = 27,        /* Delete (forward) -> same as Backspace on NeXT */
+    [0x4D] = NKC_NONE,  /* End */
+    [0x4E] = NKC_NONE,  /* PageDown */
+
+    /* Arrow keys — NeXT uses non-ASCII special codes */
+    [0x4F] = 16,  /* Right arrow */
+    [0x50] = 9,   /* Left arrow */
+    [0x51] = 15,  /* Down arrow */
+    [0x52] = 22,  /* Up arrow */
+
+    [0x53] = NKC_NONE,  /* NumLock */
+
+    /* Keypad */
+    [0x54] = 40,  /* keypad / */
+    [0x55] = 37,  /* keypad * */
+    [0x56] = 36,  /* keypad - */
+    [0x57] = 21,  /* keypad + */
+    [0x58] = 13,  /* keypad Enter */
+    [0x59] = 17,  /* keypad 1 */
+    [0x5A] = 23,  /* keypad 2 */
+    [0x5B] = 20,  /* keypad 3 */
+    [0x5C] = 18,  /* keypad 4 */
+    [0x5D] = 24,  /* keypad 5 */
+    [0x5E] = 19,  /* keypad 6 */
+    [0x5F] = 33,  /* keypad 7 */
+    [0x60] = 34,  /* keypad 8 */
+    [0x61] = 35,  /* keypad 9 */
+    [0x62] = 11,  /* keypad 0 */
+    [0x63] = 12,  /* keypad . */
+
+    /* Above 0x63 (application, F-keys beyond F12, media keys) left as NKC_NONE
+     * by the designated-init default. */
+};
+
+/* HID modifier byte bit assignments (HID boot keyboard report[0]) */
+#define HID_MOD_LCTRL   (1U << 0)
+#define HID_MOD_LSHIFT  (1U << 1)
+#define HID_MOD_LALT    (1U << 2)
+#define HID_MOD_LGUI    (1U << 3)
+#define HID_MOD_RCTRL   (1U << 4)
+#define HID_MOD_RSHIFT  (1U << 5)
+#define HID_MOD_RALT    (1U << 6)
+#define HID_MOD_RGUI    (1U << 7)
+
+/*
+ * Build a NeXT keyboard event with full modifier fidelity from an HID
+ * modifier byte.  Matches the kmreg.h bit layout (MSB-first bitfields):
+ *   bit 15 = valid (1)
+ *   bit 14 = alt_right    (HID RAlt)
+ *   bit 13 = alt_left     (HID LAlt)
+ *   bit 12 = command_right (HID RGui)
+ *   bit 11 = command_left  (HID LGui)
+ *   bit 10 = shift_right
+ *   bit 9  = shift_left
+ *   bit 8  = control      (HID L/R Ctrl OR'd)
+ *   bit 7  = up_down (0=DOWN, 1=UP)
+ *   bits 6-0 = key_code
+ */
+static uint32_t build_kybd_event_hid(uint8_t key_code,
+                                     uint8_t hid_mods,
+                                     int key_up)
+{
+    uint32_t ev = 0;
+    ev |= (1U << 15);                                       /* valid */
+    if (hid_mods & HID_MOD_RALT)    ev |= (1U << 14);       /* alt_right */
+    if (hid_mods & HID_MOD_LALT)    ev |= (1U << 13);       /* alt_left */
+    if (hid_mods & HID_MOD_RGUI)    ev |= (1U << 12);       /* command_right */
+    if (hid_mods & HID_MOD_LGUI)    ev |= (1U << 11);       /* command_left */
+    if (hid_mods & HID_MOD_RSHIFT)  ev |= (1U << 10);       /* shift_right */
+    if (hid_mods & HID_MOD_LSHIFT)  ev |= (1U <<  9);       /* shift_left */
+    if (hid_mods & (HID_MOD_LCTRL | HID_MOD_RCTRL))
+                                     ev |= (1U <<  8);      /* control */
+    if (key_up)                      ev |= (1U <<  7);      /* up_down */
+    ev |= (key_code & 0x7F);                                /* key_code */
+    return ev;
+}
+
+static void hid_push_key(uint8_t hid_key, uint8_t modifiers, int key_up)
+{
+    if (hid_key >= HID_TABLE_SIZE) return;
+    uint8_t kc = hid_to_next[hid_key];
+    if (kc == NKC_NONE) {
+        static int miss_log = 0;
+        if (miss_log < 8) {
+            xil_printf("[KMS-HID] unmapped HID key 0x%02X (dropped)\r\n", hid_key);
+            miss_log++;
+        }
+        return;
+    }
+    uint32_t ev = build_kybd_event_hid(kc, modifiers, key_up);
+    {
+        static int push_log = 0;
+        if (push_log < 16) {
+            xil_printf("[KMS-HID] HID 0x%02X -> kc=%u mods=0x%02X %s ev=0x%08X\r\n",
+                       hid_key, kc, modifiers, key_up ? "UP" : "DN", ev);
+            push_log++;
+        }
+    }
+    kms_queue_push(ev);
+}
+
+void next_kms_push_hid_report(const uint8_t rpt[8])
+{
+    static uint8_t prev[8] = {0};
+
+    uint8_t modifiers = rpt[0];
+
+    /* Detect newly-pressed keys: anything in rpt[2..7] not present in
+     * prev[2..7] is a key-down. */
+    for (int i = 2; i < 8; i++) {
+        uint8_t key = rpt[i];
+        if (key < 4) continue;  /* no key or rollover error */
+        int was_pressed = 0;
+        for (int j = 2; j < 8; j++) {
+            if (prev[j] == key) { was_pressed = 1; break; }
+        }
+        if (!was_pressed)
+            hid_push_key(key, modifiers, 0 /* KM_DOWN */);
+    }
+
+    /* Detect released keys: anything in prev[2..7] not present in rpt
+     * is a key-up.  Use the PREVIOUS modifier byte for the up event so
+     * release-while-modifier-still-held reports the right state. */
+    for (int j = 2; j < 8; j++) {
+        uint8_t key = prev[j];
+        if (key < 4) continue;
+        int still_pressed = 0;
+        for (int i = 2; i < 8; i++) {
+            if (rpt[i] == key) { still_pressed = 1; break; }
+        }
+        if (!still_pressed)
+            hid_push_key(key, prev[0], 1 /* KM_UP */);
+    }
+
+    memcpy(prev, rpt, 8);
+}
+
+/* ------------------------------------------------------------------ */
+/* Mouse event push                                                    */
+/* ------------------------------------------------------------------ */
+/*
+ * NeXT mouse_event word layout (struct mouse in kmreg.h):
+ *   bits 31-16: 0 (device address - mouse uses an odd address on the
+ *               real hardware but the kernel only checks validity/format,
+ *               not the address field)
+ *   bits 15-9:  delta_y (7-bit signed)
+ *   bit 8:      button_right
+ *   bits 7-1:   delta_x (7-bit signed)
+ *   bit 0:      button_left
+ *
+ * NeXT does not have a "valid" bit for mouse events in the struct; the
+ * km driver distinguishes mouse from keyboard by the address/format
+ * discipline.  To stay compatible with the existing queue (which feeds
+ * both event types into the same km_data register), we set bit 15 = 1
+ * in the mouse word too so the ROM's common kybd_event.valid check
+ * recognises the event as valid traffic.  The kernel's mouse.c unpacks
+ * the event via mouse_event.data which treats the whole 32-bit word as
+ * a signed integer and extracts deltas from bits 15-9 / 7-1, so setting
+ * bit 15 flips the sign bit of delta_y -- therefore we do NOT set bit 15
+ * and rely on the common "poll consumed -> event delivered" handshake.
+ */
+static int8_t saturate7(int v)
+{
+    if (v >  63) return  63;
+    if (v < -64) return -64;
+    return (int8_t)v;
+}
+
+void next_kms_push_mouse(int8_t dx, int8_t dy, uint8_t buttons)
+{
+    int8_t sx = saturate7((int)dx);
+    int8_t sy = saturate7((int)dy);
+
+    uint32_t ev = 0;
+    ev |= ((uint32_t)(sy & 0x7F)) << 9;                 /* delta_y */
+    if (buttons & 0x02) ev |= (1U << 8);                /* button_right */
+    ev |= ((uint32_t)(sx & 0x7F)) << 1;                 /* delta_x */
+    if (buttons & 0x01) ev |= (1U << 0);                /* button_left */
+    kms_queue_push(ev);
+}
+
 uint32_t next_kms_read(int offset)
 {
     static int kms_read_log = 0;

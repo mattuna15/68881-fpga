@@ -122,6 +122,7 @@ int next_video_render_dirty(int *out_min_y, int *out_max_y)
     }
 
     /* Clear borders only on first render (they never change) */
+    int full_frame = 0;
     if (!borders_done) {
         borders_done = 1;
         /* Top border */
@@ -144,12 +145,20 @@ int next_video_render_dirty(int *out_min_y, int *out_max_y)
             for (int x = 0; x < OUT_W; x++)
                 row[x] = 0xFF000000;
         }
-        /* First render: flush everything */
-        rmin = 0;
-        rmax = max_y - 1;
+        /* Report a full-frame range to the caller so the borders we
+         * just drew also get cache-flushed.  Previously only the
+         * centered NeXT image rows were flushed, leaving stale text
+         * from the prior text-framebuffer mode visible in the borders. */
+        full_frame = 1;
     }
 
     dirty_flag = 0;
+
+    if (full_frame) {
+        *out_min_y = 0;
+        *out_max_y = OUT_H - 1;
+        return 1;
+    }
 
     if (rmax < 0)
         return 0;

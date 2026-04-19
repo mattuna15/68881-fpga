@@ -505,6 +505,17 @@ void next_scsi_dma_csr_write(uint32_t value)
 #endif /* NEXT_DEBUG_DMA */
         dma.csr &= ~(DMA_COMPLETE | DMA_SUPDATE | DMA_ENABLE);
         next_intr_clear(I_IPL6_SCSI_DMA);
+        /* Cancel any deferred transfer queued by
+         * next_scsi_dma_start_deferred: the driver is aborting this
+         * command, so firing esp_deferred_dma_complete later would
+         * post stale bytes and a phantom IRQ for a command the
+         * kernel no longer cares about. */
+        if (dma_deferred.pending) {
+            DPRINTF("[DMA] reset: cancelling deferred (dir=%d cnt=%u countdown=%d)\r\n",
+                    dma_deferred.direction, dma_deferred.esp_counter,
+                    dma_deferred.countdown);
+            dma_deferred.pending = 0;
+        }
         DPRINTF("[DMA] reset → csr=$%02X\r\n", dma.csr);
     }
     if (value & TDMA_SETSUPDATE) {
@@ -531,6 +542,15 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
         DPRINTF("[DMA] Transfer requested but DMA not enabled\r\n");
         return 0;
     }
+
+    /* DMA_BUSEXC is sticky: the kernel's bus-error handler clears it by
+     * writing RESET to the CSR (handled in next_scsi_dma_csr_write).  But
+     * if the done-branch below is reached by a subsequent transfer before
+     * the kernel has processed the previous bus error, the stale bit
+     * would short-circuit `done` and spuriously re-assert DMA_COMPLETE.
+     * Clear at the top of every transfer so each transfer starts clean;
+     * real bus errors this time around will re-set it below. */
+    dma.csr &= ~DMA_BUSEXC;
 
     if (direction) {
         /* Device to memory (SCSI read → 68K RAM) */
@@ -660,6 +680,18 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
 
 void next_scsi_dma_start_deferred(int direction, uint32_t esp_counter)
 {
+    /* Overlap guard: a real 53C9x cannot be asked to start a new DMA
+     * transfer while one is still in flight.  If the previous deferred
+     * transfer is still pending when a second CMD_TI is issued, silently
+     * dropping the first would leave its esp_deferred_dma_complete
+     * unfired and esp.counter stale.  Log loudly so we notice. */
+    if (dma_deferred.pending) {
+        xil_printf("[DMA-OVERLAP] new start while pending: "
+                   "old dir=%d cnt=%u countdown=%d; new dir=%d cnt=%u (dropping NEW)\r\n",
+                   dma_deferred.direction, dma_deferred.esp_counter,
+                   dma_deferred.countdown, direction, esp_counter);
+        return;
+    }
     dma_deferred.direction   = direction;
     dma_deferred.esp_counter = esp_counter;
     dma_deferred.countdown   = DMA_DEFER_TICKS;

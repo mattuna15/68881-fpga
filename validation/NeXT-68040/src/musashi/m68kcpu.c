@@ -68,6 +68,7 @@ int  mmu040_fault_total = 0;                         /* Total ATC faults */
 int  mmu040_fault_reset_at = 0;                      /* ATC fault count at last BUSRST */
 int  mmu040_write_pending = 0;                       /* 1 during write translations */
 int  mmu040_access_size = 0;                         /* SSW SIZE: 0=long, 1=byte, 2=word */
+int  mmu040_halted = 0;                              /* Sticky flag set by MMU HALT path */
 uint m68ki_address_space;
 
 #ifdef M68K_LOG_ENABLE

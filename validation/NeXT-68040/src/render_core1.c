@@ -87,8 +87,13 @@ void __attribute__((noreturn)) core1_main(void)
                 text_fb_mark_clean();
 #ifndef QEMU_MODE
                 if (render_dp_ok && render_pixel_buf) {
+                    /* Flush exactly the text area (TEXT_OFS_Y..+TEXT_PX_H-1).
+                     * The previous code flushed TEXT_OFS_Y..SCREEN_H-1,
+                     * which was wider than needed (no writes occur below
+                     * the text area) and pointlessly evicted cache lines
+                     * for the bottom letterbox every frame. */
                     UINTPTR flush_start = (UINTPTR)render_pixel_buf + (TEXT_OFS_Y * SCREEN_W * 4);
-                    Xil_DCacheFlushRange(flush_start, (SCREEN_H - TEXT_OFS_Y) * SCREEN_W * 4);
+                    Xil_DCacheFlushRange(flush_start, TEXT_PX_H * SCREEN_W * 4);
                     dp_video_refresh();
                 }
 #endif

@@ -337,6 +337,8 @@ static void esp_command_write(uint8_t cmd)
 /* Reset                                                               */
 /* ------------------------------------------------------------------ */
 
+static void esp_select_timeout_cancel(void);
+
 static void esp_reset_soft(void)
 {
     esp.status &= ~STAT_TC;
@@ -348,9 +350,13 @@ static void esp_reset_soft(void)
     esp.command[0] = 0;
     esp.command[1] = 0;
     esp.state = ESP_DISCONNECTED;
+    /* Cancel any pending SELECT TIMEOUT: its deferred IRQ would fire
+     * ~500 instructions later against whatever intstatus the caller of
+     * this reset installed, producing a spurious second IRQ.  Only the
+     * hard-reset path used to cancel; any caller of soft-reset
+     * (bus-reset, etc.) needs the same protection. */
+    esp_select_timeout_cancel();
 }
-
-static void esp_select_timeout_cancel(void);
 
 static void esp_reset_hard(void)
 {
@@ -364,8 +370,7 @@ static void esp_reset_hard(void)
     next_intr_clear(I_IPL3_SCSI);
     esp.intstatus = 0x00;
     esp.status &= ~(STAT_VGC | STAT_PE | STAT_GE);
-    esp_select_timeout_cancel();
-    esp_reset_soft();
+    esp_reset_soft();  /* cancels pending select-timeout inside */
     esp_finish_command();
 }
 
@@ -473,6 +478,21 @@ static void esp_select(bool atn)
         esp_cmds_since_last_sel = 0;  /* reset counter */
         (void)sel_count;
     }
+
+    /* Overlap: if a previous SELECT's timeout is still pending when a
+     * new SELECT arrives, the earlier IRQ has not been delivered yet.
+     * The real hardware would have either accepted the first IRQ (and
+     * the driver would not re-SELECT without ack'ing INTR_DC), or the
+     * driver explicitly ack'd and cleared.  Either way the safer action
+     * is to flush the stale deferral — but log it, because reaching here
+     * typically signals a driver bug upstream. */
+    if (esp_select_to_deferred.pending) {
+        xil_printf("[ESP-SELECT-OVERLAP] new select target=%d while prior "
+                   "timeout pending (countdown=%d); flushing stale IRQ\r\n",
+                   target, esp_select_to_deferred.countdown);
+        esp_select_timeout_cancel();
+    }
+
     bool timeout = next_scsi_select(target);
 
     if (timeout) {
@@ -488,8 +508,8 @@ static void esp_select(bool atn)
         return;
     }
 
-    /* Non-timeout path: a previously scheduled timeout would be stale. */
-    esp_select_timeout_cancel();
+    /* Non-timeout path: any previously scheduled timeout was already
+     * cancelled by the overlap guard above. */
 
     /* Read identify message and CDB from FIFO */
     uint8_t identify_msg = 0;
@@ -613,8 +633,16 @@ static void esp_transfer_info(void)
             esp_raise_irq();
             break;
         default:
-            DPRINTF("[ESP] TI PIO: unhandled phase %d\r\n", phase);
-            esp.intstatus = INTR_FC;
+            /* Unhandled phase in PIO transfer is a driver/hardware
+             * mismatch — the real 53C9x raises INTR_ILL (Illegal
+             * command), not INTR_FC (Function Complete).  Raising FC
+             * lied to the driver that the transfer succeeded, masking
+             * phase-tracking bugs.  Log at error level so the next
+             * occurrence is visible. */
+            xil_printf("[ESP] TI PIO: unhandled phase %d at PC=$%08X — raising INTR_ILL\r\n",
+                       phase, m68k_get_reg(NULL, M68K_REG_PC));
+            esp.intstatus = INTR_ILL;
+            esp.seqstep = 0;
             esp_raise_irq();
             break;
         }
@@ -756,9 +784,12 @@ static void esp_start_command(uint8_t cmd)
          * SCSI driver never issues it (it uses plain CMD_SELATN), but
          * Previous (esp.c:496-499) calls abort() here — we instead flag
          * it as illegal so an emulator mistake doesn't take down the
-         * whole process. */
+         * whole process.  Clear seqstep: a driver reading it after
+         * INTR_ILL would otherwise get the stale value from the prior
+         * command. */
         DPRINTF("[ESP] Select-with-ATN-and-stop not implemented\r\n");
         esp_command_clear();
+        esp.seqstep = 0;
         esp.intstatus |= INTR_ILL;
         esp_raise_irq();
         break;
@@ -769,6 +800,7 @@ static void esp_start_command(uint8_t cmd)
          * ignoring. */
         DPRINTF("[ESP] Reselect (target mode) not implemented\r\n");
         esp_command_clear();
+        esp.seqstep = 0;
         esp.intstatus |= INTR_ILL;
         esp_raise_irq();
         break;
@@ -794,6 +826,7 @@ static void esp_start_command(uint8_t cmd)
     default:
         DPRINTF("[ESP] Unknown command $%02X\r\n", cmd & CMD_CMD);
         esp_command_clear();
+        esp.seqstep = 0;
         esp.intstatus |= INTR_ILL;
         esp_raise_irq();
         break;

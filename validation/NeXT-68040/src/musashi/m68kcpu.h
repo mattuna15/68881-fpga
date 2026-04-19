@@ -1039,6 +1039,7 @@ extern const uint8    m68ki_exception_cycle_table[][256];
 extern uint           m68ki_address_space;
 extern int            mmu040_write_pending;  /* 1 during write translations */
 extern int            mmu040_access_size;    /* SSW SIZE: 0=long, 1=byte, 2=word */
+extern int            mmu040_halted;         /* Sticky: set by MMU HALT path; read/write helpers skip bus access when set */
 extern const uint8    m68ki_ea_idx_cycle_table[];
 
 extern uint           m68ki_aerr_address;
@@ -1162,6 +1163,7 @@ static inline uint m68ki_read_8_fc(uint address, uint fc)
 	    mmu040_write_pending = 0;
 	    mmu040_access_size = 1; /* byte */
 	    address = pmmu_translate_addr(address);
+	    if (mmu040_halted) return 0xFF;  /* skip bus: MMU halt in progress */
 	}
 #endif
 
@@ -1178,6 +1180,7 @@ static inline uint m68ki_read_16_fc(uint address, uint fc)
 	    mmu040_write_pending = 0;
 	    mmu040_access_size = 2; /* word */
 	    address = pmmu_translate_addr(address);
+	    if (mmu040_halted) return 0xFFFF;
 	}
 #endif
 
@@ -1194,6 +1197,7 @@ static inline uint m68ki_read_32_fc(uint address, uint fc)
 	    mmu040_write_pending = 0;
 	    mmu040_access_size = 0; /* long */
 	    address = pmmu_translate_addr(address);
+	    if (mmu040_halted) return 0xFFFFFFFF;
 	}
 #endif
 
@@ -1211,6 +1215,7 @@ static inline void m68ki_write_8_fc(uint address, uint fc, uint value)
 	    mmu040_access_size = 1; /* byte */
 	    address = pmmu_translate_addr(address);
 	    mmu040_write_pending = 0;
+	    if (mmu040_halted) return;
 	}
 #endif
 
@@ -1228,6 +1233,7 @@ static inline void m68ki_write_16_fc(uint address, uint fc, uint value)
 	    mmu040_access_size = 2; /* word */
 	    address = pmmu_translate_addr(address);
 	    mmu040_write_pending = 0;
+	    if (mmu040_halted) return;
 	}
 #endif
 
@@ -1245,6 +1251,7 @@ static inline void m68ki_write_32_fc(uint address, uint fc, uint value)
 	    mmu040_access_size = 0; /* long */
 	    address = pmmu_translate_addr(address);
 	    mmu040_write_pending = 0;
+	    if (mmu040_halted) return;
 	}
 #endif
 

@@ -1272,9 +1272,11 @@ static void next_boot(void)
                 } else if (text_fb_is_dirty()) {
                     text_fb_render();
                     text_fb_mark_clean();
+                    /* Flush exactly the text area — matches the tighter
+                     * range used in render_core1.c for the core-1 path. */
                     Xil_DCacheFlushRange(
                         (UINTPTR)pixel_buf + (TEXT_OFS_Y * SCREEN_W * 4),
-                        (SCREEN_H - TEXT_OFS_Y) * SCREEN_W * 4);
+                        TEXT_PX_H * SCREEN_W * 4);
                     if (dp_ok) dp_video_refresh();
                 }
 #endif

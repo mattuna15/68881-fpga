@@ -29,18 +29,28 @@ void next_vram_mark_clean(void) { vram_dirty = 0; }
 
 void next_vram_get_dirty_lines(uint32_t *out)
 {
-    /* Note: on dual-core configurations the emulator core may set a dirty
-     * bit between memcpy and memset, causing that bit to be lost. This is
-     * benign — the affected scanline will simply be redrawn one frame late.
-     * No memory barrier is needed since the worst case is a single-frame
-     * delay on one scanline. */
-    memcpy(out, vram_dirty_lines, sizeof(vram_dirty_lines));
-    memset(vram_dirty_lines, 0, sizeof(vram_dirty_lines));
+    /* Atomic fetch-and-clear per word.  The previous memcpy+memset
+     * sequence lost bits set by the emulator core between the two
+     * calls: if vram_set_line_dirty fired after the copy but before
+     * the memset, the subsequent zero dropped it and the scanline
+     * update was deferred until the guest rewrote the same line —
+     * potentially forever if the line was written once and never
+     * again.  __atomic_exchange_n snapshots + zeroes each word in
+     * one operation, so any set racing with the fetch lands either
+     * in this batch or the next. */
+    for (unsigned i = 0; i < sizeof(vram_dirty_lines) / sizeof(vram_dirty_lines[0]); i++) {
+        out[i] = __atomic_exchange_n(&vram_dirty_lines[i], 0,
+                                     __ATOMIC_ACQUIRE);
+    }
 }
 
 void next_vram_mark_all_dirty(void)
 {
-    memset(vram_dirty_lines, 0xFF, sizeof(vram_dirty_lines));
+    /* Release-store per word: pairs with the acquire-exchange in
+     * next_vram_get_dirty_lines so a renderer that observes vram_dirty=1
+     * also observes all bits we set here. */
+    for (unsigned i = 0; i < sizeof(vram_dirty_lines) / sizeof(vram_dirty_lines[0]); i++)
+        __atomic_store_n(&vram_dirty_lines[i], 0xFFFFFFFFu, __ATOMIC_RELEASE);
     vram_dirty = 1;
 }
 
@@ -48,7 +58,11 @@ static inline void vram_set_line_dirty(uint32_t offset)
 {
     uint32_t line = offset / NEXT_VIDEO_NBPL;
     if (line < 832) {
-        vram_dirty_lines[line >> 5] |= (1u << (line & 31));
+        /* Atomic OR: the render core may be exchanging this word
+         * concurrently; a plain |= would corrupt the word. */
+        __atomic_fetch_or(&vram_dirty_lines[line >> 5],
+                          1u << (line & 31),
+                          __ATOMIC_RELEASE);
     }
 }
 

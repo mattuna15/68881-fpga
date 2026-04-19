@@ -45,9 +45,16 @@ static void io_log(const char *rw, uint32_t addr, uint32_t val, int size)
     if (rw[0] == 'R')
         xil_printf("[IO] R%d $%08X  PC=$%08X PPC=$%08X\r\n",
                    size*8, addr, pc, ppc);
-    else
-        xil_printf("[IO] W%d $%08X = $%08X  PC=$%08X PPC=$%08X\r\n",
-                   size*8, addr, val, pc, ppc);
+    else {
+        /* Mask val to the actual write width so the trace doesn't
+         * surface the upper bits of the caller's 32-bit register for
+         * 8/16-bit writes. */
+        uint32_t vmask = (size >= 4) ? 0xFFFFFFFFu
+                       : (size == 2) ? 0x0000FFFFu
+                                     : 0x000000FFu;
+        xil_printf("[IO] W%d $%08X = $%0*X  PC=$%08X PPC=$%08X\r\n",
+                   size*8, addr, size*2, val & vmask, pc, ppc);
+    }
     if (++io_log_count >= IO_LOG_LIMIT) {
         next_debug_io = 0;
         xil_printf("[IO] auto-stop after %d entries\r\n", IO_LOG_LIMIT);
@@ -143,21 +150,27 @@ void next_softint_enable(void)
  * software-side high bits by catching the 20-bit hardware counter's
  * bit-19 transitions at every hardclock tick.
  *
- * EVENTC_BOOST must stay at 1.  A previous version raised it to 4096 to
- * make event_timeout's VM-metering bit-19 check complete quickly, but
- * that caused the hardware counter to wrap ~256 times between hardclock
- * ticks (268M emu-µs advance per 65535-µs tick).  event_sync only
- * catches ONE wrap per call, so *event_middle drifted arbitrarily far
- * from the real counter and event_get() returned garbage.  us_delay()
- * stuck in its while loop (event_delta never exceeded usecs reliably),
- * and kernel mount hung at vfs_mountroot.
+ * EVENTC_BOOST must stay at 1.  A previous version raised it to 4096
+ * in an attempt to speed up long kernel timeouts, but that caused the
+ * 20-bit hardware counter to wrap ~256 times between hardclock ticks
+ * (268M emu-µs advance per 65535-µs tick).  The bit-19 wrap-detection
+ * check lives in `event_sync()` / `event_get()` — see NeXTMach
+ * `next/eventc.h` lines 74-100, the `(t ^ *event_middle) & EVENT_HIGHBIT`
+ * test.  `event_sync` is invoked once per `us_timer_int` (us_timer.c:244),
+ * so it only catches ONE wrap per hardclock.  With BOOST=4096 the real
+ * counter wraps 256× per tick, `*event_middle` drifts arbitrarily, and
+ * `event_get()` returns garbage.  `us_delay()` then spins forever in
+ * its `while ((delta = event_delta(start)) < usecs)` loop because
+ * delta is unreliable — which hung the kernel at vfs_mountroot.
  *
  * With BOOST=1, eventc advances 1:1 with emulated µs (25 cycles each).
- * event_sync sees at most a few thousand ticks between calls — far
- * below half-wrap (0x80000) — so event_middle tracks accurately and
- * event_get is always correct.  The trade-off: kernel code measuring
- * long timeouts in eventc (event_timeout's 524288-µs window) advances
- * at real emu-µs rate.  Works correctly, just paced to our throughput.
+ * `event_sync` sees at most a few thousand ticks between calls — far
+ * below half-wrap (0x80000 = 524288 µs) — so `event_middle` tracks
+ * accurately and `event_get` is always correct.  The trade-off: kernel
+ * code measuring long wall-clock windows in eventc advances at our
+ * emu-µs rate (slower than real 25 MHz), so any timeout in seconds
+ * stretches by the emulator's slowdown factor.  Works correctly, just
+ * paced to our throughput.
  *
  * TIMER_COUNTER_BOOST is separate: it drives the 16-bit live counter
  * at P_TIMER that the ROM POST reads for its DBEQ calibration.  That
@@ -738,14 +751,20 @@ int next_intr_pending_ipl(void)
 
 int next_intr_acknowledge(int level)
 {
-    /* Auto-clear softint on acknowledge — edge-triggered behavior.
-     * When the CPU enters the ISR, the pending bit clears so the
-     * interrupt doesn't re-fire immediately when the handler returns.
-     * The kernel re-triggers by writing SCR2 again if needed. */
-    if (level == 1)
-        intr_status &= ~I_IPL1_SOFTINT0;
-    else if (level == 2)
-        intr_status &= ~I_IPL2_SOFTINT1;
+    /* SOFTINT0/1 are level-sensitive lines owned by SCR2 — the kernel
+     * clears them by writing the SCR2 SOFTINT bit to 0, which routes
+     * through the SCR2 write path in next_io_write_32 and calls
+     * next_intr_clear.  Do NOT auto-clear on acknowledge: if SCR2 is
+     * still asserted while the handler drains deferred work, clearing
+     * here converts the line to a one-shot pulse and can strand the
+     * pending callout until a new SCR2 edge arrives.
+     *
+     * The vector-entry side-effect is handled by the CPU itself (SR
+     * IPL mask goes to level+1 so a same-level re-fire is masked until
+     * RTE).  All other IPLs are edge-cleared by the device (DMA_COMPLETE
+     * reset, ESP intstatus clear, etc.) via next_intr_clear — no
+     * kernel-visible behavior needs acknowledgment here. */
+    (void)level;
     return -1;  /* autovector */
 }
 
@@ -803,13 +822,19 @@ void next_intr_set(uint32_t bit)
      * immediately, it races with the tape driver's STF_POLL_IP flag setup
      * (set AFTER splx, but the interrupt fires DURING splx).
      *
-     * Instead, set a flag that emu_instr_hook checks on the NEXT instruction.
-     * This gives exactly 1-instruction deferral — enough for splx to
-     * complete, but not the 10,000-instruction deferral that caused the
-     * biowait deadlock on open("/dev/console"). */
+     * Instead, set a countdown that emu_instr_hook decrements on each
+     * instruction.  ~10 instructions is enough for splx to complete but
+     * short enough to avoid the 10,000-instruction deferral that caused
+     * the biowait deadlock on open("/dev/console").
+     *
+     * Coalesce on re-set: if a countdown is already running, keep the
+     * earlier one (don't reset it — otherwise two back-to-back set()s
+     * within 10 insns silently extend the delivery window for the first
+     * IRQ). */
     if (bit == I_IPL3_SCSI) {
         extern volatile int next_irq_pending_update;
-        next_irq_pending_update = 10;  /* deliver after ~10 instructions */
+        if (next_irq_pending_update <= 0)
+            next_irq_pending_update = 10;
         return;
     }
     /* DMA completion (IPL6) must be delivered immediately — the kernel's
@@ -843,6 +868,14 @@ void next_intr_clear(uint32_t bit)
     }
 #endif /* NEXT_DEBUG_DMA */
     intr_status &= ~bit;
+    /* If the cleared bit had a pending deferred delivery, cancel it —
+     * otherwise the countdown fires later and asserts m68k_set_irq
+     * with a stale IPL for a bit that is no longer in intr_status. */
+    if (bit == I_IPL3_SCSI) {
+        extern volatile int next_irq_pending_update;
+        if (next_irq_pending_update > 0 && !(intr_status & I_IPL3_SCSI))
+            next_irq_pending_update = 0;
+    }
     int ipl = next_intr_pending_ipl();
     if (next_debug_scsi && bit != I_IPL6_TIMER)
         xil_printf("[IRQ-] clr $%08X → status=$%08X ipl=%d\r\n",
@@ -1248,7 +1281,12 @@ uint32_t next_io_read_32(uint32_t address)
                 xil_printf("[ENET-DMA] R32 @%08X ch=%d csr=$%02X PC=$%08X\r\n",
                            address, ch, dma_csr[ch],
                            m68k_get_reg(NULL, M68K_REG_PC));
-            return ((uint32_t)dma_csr[ch] << 24) | 0x00000040;
+            /* Non-SCSI channels: plain CSR.  The `| 0x40` chip-313
+             * workaround ("CSR never reads zero") is SCSI-specific and
+             * already applied inside next_scsi_dma_csr_read() above;
+             * applying it here too would poison bit 6 for floppy,
+             * sound, and ethernet drivers that may test lower bits. */
+            return (uint32_t)dma_csr[ch] << 24;
         }
     }
 

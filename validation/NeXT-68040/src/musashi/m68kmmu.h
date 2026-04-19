@@ -239,7 +239,18 @@ static uint32_t mmu040_fault_addr = 0;
 static uint32_t mmu040_fault_ring_va[MMU040_FAULT_RING];
 static uint32_t mmu040_fault_ring_ppc[MMU040_FAULT_RING];
 static uint16_t mmu040_fault_ring_ssw[MMU040_FAULT_RING];
-static int      mmu040_fault_ring_idx;
+static unsigned mmu040_fault_ring_idx;  /* unsigned: mask arithmetic stays defined on wrap */
+
+/* Sticky halted flag — set in the ATC-fault HALT path.  m68k_pulse_halt()
+ * only stops the CPU at the next instruction boundary, but
+ * pmmu_translate_addr_040 has already committed to returning an address
+ * for the current memory access.  Returning addr_in (identity) lets the
+ * caller read whatever happens to live at that physical address (ROM,
+ * low RAM, or unmapped zero), which is the source of the spurious F-line
+ * `$FBFF` / `$FFDB` opcodes we saw before this flag existed.  Callers in
+ * m68kcpu.h's read/write fc helpers check mmu040_halted and skip the bus
+ * access.  Defined in m68kcpu.c, extern'd in m68kcpu.h. */
+extern int mmu040_halted;
 
 /* Walk result info — set by pmmu_walk_040 for TLB fill */
 static uint mmu040_walk_wp = 0;        /* accumulated write-protect */
@@ -510,7 +521,7 @@ uint pmmu_translate_addr_040(uint addr_in)
 
 		/* Push into fault ring — used by HALT dump to show cascade shape. */
 		{
-			int ri = mmu040_fault_ring_idx & (MMU040_FAULT_RING - 1);
+			unsigned ri = mmu040_fault_ring_idx & (MMU040_FAULT_RING - 1);
 			mmu040_fault_ring_va [ri] = addr_in;
 			mmu040_fault_ring_ppc[ri] = REG_PPC;
 			mmu040_fault_ring_ssw[ri] = (uint16_t)ssw;
@@ -523,27 +534,44 @@ uint pmmu_translate_addr_040(uint addr_in)
 		 * successful RTE-from-format-7.  A legitimate page-fault is
 		 * fault → buserr handler → vm_fault → pmap_enter → RTE, so
 		 * rte_format7_count rises in lock-step with mmu040_fault_total.
-		 *
 		 * An unresolved fault loop (kernel can't page the page in)
 		 * keeps faulting without matching RTEs — that's the signature
-		 * we want to catch.  A generous slack of 256 covers nested
-		 * faults (page-table page faults during a user fault walk)
-		 * and outstanding-in-flight faults.  During post-userspace
-		 * boot it is normal to accumulate thousands of total faults. */
-		int unresolved = mmu040_fault_total - rte_format7_count;
-		if (unresolved > 256) {
-			xil_printf("[MMU040] HALT: %d unresolved ATC faults (total=%d RTE7=%d)\r\n",
+		 * we want to catch.
+		 *
+		 * Slack of 256 is empirically chosen: the kernel's bus-error
+		 * handler can take a nested fault when walking page-table pages
+		 * that are themselves paged out, so 1 user fault may correspond
+		 * to 2-3 physical faults resolved by separate RTEs before the
+		 * outer RTE fires.  Below the threshold we trust kernel-side
+		 * progress.  During post-userspace boot it is normal to
+		 * accumulate many thousands of total faults.
+		 *
+		 * Both counters are int; on a billion-fault run either could
+		 * approach INT_MAX.  Cast to unsigned before subtraction so the
+		 * comparison stays monotone even if wrap occurs — a genuine
+		 * divergence of 256 faults still trips, and a benign ordering
+		 * glitch (RTE logged slightly before fault_total increments)
+		 * produces a tiny unsigned result, not a huge one. */
+		unsigned unresolved =
+		    (unsigned)mmu040_fault_total - (unsigned)rte_format7_count;
+		if (unresolved > 256 && unresolved < 0x10000000u) {
+			xil_printf("[MMU040] HALT: %u unresolved ATC faults (total=%d RTE7=%d)\r\n",
 			           unresolved, mmu040_fault_total, rte_format7_count);
 			xil_printf("[MMU040] URP=$%08X SRP=$%08X last %d fault VAs (oldest→newest):\r\n",
 			           m68ki_cpu.mmu_040_urp, m68ki_cpu.mmu_040_srp,
 			           MMU040_FAULT_RING);
 			for (int k = 0; k < MMU040_FAULT_RING; k++) {
-				int ri = (mmu040_fault_ring_idx + k) & (MMU040_FAULT_RING - 1);
+				unsigned ri = (mmu040_fault_ring_idx + k) & (MMU040_FAULT_RING - 1);
 				xil_printf("  [%2d] VA=$%08X PPC=$%08X SSW=$%04X\r\n",
 				           k, mmu040_fault_ring_va[ri],
 				           mmu040_fault_ring_ppc[ri],
 				           mmu040_fault_ring_ssw[ri]);
 			}
+			/* Sticky halt: the current instruction's bus access is
+			 * about to follow this return value.  Flag is checked by
+			 * m68ki_read_/write_*_fc helpers so they skip the access
+			 * instead of reading garbage from the identity-mapped PA. */
+			mmu040_halted = 1;
 			m68k_end_timeslice();
 			m68k_pulse_halt();
 			return addr_in;

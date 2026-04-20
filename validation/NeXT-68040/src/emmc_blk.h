@@ -2,12 +2,10 @@
  * emmc_blk.h
  * Raw block access to the on-board AXU3EG eMMC (ZynqMP SDPS instance 0
  * at 0xFF160000), used as the backing store for the NeXTSTEP install
- * target disk (SCSI target 6 LUN 0 when the boot menu selects "eMMC",
- * LUN 1 when the boot menu selects "SD installer").
+ * target disk exposed as SCSI target 0 in next_scsi.c.
  *
  * The NeXT guest never hits eMMC directly - these calls are used by the
- * SCSI backing store (next_scsi.c) once the firmware has chosen which
- * disk maps to which LUN.
+ * SCSI backing store once it's routed a target-0 CDB here.
  *
  * All I/O goes through FatFS's low-level block layer (disk_read,
  * disk_write in fatfs/diskio.c) which owns the XSdPs instance.  We do
@@ -16,8 +14,7 @@
  *
  * Safety: every read/write LBA is offset by EMMC_TARGET_BASE_LBA and
  * bounds-checked against EMMC_TARGET_MAX_SECTORS to keep us from
- * stomping on whatever else lives on the eMMC (U-Boot, Linux rootfs,
- * factory partitions).
+ * stomping on anything else that might live on the eMMC later.
  */
 
 #ifndef EMMC_BLK_H
@@ -30,12 +27,14 @@
  * validation/platform-68-linux/.../bsp/libsrc/sdps/src/xsdps_g.c. */
 #define EMMC_PDRV               0
 
-/* Window on eMMC used for the NeXTSTEP target disk.  Chosen to sit past
- * any FSBL / U-Boot / factory data typically found at the start of the
- * eMMC on a Xilinx board.  2 GiB offset, 2 GiB window (4 * 1024 * 1024
- * 512-byte sectors = 2 GiB) matches the size of images/NS33_2GB.dd and
- * leaves headroom on the 8 GB part. */
-#define EMMC_TARGET_BASE_LBA    0x00400000u    /* byte offset 2 GiB */
+/* Window on eMMC used for the NeXTSTEP target disk.
+ *   BASE_LBA = 0      : user confirmed eMMC is fresh (no FSBL/U-Boot/Linux
+ *                       partition to avoid).  Start at LBA 0 for simplicity.
+ *   MAX_SECTORS = 4M  : 2 GiB window (4*1024*1024 * 512 bytes), matches
+ *                       images/NS33_2GB.dd for parity with period-realistic
+ *                       installs; plenty of room for NEXTSTEP 3.3 Core +
+ *                       Developer + user space. */
+#define EMMC_TARGET_BASE_LBA    0u
 #define EMMC_TARGET_MAX_SECTORS (4u * 1024u * 1024u)
 
 /* Sector size (512 bytes - matches SCSI_BLOCKSIZE and FatFS). */
@@ -61,5 +60,19 @@ static inline uint64_t emmc_blk_window_bytes(void)
 {
     return (uint64_t)EMMC_TARGET_MAX_SECTORS * EMMC_BLOCKSIZE;
 }
+
+/* One-shot flasher: copy a FatFS-hosted raw disk image to the eMMC
+ * target window, starting at LBA 0.  The caller is expected to have
+ * already mounted the FatFS volume that hosts `path` (register_sd_
+ * installer_at_target6 does this for the SD card).  Contents beyond
+ * EMMC_TARGET_MAX_SECTORS in the source file are silently truncated;
+ * short source files leave the tail of the window untouched.  Returns
+ * 0 on success, -1 on any FatFS or eMMC error.  Prints progress. */
+int emmc_blk_flash_from_file(const char *path);
+
+/* Read-back verify: re-open `path`, re-read eMMC in chunks, compare.
+ * Reports the first mismatching LBA (if any) and the total count of
+ * bad sectors.  Returns 0 if identical, -1 on any diff or error. */
+int emmc_blk_verify_against_file(const char *path);
 
 #endif /* EMMC_BLK_H */

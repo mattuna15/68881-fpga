@@ -10,8 +10,8 @@
  * On QEMU: no display, but the conversion still runs (can be disabled).
  */
 
-#ifndef NEXT_VIDEO_H
-#define NEXT_VIDEO_H
+#ifndef NEXT_VIDEO_H_GUARD
+#define NEXT_VIDEO_H_GUARD
 
 #include <stdint.h>
 
@@ -51,4 +51,4 @@ void next_video_render(void);
 int next_video_is_dirty(void);
 void next_video_mark_clean(void);
 
-#endif /* NEXT_VIDEO_H */
+#endif /* NEXT_VIDEO_H_GUARD */

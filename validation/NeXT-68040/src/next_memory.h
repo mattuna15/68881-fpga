@@ -112,7 +112,7 @@ static inline uint32_t next_phys_read_32(uint32_t addr)
     {
         static int unmapped_log = 0;
         if (unmapped_log < 10) {
-            xil_printf("[PHYS] WARNING: read from unmapped $%08X\r\n", addr);
+            if (0) xil_printf("[PHYS] WARNING: read from unmapped $%08X\r\n", addr);
             unmapped_log++;
         }
     }

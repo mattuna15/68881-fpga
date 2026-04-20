@@ -595,8 +595,13 @@ void next_devs_init(void)
 /* SCC serial helpers                                                  */
 /* ------------------------------------------------------------------ */
 
+uint32_t scc_rx_push_total = 0;
+uint32_t scc_rx_push_0x03  = 0;
+
 int next_scc_rx_push(uint8_t ch)
 {
+    scc_rx_push_total++;
+    if (ch == 0x03) scc_rx_push_0x03++;
     int next = (scc_rx_head + 1) % SCC_RXBUF_SIZE;
     if (next == scc_rx_tail) {
         static int drop_count = 0;
@@ -782,17 +787,6 @@ static uint64_t dma_irq_last_clear_instr;
 void next_intr_set(uint32_t bit)
 {
     extern int next_debug_scsi;
-    {
-        static int irq_set_log = 0;
-        if (irq_set_log < 40) {
-            xil_printf("[IRQ+] set $%08X PC=$%08X SR=$%04X (prev status=$%08X)\r\n",
-                       bit,
-                       m68k_get_reg(NULL, M68K_REG_PC),
-                       m68k_get_reg(NULL, M68K_REG_SR) & 0xFFFF,
-                       intr_status);
-            irq_set_log++;
-        }
-    }
 
 #if NEXT_DEBUG_DMA
     /* Extra diagnostic for DMA IPL6: correlate the set with our deferred
@@ -904,19 +898,22 @@ uint8_t next_io_read_8(uint32_t address)
         }
         uint8_t *p = &probed8[phase8];
         if (!((*p) & 0x01) && address >= 0x02014000 && address < 0x02014020) {
-            *p |= 0x01; xil_printf("[PROBE%d] ESP (byte) at $%08X\r\n", phase8, address);
+            *p |= 0x01;
+            if (next_debug_scsi) xil_printf("[PROBE%d] ESP (byte) at $%08X\r\n", phase8, address);
         }
         if (!((*p) & 0x02) && address >= 0x02014100 && address <= 0x02014108) {
-            *p |= 0x02; xil_printf("[PROBE%d] Floppy (byte) at $%08X\r\n", phase8, address);
+            *p |= 0x02;
+            if (next_debug_scsi) xil_printf("[PROBE%d] Floppy (byte) at $%08X\r\n", phase8, address);
         }
         if (!((*p) & 0x04) && address >= 0x02006000 && address < 0x02006010) {
-            *p |= 0x04; xil_printf("[PROBE%d] Ethernet (byte) at $%08X\r\n", phase8, address);
+            *p |= 0x04;
+            if (next_debug_scsi) xil_printf("[PROBE%d] Ethernet (byte) at $%08X\r\n", phase8, address);
         }
         if (!((*p) & 0x08) && address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE) {
-            *p |= 0x08; xil_printf("[PROBE%d] DSP (byte) at $%08X\r\n", phase8, address);
+            *p |= 0x08; if (next_debug_scsi) xil_printf("[PROBE%d] DSP (byte) at $%08X\r\n", phase8, address);
         }
         if (!((*p) & 0x10) && address >= 0x02018000 && address < 0x02018004) {
-            *p |= 0x10; xil_printf("[PROBE%d] SCC (byte) at $%08X\r\n", phase8, address);
+            *p |= 0x10; if (next_debug_scsi) xil_printf("[PROBE%d] SCC (byte) at $%08X\r\n", phase8, address);
         }
     }
 
@@ -971,7 +968,7 @@ uint8_t next_io_read_8(uint32_t address)
         uint8_t val = enet_reg_read(reg);
         static int en_r_log = 0;
         if (en_r_log < 40) {
-            xil_printf("[ENET] R8 @%08X reg=$%X val=$%02X PC=$%08X\r\n",
+            if (next_debug_scsi) xil_printf("[ENET] R8 @%08X reg=$%X val=$%02X PC=$%08X\r\n",
                        address, reg, val,
                        m68k_get_reg(NULL, M68K_REG_PC));
             en_r_log++;
@@ -987,7 +984,7 @@ uint8_t next_io_read_8(uint32_t address)
     if (address >= 0x02014100 && address <= 0x02014108) {
         static int flp_log = 0;
         if (flp_log < 10) {
-            xil_printf("[FLP] R8 @%08X → 0\r\n", address);
+            if (next_debug_scsi) xil_printf("[FLP] R8 @%08X → 0\r\n", address);
             flp_log++;
         }
         if (address == 0x02014104)
@@ -1053,11 +1050,6 @@ uint8_t next_io_read_8(uint32_t address)
     if (address == P_EVENTC) {
         next_eventc_read_count++;
         event_latch = eventc_synced();
-        /* Log every 1000th read to see if value advances */
-        if ((next_eventc_read_count % 50000) == 0)
-            xil_printf("[EVENTC] #%u val=$%08X (us=%u run=%d base=%d)\r\n",
-                       next_eventc_read_count, event_latch,
-                       eventc_us, m68k_cycles_run(), eventc_batch_base);
         return (event_latch >> 24) & 0xFF;  /* byte 0: bits 31-24 */
     }
     if (address == P_EVENTC + 1)
@@ -1092,7 +1084,7 @@ uint8_t next_io_read_8(uint32_t address)
         uint32_t val32 = next_io_read_32(aligned);
         int shift = 8 * (3 - (address & 3));
         if (address >= 0x02208000 && address < 0x02208100)
-            xil_printf("[ADB] R8  @%08X val=$%02X PC=$%08X\r\n",
+            if (next_debug_scsi) xil_printf("[ADB] R8  @%08X val=$%02X PC=$%08X\r\n",
                        address, (val32 >> shift) & 0xFF,
                        m68k_get_reg(NULL, M68K_REG_PC));
         return (val32 >> shift) & 0xFF;
@@ -1140,7 +1132,7 @@ uint32_t next_io_read_32(uint32_t address)
         if (vbr != last_vbr && vbr_log < 15) {
             uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
             uint32_t sp = m68k_get_reg(NULL, M68K_REG_A7);
-            xil_printf("[VBR] change $%08X -> $%08X at PC=$%08X A7=$%08X\r\n",
+            if (next_debug_scsi) xil_printf("[VBR] change $%08X -> $%08X at PC=$%08X A7=$%08X\r\n",
                        last_vbr, vbr, pc, sp);
             last_vbr = vbr;
             vbr_log++;
@@ -1158,22 +1150,22 @@ uint32_t next_io_read_32(uint32_t address)
         }
         uint8_t *p = &probed[phase];
         if (!((*p) & 0x01) && address >= 0x02014000 && address < 0x02014020) {
-            *p |= 0x01; xil_printf("[PROBE%d] SCSI (ESP) at $%08X\r\n", phase, address);
+            *p |= 0x01; if (next_debug_scsi) xil_printf("[PROBE%d] SCSI (ESP) at $%08X\r\n", phase, address);
         }
         if (!((*p) & 0x02) && address >= 0x02006000 && address < 0x02006010) {
-            *p |= 0x02; xil_printf("[PROBE%d] Ethernet at $%08X\r\n", phase, address);
+            *p |= 0x02; if (next_debug_scsi) xil_printf("[PROBE%d] Ethernet at $%08X\r\n", phase, address);
         }
         if (!((*p) & 0x04) && address >= P_DSP_BASE && address < P_DSP_BASE + P_DSP_SIZE) {
-            *p |= 0x04; xil_printf("[PROBE%d] DSP at $%08X\r\n", phase, address);
+            *p |= 0x04; if (next_debug_scsi) xil_printf("[PROBE%d] DSP at $%08X\r\n", phase, address);
         }
         if (!((*p) & 0x08) && address >= 0x02200000 && address < 0x02210000) {
-            *p |= 0x08; xil_printf("[PROBE%d] TMC/ADB at $%08X\r\n", phase, address);
+            *p |= 0x08; if (next_debug_scsi) xil_printf("[PROBE%d] TMC/ADB at $%08X\r\n", phase, address);
         }
         if (!((*p) & 0x10) && address == 0x02010000) {
-            *p |= 0x10; xil_printf("[PROBE%d] Brightness at $%08X\r\n", phase, address);
+            *p |= 0x10; if (next_debug_scsi) xil_printf("[PROBE%d] Brightness at $%08X\r\n", phase, address);
         }
         if (!((*p) & 0x20) && address >= 0x0200E000 && address < 0x0200E010) {
-            *p |= 0x20; xil_printf("[PROBE%d] KMS at $%08X\r\n", phase, address);
+            *p |= 0x20; if (next_debug_scsi) xil_printf("[PROBE%d] KMS at $%08X\r\n", phase, address);
         }
     }
 
@@ -1205,7 +1197,7 @@ uint32_t next_io_read_32(uint32_t address)
         static int pmon_same_pc = 0;
         uint32_t pc = m68k_get_reg(NULL, M68K_REG_PC);
         if (pmon_log < 5)
-            xil_printf("[PMON] R32 @%08X → KMS off %X PC=$%08X\r\n",
+            if (next_debug_scsi) xil_printf("[PMON] R32 @%08X → KMS off %X PC=$%08X\r\n",
                        address, address - P_MON, pc);
         pmon_log++;
         if (pc == pmon_last_pc) {
@@ -1216,7 +1208,7 @@ uint32_t next_io_read_32(uint32_t address)
             if (pmon_same_pc == 8)
                 next_kms_force_response();
             if (pmon_same_pc == 5000)
-                xil_printf("[KMS-LOOP] PC=$%08X still spinning on KMS off %X\r\n",
+                if (next_debug_scsi) xil_printf("[KMS-LOOP] PC=$%08X still spinning on KMS off %X\r\n",
                            pc, address - P_MON);
         } else {
             pmon_last_pc = pc;
@@ -1225,7 +1217,7 @@ uint32_t next_io_read_32(uint32_t address)
         /* Detect kernel phase polling (console input wait) */
         if (pmon_log > 100 && !pmon_late) {
             pmon_late = 1;
-            xil_printf("[KMS-POLL] Kernel polling KMS — likely waiting for console input!\r\n");
+            if (next_debug_scsi) xil_printf("[KMS-POLL] Kernel polling KMS — likely waiting for console input!\r\n");
         }
         return next_kms_read(address - P_MON);
     }
@@ -1278,7 +1270,7 @@ uint32_t next_io_read_32(uint32_t address)
                 return val;
             }
             if (ch == 7 || ch == 8)
-                xil_printf("[ENET-DMA] R32 @%08X ch=%d csr=$%02X PC=$%08X\r\n",
+                if (next_debug_scsi) xil_printf("[ENET-DMA] R32 @%08X ch=%d csr=$%02X PC=$%08X\r\n",
                            address, ch, dma_csr[ch],
                            m68k_get_reg(NULL, M68K_REG_PC));
             /* Non-SCSI channels: plain CSR.  The `| 0x40` chip-313
@@ -1342,7 +1334,7 @@ uint32_t next_io_read_32(uint32_t address)
             case ADB_REG_DATA1:     val = adb.data1;     break;
             default:                val = 0;             break;
             }
-            xil_printf("[ADB] R32 @%08X reg=$%02X val=$%08X PC=$%08X\r\n",
+            if (next_debug_scsi) xil_printf("[ADB] R32 @%08X reg=$%02X val=$%08X PC=$%08X\r\n",
                        address, adb_reg, val, m68k_get_reg(NULL, M68K_REG_PC));
             return val;
         }
@@ -1353,7 +1345,7 @@ uint32_t next_io_read_32(uint32_t address)
     {
         static int unk_log = 0;
         if (unk_log < 20)
-            xil_printf("[IO?] R32 @%08X → 0\r\n", address);
+            if (next_debug_scsi) xil_printf("[IO?] R32 @%08X → 0\r\n", address);
         unk_log++;
     }
     return 0;
@@ -1418,7 +1410,7 @@ void next_io_write_8(uint32_t address, uint8_t value)
         uint32_t reg = address - 0x02006000;
         static int en_w_log = 0;
         if (en_w_log < 40) {
-            xil_printf("[ENET] W8 @%08X reg=$%X val=$%02X PC=$%08X\r\n",
+            if (next_debug_scsi) xil_printf("[ENET] W8 @%08X reg=$%X val=$%02X PC=$%08X\r\n",
                        address, reg, value,
                        m68k_get_reg(NULL, M68K_REG_PC));
             en_w_log++;
@@ -1495,7 +1487,7 @@ void next_io_write_8(uint32_t address, uint8_t value)
         }
         if ((hardclock_csr & HARDCLOCK_ENABLE) && latch_hardclock > 0) {
             static int timer_log = 0;
-            if (timer_log < 5) { timer_log++; xil_printf("[TIMER] enable periodic IRQ every %d us\r\n", latch_hardclock); }
+            if (timer_log < 5) { timer_log++; if (next_debug_scsi) xil_printf("[TIMER] enable periodic IRQ every %d us\r\n", latch_hardclock); }
         }
         /* Writing CSR clears timer interrupt */
         next_intr_clear(I_IPL6_TIMER);
@@ -1509,7 +1501,7 @@ void next_io_write_8(uint32_t address, uint8_t value)
         uint32_t cur = next_io_read_32(aligned);
         uint32_t newv = (cur & ~(0xFFu << shift)) | ((uint32_t)value << shift);
         if (address >= 0x02208000 && address < 0x02208100)
-            xil_printf("[ADB] W8  @%08X val=$%02X PC=$%08X\r\n",
+            if (next_debug_scsi) xil_printf("[ADB] W8  @%08X val=$%02X PC=$%08X\r\n",
                        address, value, m68k_get_reg(NULL, M68K_REG_PC));
         next_io_write_32(aligned, newv);
         return;
@@ -1553,7 +1545,7 @@ void next_io_write_32(uint32_t address, uint32_t value)
     if (address == P_SCR2) {
         static int scr2_log_count = 0;
         if (scr2_log_count < 3) {
-            xil_printf("[SCR2] W32 $%08X (RTCE=%d RTCLK=%d RTDATA=%d)\r\n",
+            if (next_debug_scsi) xil_printf("[SCR2] W32 $%08X (RTCE=%d RTCLK=%d RTDATA=%d)\r\n",
                        value,
                        (value >> 8) & 1,   /* SCR2_RTCE */
                        (value >> 9) & 1,   /* SCR2_RTCLK */
@@ -1568,7 +1560,7 @@ void next_io_write_32(uint32_t address, uint32_t value)
         if (softint_enabled && ((value ^ scr2_value) & SCR2_SOFTINT0)) {
             static int si0_log = 0;
             if (si0_log < 10) {
-                xil_printf("[SI0] %s PC=$%08X\r\n",
+                if (next_debug_scsi) xil_printf("[SI0] %s PC=$%08X\r\n",
                     (value & SCR2_SOFTINT0) ? "SET" : "CLR",
                     m68k_get_reg(NULL, M68K_REG_PC));
                 si0_log++;
@@ -1581,7 +1573,7 @@ void next_io_write_32(uint32_t address, uint32_t value)
         if (softint_enabled && ((value ^ scr2_value) & SCR2_SOFTINT1)) {
             static int si1_log = 0;
             if (si1_log < 10) {
-                xil_printf("[SI1] %s PC=$%08X\r\n",
+                if (next_debug_scsi) xil_printf("[SI1] %s PC=$%08X\r\n",
                     (value & SCR2_SOFTINT1) ? "SET" : "CLR",
                     m68k_get_reg(NULL, M68K_REG_PC));
                 si1_log++;
@@ -1604,7 +1596,7 @@ void next_io_write_32(uint32_t address, uint32_t value)
             uint32_t delta = value ^ old_mask;
             /* Always log SCSI-related mask changes */
             if (delta & I_IPL3_SCSI)
-                xil_printf("[IRQ-MASK] SCSI bit %s: $%08X → $%08X\r\n",
+                if (next_debug_scsi) xil_printf("[IRQ-MASK] SCSI bit %s: $%08X → $%08X\r\n",
                            (value & I_IPL3_SCSI) ? "SET" : "CLEARED",
                            old_mask, value);
             else if (next_debug_scsi)
@@ -1663,7 +1655,7 @@ void next_io_write_32(uint32_t address, uint32_t value)
                 return;
             }
             if (ch == 7 || ch == 8)
-                xil_printf("[ENET-DMA] W32 @%08X ch=%d val=$%08X PC=$%08X\r\n",
+                if (next_debug_scsi) xil_printf("[ENET-DMA] W32 @%08X ch=%d val=$%08X PC=$%08X\r\n",
                            address, ch, value,
                            m68k_get_reg(NULL, M68K_REG_PC));
             /* Decode Turbo write bits and update internal state,
@@ -1741,7 +1733,7 @@ void next_io_write_32(uint32_t address, uint32_t value)
         /* ADB registers at TMC+$8000-$80FF */
         if (tmc_off >= 0x8000 && tmc_off < 0x8100) {
             uint32_t adb_reg = tmc_off - 0x8000;
-            xil_printf("[ADB] W32 @%08X reg=$%02X val=$%08X PC=$%08X\r\n",
+            if (next_debug_scsi) xil_printf("[ADB] W32 @%08X reg=$%02X val=$%08X PC=$%08X\r\n",
                        address, adb_reg, value, m68k_get_reg(NULL, M68K_REG_PC));
             switch (adb_reg) {
             case ADB_REG_INTSTATUS:

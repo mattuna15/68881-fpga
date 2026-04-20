@@ -310,7 +310,7 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k, int write)
 	if ((l1_desc & 2) == 0) {  /* bit 1 must be set for valid UDT */
 		static int l1_fault_log = 0;
 		if (l1_fault_log < 100) {
-			xil_printf("[MMU040] L1 FAULT: VA=$%08X root=$%08X idx=%d desc=$%08X PPC=$%08X\r\n",
+			if (0) xil_printf("[MMU040] L1 FAULT: VA=$%08X root=$%08X idx=%d desc=$%08X PPC=$%08X\r\n",
 			           addr_in, root_ptr, l1_idx, l1_desc, REG_PPC);
 			l1_fault_log++;
 		}
@@ -331,7 +331,7 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k, int write)
 	if ((l2_desc & 2) == 0) {
 		static int l2_fault_log = 0;
 		if (l2_fault_log < 100) {
-			xil_printf("[MMU040] L2 FAULT: VA=$%08X l2_base=$%08X idx=%d desc=$%08X PPC=$%08X\r\n",
+			if (0) xil_printf("[MMU040] L2 FAULT: VA=$%08X l2_base=$%08X idx=%d desc=$%08X PPC=$%08X\r\n",
 			           addr_in, l2_base, l2_idx, l2_desc, REG_PPC);
 			l2_fault_log++;
 		}
@@ -368,7 +368,7 @@ static uint pmmu_walk_040(uint addr_in, uint root_ptr, int page_8k, int write)
 	if ((l3_desc & 1) == 0) {
 		static int l3_fault_log = 0;
 		if (l3_fault_log < 100) {
-			xil_printf("[MMU040] L3 FAULT: VA=$%08X l3_base=$%08X idx=%d desc=$%08X PPC=$%08X\r\n",
+			if (0) xil_printf("[MMU040] L3 FAULT: VA=$%08X l3_base=$%08X idx=%d desc=$%08X PPC=$%08X\r\n",
 			           addr_in, l3_base, l3_idx, l3_desc, REG_PPC);
 			l3_fault_log++;
 		}
@@ -428,11 +428,11 @@ uint pmmu_translate_addr_040(uint addr_in)
 		return addr_in;
 
 	if (mmu040_log_count < 20) {
-		xil_printf("[MMU040] translate $%08X TC=$%04X SRP=$%08X\n",
+		if (0) xil_printf("[MMU040] translate $%08X TC=$%04X SRP=$%08X\n",
 		           addr_in, tc, m68ki_cpu.mmu_040_srp);
 		mmu040_log_count++;
 		if (mmu040_log_count == 20)
-			xil_printf("[MMU040] Further translation logging suppressed\n");
+			if (0) xil_printf("[MMU040] Further translation logging suppressed\n");
 	}
 
 	/* Use function code (m68ki_address_space) to determine supervisor/user,
@@ -555,9 +555,9 @@ uint pmmu_translate_addr_040(uint addr_in)
 		unsigned unresolved =
 		    (unsigned)mmu040_fault_total - (unsigned)rte_format7_count;
 		if (unresolved > 256 && unresolved < 0x10000000u) {
-			xil_printf("[MMU040] HALT: %u unresolved ATC faults (total=%d RTE7=%d)\r\n",
+			if (0) xil_printf("[MMU040] HALT: %u unresolved ATC faults (total=%d RTE7=%d)\r\n",
 			           unresolved, mmu040_fault_total, rte_format7_count);
-			xil_printf("[MMU040] URP=$%08X SRP=$%08X last %d fault VAs (oldest→newest):\r\n",
+			if (0) xil_printf("[MMU040] URP=$%08X SRP=$%08X last %d fault VAs (oldest→newest):\r\n",
 			           m68ki_cpu.mmu_040_urp, m68ki_cpu.mmu_040_srp,
 			           MMU040_FAULT_RING);
 			for (int k = 0; k < MMU040_FAULT_RING; k++) {

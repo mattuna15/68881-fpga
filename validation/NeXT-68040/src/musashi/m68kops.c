@@ -4,6 +4,7 @@
 extern void m68040_fpu_op0(void);
 extern void m68040_fpu_op1(void);
 extern void m68881_mmu_ops(void);
+extern int  next_debug_scsi;   /* gates MMU040 diagnostic prints */
 
 /* ======================================================================== */
 /* ========================= INSTRUCTION HANDLERS ========================= */
@@ -22154,10 +22155,10 @@ static void m68k_op_movec_32_rc(void)
 					m68ki_cpu.mmu_040_tc = REG_DA[(word2 >> 12) & 15];
 					if (m68ki_cpu.mmu_040_tc & 0x8000) {
 						m68ki_cpu.pmmu_enabled = 1;
-						xil_printf( "[MMU040] TC=$%04X ENABLE at PC=$%08X\n", m68ki_cpu.mmu_040_tc, REG_PC);
+						if (next_debug_scsi) xil_printf("[MMU040] TC=$%04X ENABLE at PC=$%08X\n", m68ki_cpu.mmu_040_tc, REG_PC);
 					} else {
 						m68ki_cpu.pmmu_enabled = 0;
-						xil_printf( "[MMU040] TC=$%04X DISABLE at PC=$%08X\n", m68ki_cpu.mmu_040_tc, REG_PC);
+						if (next_debug_scsi) xil_printf("[MMU040] TC=$%04X DISABLE at PC=$%08X\n", m68ki_cpu.mmu_040_tc, REG_PC);
 					}
 					return;
 				}
@@ -22167,7 +22168,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_itt0 = REG_DA[(word2 >> 12) & 15];
-					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] ITT0=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_itt0, REG_PC); } }
+					{ static int n=0; if(n<10) { n++; if (next_debug_scsi) xil_printf("[MMU040] ITT0=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_itt0, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22176,7 +22177,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_itt1 = REG_DA[(word2 >> 12) & 15];
-					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] ITT1=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_itt1, REG_PC); } }
+					{ static int n=0; if(n<10) { n++; if (next_debug_scsi) xil_printf("[MMU040] ITT1=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_itt1, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22185,7 +22186,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_dtt0 = REG_DA[(word2 >> 12) & 15];
-					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] DTT0=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_dtt0, REG_PC); } }
+					{ static int n=0; if(n<10) { n++; if (next_debug_scsi) xil_printf("[MMU040] DTT0=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_dtt0, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22194,7 +22195,7 @@ static void m68k_op_movec_32_rc(void)
 				if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 				{
 					m68ki_cpu.mmu_040_dtt1 = REG_DA[(word2 >> 12) & 15];
-					{ static int n=0; if(n<10) { n++; xil_printf("[MMU040] DTT1=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_dtt1, REG_PC); } }
+					{ static int n=0; if(n<10) { n++; if (next_debug_scsi) xil_printf("[MMU040] DTT1=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_dtt1, REG_PC); } }
 					return;
 				}
 				m68ki_exception_illegal();
@@ -22221,7 +22222,7 @@ static void m68k_op_movec_32_rc(void)
 				{
 					{ extern void tlb040_flush(void); tlb040_flush(); }
 					m68ki_cpu.mmu_040_srp = REG_DA[(word2 >> 12) & 15];
-					xil_printf( "[MMU040] SRP=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_srp, REG_PC);
+					if (next_debug_scsi) xil_printf("[MMU040] SRP=$%08X at PC=$%08X\n", m68ki_cpu.mmu_040_srp, REG_PC);
 					return;
 				}
 				m68ki_exception_illegal();
@@ -28300,7 +28301,7 @@ static void m68k_op_pflush_32(void)
 		extern void tlb040_flush(void);
 		tlb040_flush();
 		static int pflush_log = 0;
-		if (pflush_log < 5) { xil_printf( "[MMU040] PFLUSH at PC=$%08X\n", REG_PC); pflush_log++; }
+		if (pflush_log < 5) { if (next_debug_scsi) xil_printf("[MMU040] PFLUSH at PC=$%08X\n", REG_PC); pflush_log++; }
 		return;
 	}
 	if ((CPU_TYPE_IS_EC020_PLUS(CPU_TYPE)) && (HAS_PMMU))
@@ -28317,7 +28318,7 @@ static void m68k_op_cinv_32(void)
 	if (CPU_TYPE_IS_040_PLUS(CPU_TYPE))
 	{
 		static int cinv_log = 0;
-		if (cinv_log < 5) { xil_printf( "[MMU040] CINV $%04X at PC=$%08X\n", REG_IR, REG_PC); cinv_log++; }
+		if (cinv_log < 5) { if (next_debug_scsi) xil_printf("[MMU040] CINV $%04X at PC=$%08X\n", REG_IR, REG_PC); cinv_log++; }
 		return;
 	}
 	m68ki_exception_1111();

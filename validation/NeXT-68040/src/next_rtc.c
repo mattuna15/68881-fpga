@@ -32,6 +32,8 @@
 #include "xil_printf.h"
 #include <string.h>
 
+extern int next_debug_scsi;
+
 #ifndef QEMU_MODE
 #include "xrtcpsu_hw.h"
 #endif
@@ -142,7 +144,7 @@ static uint8_t rtc_reg_read(uint8_t addr)
         if (addr == 14) {
             static int pot_read_log = 0;
             if (pot_read_log < 3) {
-                xil_printf("[RTC] ni_pot[0] read → $%02X (POT_ON=%d)\r\n",
+                if (next_debug_scsi) xil_printf("[RTC] ni_pot[0] read → $%02X (POT_ON=%d)\r\n",
                            rtc_regs[addr], rtc_regs[addr] & 0x01);
                 pot_read_log++;
             }
@@ -191,7 +193,7 @@ static void rtc_reg_write(uint8_t addr, uint8_t val)
         static int rtc_write_log = 0;
         if (rtc_write_log < 400) {
             uint8_t old_val = rtc_regs[addr];
-            xil_printf("[RTC] W $%02X: $%02X->$%02X\r\n", addr, old_val, val);
+            if (next_debug_scsi) xil_printf("[RTC] W $%02X: $%02X->$%02X\r\n", addr, old_val, val);
             rtc_write_log++;
         }
         rtc_regs[addr] = val;
@@ -312,7 +314,7 @@ void next_rtc_init(void)
         /* Dump the final 32-byte NVRAM image so we can compare against
          * what the ROM reads via bit-bang — any discrepancy in the
          * readback path points straight at the broken register. */
-        xil_printf("[RTC] NVRAM dump (32 bytes):\r\n  ");
+        if (next_debug_scsi) xil_printf("[RTC] NVRAM dump (32 bytes):\r\n  ");
         for (int i = 0; i < 32; i++) {
             xil_printf("%02X ", rtc_regs[i]);
             if (i == 15) xil_printf("\r\n  ");
@@ -338,7 +340,7 @@ void next_rtc_init(void)
     /* Take initial counter snapshot */
     rtc_snapshot_counter();
 
-    xil_printf("[RTC] MC68HC68T1 emulation initialised"
+    if (next_debug_scsi) xil_printf("[RTC] MC68HC68T1 emulation initialised"
 #ifdef QEMU_MODE
                " (software backend)\r\n"
 #else
@@ -362,7 +364,7 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
     if (ce && !old_ce) {
         static int rtc_trans_count = 0;
         if (rtc_trans_count < 400)
-            xil_printf("[RTC] CE#%d\r\n", rtc_trans_count);
+            if (next_debug_scsi) xil_printf("[RTC] CE#%d\r\n", rtc_trans_count);
         rtc_trans_count++;
         rtc_phase     = RTC_ADDR_PHASE;
         rtc_bit_count = 0;
@@ -381,7 +383,7 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
             rtc_bit_count == 8) {
             /* Complete write: commit the byte */
 #ifdef NEXT_IO_DEBUG
-            xil_printf("[RTC] write reg $%02X ← $%02X\r\n",
+            if (next_debug_scsi) xil_printf("[RTC] write reg $%02X ← $%02X\r\n",
                        rtc_address & 0x3F, rtc_shift_in);
 #endif
             rtc_reg_write(rtc_address, rtc_shift_in);
@@ -428,7 +430,7 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
                     {
                         static int rtc_read_log = 0;
                         if (rtc_read_log < 400)
-                            xil_printf("[RTC] R $%02X=$%02X\r\n",
+                            if (next_debug_scsi) xil_printf("[RTC] R $%02X=$%02X\r\n",
                                        rtc_address & 0x3F, rtc_shift_out);
                         rtc_read_log++;
                     }
@@ -437,7 +439,7 @@ void next_rtc_scr2_write(uint32_t new_scr2, uint32_t old_scr2)
                      * the ROM bit-bang the address byte and data byte. */
                     static int rtc_wstart_log = 0;
                     if (rtc_wstart_log < 400) {
-                        xil_printf("[RTC] W-addr $%02X\r\n",
+                        if (next_debug_scsi) xil_printf("[RTC] W-addr $%02X\r\n",
                                    rtc_address & 0x3F);
                         rtc_wstart_log++;
                     }

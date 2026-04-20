@@ -1130,6 +1130,21 @@ static int handle_fmove_to_mem(unsigned int opword, unsigned int cmd,
         fh_write_8(ea_addr, (unsigned int)(unsigned char)ival);
         break;
     }
+    case 3:   /* Packed-Decimal Real, static  k-factor */
+    case 7:   /* Packed-Decimal Real, dynamic k-factor (P{Dn}) */
+    {
+        /* Minimum-viable stub: write 12 bytes of "+0.0" packed BCD
+         * so the guest (fsck, etc.) doesn't die on an unhandled F-line
+         * exception.  A correct implementation would call an fp80 ->
+         * packed-decimal converter (see Previous's from_pack() in
+         * cpu/fpp-softfloat.h).  Without that, printf("%E")-style
+         * output from the guest will show 0 where a real number was
+         * expected - but the process continues to run. */
+        fh_write_32(ea_addr,     0x00000000); /* sign + 3-digit exp */
+        fh_write_32(ea_addr + 4, 0x00000000); /* mantissa hi */
+        fh_write_32(ea_addr + 8, 0x00000000); /* mantissa lo */
+        break;
+    }
     default:
         xil_printf("FLINE: FMOVE to mem unsupported fmt=%d\r\n", fmt);
         return 0;  /* unhandled — let Musashi generate exception */

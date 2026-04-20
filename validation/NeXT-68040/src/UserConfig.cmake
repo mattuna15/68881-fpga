@@ -19,6 +19,7 @@ set(USER_INCLUDE_DIRECTORIES
 )
 
 set(USER_COMPILE_SOURCES
+"led_disk.c"
 "main.c"
 "next_memory.c"
 "next_devs.c"

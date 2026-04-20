@@ -991,14 +991,14 @@ void next_esp_write(uint32_t offset, uint8_t value)
 
 void esp_dump_state(void)
 {
-    xil_printf("[ESP-STATE] status=$%02X intstatus=$%02X seqstep=$%02X fifo=%d\r\n",
+    if (0) xil_printf("[ESP-STATE] status=$%02X intstatus=$%02X seqstep=$%02X fifo=%d\r\n",
                esp.status, esp.intstatus, esp.seqstep, esp.fifoflags);
-    xil_printf("[ESP-STATE] cmd[0]=$%02X cmd[1]=$%02X cmd_state=$%02X counter=%u\r\n",
+    if (0) xil_printf("[ESP-STATE] cmd[0]=$%02X cmd[1]=$%02X cmd_state=$%02X counter=%u\r\n",
                esp.command[0], esp.command[1], esp.cmd_state, esp.counter);
-    xil_printf("[ESP-STATE] state=%s dma_ctrl=$%02X dma_status=$%02X mode_dma=%d\r\n",
+    if (0) xil_printf("[ESP-STATE] state=%s dma_ctrl=$%02X dma_status=$%02X mode_dma=%d\r\n",
                esp.state == ESP_DISCONNECTED ? "DISCONNECTED" : "INITIATOR",
                esp.dma_control, esp.dma_status, esp.mode_dma);
-    xil_printf("[ESP-STATE] SCSI phase=%d post_probe=%d cmds_since_sel=%d\r\n",
+    if (0) xil_printf("[ESP-STATE] SCSI phase=%d post_probe=%d cmds_since_sel=%d\r\n",
                next_scsi_get_phase(), esp_post_probe, esp_cmds_since_last_sel);
 }
 

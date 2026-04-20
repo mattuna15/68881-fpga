@@ -1,14 +1,25 @@
 /*
  * next_scsi.c
- * SCSI disk emulation backed by disk image file on SD card (FatFs).
- * Adapted from Previous emulator (previous/src/scsi.c).
+ * SCSI disk emulation with two backing stores:
+ *   target 6 LUN 0 - SD-hosted installer image (FatFS, read-mostly)
+ *   target 0 LUN 0 - eMMC raw block window (writable HDD; install target)
  *
- * Single target (target 0) only. Writes accepted and discarded.
+ * Adapted from Previous emulator (previous/src/scsi.c).  The single
+ * `disk` global of the original has been split into:
+ *   - disks[SCSI_NUM_TARGETS]: per-disk backing state (FIL / eMMC window)
+ *   - req:                     per-request state (LBA, counter, phase, ...)
+ *
+ * SCSI supports only one in-flight command at a time - the request state
+ * is therefore single-instance.  Selection latches req.target, and every
+ * subsequent disk access uses disks[req.target] via current_disk().
  */
 
 #include "next_scsi.h"
+#include "emmc_blk.h"
+#include "led_disk.h"
 #include "fatfs/ff.h"
 #include "xil_printf.h"
+#include <stdio.h>
 #include <string.h>
 
 extern int next_debug_scsi;
@@ -80,26 +91,52 @@ static int scsi_get_transfer_length(uint8_t opcode, uint8_t *cdb)
 }
 
 /* ------------------------------------------------------------------ */
-/* Disk state                                                          */
+/* Per-disk state: indexed by SCSI target ID                           */
+/* ------------------------------------------------------------------ */
+typedef enum {
+    DISK_BACKING_NONE = 0,
+    DISK_BACKING_FATFS,       /* SD card, file-in-FAT backing */
+    DISK_BACKING_EMMC_RAW,    /* eMMC, raw sector window via emmc_blk_* */
+} disk_backing_t;
+
+typedef struct {
+    disk_backing_t backing;
+    FIL       fatfs_fil;      /* valid when backing == FATFS */
+    uint64_t  size_bytes;     /* total usable size */
+    bool      mounted;        /* backing is ready to serve I/O */
+    bool      writable;       /* accept WRITE(6)/WRITE(10) */
+    bool      label_valid;    /* LBA 0 holds a valid NeXT disk label */
+    bool      label_checked;  /* label_valid is up to date */
+    char      label[32];      /* short diagnostic name for logs */
+} scsi_disk_t;
+
+/* First 4 bytes of a NeXT disk label at sector 0: "dlV3" big-endian. */
+#define NEXT_DISK_LABEL_MAGIC  0x646C5633u
+
+#define SCSI_NUM_TARGETS 8
+static scsi_disk_t disks[SCSI_NUM_TARGETS];
+
+static inline scsi_disk_t *current_disk(void);
+
+/* ------------------------------------------------------------------ */
+/* Per-request state (one in-flight SCSI command at a time)            */
 /* ------------------------------------------------------------------ */
 static struct {
-    FIL     fil;
-    uint64_t size;
-    bool    mounted;
-    uint8_t status;
-    uint8_t message;
-    uint8_t phase;
-    uint8_t target;
-    uint8_t lun;
-    struct {
-        uint8_t key, code;
-        bool valid;
-        uint32_t info;
-    } sense;
+    uint8_t  status;
+    uint8_t  message;
+    uint8_t  phase;
+    uint8_t  target;
+    uint8_t  lun;
+    struct { uint8_t key, code; bool valid; uint32_t info; } sense;
     uint32_t lba;
     uint32_t blockcounter;
-    uint32_t write_pending;  /* bytes remaining for Data-Out (write discard) */
-} disk;
+    uint32_t write_pending;  /* bytes remaining for Data-Out */
+} req;
+
+static inline scsi_disk_t *current_disk(void)
+{
+    return &disks[req.target & 0x07];
+}
 
 /* Transfer buffer */
 static struct {
@@ -111,62 +148,77 @@ static struct {
 
 static FATFS fatfs_inst;
 
+/* Write-staging buffer: bytes delivered by the ESP DMA engine are
+ * accumulated here until a full SCSI_BLOCKSIZE is collected, then
+ * flushed to the backing store.  The storage lives further down the
+ * file; we forward-declare the fill counter here so that
+ * scsi_write_sector() can zero it at every WRITE command boundary
+ * (prevents stale tail bytes from a prior aborted transfer bleeding
+ * into the first sector of the next write, which corrupts the fs
+ * deterministically on every boot). */
+static uint32_t wr_sector_fill;
+
 /* ------------------------------------------------------------------ */
-/* Sector cache — direct-mapped, 4096 slots × 512 B = 2 MB.            */
-/* Why: the NeXT kernel demand-pages heavily during boot, reading the  */
-/* same library and kernel-data pages over and over via SCSI.  Each    */
-/* miss costs a full ESP/DMA round-trip plus FatFs seek+read, which    */
-/* dominates early-boot wall time.  The cache turns repeat reads into  */
-/* memcpy hits and makes cold-cache boot progress thousands of times   */
-/* faster.                                                             */
+/* Sector cache - direct-mapped, 4096 slots x 512 B = 2 MB.            */
+/* The kernel demand-pages heavily from the SD installer image during  */
+/* boot; the cache turns repeat reads into memcpy hits.  Tag encodes   */
+/* target id in the high 4 bits and LBA in the low 28 bits so the two  */
+/* disks can coexist in the same table without flushing each other.    */
 /* ------------------------------------------------------------------ */
 #define SCACHE_SLOTS      4096u
-#define SCACHE_EMPTY_LBA  0xFFFFFFFFu
+#define SCACHE_EMPTY_TAG  0xFFFFFFFFu
 static uint32_t scache_tag[SCACHE_SLOTS];
 static uint8_t  scache_data[SCACHE_SLOTS][SCSI_BLOCKSIZE];
+
+static inline uint32_t scache_make_tag(uint8_t target, uint32_t lba)
+{
+    /* 4-bit target + 28-bit LBA. LBAs up to 256M = 128 GB per disk. */
+    return ((uint32_t)(target & 0x0F) << 28) | (lba & 0x0FFFFFFFu);
+}
 
 static void scache_reset(void)
 {
     for (unsigned i = 0; i < SCACHE_SLOTS; i++)
-        scache_tag[i] = SCACHE_EMPTY_LBA;
+        scache_tag[i] = SCACHE_EMPTY_TAG;
 }
 
-static inline unsigned scache_slot(uint32_t lba)
+static inline unsigned scache_slot(uint32_t tag)
 {
-    /* Mix a bit so clustered linear reads spread across the set. */
-    uint32_t h = lba ^ (lba >> 13);
+    uint32_t h = tag ^ (tag >> 13);
     return h & (SCACHE_SLOTS - 1);
 }
 
-/* Try to fill scsi_buf.data[] from cache. Returns true on hit. */
-static bool scache_try_read(uint32_t lba)
+static bool scache_try_read(uint8_t target, uint32_t lba)
 {
-    unsigned s = scache_slot(lba);
-    if (scache_tag[s] == lba) {
+    uint32_t tag = scache_make_tag(target, lba);
+    unsigned s = scache_slot(tag);
+    if (scache_tag[s] == tag) {
         memcpy(scsi_buf.data, scache_data[s], SCSI_BLOCKSIZE);
         return true;
     }
     return false;
 }
 
-/* Install scsi_buf.data[] into the cache for lba. */
-static void scache_install(uint32_t lba)
+static void scache_install(uint8_t target, uint32_t lba)
 {
-    unsigned s = scache_slot(lba);
-    scache_tag[s] = lba;
+    uint32_t tag = scache_make_tag(target, lba);
+    unsigned s = scache_slot(tag);
+    scache_tag[s] = tag;
     memcpy(scache_data[s], scsi_buf.data, SCSI_BLOCKSIZE);
 }
 
-/* Invalidate on write so the cache never serves stale data. */
-static void scache_invalidate(uint32_t lba)
+static void scache_invalidate(uint8_t target, uint32_t lba)
 {
-    unsigned s = scache_slot(lba);
-    if (scache_tag[s] == lba)
-        scache_tag[s] = SCACHE_EMPTY_LBA;
+    uint32_t tag = scache_make_tag(target, lba);
+    unsigned s = scache_slot(tag);
+    if (scache_tag[s] == tag)
+        scache_tag[s] = SCACHE_EMPTY_TAG;
 }
 
 /* ------------------------------------------------------------------ */
-/* INQUIRY response data                                               */
+/* INQUIRY response data - same descriptor for both backings          */
+/* (they're both reported as Direct-Access Device so the installer's  */
+/* disk-selection menu lists both as plain SCSI disks)                */
 /* ------------------------------------------------------------------ */
 static uint8_t inquiry_bytes[] = {
     0x00,             /* 0: device type: disk */
@@ -185,50 +237,172 @@ static uint8_t inquiry_bytes[] = {
 };
 
 /* ------------------------------------------------------------------ */
-/* Internal: read one sector from SD card                              */
+/* Low-level per-backing sector I/O                                    */
+/* ------------------------------------------------------------------ */
+static int disk_backing_read(scsi_disk_t *d, uint32_t lba, uint8_t *buf)
+{
+    switch (d->backing) {
+    case DISK_BACKING_FATFS: {
+        uint64_t offset = (uint64_t)lba * SCSI_BLOCKSIZE;
+        FRESULT res = f_lseek(&d->fatfs_fil, (FSIZE_t)offset);
+        if (res != FR_OK) return -1;
+        UINT br;
+        res = f_read(&d->fatfs_fil, buf, SCSI_BLOCKSIZE, &br);
+        if (res != FR_OK || br != SCSI_BLOCKSIZE) return -1;
+        led_disk_note_activity();
+        return 0;
+    }
+    case DISK_BACKING_EMMC_RAW:
+        /* emmc_blk_read() pulses the LED itself. */
+        return emmc_blk_read(lba, 1, buf);
+    default:
+        return -1;
+    }
+}
+
+static int disk_backing_write(scsi_disk_t *d, uint32_t lba, const uint8_t *buf)
+{
+    if (!d->writable) return 0;  /* silently discard writes on RO disks */
+    switch (d->backing) {
+    case DISK_BACKING_FATFS: {
+        uint64_t offset = (uint64_t)lba * SCSI_BLOCKSIZE;
+        FRESULT res = f_lseek(&d->fatfs_fil, (FSIZE_t)offset);
+        if (res != FR_OK) return -1;
+        UINT bw;
+        res = f_write(&d->fatfs_fil, buf, SCSI_BLOCKSIZE, &bw);
+        if (res != FR_OK || bw != SCSI_BLOCKSIZE) return -1;
+        led_disk_note_activity();
+        return 0;
+    }
+    case DISK_BACKING_EMMC_RAW:
+        return emmc_blk_write(lba, 1, buf);
+    default:
+        return -1;
+    }
+}
+
+/* ------------------------------------------------------------------ */
+/* Disk-label validity check                                           */
+/*                                                                     */
+/* A NeXT-format disk has "dlV3" (0x646C5633) as the first 4 bytes of  */
+/* sector 0.  Fresh eMMC is all zeros, so target 0 initially looks     */
+/* "present but medium not formatted".  We read LBA 0 once at init,    */
+/* cache the result, and reuse it - any WRITE(6)/WRITE(10) to sector   */
+/* 0 flips label_checked=false so the next TUR re-reads.               */
+/*                                                                     */
+/* Used by TUR: if target 0's label is invalid the NeXT Turbo ROM's    */
+/* auto-boot (`b sd`) gets CHECK_COND/NOT_READY and skips to target 6  */
+/* (the SD installer image).  Once the installer formats eMMC and      */
+/* writes a valid label, TUR starts succeeding and `b sd` will auto-   */
+/* boot target 0.                                                      */
+/* ------------------------------------------------------------------ */
+static void refresh_disk_label(scsi_disk_t *d, uint8_t target)
+{
+    uint8_t sector0[SCSI_BLOCKSIZE];
+    if (disk_backing_read(d, 0, sector0) < 0) {
+        d->label_valid = false;
+    } else {
+        uint32_t magic = ((uint32_t)sector0[0] << 24) |
+                         ((uint32_t)sector0[1] << 16) |
+                         ((uint32_t)sector0[2] <<  8) |
+                         ((uint32_t)sector0[3]      );
+        /* NeXT disklabel has dl_size at byte offset 8 (4 bytes, BE,
+         * in media-sectors).  If the magic matches, clamp the reported
+         * device size to (dl_size * 512) so READ CAPACITY matches what
+         * the fs was laid down for -- Previous reports 1919 MB because
+         * it honours dl_size; we were reporting the full eMMC window
+         * (2047 MB) which tricks fsck into scanning past fs end into
+         * uninitialised eMMC space and reporting bogus structural
+         * errors. */
+        if (magic == NEXT_DISK_LABEL_MAGIC &&
+            d->backing == DISK_BACKING_EMMC_RAW) {
+            uint32_t dl_size = ((uint32_t)sector0[8]  << 24) |
+                               ((uint32_t)sector0[9]  << 16) |
+                               ((uint32_t)sector0[10] <<  8) |
+                               ((uint32_t)sector0[11]      );
+            xil_printf("[SCSI] target %u: disklabel bytes 0-15 = "
+                       "%02X %02X %02X %02X  %02X %02X %02X %02X  "
+                       "%02X %02X %02X %02X  %02X %02X %02X %02X\r\n",
+                       target,
+                       sector0[0],sector0[1],sector0[2],sector0[3],
+                       sector0[4],sector0[5],sector0[6],sector0[7],
+                       sector0[8],sector0[9],sector0[10],sector0[11],
+                       sector0[12],sector0[13],sector0[14],sector0[15]);
+            xil_printf("[SCSI] target %u: dl_size (raw) = %u ($%08X)\r\n",
+                       target, dl_size, dl_size);
+            if (dl_size > 0 && dl_size < EMMC_TARGET_MAX_SECTORS) {
+                uint64_t fs_bytes = (uint64_t)dl_size * SCSI_BLOCKSIZE;
+                if (fs_bytes < d->size_bytes) {
+                    xil_printf("[SCSI] target %u: clamping size %llu MB -> %llu MB\r\n",
+                               target,
+                               d->size_bytes / (1024u*1024u),
+                               fs_bytes / (1024u*1024u));
+                    d->size_bytes = fs_bytes;
+                }
+            }
+        }
+        d->label_valid = (magic == NEXT_DISK_LABEL_MAGIC);
+        if (d->backing == DISK_BACKING_EMMC_RAW) {
+            xil_printf("[SCSI] target %u: LBA 0 magic $%08X => %s\r\n",
+                       target, magic,
+                       d->label_valid ? "valid NeXT label"
+                                      : "blank/unformatted");
+        }
+    }
+    d->label_checked = true;
+}
+
+static bool disk_is_boot_ready(scsi_disk_t *d, uint8_t target)
+{
+    if (!d->mounted) return false;
+    /* FatFS-backed installer image (target 6) is always treated as ready:
+     * it is known to carry the NEXTSTEP install volume. */
+    if (d->backing == DISK_BACKING_FATFS) return true;
+    /* eMMC-raw: ready only once a NeXT disk label exists, so a fresh
+     * blank disk stays invisible to the ROM auto-boot AND to the kernel
+     * SCSI autoconf (NeXT assigns sdN by probe order, so exposing a
+     * blank target 0 would renumber sd0 and break root mount). */
+    if (!d->label_checked)
+        refresh_disk_label(d, target);
+    return d->label_valid;
+}
+
+/* ------------------------------------------------------------------ */
+/* Internal: read one sector from the current disk                     */
 /* ------------------------------------------------------------------ */
 static void scsi_read_one_sector(void)
 {
-    if (disk.blockcounter == 0) {
-        disk.phase = SCSI_PHASE_ST;
+    if (req.blockcounter == 0) {
+        req.phase = SCSI_PHASE_ST;
         return;
     }
+    scsi_disk_t *d = current_disk();
+    uint64_t offset = (uint64_t)req.lba * SCSI_BLOCKSIZE;
 
-    uint64_t offset = (uint64_t)disk.lba * SCSI_BLOCKSIZE;
-
-    if (offset < disk.size) {
-        if (!scache_try_read(disk.lba)) {
-            UINT br;
-            FRESULT res = f_lseek(&disk.fil, (FSIZE_t)offset);
-            if (res != FR_OK) {
-                DPRINTF("[SCSI] f_lseek error %d at LBA %u\r\n", res, disk.lba);
-                disk.status = STAT_CHECK_COND;
-                disk.sense.code = SC_NOT_READY;
-                disk.phase = SCSI_PHASE_ST;
+    if (offset < d->size_bytes) {
+        if (!scache_try_read(req.target, req.lba)) {
+            if (disk_backing_read(d, req.lba, scsi_buf.data) < 0) {
+                DPRINTF("[SCSI] backing read error tgt=%d LBA=%u\r\n",
+                        req.target, req.lba);
+                req.status = STAT_CHECK_COND;
+                req.sense.code = SC_NOT_READY;
+                req.phase = SCSI_PHASE_ST;
                 return;
             }
-            res = f_read(&disk.fil, scsi_buf.data, SCSI_BLOCKSIZE, &br);
-            if (res != FR_OK || br != SCSI_BLOCKSIZE) {
-                DPRINTF("[SCSI] f_read error %d (got %u) at LBA %u\r\n", res, br, disk.lba);
-                disk.status = STAT_CHECK_COND;
-                disk.sense.code = SC_NOT_READY;
-                disk.phase = SCSI_PHASE_ST;
-                return;
-            }
-            scache_install(disk.lba);
+            scache_install(req.target, req.lba);
         }
         scsi_buf.limit = scsi_buf.size = SCSI_BLOCKSIZE;
-        disk.status = STAT_GOOD;
-        disk.sense.code = SC_NO_ERROR;
-        disk.sense.valid = false;
-        disk.lba++;
-        disk.blockcounter--;
+        req.status = STAT_GOOD;
+        req.sense.code = SC_NO_ERROR;
+        req.sense.valid = false;
+        req.lba++;
+        req.blockcounter--;
     } else {
-        disk.status = STAT_CHECK_COND;
-        disk.sense.code = SC_INVALID_LBA;
-        disk.sense.valid = true;
-        disk.sense.info = disk.lba;
-        disk.phase = SCSI_PHASE_ST;
+        req.status = STAT_CHECK_COND;
+        req.sense.code = SC_INVALID_LBA;
+        req.sense.valid = true;
+        req.sense.info = req.lba;
+        req.phase = SCSI_PHASE_ST;
     }
 }
 
@@ -238,14 +412,15 @@ static void scsi_read_one_sector(void)
 
 static void scsi_test_unit_ready(void)
 {
-    if (!disk.mounted) {
-        disk.status = STAT_CHECK_COND;
-        disk.sense.code = SC_NOT_READY;
+    scsi_disk_t *d = current_disk();
+    if (!disk_is_boot_ready(d, req.target)) {
+        req.status = STAT_CHECK_COND;
+        req.sense.code = SC_NOT_READY;
     } else {
-        disk.status = STAT_GOOD;
-        disk.sense.code = SC_NO_ERROR;
+        req.status = STAT_GOOD;
+        req.sense.code = SC_NO_ERROR;
     }
-    disk.phase = SCSI_PHASE_ST;
+    req.phase = SCSI_PHASE_ST;
 }
 
 static void scsi_inquiry(uint8_t *cdb)
@@ -254,7 +429,7 @@ static void scsi_inquiry(uint8_t *cdb)
     if (len > (int)sizeof(inquiry_bytes))
         len = (int)sizeof(inquiry_bytes);
 
-    if (disk.lun != 0) {
+    if (req.lun != 0) {
         inquiry_bytes[0] = 0x7F; /* LUN not present */
     } else {
         inquiry_bytes[0] = 0x00; /* disk */
@@ -263,19 +438,20 @@ static void scsi_inquiry(uint8_t *cdb)
     memcpy(scsi_buf.data, inquiry_bytes, len);
     scsi_buf.limit = scsi_buf.size = len;
     scsi_buf.is_disk = false;
-    disk.status = STAT_GOOD;
-    disk.phase = SCSI_PHASE_DI;
-    disk.sense.code = SC_NO_ERROR;
-    DPRINTF("[SCSI] Inquiry: %d bytes\r\n", len);
+    req.status = STAT_GOOD;
+    req.phase = SCSI_PHASE_DI;
+    req.sense.code = SC_NO_ERROR;
+    DPRINTF("[SCSI] Inquiry tgt=%d: %d bytes\r\n", req.target, len);
 }
 
 static void scsi_read_capacity(void)
 {
-    uint32_t sectors = (uint32_t)(disk.size / SCSI_BLOCKSIZE);
+    scsi_disk_t *d = current_disk();
+    uint32_t sectors = (uint32_t)(d->size_bytes / SCSI_BLOCKSIZE);
     if (sectors == 0) {
-        disk.status = STAT_CHECK_COND;
-        disk.sense.code = SC_NOT_READY;
-        disk.phase = SCSI_PHASE_ST;
+        req.status = STAT_CHECK_COND;
+        req.sense.code = SC_NOT_READY;
+        req.phase = SCSI_PHASE_ST;
         return;
     }
     uint32_t last_lba = sectors - 1;
@@ -291,11 +467,11 @@ static void scsi_read_capacity(void)
 
     scsi_buf.limit = scsi_buf.size = 8;
     scsi_buf.is_disk = false;
-    disk.status = STAT_GOOD;
-    disk.phase = SCSI_PHASE_DI;
-    disk.sense.code = SC_NO_ERROR;
-    DPRINTF("[SCSI] Read Capacity: %u sectors, last LBA=%u\r\n",
-               (unsigned)(disk.size / SCSI_BLOCKSIZE), last_lba);
+    req.status = STAT_GOOD;
+    req.phase = SCSI_PHASE_DI;
+    req.sense.code = SC_NO_ERROR;
+    DPRINTF("[SCSI] Read Capacity tgt=%d: %u sectors, last LBA=%u\r\n",
+            req.target, sectors, last_lba);
 }
 
 static void scsi_request_sense(uint8_t *cdb)
@@ -308,32 +484,32 @@ static void scsi_request_sense(uint8_t *cdb)
     memset(retbuf, 0, sizeof(retbuf));
 
     retbuf[0] = 0x70;
-    if (disk.sense.valid) {
+    if (req.sense.valid) {
         retbuf[0] |= 0x80;
-        retbuf[3] = disk.sense.info >> 24;
-        retbuf[4] = disk.sense.info >> 16;
-        retbuf[5] = disk.sense.info >> 8;
-        retbuf[6] = disk.sense.info;
+        retbuf[3] = req.sense.info >> 24;
+        retbuf[4] = req.sense.info >> 16;
+        retbuf[5] = req.sense.info >> 8;
+        retbuf[6] = req.sense.info;
     }
 
-    switch (disk.sense.code) {
-    case SC_NO_ERROR:    disk.sense.key = SK_NOSENSE;     break;
-    case SC_NOT_READY:   disk.sense.key = SK_NOTREADY;    break;
-    case SC_WRITE_PROTECT: disk.sense.key = SK_DATAPROTECT; break;
+    switch (req.sense.code) {
+    case SC_NO_ERROR:    req.sense.key = SK_NOSENSE;     break;
+    case SC_NOT_READY:   req.sense.key = SK_NOTREADY;    break;
+    case SC_WRITE_PROTECT: req.sense.key = SK_DATAPROTECT; break;
     case SC_INVALID_CMD:
     case SC_INVALID_LBA:
-    case SC_INVALID_LUN: disk.sense.key = SK_ILLEGAL_REQ; break;
-    default:             disk.sense.key = SK_HARDWARE;    break;
+    case SC_INVALID_LUN: req.sense.key = SK_ILLEGAL_REQ; break;
+    default:             req.sense.key = SK_HARDWARE;    break;
     }
-    retbuf[2] = disk.sense.key;
+    retbuf[2] = req.sense.key;
     retbuf[7] = 14;
-    retbuf[12] = disk.sense.code;
+    retbuf[12] = req.sense.code;
 
     memcpy(scsi_buf.data, retbuf, len);
     scsi_buf.limit = scsi_buf.size = len;
     scsi_buf.is_disk = false;
-    disk.status = STAT_GOOD;
-    disk.phase = SCSI_PHASE_DI;
+    req.status = STAT_GOOD;
+    req.phase = SCSI_PHASE_DI;
 }
 
 static void scsi_mode_sense(uint8_t *cdb)
@@ -341,14 +517,15 @@ static void scsi_mode_sense(uint8_t *cdb)
     uint8_t retbuf[64];
     memset(retbuf, 0, sizeof(retbuf));
 
-    uint32_t sectors = (uint32_t)(disk.size / SCSI_BLOCKSIZE);
+    scsi_disk_t *d = current_disk();
+    uint32_t sectors = (uint32_t)(d->size_bytes / SCSI_BLOCKSIZE);
     uint8_t pagecode = cdb[2] & 0x3F;
     uint8_t dbd = cdb[1] & 0x08;
 
     /* Header */
     retbuf[0] = 0x00; /* length (filled later) */
     retbuf[1] = 0x00; /* medium type */
-    retbuf[2] = 0x00; /* writable (writes accepted and discarded) */
+    retbuf[2] = d->writable ? 0x00 : 0x80; /* bit 7 = WP */
     retbuf[3] = dbd ? 0x00 : 0x08; /* block descriptor length (0 when DBD set) */
 
     uint8_t hdr_size = 4;
@@ -380,7 +557,6 @@ static void scsi_mode_sense(uint8_t *cdb)
     }
     /* Mode page 0x04: rigid disk geometry */
     if (pagecode == 0x04 || pagecode == 0x3F) {
-        /* Simple geometry: 16 heads, 63 sectors/track */
         uint32_t heads = 16, spt = 63;
         uint32_t cyls = sectors / (heads * spt);
         if (cyls == 0) cyls = 1;
@@ -389,7 +565,6 @@ static void scsi_mode_sense(uint8_t *cdb)
         retbuf[off++] = (cyls >>  8) & 0xFF;
         retbuf[off++] = cyls & 0xFF;
         retbuf[off++] = heads;
-        /* remaining 14 bytes are zero (already memset) */
         off += 14;
     }
 
@@ -403,17 +578,35 @@ static void scsi_mode_sense(uint8_t *cdb)
     memcpy(scsi_buf.data, retbuf, rlen);
     scsi_buf.limit = scsi_buf.size = rlen;
     scsi_buf.is_disk = false;
-    disk.status = STAT_GOOD;
-    disk.phase = SCSI_PHASE_DI;
-    disk.sense.code = SC_NO_ERROR;
+    req.status = STAT_GOOD;
+    req.phase = SCSI_PHASE_DI;
+    req.sense.code = SC_NO_ERROR;
 }
 
 static int scsi_read_log = 0;
 
-/* Reset read log counter after kernel bus reset so we see exec-time reads */
 void next_scsi_reset_read_log(void)
 {
     scsi_read_log = 0;
+}
+
+bool next_scsi_emmc_is_blank(void)
+{
+    scsi_disk_t *d = &disks[0];
+    if (!d->mounted || d->backing != DISK_BACKING_EMMC_RAW)
+        return false;
+    if (!d->label_checked)
+        refresh_disk_label(d, 0);
+    return !d->label_valid;
+}
+
+void next_scsi_emmc_refresh_label(void)
+{
+    scsi_disk_t *d = &disks[0];
+    if (!d->mounted || d->backing != DISK_BACKING_EMMC_RAW)
+        return;
+    d->label_checked = false;
+    refresh_disk_label(d, 0);
 }
 
 int scsi_read_log_count(void)
@@ -423,74 +616,86 @@ int scsi_read_log_count(void)
 
 static void scsi_read_sector(uint8_t *cdb)
 {
-    disk.lba = (uint32_t)scsi_get_offset(cdb[0], cdb);
-    disk.blockcounter = scsi_get_count(cdb[0], cdb);
+    req.lba = (uint32_t)scsi_get_offset(cdb[0], cdb);
+    req.blockcounter = scsi_get_count(cdb[0], cdb);
     scsi_buf.is_disk = true;
     scsi_buf.size = 0;
-    disk.phase = SCSI_PHASE_DI;
+    req.phase = SCSI_PHASE_DI;
     scsi_read_one_sector();
 }
 
 static void scsi_write_sector(uint8_t *cdb)
 {
-    /* Accept writes silently — enter Data-Out phase so the host DMA can
-     * transfer data, then discard it and return GOOD status.  This prevents
-     * buffer cache deadlock: the kernel marks buffers dirty (inode timestamps,
-     * metadata) and eventually needs to flush them to reclaim buffers for
-     * new reads.  If writes fail, the cache fills and demand paging stops. */
-    disk.lba = (uint32_t)scsi_get_offset(cdb[0], cdb);
-    disk.blockcounter = scsi_get_count(cdb[0], cdb);
-    disk.write_pending = disk.blockcounter * SCSI_BLOCKSIZE;
-    /* Invalidate cached copies so a later read sees the new (writes are
-     * discarded, but host buffers may hold data the cache must not mask). */
-    for (uint32_t i = 0; i < disk.blockcounter; i++)
-        scache_invalidate(disk.lba + i);
-    disk.status = STAT_GOOD;
-    disk.phase = SCSI_PHASE_DO;  /* host sends data to us */
+    /* Enter Data-Out phase.  The ESP DMA layer delivers bytes via
+     * next_scsi_write_bytes(), which accumulates into a sector buffer
+     * and commits to the backing via disk_backing_write(). */
+    req.lba = (uint32_t)scsi_get_offset(cdb[0], cdb);
+    req.blockcounter = scsi_get_count(cdb[0], cdb);
+    req.write_pending = req.blockcounter * SCSI_BLOCKSIZE;
+
+    /* Reset the staging buffer at every WRITE command boundary.  A prior
+     * command that ended with a partial-sector tail or was aborted
+     * mid-transfer may have left wr_sector_fill non-zero, which would
+     * prepend stale bytes to this command's first sector and corrupt
+     * the backing store deterministically. */
+    wr_sector_fill = 0;
+
+    /* Invalidate the cache for the write range so subsequent reads see
+     * the freshly-written data. */
+    for (uint32_t i = 0; i < req.blockcounter; i++)
+        scache_invalidate(req.target, req.lba + i);
+
+    req.status = STAT_GOOD;
+    req.phase = SCSI_PHASE_DO;  /* host sends data to us */
 }
 
 static void scsi_start_stop(uint8_t *cdb)
 {
     (void)cdb;
-    disk.status = STAT_GOOD;
-    disk.phase = SCSI_PHASE_ST;
+    req.status = STAT_GOOD;
+    req.phase = SCSI_PHASE_ST;
 }
 
 static void scsi_format_drive(uint8_t *cdb)
 {
     (void)cdb;
-    disk.status = STAT_GOOD;
-    disk.phase = SCSI_PHASE_ST;
+    req.status = STAT_GOOD;
+    req.phase = SCSI_PHASE_ST;
 }
 
 /* ------------------------------------------------------------------ */
-/* Public API                                                          */
+/* Target population                                                   */
 /* ------------------------------------------------------------------ */
 
-int next_scsi_init(void)
+/* Mount the SD installer image (existing behaviour) and register it
+ * as target 6.  Returns 0 on success, -1 if no .IMG found. */
+static int register_sd_installer_at_target6(void)
 {
-    memset(&disk, 0, sizeof(disk));
-    memset(&scsi_buf, 0, sizeof(scsi_buf));
-    disk.phase = SCSI_PHASE_ST;
+    scsi_disk_t *d = &disks[6];
+    d->backing = DISK_BACKING_NONE;
+    d->mounted = false;
 
-    /* Try to mount SD card and find a disk image */
-    static const char *drives[] = { "1:/", "0:/" };
+    /* With FF_MULTI_PARTITION=1 the logical drive -> (pdrv, part) map
+     * becomes: 0-4 => eMMC partitions (unused), 5-9 => SD partitions.
+     * We try every SD partition that might be FAT; Linux/UFS partitions
+     * fail f_mount cleanly and we move on. */
+    static const char *drives[] = {
+        "6:/", "7:/", "8:/", "9:/", "5:/"
+    };
     FRESULT res;
     DIR dir;
     FILINFO fno;
 
-    for (int d = 0; d < 2; d++) {
-        xil_printf("[SCSI] Trying mount %s ...\r\n", drives[d]);
-        res = f_mount(&fatfs_inst, drives[d], 1);
+    for (int i = 0; i < (int)(sizeof(drives) / sizeof(drives[0])); i++) {
+        xil_printf("[SCSI] Trying mount %s ...\r\n", drives[i]);
+        res = f_mount(&fatfs_inst, drives[i], 1);
         if (res != FR_OK) continue;
 
-        xil_printf("[SCSI] Mounted %s\r\n", drives[d]);
+        xil_printf("[SCSI] Mounted %s\r\n", drives[i]);
 
-        /* Scan root for *.IMG file */
-        res = f_opendir(&dir, drives[d]);
-        if (res != FR_OK) { f_mount(NULL, drives[d], 0); continue; }
+        res = f_opendir(&dir, drives[i]);
+        if (res != FR_OK) { f_mount(NULL, drives[i], 0); continue; }
 
-        bool found = false;
         while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0] != '\0') {
             int len = strlen(fno.fname);
             if (len >= 4 &&
@@ -499,42 +704,102 @@ int next_scsi_init(void)
                 (fno.fname[len-2] == 'M' || fno.fname[len-2] == 'm') &&
                 (fno.fname[len-1] == 'G' || fno.fname[len-1] == 'g')) {
                 char path[64];
-                snprintf(path, sizeof(path), "%s%s", drives[d], fno.fname);
+                snprintf(path, sizeof(path), "%s%s", drives[i], fno.fname);
                 f_closedir(&dir);
 
-                res = f_open(&disk.fil, path, FA_READ);
+                res = f_open(&d->fatfs_fil, path, FA_READ);
                 if (res == FR_OK) {
-                    disk.size = f_size(&disk.fil);
-                    disk.mounted = true;
-                    scache_reset();
-                    xil_printf("[SCSI] Opened %s: %llu bytes (%u sectors)\r\n",
-                               path, disk.size, (unsigned)(disk.size / SCSI_BLOCKSIZE));
+                    d->backing   = DISK_BACKING_FATFS;
+                    d->size_bytes = f_size(&d->fatfs_fil);
+                    d->mounted   = true;
+                    d->writable  = false;
+                    snprintf(d->label, sizeof(d->label), "SD %s", fno.fname);
+                    xil_printf("[SCSI] target 6: %s (%llu bytes, %u sectors) read-only\r\n",
+                               path, d->size_bytes,
+                               (unsigned)(d->size_bytes / SCSI_BLOCKSIZE));
                     return 0;
                 }
                 xil_printf("[SCSI] Failed to open %s (err %d)\r\n", path, res);
-                f_mount(NULL, drives[d], 0);
+                f_mount(NULL, drives[i], 0);
                 return -1;
             }
         }
         f_closedir(&dir);
-        if (!found) {
-            xil_printf("[SCSI] No .IMG file found on %s\r\n", drives[d]);
-            f_mount(NULL, drives[d], 0);
-        }
+        xil_printf("[SCSI] No .IMG file found on %s\r\n", drives[i]);
+        f_mount(NULL, drives[i], 0);
     }
     return -1;
 }
 
-#define SCSI_TARGET_ID  6   /* NeXT boot disk is always target 6 */
+/* Register the eMMC raw-block window as SCSI target 0.  Returns 0 on
+ * success, -1 if eMMC init failed (target 0 stays absent). */
+static int register_emmc_at_target0(void)
+{
+    scsi_disk_t *d = &disks[0];
+    d->backing = DISK_BACKING_NONE;
+    d->mounted = false;
+
+    if (emmc_blk_init() != 0) {
+        xil_printf("[SCSI] target 0: eMMC init failed, target 0 not present\r\n");
+        return -1;
+    }
+
+    d->backing    = DISK_BACKING_EMMC_RAW;
+    d->size_bytes = emmc_blk_window_bytes();
+    d->mounted    = true;
+    d->writable   = true;
+    snprintf(d->label, sizeof(d->label), "eMMC raw 2GB");
+    xil_printf("[SCSI] target 0: eMMC raw window (%llu bytes, %u sectors) writable\r\n",
+               d->size_bytes, (unsigned)(d->size_bytes / SCSI_BLOCKSIZE));
+    /* Eagerly probe the disk label so the init log reports whether
+     * target 0 is going to intercept the ROM's auto-boot or not. */
+    refresh_disk_label(d, 0);
+    return 0;
+}
+
+/* ------------------------------------------------------------------ */
+/* Public API                                                          */
+/* ------------------------------------------------------------------ */
+
+int next_scsi_init(void)
+{
+    memset(&disks, 0, sizeof(disks));
+    memset(&req, 0, sizeof(req));
+    memset(&scsi_buf, 0, sizeof(scsi_buf));
+    req.phase = SCSI_PHASE_ST;
+    scache_reset();
+
+    int rc_sd   = register_sd_installer_at_target6();
+    int rc_emmc = register_emmc_at_target0();
+
+    /* Return 0 if at least one disk came up so the old caller in
+     * main.c continues to consider SCSI initialised. */
+    return (rc_sd == 0 || rc_emmc == 0) ? 0 : -1;
+}
+
+#define BOOT_TARGET_ID  6   /* NeXT ROM's default boot target (MO/install) */
 
 bool next_scsi_select(uint8_t target)
 {
-    if (target != SCSI_TARGET_ID || !disk.mounted) {
-        DPRINTF("[SCSI] Select target %d: timeout\r\n", target);
-        disk.phase = SCSI_PHASE_ST;  /* bus free — match Previous behavior */
+    if (target >= SCSI_NUM_TARGETS || !disks[target].mounted) {
+        DPRINTF("[SCSI] Select target %d: timeout (not present)\r\n", target);
+        req.phase = SCSI_PHASE_ST;
         return true; /* timeout */
     }
-    disk.target = target;
+    /* A blank eMMC-raw disk is reported absent from the bus (select
+     * timeout) rather than present-but-not-ready.  NeXT ROM interprets
+     * NOT_READY as "spinning up, poll TUR forever" - that stalls the
+     * auto-boot.  Reporting absent lets `b sd` fall through to the
+     * next target (6 = installer).  Once a valid disk label is laid
+     * down (wr_flush_sector clears label_checked and refresh_disk_label
+     * flips label_valid), the device re-appears on the bus. */
+    if (!disk_is_boot_ready(&disks[target], target)) {
+        DPRINTF("[SCSI] Select target %d: timeout (blank, no label)\r\n", target);
+        req.phase = SCSI_PHASE_ST;
+        return true;
+    }
+    req.target = target;
+    DPRINTF("[SCSI] Select target %d: OK (%s)\r\n", target, disks[target].label);
     return false;
 }
 
@@ -544,34 +809,35 @@ void next_scsi_receive_command(uint8_t *cdb, int cdb_len, uint8_t identify)
 
     /* Extract LUN from identify message or CDB */
     if (identify & MSG_IDENTIFY_MASK)
-        disk.lun = identify & MSG_LUNMASK;
+        req.lun = identify & MSG_LUNMASK;
     else
-        disk.lun = (cdb[1] & 0xE0) >> 5;
+        req.lun = (cdb[1] & 0xE0) >> 5;
 
     uint8_t opcode = cdb[0];
-    DPRINTF("[SCSI] Cmd $%02X target=%d lun=%d\r\n", opcode, disk.target, disk.lun);
+    DPRINTF("[SCSI] Cmd $%02X target=%d lun=%d\r\n", opcode, req.target, req.lun);
 
     /* LUN-independent commands first */
     switch (opcode) {
     case CMD_INQUIRY:
         scsi_inquiry(cdb);
-        disk.message = MSG_COMPLETE;
+        req.message = MSG_COMPLETE;
         return;
     case CMD_REQ_SENSE:
         scsi_request_sense(cdb);
-        disk.message = MSG_COMPLETE;
+        req.message = MSG_COMPLETE;
         return;
     default:
         break;
     }
 
-    /* Check LUN validity for other commands */
-    if (disk.lun != 0) {
-        disk.status = STAT_CHECK_COND;
-        disk.sense.code = SC_INVALID_LUN;
-        disk.sense.valid = false;
-        disk.phase = SCSI_PHASE_ST;
-        disk.message = MSG_COMPLETE;
+    /* Check LUN validity for other commands (we only ever expose LUN 0
+     * on each target). */
+    if (req.lun != 0) {
+        req.status = STAT_CHECK_COND;
+        req.sense.code = SC_INVALID_LUN;
+        req.sense.valid = false;
+        req.phase = SCSI_PHASE_ST;
+        req.message = MSG_COMPLETE;
         return;
     }
 
@@ -587,18 +853,18 @@ void next_scsi_receive_command(uint8_t *cdb, int cdb_len, uint8_t identify)
     case CMD_FORMAT_DRIVE:   scsi_format_drive(cdb); break;
     case CMD_MODESELECT:
         /* Accept but ignore */
-        disk.status = STAT_GOOD;
-        disk.phase = SCSI_PHASE_ST;
+        req.status = STAT_GOOD;
+        req.phase = SCSI_PHASE_ST;
         break;
     default:
         DPRINTF("[SCSI] Unknown command $%02X\r\n", opcode);
-        disk.status = STAT_CHECK_COND;
-        disk.sense.code = SC_INVALID_CMD;
-        disk.sense.valid = false;
-        disk.phase = SCSI_PHASE_ST;
+        req.status = STAT_CHECK_COND;
+        req.sense.code = SC_INVALID_CMD;
+        req.sense.valid = false;
+        req.phase = SCSI_PHASE_ST;
         break;
     }
-    disk.message = MSG_COMPLETE;
+    req.message = MSG_COMPLETE;
 }
 
 uint8_t next_scsi_send_data(void)
@@ -613,63 +879,122 @@ uint8_t next_scsi_send_data(void)
         if (scsi_buf.is_disk)
             scsi_read_one_sector();
         else
-            disk.phase = SCSI_PHASE_ST;
+            req.phase = SCSI_PHASE_ST;
     }
     return val;
 }
 
+/* ------------------------------------------------------------------ */
+/* Data-Out (write) path                                               */
+/*                                                                     */
+/* ESP DMA feeds us host-side bytes via next_scsi_write_bytes().  We   */
+/* accumulate into wr_sector and commit to the backing once a full     */
+/* SCSI_BLOCKSIZE has been delivered.  When req.write_pending reaches  */
+/* zero we pad any trailing partial sector and transition to STATUS.   */
+/* ------------------------------------------------------------------ */
+static uint8_t  wr_sector[SCSI_BLOCKSIZE];
+/* wr_sector_fill is declared/forward-declared near the top of the file
+ * so scsi_write_sector() can zero it at every WRITE command boundary. */
+
+uint32_t wr_flush_sector_count = 0;
+uint32_t wr_flush_sector_ok    = 0;
+uint32_t wr_flush_sector_err   = 0;
+uint32_t wr_flush_sector_oor   = 0;
+uint32_t wr_lba_lt_1M   = 0;   /* LBA < 1M sectors (~512 MB) */
+uint32_t wr_lba_lt_2M   = 0;   /* LBA 1M..2M sectors */
+uint32_t wr_lba_lt_4M   = 0;   /* LBA 2M..4M sectors */
+uint32_t wr_lba_ge_4M   = 0;   /* LBA >= 4M sectors (outside our 2GB window) */
+uint32_t wr_max_lba     = 0;
+
+static void wr_flush_sector(void)
+{
+    wr_flush_sector_count++;
+    if      (req.lba < 1u*1024*1024) wr_lba_lt_1M++;
+    else if (req.lba < 2u*1024*1024) wr_lba_lt_2M++;
+    else if (req.lba < 4u*1024*1024) wr_lba_lt_4M++;
+    else                              wr_lba_ge_4M++;
+    if (req.lba > wr_max_lba) wr_max_lba = req.lba;
+    scsi_disk_t *d = current_disk();
+    if (req.lba * (uint64_t)SCSI_BLOCKSIZE < d->size_bytes) {
+        if (disk_backing_write(d, req.lba, wr_sector) < 0) {
+            wr_flush_sector_err++;
+            DPRINTF("[SCSI] backing write err tgt=%d LBA=%u\r\n",
+                    req.target, req.lba);
+            req.status = STAT_CHECK_COND;
+            req.sense.code = SC_NOT_READY;
+        } else {
+            wr_flush_sector_ok++;
+            /* Successful write invalidates any stale cache entry. */
+            scache_invalidate(req.target, req.lba);
+            /* Any write to LBA 0 may have changed the NeXT disk label,
+             * so invalidate the cached label-validity result.  The next
+             * TUR will re-read and re-evaluate. */
+            if (req.lba == 0)
+                d->label_checked = false;
+        }
+    } else {
+        wr_flush_sector_oor++;
+        DPRINTF("[SCSI] write out of range tgt=%d LBA=%u\r\n",
+                req.target, req.lba);
+        req.status = STAT_CHECK_COND;
+        req.sense.code = SC_INVALID_LBA;
+    }
+    req.lba++;
+    wr_sector_fill = 0;
+}
+
 void next_scsi_receive_data(uint8_t val)
 {
-    /* Stub for write support */
-    (void)val;
+    /* Single-byte PIO fallback.  ESP DMA uses next_scsi_write_bytes. */
+    next_scsi_write_bytes(&val, 1);
 }
 
 uint8_t next_scsi_send_status(void)
 {
-    /* Return status byte only. Phase management is the ESP layer's job
-     * (matches Previous's architecture — phase is mutated explicitly in
-     * esp.c, not as a side effect of an accessor). */
-    return disk.status;
+    return req.status;
 }
 
 uint8_t next_scsi_send_message(void)
 {
-    return disk.message;
+    return req.message;
 }
 
 uint8_t next_scsi_get_phase(void)
 {
-    return disk.phase;
+    return req.phase;
 }
 
 void next_scsi_set_phase(uint8_t phase)
 {
-    disk.phase = phase;
+    req.phase = phase;
 }
 
 uint8_t next_scsi_get_target(void)
 {
-    return disk.target;
+    return req.target;
 }
 
 int next_scsi_read_raw(uint32_t lba, uint8_t *buf, uint32_t nsect)
 {
-    if (!disk.mounted)
+    /* Diagnostic raw-read helper used by next_ufs_diag.c. Reads from the
+     * current SD installer image (target 6) since that's where UFS diag
+     * runs.  If target 6 isn't mounted, refuse. */
+    scsi_disk_t *d = &disks[6];
+    if (!d->mounted || d->backing != DISK_BACKING_FATFS)
         return -1;
     uint64_t offset = (uint64_t)lba * 512;
-    if (offset + (uint64_t)nsect * 512 > disk.size)
+    if (offset + (uint64_t)nsect * 512 > d->size_bytes)
         return -1;
-    /* Save and restore file position so diagnostic reads don't
-     * interfere with in-flight SCSI operations. */
-    FSIZE_t saved_pos = f_tell(&disk.fil);
-    FRESULT res = f_lseek(&disk.fil, (FSIZE_t)offset);
+
+    FSIZE_t saved_pos = f_tell(&d->fatfs_fil);
+    FRESULT res = f_lseek(&d->fatfs_fil, (FSIZE_t)offset);
     if (res != FR_OK) {
-        f_lseek(&disk.fil, saved_pos);
+        f_lseek(&d->fatfs_fil, saved_pos);
         return -1;
     }
     UINT br;
-    res = f_read(&disk.fil, buf, nsect * 512, &br);
-    f_lseek(&disk.fil, saved_pos);
+    res = f_read(&d->fatfs_fil, buf, nsect * 512, &br);
+    f_lseek(&d->fatfs_fil, saved_pos);
     if (res != FR_OK || br != nsect * 512)
         return -1;
     return 0;
@@ -695,20 +1020,48 @@ void next_scsi_consume_bytes(int n)
         if (scsi_buf.is_disk)
             scsi_read_one_sector();
         else
-            disk.phase = SCSI_PHASE_ST;
+            req.phase = SCSI_PHASE_ST;
     }
 }
 
 int next_scsi_get_write_remaining(void)
 {
-    return (int)disk.write_pending;
+    return (int)req.write_pending;
 }
 
-void next_scsi_consume_write_bytes(int n)
+int next_scsi_write_bytes(const uint8_t *src, int n)
 {
-    if ((uint32_t)n > disk.write_pending)
-        n = (int)disk.write_pending;
-    disk.write_pending -= (uint32_t)n;
-    if (disk.write_pending == 0)
-        disk.phase = SCSI_PHASE_ST;  /* all data received, go to status */
+    /* ESP DMA hands off a run of host-side bytes.  We collect into
+     * wr_sector and commit to the backing store each time a full
+     * SCSI_BLOCKSIZE accumulates.  When the total write_pending count
+     * reaches zero (whole command drained), pad any trailing partial
+     * sector with zeros, flush, and transition to Status phase. */
+    if (n <= 0) return 0;
+    if ((uint32_t)n > req.write_pending)
+        n = (int)req.write_pending;
+
+    int consumed = 0;
+    while (n > 0) {
+        uint32_t room = SCSI_BLOCKSIZE - wr_sector_fill;
+        uint32_t take = ((uint32_t)n < room) ? (uint32_t)n : room;
+        memcpy(&wr_sector[wr_sector_fill], src, take);
+        wr_sector_fill += take;
+        src += take;
+        n   -= (int)take;
+        consumed += (int)take;
+        req.write_pending -= (uint32_t)take;
+
+        if (wr_sector_fill == SCSI_BLOCKSIZE)
+            wr_flush_sector();
+    }
+
+    if (req.write_pending == 0) {
+        if (wr_sector_fill > 0) {
+            memset(&wr_sector[wr_sector_fill], 0,
+                   SCSI_BLOCKSIZE - wr_sector_fill);
+            wr_flush_sector();
+        }
+        req.phase = SCSI_PHASE_ST;
+    }
+    return consumed;
 }

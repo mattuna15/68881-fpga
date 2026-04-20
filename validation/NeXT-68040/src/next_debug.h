@@ -19,20 +19,20 @@
  * read/write logging. Introduced while chasing the post-mach_init
  * dma_start → RESET loop. */
 #ifndef NEXT_DEBUG_DMA
-#define NEXT_DEBUG_DMA 1
+#define NEXT_DEBUG_DMA 0
 #endif
 
 /* ESP command / status / control trace with PC and instruction count.
  * Enabled dynamically when the DMA tight-loop detector fires
  * (requires NEXT_DEBUG_DMA as well). */
 #ifndef NEXT_DEBUG_ESP_TRACE
-#define NEXT_DEBUG_ESP_TRACE 1
+#define NEXT_DEBUG_ESP_TRACE 0
 #endif
 
 /* Kernel OUTER-loop BTST probe at PC=$040146BC — dumps A3-relative
  * flag byte and surrounding memory to identify the polling target. */
 #ifndef NEXT_DEBUG_OUTER_BTST
-#define NEXT_DEBUG_OUTER_BTST 1
+#define NEXT_DEBUG_OUTER_BTST 0
 #endif
 
 /* Global instruction counter, incremented once per instruction in

@@ -37,6 +37,10 @@
 #include "next_kms.h"
 #include "usb_hid.h"
 #include "next_scsi.h"
+#include "emmc_blk.h"
+#include "led_disk.h"
+#include "fatfs/ff.h"
+#include "sleep.h"
 #include "next_scsi_dma.h"
 #include "next_esp.h"
 #include "next_ufs_diag.h"
@@ -44,6 +48,8 @@
 #include "text_fb.h"
 #include "dp_video.h"
 #include "render_core1.h"
+
+extern int next_debug_scsi;
 
 /* Number of M68K instructions to execute per main-loop tick.
  * Interrupt delivery latency is no longer gated by this value —
@@ -468,6 +474,10 @@ void emu_instr_hook(unsigned int pc)
     pc_ring[pc_ring_idx % PC_RING_SIZE] = pc;
     pc_ring_idx++;
 
+    /* Tick the disk-activity LED once per emulated instruction so the
+     * hold window counts down and the LED drops back to off cleanly. */
+    led_disk_tick();
+
 #if NEXT_DEBUG_OUTER_BTST
     /* Probe: identify the OUTER-loop polling target.  PC=$040146BC is the
      * BTST.B #0, (0x67, A3) instruction at the top of the loop.  Log A3
@@ -542,19 +552,19 @@ void emu_instr_hook(unsigned int pc)
                     /* mg_getc at offset 726, mg_try_getc at 730 */
                     uint32_t getc_addr = m68k_read_memory_32(mg + 726);
                     uint32_t try_getc = m68k_read_memory_32(mg + 730);
-                    xil_printf("[MG] mg_putc=$%08X mg_getc=$%08X mg_try_getc=$%08X\r\n",
+                    if (next_debug_scsi) xil_printf("[MG] mg_putc=$%08X mg_getc=$%08X mg_try_getc=$%08X\r\n",
                                rom_putc_addr, getc_addr, try_getc);
                     /* mg_console_i is at mg+792, mg_console_o at mg+796.
-                     * ROM sets these to CONS_I_KBD(0) / CONS_O_BITMAP(0).
-                     * Patch mg_console_i to CONS_I_SCC_A(1) so the ROM
-                     * monitor polls SCC serial instead of the keyboard.
-                     * (Paired with ni_alt_cons=1 in NVRAM, this is the
-                     * known-good serial-console boot path.) */
+                     * Trying keyboard-primary input: leave cons_i at
+                     * whatever the ROM set (CONS_I_KBD=0 when alt_cons=0,
+                     * so kernel cons_tp binds to km).  The KMS IRQ is now
+                     * asserted on HID push (see next_kms.c kms_queue_push
+                     * -> next_intr_set(I_IPL3_KBD_MOUSE)) so the km ISR
+                     * should fire and drain the queue naturally.  If the
+                     * previous km-path hang returns, restore the patch. */
                     uint32_t cons_i = m68k_read_memory_32(mg + 792);
-                    if (cons_i == 0) {
-                        m68k_write_memory_32(mg + 792, 1); /* CONS_I_SCC_A */
-                        xil_printf("[MG] patched mg_console_i: KBD->SCC_A\r\n");
-                    }
+                    if (next_debug_scsi) xil_printf("[MG] mg_console_i=%u mg_console_o=%u (KBD=0, SCC_A=1, BITMAP=0)\r\n",
+                               cons_i, m68k_read_memory_32(mg + 796));
                 } else {
                     rom_putc_addr = 0;  /* invalid, keep searching */
                 }
@@ -610,16 +620,16 @@ void emu_instr_hook(unsigned int pc)
                 uint32_t d1 = m68k_get_reg(NULL, M68K_REG_D1);
                 uint32_t d2 = m68k_get_reg(NULL, M68K_REG_D2);
                 uint32_t d3 = m68k_get_reg(NULL, M68K_REG_D3);
-                xil_printf("[SYSCALL] D0=%u (trap#4) D1=$%08X D2=$%08X D3=$%08X PC=$%08X\r\n",
+                if (0) xil_printf("[SYSCALL] D0=%u (trap#4) D1=$%08X D2=$%08X D3=$%08X PC=$%08X\r\n",
                            (unsigned)d0, d1, d2, d3, pc);
-                if (d0 == 5) {                    /* open */
+                if (0 && d0 == 5) {                    /* open */
                     /* Dump context window $d1-32 .. $d1+64 so we see
                      * what's before/after the pointer — if the real
                      * filename is just off by a few bytes we'll spot
                      * it. Cross-check via direct-phys read
                      * (next_phys_read_32 → skips Musashi memory layer)
                      * vs m68k_read_memory_8 (goes through Musashi). */
-                    xil_printf("[OPEN] context window $%08X-32..+64:\r\n",
+                    if (0) xil_printf("[OPEN] context window $%08X-32..+64:\r\n",
                                d1);
                     for (int row = 0; row < 6; row++) {
                         uint32_t base = (d1 & ~3u) - 32 + row*16;
@@ -671,16 +681,16 @@ void emu_instr_hook(unsigned int pc)
                         }
                     }
                     via_musashi[64] = via_phys[64] = 0;
-                    xil_printf("[OPEN] via m68k_read_memory_8: \"%s\"\r\n",
+                    if (0) xil_printf("[OPEN] via m68k_read_memory_8: \"%s\"\r\n",
                                via_musashi);
-                    xil_printf("[OPEN] via next_phys_read_32:  \"%s\"\r\n",
+                    if (0) xil_printf("[OPEN] via next_phys_read_32:  \"%s\"\r\n",
                                via_phys);
                     /* If this is /dev/console, turn on the supervisor
                      * PC sampler so we can see where the kernel blocks. */
                     if (via_phys[0] == '/' && via_phys[1] == 'd' &&
                         via_phys[2] == 'e' && via_phys[3] == 'v') {
                         console_open_trace = 1;
-                        xil_printf("[OPEN] tracing kernel after this trap\r\n");
+                        if (0) xil_printf("[OPEN] tracing kernel after this trap\r\n");
                     }
                 }
             }
@@ -708,7 +718,7 @@ void emu_instr_hook(unsigned int pc)
         if (is_super) {
             if (!banner) {
                 banner = 1;
-                xil_printf("[KTRACE] entered supervisor after open trap PC=$%08X\r\n", pc);
+                if (0) xil_printf("[KTRACE] entered supervisor after open trap PC=$%08X\r\n", pc);
             }
             int in_idle = (pc >= 0x040674D0 && pc <= 0x04067504);
             /* Snapshot registers each time we enter the scheduler
@@ -735,17 +745,17 @@ void emu_instr_hook(unsigned int pc)
                     prev_pc = pc;
                 }
             }
-            if (!idle_dumped && in_idle) {
+            if (0 && !idle_dumped && in_idle) {
                 idle_dumped = 1;
                 emu_idle_entered = 1;  /* signal main loop heartbeat */
-                xil_printf("[KTRACE] entering idle loop — first %d PCs after trap:\r\n",
+                if (0) xil_printf("[KTRACE] entering idle loop — first %d PCs after trap:\r\n",
                            hist_count);
                 for (int k = 0; k < hist_count; k++) {
                     xil_printf("  [%4d] $%08X\r\n", k, hist[k]);
                 }
                 /* Also dump A6 frame chain at this moment */
                 uint32_t a6 = m68k_get_reg(NULL, M68K_REG_A6);
-                xil_printf("[KTRACE] A6 chain at idle entry:\r\n");
+                if (0) xil_printf("[KTRACE] A6 chain at idle entry:\r\n");
                 for (int i = 0; i < 12 && a6 >= 0x04000000 && a6 < 0x12000000; i++) {
                     uint32_t ret = next_phys_read_32((a6 + 4) & 0x07FFFFFFu);
                     uint32_t nxt = next_phys_read_32(a6 & 0x07FFFFFFu);
@@ -760,12 +770,12 @@ void emu_instr_hook(unsigned int pc)
                 {
                     extern int scsi_read_log_count(void);
                     extern void esp_dump_state(void);
-                    xil_printf("[IDLE-SCSI] SCSI reads since BUSRST: %d\r\n",
+                    if (0) xil_printf("[IDLE-SCSI] SCSI reads since BUSRST: %d\r\n",
                                scsi_read_log_count());
                     esp_dump_state();
-                    xil_printf("[IDLE-SCSI] DMA CSR=$%08X\r\n",
+                    if (0) xil_printf("[IDLE-SCSI] DMA CSR=$%08X\r\n",
                                next_scsi_dma_csr_read());
-                    xil_printf("[IDLE-SCSI] intr_status=$%08X intr_mask=$%08X pending_ipl=%d\r\n",
+                    if (0) xil_printf("[IDLE-SCSI] intr_status=$%08X intr_mask=$%08X pending_ipl=%d\r\n",
                                next_intr_get_status(), next_intr_get_mask(),
                                next_intr_pending_ipl());
                 }
@@ -779,11 +789,11 @@ void emu_instr_hook(unsigned int pc)
                      * must use mmu040_translate_with_urp(SRP, va) to
                      * walk the kernel page table explicitly. */
                     uint32_t srp = fh_get_srp();
-                    xil_printf("[BLOCK] Last sched entry (#%d) regs (SRP=$%08X):\r\n",
+                    if (0) xil_printf("[BLOCK] Last sched entry (#%d) regs (SRP=$%08X):\r\n",
                                sched_snaps, srp);
-                    xil_printf("[BLOCK] D0=$%08X D1=$%08X A0=$%08X A1=$%08X\r\n",
+                    if (0) xil_printf("[BLOCK] D0=$%08X D1=$%08X A0=$%08X A1=$%08X\r\n",
                                sched_d0, sched_d1, sched_a0, sched_a1);
-                    xil_printf("[BLOCK] SP=$%08X A6=$%08X\r\n", sched_sp, sched_a6);
+                    if (0) xil_printf("[BLOCK] SP=$%08X A6=$%08X\r\n", sched_sp, sched_a6);
                     /* Helper: translate VA through SRP, fall back to
                      * identity mapping for low kernel VAs ($04xxxxxx). */
                     #define KXLAT(va) ({ \
@@ -791,7 +801,7 @@ void emu_instr_hook(unsigned int pc)
                         uint32_t _p = mmu040_translate_with_urp(srp, _v); \
                         (_p == _v && _v >= 0x10000000u) ? 0 : _p; \
                     })
-                    xil_printf("[BLOCK] Stack at last sched entry (SRP-xlated):\r\n");
+                    if (0) xil_printf("[BLOCK] Stack at last sched entry (SRP-xlated):\r\n");
                     for (int i = 0; i < 48; i++) {
                         uint32_t va = sched_sp + i*4;
                         uint32_t pa = KXLAT(va);
@@ -806,7 +816,7 @@ void emu_instr_hook(unsigned int pc)
                         }
                     }
                     /* A6 chain from the blocking frame */
-                    xil_printf("[BLOCK] A6 chain:\r\n");
+                    if (0) xil_printf("[BLOCK] A6 chain:\r\n");
                     uint32_t fa6 = sched_a6;
                     for (int i = 0; i < 16; i++) {
                         uint32_t pa = KXLAT(fa6);
@@ -825,7 +835,7 @@ void emu_instr_hook(unsigned int pc)
                     /* Dump 64 bytes at the sleep channel (A0 from last
                      * sched snapshot) to identify the data structure. */
                     if (sched_a0 >= 0x04000000u && sched_a0 < 0x0C000000u) {
-                        xil_printf("[BLOCK] Sleep channel $%08X dump:\r\n", sched_a0);
+                        if (0) xil_printf("[BLOCK] Sleep channel $%08X dump:\r\n", sched_a0);
                         for (int row = 0; row < 4; row++) {
                             uint32_t base = sched_a0 + row*16;
                             xil_printf("  $%08X: ", base);
@@ -847,7 +857,7 @@ void emu_instr_hook(unsigned int pc)
                     /* Scan the stack for return-address-looking values
                      * ($04xxxxxx in kernel text range) and dump code
                      * around each unique one. */
-                    xil_printf("[BLOCK] Code at stack return addresses:\r\n");
+                    if (0) xil_printf("[BLOCK] Code at stack return addresses:\r\n");
                     uint32_t seen_ret[16]; int n_ret = 0;
                     for (int i = 0; i < 48 && n_ret < 16; i++) {
                         uint32_t va = sched_sp + i*4;
@@ -888,19 +898,19 @@ void emu_instr_hook(unsigned int pc)
                             uint32_t caller = pa_ret ? next_phys_read_32(pa_ret) : 0;
                             uint32_t chan = pa_chan ? next_phys_read_32(pa_chan) : 0;
                             uint32_t pri = pa_pri ? next_phys_read_32(pa_pri) : 0;
-                            xil_printf("[BLOCK] sleep() frame at A6=$%08X:\r\n", sleep_a6_va);
-                            xil_printf("[BLOCK]   caller ret=$%08X  chan=$%08X  pri=%d\r\n",
+                            if (0) xil_printf("[BLOCK] sleep() frame at A6=$%08X:\r\n", sleep_a6_va);
+                            if (0) xil_printf("[BLOCK]   caller ret=$%08X  chan=$%08X  pri=%d\r\n",
                                        caller, chan, pri);
                             /* If chan looks like a kernel address, dump 32 bytes there */
                             if (chan >= 0x04000000u && chan < 0x0C000000u) {
-                                xil_printf("[BLOCK]   sleep channel @$%08X: ", chan);
+                                if (0) xil_printf("[BLOCK]   sleep channel @$%08X: ", chan);
                                 for (int w = 0; w < 8; w++)
                                     xil_printf("%08X ", next_phys_read_32(chan + w*4));
                                 xil_printf("\r\n");
                             }
                             /* Dump code at the caller to identify the function */
                             if (caller >= 0x04001000u && caller < 0x040B0000u) {
-                                xil_printf("[BLOCK]   caller code @$%08X-16:\r\n    ", caller);
+                                if (0) xil_printf("[BLOCK]   caller code @$%08X-16:\r\n    ", caller);
                                 for (int w = 0; w < 8; w++)
                                     xil_printf("%08X ", next_phys_read_32(caller - 16 + w*4));
                                 xil_printf("\r\n");
@@ -913,7 +923,7 @@ void emu_instr_hook(unsigned int pc)
                  * idle — these are the blocking call site.  With 68K
                  * disassembly this identifies sleep/assert_wait/thread_block. */
                 if (hist_count >= 20) {
-                    xil_printf("[KTRACE] code at last 20 PCs before idle:\r\n");
+                    if (0) xil_printf("[KTRACE] code at last 20 PCs before idle:\r\n");
                     for (int k = hist_count - 20; k < hist_count; k++) {
                         uint32_t a = hist[k] & 0x07FFFFFFu;
                         xil_printf("  $%08X: ", hist[k]);
@@ -1023,10 +1033,30 @@ static void next_boot(void)
     xil_printf("[NEXT] Memory: %d MB RAM @ 0x%08X\r\n",
                NEXT_RAM_SIZE / (1024*1024), NEXT_RAM_BASE);
 
+    /* Drain any residual bytes from the ARM UART RX FIFO left over
+     * from the prior boot / terminal handshake.  Without this a stray
+     * 0x03 (Ctrl-C) sent by some terminals on (re)connect leaks into
+     * the first read and either skips the flasher prompt or feeds the
+     * NeXT guest a bogus keystroke. */
+#ifdef XPAR_XUARTPS_0_BASEADDR
+    {
+        volatile uint32_t *uart_sr   = (volatile uint32_t *)(XPAR_XUARTPS_0_BASEADDR + 0x2C);
+        volatile uint32_t *uart_fifo = (volatile uint32_t *)(XPAR_XUARTPS_0_BASEADDR + 0x30);
+        int drained = 0;
+        while (!((*uart_sr) & 0x02) && drained < 64) {
+            (void)*uart_fifo;
+            drained++;
+        }
+        if (drained > 0)
+            xil_printf("[UART] drained %d stale RX byte(s) on boot\r\n", drained);
+    }
+#endif
+
     /* Initialise NeXT hardware stubs */
     next_devs_init();
     next_rtc_init();
     next_dsp_init();
+    led_disk_init();
     next_kms_init();
 
 #ifndef QEMU_MODE
@@ -1044,6 +1074,124 @@ static void next_boot(void)
         next_ufs_diagnose();
     } else
         xil_printf("[NEXT] SCSI disk: no disk image found\r\n");
+
+    /* One-shot eMMC flasher: if target 0 is a blank eMMC AND the SD
+     * card carries an NS33_2GB.dd image, offer a 15-second UART window
+     * to copy the image onto eMMC.  Default is "don't flash" so a
+     * power-cycle of a working install never wipes it. */
+    {
+        bool blank = next_scsi_emmc_is_blank();
+        xil_printf("\r\n=====================================================\r\n");
+        xil_printf("[EMMC] flasher check: target 0 blank=%s\r\n",
+                   blank ? "YES" : "no");
+
+        /* Enumerate SD-card FAT partitions.  With FF_MULTI_PARTITION=1
+         * each logical drive needs its own FATFS work-area; the
+         * installer already bound drive 6, so we only allocate slots
+         * 5/7/8/9 and mount each before probing. */
+        static FATFS flasher_fs[5];   /* one per SD partition 5..9 */
+        for (int v = 5; v <= 9; v++) {
+            char path[4] = { (char)('0' + v), ':', '/', 0 };
+            if (v != 6) {             /* 6 already mounted by installer */
+                FRESULT mr = f_mount(&flasher_fs[v - 5], path, 1);
+                if (mr != FR_OK) {
+                    xil_printf("[FAT]  %s : not a FAT volume (mount err %d)\r\n",
+                               path, mr);
+                    continue;
+                }
+            }
+            DIR dir; FRESULT fr = f_opendir(&dir, path);
+            if (fr != FR_OK) {
+                xil_printf("[FAT]  %s : opendir err %d\r\n", path, fr);
+                continue;
+            }
+            xil_printf("[FAT]  %s contents:\r\n", path);
+            FILINFO fno;
+            int count = 0;
+            while (f_readdir(&dir, &fno) == FR_OK && fno.fname[0] != 0 && count < 32) {
+                xil_printf("[FAT]    %-13s  %10llu bytes%s\r\n",
+                           fno.fname, (uint64_t)fno.fsize,
+                           (fno.fattrib & AM_DIR) ? "  <DIR>" : "");
+                count++;
+            }
+            f_closedir(&dir);
+        }
+
+        static const char *candidates[] = {
+            "5:/NS33_2GB.dd", "6:/NS33_2GB.dd", "7:/NS33_2GB.dd",
+            "8:/NS33_2GB.dd", "9:/NS33_2GB.dd",
+            "5:/ns33_2gb.dd", "6:/ns33_2gb.dd", "7:/ns33_2gb.dd",
+            "8:/ns33_2gb.dd", "9:/ns33_2gb.dd",
+            "5:/NS33_2GB.DD", "6:/NS33_2GB.DD", "7:/NS33_2GB.DD",
+            "8:/NS33_2GB.DD", "9:/NS33_2GB.DD",
+        };
+        const char *src = NULL;
+        for (int i = 0; i < (int)(sizeof(candidates)/sizeof(candidates[0])); i++) {
+            FILINFO fno;
+            FRESULT fr = f_stat(candidates[i], &fno);
+            xil_printf("[EMMC] probe %s => %s\r\n",
+                       candidates[i],
+                       fr == FR_OK ? "FOUND" :
+                       fr == FR_NO_FILE ? "no file" :
+                       fr == FR_NO_PATH ? "no path (volume not mounted?)" :
+                       fr == FR_NOT_READY ? "not ready" : "error");
+            if (fr == FR_OK) { src = candidates[i]; break; }
+        }
+
+        if (src) {
+#ifdef XPAR_XUARTPS_0_BASEADDR
+            xil_printf("\r\n");
+            xil_printf("##################################################\r\n");
+            xil_printf("#  eMMC flasher - target 0 %s             \r\n",
+                       blank ? "BLANK    " : "has label");
+            xil_printf("#  Image: %s\r\n", src);
+            xil_printf("#  F = (re)flash image to eMMC                    \r\n");
+            xil_printf("#  V = verify eMMC against image (no write)       \r\n");
+            xil_printf("#  any other key / 15 s timeout = skip            \r\n");
+            xil_printf("##################################################\r\n");
+            volatile uint32_t *uart_sr =
+                (volatile uint32_t *)(XPAR_XUARTPS_0_BASEADDR + 0x2C);
+            volatile uint32_t *uart_fifo =
+                (volatile uint32_t *)(XPAR_XUARTPS_0_BASEADDR + 0x30);
+            int choice = 0;   /* 0 = skip, 1 = flash, 2 = verify */
+            for (int s = 15; s > 0; s--) {
+                xil_printf("[EMMC] waiting... %2d s\r", s);
+                for (int tick = 0; tick < 100; tick++) {
+                    if (!((*uart_sr) & 0x02)) {
+                        uint8_t ch = (uint8_t)(*uart_fifo & 0xFF);
+                        xil_printf("\r\n[EMMC] key=0x%02X ('%c')\r\n",
+                                   ch, (ch >= 32 && ch < 127) ? ch : '?');
+                        if (ch == 'F' || ch == 'f') choice = 1;
+                        else if (ch == 'V' || ch == 'v') choice = 2;
+                        goto done_wait;
+                    }
+                    usleep(10000); /* 10 ms */
+                }
+            }
+            done_wait:
+            if (choice == 1) {
+                xil_printf("\r\n[EMMC] Flashing %s ... (several minutes)\r\n", src);
+                if (emmc_blk_flash_from_file(src) == 0) {
+                    next_scsi_emmc_refresh_label();
+                    xil_printf("[EMMC] Flash complete; running verify...\r\n");
+                    emmc_blk_verify_against_file(src);
+                } else {
+                    xil_printf("[EMMC] Flash FAILED.\r\n");
+                }
+            } else if (choice == 2) {
+                xil_printf("\r\n[EMMC] Verifying %s against eMMC...\r\n", src);
+                emmc_blk_verify_against_file(src);
+            } else {
+                xil_printf("\r\n[EMMC] Skipped.\r\n");
+            }
+#else
+            xil_printf("[EMMC] (no UART - flasher prompt unavailable)\r\n");
+#endif
+        } else {
+            xil_printf("[EMMC] No NS33_2GB.dd found on SD - nothing to flash/verify.\r\n");
+        }
+        xil_printf("=====================================================\r\n\r\n");
+    }
     {
         extern uint32_t next_scr1_get(void);
         xil_printf("[NEXT] Device stubs: SCR1=%08X (Turbo)\r\n",
@@ -1154,7 +1302,7 @@ static void next_boot(void)
                     for (int i = 0; i < 4096; i += 4)
                         hash ^= *(uint32_t*)(next_vram + i);
                     if (hash != last_vram_hash && last_vram_hash != 0) {
-                        xil_printf("[VRAM] Display changed! (hash $%08X → $%08X)\r\n",
+                        if (next_debug_scsi) xil_printf("[VRAM] Display changed! (hash $%08X → $%08X)\r\n",
                                    last_vram_hash, hash);
                         /* Force a video refresh */
                     }
@@ -1180,7 +1328,7 @@ static void next_boot(void)
                     uint32_t pgsz = m68k_read_memory_32(mg + 10);
                     if (pgsz == 8192 || pgsz == 4096) {
                         uint16_t mg_seq = m68k_read_memory_16(mg + 780);
-                        xil_printf("[MG] mon_global=$%08X seq=%d\r\n", mg, mg_seq);
+                        if (next_debug_scsi) xil_printf("[MG] mon_global=$%08X seq=%d\r\n", mg, mg_seq);
                     }
                     /* Dump VRAM content stats */
                     int zeros = 0, ffs = 0, aas = 0, other = 0;
@@ -1191,7 +1339,7 @@ static void next_boot(void)
                         else if (v == 0xAA) aas++;
                         else other++;
                     }
-                    xil_printf("[VRAM] zeros=%d FF=%d AA=%d other=%d\r\n",
+                    if (next_debug_scsi) xil_printf("[VRAM] zeros=%d FF=%d AA=%d other=%d\r\n",
                                zeros, ffs, aas, other);
                     /* Force full render + refresh */
 #ifndef QEMU_MODE
@@ -1208,7 +1356,7 @@ static void next_boot(void)
                         }
                     }
 #endif
-                    xil_printf("[VRAM] Forced render complete\r\n");
+                    if (next_debug_scsi) xil_printf("[VRAM] Forced render complete\r\n");
 
                     mg_dumped = 1;
                 }
@@ -1256,7 +1404,7 @@ static void next_boot(void)
 
             if (next_vram_is_dirty()) {
                 if (!next_vram_active) {
-                    xil_printf("[VIDEO] NeXT VRAM active, stride=%d bytes/line\r\n",
+                    if (next_debug_scsi) xil_printf("[VIDEO] NeXT VRAM active, stride=%d bytes/line\r\n",
                                NEXT_VIDEO_NBPL);
                     next_vram_active = 1;
                 }
@@ -1483,6 +1631,38 @@ static void poll_uart_rx(void)
                        scsi_read_log_count());
             continue;
         }
+        if (ch == 'W') {
+            extern uint32_t wr_flush_sector_count, wr_flush_sector_ok;
+            extern uint32_t wr_flush_sector_err,   wr_flush_sector_oor;
+            extern uint32_t emmc_blk_write_calls,  emmc_blk_write_ok;
+            extern uint32_t emmc_blk_write_oor;
+            extern uint32_t emmc_blk_write_diskerr, emmc_blk_write_not_ready;
+            extern uint32_t scc_rx_push_total, scc_rx_push_0x03;
+            extern uint32_t kms_push_ascii_total, kms_push_ascii_0x03;
+            xil_printf("\r\n[WR] wr_flush_sector: total=%u ok=%u err=%u oor=%u\r\n",
+                       wr_flush_sector_count, wr_flush_sector_ok,
+                       wr_flush_sector_err,   wr_flush_sector_oor);
+            xil_printf("[WR] emmc_blk_write: calls=%u ok=%u oor=%u diskerr=%u not_ready=%u\r\n",
+                       emmc_blk_write_calls,  emmc_blk_write_ok,
+                       emmc_blk_write_oor,    emmc_blk_write_diskerr,
+                       emmc_blk_write_not_ready);
+            xil_printf("[IN] scc_rx_push: total=%u (0x03=%u)  kms_push_ascii: total=%u (0x03=%u)\r\n",
+                       scc_rx_push_total, scc_rx_push_0x03,
+                       kms_push_ascii_total, kms_push_ascii_0x03);
+            {
+                extern uint32_t wr_lba_lt_1M, wr_lba_lt_2M, wr_lba_lt_4M, wr_lba_ge_4M, wr_max_lba;
+                xil_printf("[WR-LBA] <1M=%u  1M..2M=%u  2M..4M=%u  >=4M=%u  max_lba=%u\r\n",
+                           wr_lba_lt_1M, wr_lba_lt_2M, wr_lba_lt_4M, wr_lba_ge_4M, wr_max_lba);
+            }
+            continue;
+        }
+        /* Drop Ctrl-C (0x03) from the UART side.  Some terminal stacks
+         * (Vitis console, PuTTY on reconnect, tio) inject stray 0x03
+         * bytes on connect/reconnect; the NeXT guest then auto-repeats
+         * them and the screen floods with ^C.  Real interrupts can
+         * still be sent from the USB keyboard, which pushes through
+         * next_kms_push_hid_report() - not this path. */
+        if (ch == 0x03) continue;
         next_scc_rx_push(ch);    /* SCC serial path */
         next_kms_push_ascii(ch); /* KMS keyboard path (ROM monitor) */
     }

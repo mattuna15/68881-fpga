@@ -20,6 +20,8 @@
 #include "xil_cache.h"
 #include <string.h>
 
+extern int next_debug_scsi;
+
 /* ------------------------------------------------------------------ */
 /* DWC3 / xHCI register addresses                                     */
 /* ------------------------------------------------------------------ */
@@ -360,7 +362,7 @@ static int dwc3_host_init(void)
 {
     uint32_t reg;
 
-    xil_printf("[USB] DWC3 host mode init @ 0x%08X\r\n", DWC3_BASE);
+    if (next_debug_scsi) xil_printf("[USB] DWC3 host mode init @ 0x%08X\r\n", DWC3_BASE);
 
     reg = reg_read32(DWC3_BASE + DWC3_GSNPSID);
     (void)reg; /* SNPSID read to verify DWC3 accessible */
@@ -414,7 +416,7 @@ static int dwc3_host_init(void)
     reg_write32(DWC3_BASE + DWC3_GUSB3PIPECTL0, reg);
 
     delay_ms(50);
-    xil_printf("[USB] DWC3 set to HOST mode\r\n");
+    if (next_debug_scsi) xil_printf("[USB] DWC3 set to HOST mode\r\n");
     return 0;
 }
 
@@ -526,21 +528,21 @@ static int wait_cmd_complete(uint32_t *slot_id_out)
     xhci_trb_t evt;
     for (;;) {
         if (wait_event(&evt, 2000) < 0) {
-            xil_printf("[USB] ERROR: command timeout\r\n");
+            if (next_debug_scsi) xil_printf("[USB] ERROR: command timeout\r\n");
             return -1;
         }
         uint32_t trb_type = (evt.field[3] >> TRB_TYPE_SHIFT) & 0x3FU;
         if (trb_type == TRB_PORT_STATUS)
             continue;
         if (trb_type != TRB_CMD_COMPLETE) {
-            xil_printf("[USB] unexpected event type %u\r\n", trb_type);
+            if (next_debug_scsi) xil_printf("[USB] unexpected event type %u\r\n", trb_type);
             return -1;
         }
         uint32_t comp = (evt.field[2] >> 24) & 0xFFU;
         if (slot_id_out)
             *slot_id_out = (evt.field[3] >> 24) & 0xFFU;
         if (comp != TRB_COMP_SUCCESS) {
-            xil_printf("[USB] Command completion code: %u\r\n", comp);
+            if (next_debug_scsi) xil_printf("[USB] Command completion code: %u\r\n", comp);
             return -(int)comp;
         }
         return 0;
@@ -553,19 +555,19 @@ static int wait_transfer(void)
     xhci_trb_t evt;
     for (;;) {
         if (wait_event(&evt, 5000) < 0) {
-            xil_printf("[USB] ERROR: transfer timeout\r\n");
+            if (next_debug_scsi) xil_printf("[USB] ERROR: transfer timeout\r\n");
             return -1;
         }
         uint32_t trb_type = (evt.field[3] >> TRB_TYPE_SHIFT) & 0x3FU;
         if (trb_type == TRB_PORT_STATUS)
             continue;
         if (trb_type != TRB_TRANSFER_EVT) {
-            xil_printf("[USB] unexpected event type %u (expected xfer)\r\n", trb_type);
+            if (next_debug_scsi) xil_printf("[USB] unexpected event type %u (expected xfer)\r\n", trb_type);
             return -1;
         }
         uint32_t comp = (evt.field[2] >> 24) & 0xFFU;
         if (comp != TRB_COMP_SUCCESS && comp != TRB_COMP_SHORT_PKT) {
-            xil_printf("[USB] Transfer completion code: %u\r\n", comp);
+            if (next_debug_scsi) xil_printf("[USB] Transfer completion code: %u\r\n", comp);
             return -(int)comp;
         }
         return 0;
@@ -626,7 +628,7 @@ static int xhci_init(void)
     while ((reg_read32(usb.op_base + XHCI_OP_USBSTS) & USBSTS_CNR) && timeout-- > 0)
         delay_ms(1);
 
-    xil_printf("[USB] xHCI reset complete\r\n");
+    if (next_debug_scsi) xil_printf("[USB] xHCI reset complete\r\n");
 
     /* Max device slots */
     reg_write32(usb.op_base + XHCI_OP_CONFIG, MAX_SLOTS);
@@ -702,11 +704,11 @@ static int xhci_init(void)
     delay_ms(10);
 
     if (reg_read32(usb.op_base + XHCI_OP_USBSTS) & USBSTS_HCH) {
-        xil_printf("[USB] ERROR: xHCI failed to start\r\n");
+        if (next_debug_scsi) xil_printf("[USB] ERROR: xHCI failed to start\r\n");
         return -1;
     }
 
-    xil_printf("[USB] xHCI host controller running\r\n");
+    if (next_debug_scsi) xil_printf("[USB] xHCI host controller running\r\n");
     return 0;
 }
 
@@ -785,9 +787,9 @@ static int enable_slot(uint32_t *slot_id_out)
     ring_doorbell(0, 0);
     int ret = wait_cmd_complete(slot_id_out);
     if (ret < 0)
-        xil_printf("[USB] Enable Slot failed (%d)\r\n", ret);
+        if (next_debug_scsi) xil_printf("[USB] Enable Slot failed (%d)\r\n", ret);
     else
-        xil_printf("[USB] Slot %u enabled\r\n", *slot_id_out);
+        if (next_debug_scsi) xil_printf("[USB] Slot %u enabled\r\n", *slot_id_out);
     return ret;
 }
 
@@ -845,7 +847,7 @@ static int address_device(uint32_t slot_id, uint32_t speed,
 
     usb.slots[slot_id].speed = speed;
 
-    xil_printf("[USB] Address Device slot=%u speed=%u\r\n", slot_id, speed);
+    if (next_debug_scsi) xil_printf("[USB] Address Device slot=%u speed=%u\r\n", slot_id, speed);
 
     cmd_ring_enqueue((uint32_t)(uintptr_t)input_ctx, 0, 0,
                      TRB_TYPE(TRB_ADDRESS_DEV) | (slot_id << 24));
@@ -853,10 +855,10 @@ static int address_device(uint32_t slot_id, uint32_t speed,
 
     int ret = wait_cmd_complete(NULL);
     if (ret < 0) {
-        xil_printf("[USB] Address Device failed (%d)\r\n", ret);
+        if (next_debug_scsi) xil_printf("[USB] Address Device failed (%d)\r\n", ret);
         return ret;
     }
-    xil_printf("[USB] Device addressed (slot %u)\r\n", slot_id);
+    if (next_debug_scsi) xil_printf("[USB] Device addressed (slot %u)\r\n", slot_id);
     return 0;
 }
 
@@ -869,7 +871,7 @@ static int wait_for_device(void)
     uint32_t portsc;
     int timeout, port;
 
-    xil_printf("[USB] Waiting for device connection...\r\n");
+    if (next_debug_scsi) xil_printf("[USB] Waiting for device connection...\r\n");
 
     timeout = 3000;
     while (timeout > 0) {
@@ -883,11 +885,11 @@ static int wait_for_device(void)
         delay_ms(10);
         timeout -= 10;
     }
-    xil_printf("[USB] No device detected\r\n");
+    if (next_debug_scsi) xil_printf("[USB] No device detected\r\n");
     return -1;
 
 connected:
-    xil_printf("[USB] Device on port %d\r\n", usb.root_port);
+    if (next_debug_scsi) xil_printf("[USB] Device on port %d\r\n", usb.root_port);
     drain_events(50);
 
     /* Port reset */
@@ -906,7 +908,7 @@ connected:
         timeout--;
     }
     if (timeout <= 0) {
-        xil_printf("[USB] Port reset timeout\r\n");
+        if (next_debug_scsi) xil_printf("[USB] Port reset timeout\r\n");
         return -1;
     }
 
@@ -923,7 +925,7 @@ connected:
 
     static const char *speed_names[] = {"?", "FS", "LS", "HS", "SS"};
     const char *sp = (usb.root_speed <= 4) ? speed_names[usb.root_speed] : "??";
-    xil_printf("[USB] Port %u: speed=%s\r\n", usb.root_port, sp);
+    if (next_debug_scsi) xil_printf("[USB] Port %u: speed=%s\r\n", usb.root_port, sp);
 
     if (!(portsc & PORTSC_PED)) {
         timeout = 500;
@@ -934,7 +936,7 @@ connected:
             timeout--;
         }
         if (!(portsc & PORTSC_PED)) {
-            xil_printf("[USB] Port never enabled\r\n");
+            if (next_debug_scsi) xil_printf("[USB] Port never enabled\r\n");
             return -1;
         }
         usb.root_speed = (portsc & PORTSC_SPEED_MASK) >> PORTSC_SPEED_SHIFT;
@@ -996,7 +998,7 @@ static int hub_init(uint32_t slot_id, uint8_t *config_desc,
             USB_DIR_IN | USB_TYPE_CLASS | USB_RECIP_DEVICE,
             USB_REQ_GET_DESC, (USB_DT_SS_HUB << 8) | 0, 0, sizeof(hub_desc), hub_desc);
         if (ret < 0) {
-            xil_printf("[USB] Failed to get hub descriptor\r\n");
+            if (next_debug_scsi) xil_printf("[USB] Failed to get hub descriptor\r\n");
             return ret;
         }
     }
@@ -1004,7 +1006,7 @@ static int hub_init(uint32_t slot_id, uint8_t *config_desc,
     uint32_t nports = hub_desc[2];
     uint32_t ttt = (hub_desc[3] >> 5) & 0x3;  /* TT Think Time from hub chars */
     *num_ports_out = nports;
-    xil_printf("[USB] Hub: %u ports\r\n", nports);
+    if (next_debug_scsi) xil_printf("[USB] Hub: %u ports\r\n", nports);
 
     /* Evaluate Context: tell xHCI this slot is a hub.
      * Without Hub=1 and NumPorts in the slot context, xHCI cannot
@@ -1053,10 +1055,10 @@ static int hub_init(uint32_t slot_id, uint8_t *config_desc,
 
         ret = wait_cmd_complete(NULL);
         if (ret < 0) {
-            xil_printf("[USB] Evaluate Context (hub) failed (%d)\r\n", ret);
+            if (next_debug_scsi) xil_printf("[USB] Evaluate Context (hub) failed (%d)\r\n", ret);
             return ret;
         }
-        xil_printf("[USB] Hub slot %u context updated\r\n", slot_id);
+        if (next_debug_scsi) xil_printf("[USB] Hub slot %u context updated\r\n", slot_id);
     }
 
     for (uint32_t p = 1; p <= nports; p++)
@@ -1121,10 +1123,10 @@ static int configure_endpoint(uint32_t slot_id,
 
     int ret = wait_cmd_complete(NULL);
     if (ret < 0) {
-        xil_printf("[USB] Configure Endpoint failed (%d)\r\n", ret);
+        if (next_debug_scsi) xil_printf("[USB] Configure Endpoint failed (%d)\r\n", ret);
         return ret;
     }
-    xil_printf("[USB] Interrupt endpoint configured (DCI=%u)\r\n", ep_dci);
+    if (next_debug_scsi) xil_printf("[USB] Interrupt endpoint configured (DCI=%u)\r\n", ep_dci);
     return 0;
 }
 
@@ -1146,7 +1148,7 @@ static int find_hid_keyboard(uint8_t *config_desc, uint16_t total_len)
             if (p[5] == USB_CLASS_HID &&
                 p[6] == USB_SUBCLASS_BOOT &&
                 p[7] == USB_PROTOCOL_KBD) {
-                xil_printf("[USB] Found HID keyboard (iface %u)\r\n", p[2]);
+                if (next_debug_scsi) xil_printf("[USB] Found HID keyboard (iface %u)\r\n", p[2]);
                 found_hid_kbd = 1;
             } else {
                 found_hid_kbd = 0;
@@ -1160,7 +1162,7 @@ static int find_hid_keyboard(uint8_t *config_desc, uint16_t total_len)
                 usb.ep_in_maxpkt = p[4] | (p[5] << 8);
                 usb.ep_in_interval = p[6];
                 usb.ep_in_dci = ((ep_addr & 0x0F) * 2) + 1;
-                xil_printf("[USB] Interrupt IN EP 0x%02X maxpkt=%u interval=%u DCI=%u\r\n",
+                if (next_debug_scsi) xil_printf("[USB] Interrupt IN EP 0x%02X maxpkt=%u interval=%u DCI=%u\r\n",
                            ep_addr, usb.ep_in_maxpkt, usb.ep_in_interval, usb.ep_in_dci);
                 return 0;
             }
@@ -1184,7 +1186,7 @@ static int find_hid_mouse(uint8_t *config_desc, uint16_t total_len)
             if (p[5] == USB_CLASS_HID &&
                 p[6] == USB_SUBCLASS_BOOT &&
                 p[7] == USB_PROTOCOL_MOUSE) {
-                xil_printf("[USB] Found HID mouse (iface %u)\r\n", p[2]);
+                if (next_debug_scsi) xil_printf("[USB] Found HID mouse (iface %u)\r\n", p[2]);
                 found = 1;
             } else {
                 found = 0;
@@ -1198,7 +1200,7 @@ static int find_hid_mouse(uint8_t *config_desc, uint16_t total_len)
                 usb.mouse_ep_maxpkt = p[4] | (p[5] << 8);
                 usb.mouse_ep_interval = p[6];
                 usb.mouse_ep_dci = ((ep_addr & 0x0F) * 2) + 1;
-                xil_printf("[USB] Mouse IN EP 0x%02X maxpkt=%u DCI=%u\r\n",
+                if (next_debug_scsi) xil_printf("[USB] Mouse IN EP 0x%02X maxpkt=%u DCI=%u\r\n",
                            ep_addr, usb.mouse_ep_maxpkt, usb.mouse_ep_dci);
                 return 0;
             }
@@ -1245,7 +1247,7 @@ static void process_hid_report(const uint8_t *report)
     {
         static int hid_log_count = 0;
         if (hid_log_count < 6) {
-            xil_printf("[USB-KBD] rpt: %02X %02X %02X %02X %02X %02X %02X %02X\r\n",
+            if (0) xil_printf("[USB-KBD] rpt: %02X %02X %02X %02X %02X %02X %02X %02X\r\n",
                        report[0], report[1], report[2], report[3],
                        report[4], report[5], report[6], report[7]);
             hid_log_count++;
@@ -1401,11 +1403,11 @@ static int get_config_and_parse(uint32_t slot_id, uint8_t *config_desc, uint16_t
         USB_DIR_IN | USB_TYPE_STANDARD | USB_RECIP_DEVICE,
         USB_REQ_GET_DESC, (USB_DT_DEVICE << 8), 0, 18, dev_desc);
     if (ret < 0) {
-        xil_printf("[USB] GET_DESCRIPTOR (device) failed (%d)\r\n", ret);
+        if (next_debug_scsi) xil_printf("[USB] GET_DESCRIPTOR (device) failed (%d)\r\n", ret);
         return ret;
     }
 
-    xil_printf("[USB] Device: VID=%04X PID=%04X class=%u/%u/%u\r\n",
+    if (next_debug_scsi) xil_printf("[USB] Device: VID=%04X PID=%04X class=%u/%u/%u\r\n",
                dev_desc[8] | (dev_desc[9] << 8),
                dev_desc[10] | (dev_desc[11] << 8),
                dev_desc[4], dev_desc[5], dev_desc[6]);
@@ -1456,7 +1458,7 @@ static int setup_keyboard(uint32_t slot_id, uint8_t *config_desc, uint16_t total
     if (ret < 0) return ret;
 
     queue_interrupt_transfer();
-    xil_printf("[USB] HID keyboard ready (slot %u)\r\n", slot_id);
+    if (next_debug_scsi) xil_printf("[USB] HID keyboard ready (slot %u)\r\n", slot_id);
     return 0;
 }
 
@@ -1485,7 +1487,7 @@ static int setup_mouse(uint32_t slot_id, uint8_t *config_desc, uint16_t total_le
     if (ret < 0) return ret;
 
     queue_mouse_interrupt_transfer();
-    xil_printf("[USB] HID mouse ready (slot %u)\r\n", slot_id);
+    if (next_debug_scsi) xil_printf("[USB] HID mouse ready (slot %u)\r\n", slot_id);
     return 0;
 }
 
@@ -1534,11 +1536,11 @@ static int enumerate_one(uint32_t slot_id, uint32_t speed,
 
     /* It's a hub */
     if (depth >= MAX_HUB_DEPTH) {
-        xil_printf("[USB] Hub depth limit reached\r\n");
+        if (next_debug_scsi) xil_printf("[USB] Hub depth limit reached\r\n");
         return -1;
     }
 
-    xil_printf("[USB] Hub at slot %u (depth %d), enumerating downstream...\r\n",
+    if (next_debug_scsi) xil_printf("[USB] Hub at slot %u (depth %d), enumerating downstream...\r\n",
                slot_id, depth);
 
     uint32_t num_ports = 0;
@@ -1581,7 +1583,7 @@ static int enumerate_one(uint32_t slot_id, uint32_t speed,
         else if (ls == 1) child_speed = PORT_SPEED_LS;
         else child_speed = PORT_SPEED_HS;
 
-        xil_printf("[USB] Hub port %u: device at speed %u\r\n", p, child_speed);
+        if (next_debug_scsi) xil_printf("[USB] Hub port %u: device at speed %u\r\n", p, child_speed);
 
         /* Build route string: shift existing route left by 4, add port number.
          * xHCI route string: each nibble = port number at that hub depth. */
@@ -1633,7 +1635,7 @@ int usb_hid_init(void)
     if (ret < 0) return ret;
 
     usb.initialized = 1;
-    xil_printf("[USB] USB HID: kbd=%s mouse=%s\r\n",
+    if (next_debug_scsi) xil_printf("[USB] USB HID: kbd=%s mouse=%s\r\n",
                usb.kbd_slot ? "yes" : "no",
                usb.mouse_slot ? "yes" : "no");
     return 0;

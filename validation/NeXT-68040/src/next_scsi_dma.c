@@ -24,6 +24,10 @@ extern int next_debug_scsi;
 /* DMA verification log counter — reset after kernel BUSRST */
 int dma_verify_log = 0;
 #define DPRINTF(...) do { if (next_debug_scsi) xil_printf(__VA_ARGS__); } while(0)
+/* Heavy per-trigger DMA probes: also gated on next_debug_scsi so fsck
+ * and normal runtime isn't buried under trace spew.  Toggle with 'D'
+ * on the ARM UART. */
+#define DMA_LOG(...) do { if (next_debug_scsi) xil_printf(__VA_ARGS__); } while(0)
 
 /* ------------------------------------------------------------------ */
 /* Turbo DMA CSR bits (68040 format)                                   */
@@ -114,7 +118,7 @@ int      next_scsi_dma_get_countdown(void){ return dma_deferred.countdown; }
 
 void next_scsi_dma_dump_write_ring(void)
 {
-    xil_printf("[DMA-RING] recent CSR writes (oldest→newest):\r\n");
+    DMA_LOG("[DMA-RING] recent CSR writes (oldest→newest):\r\n");
     for (int i = 0; i < DMA_WR_RING_SIZE; i++) {
         int k = (dma_wr_ring_idx + i) % DMA_WR_RING_SIZE;
         if (dma_wr_ring[k].pc == 0 && dma_wr_ring[k].value == 0)
@@ -237,7 +241,7 @@ uint32_t next_scsi_dma_csr_read(void)
                     uint32_t dc_state   = next_phys_read_32(dcp + 0x24);
                     uint32_t dc_flags   = next_phys_read_32(dcp + 0x2C);
                     uint32_t dc_current = next_phys_read_32(dcp + 0x08);
-                    xil_printf("[DMA-RDSTATE] #%d PC=$%08X dcp=$%08X "
+                    DMA_LOG("[DMA-RDSTATE] #%d PC=$%08X dcp=$%08X "
                                "dc_state=$%08X dc_flags=$%08X dc_current=$%08X "
                                "our_csr=$%08X\r\n",
                                rd_state_log, pc, dcp,
@@ -277,7 +281,7 @@ void next_scsi_dma_csr_write(uint32_t value)
                 static uint32_t last_unknown_bits;
                 static uint32_t last_unknown_val;
                 if (unknown != last_unknown_bits || value != last_unknown_val) {
-                    xil_printf("[DMA-UNKBIT] val=$%08X unknown=$%08X PC=$%08X\r\n",
+                    DMA_LOG("[DMA-UNKBIT] val=$%08X unknown=$%08X PC=$%08X\r\n",
                                value, unknown, pc);
                     last_unknown_bits = unknown;
                     last_unknown_val  = value;
@@ -300,12 +304,12 @@ void next_scsi_dma_csr_write(uint32_t value)
                     uint32_t dc_cur   = next_phys_read_32(dcp + 0x08);
                     uint32_t dc_state = next_phys_read_32(dcp + 0x24);
                     uint32_t dc_flag  = next_phys_read_32(dcp + 0x2C);
-                    xil_printf("[DMA-FLAGS] #%d PC=$%08X dcp=$%08X flags=$%08X "
+                    DMA_LOG("[DMA-FLAGS] #%d PC=$%08X dcp=$%08X flags=$%08X "
                                "head=$%08X current=$%08X dc_state=$%08X\r\n",
                                flags_log, pc, dcp, dc_flag, dq_head, dc_cur,
                                dc_state);
                 } else {
-                    xil_printf("[DMA-FLAGS] #%d PC=$%08X dcp=$%08X (OOR)\r\n",
+                    DMA_LOG("[DMA-FLAGS] #%d PC=$%08X dcp=$%08X (OOR)\r\n",
                                flags_log, pc, dcp);
                 }
             }
@@ -319,7 +323,7 @@ void next_scsi_dma_csr_write(uint32_t value)
             tight_count++;
             if (tight_count == 5 && !tight_dumped) {
                 tight_dumped = 1;
-                xil_printf("[DMA-TIGHT] 5 consecutive bare-RESETs from PC=$%08X — stack:\r\n", pc);
+                DMA_LOG("[DMA-TIGHT] 5 consecutive bare-RESETs from PC=$%08X — stack:\r\n", pc);
                 uint32_t a6_orig = m68k_get_reg(NULL, M68K_REG_A6);
                 uint32_t a6 = a6_orig;
                 for (int i = 0; i < 10 && a6 >= 0x04000000 && a6 < 0x08000000; i++) {
@@ -330,22 +334,22 @@ void next_scsi_dma_csr_write(uint32_t value)
                 }
 
                 /* Register snapshot */
-                xil_printf("[DMA-TIGHT] D0=$%08X D1=$%08X D2=$%08X D3=$%08X\r\n",
+                DMA_LOG("[DMA-TIGHT] D0=$%08X D1=$%08X D2=$%08X D3=$%08X\r\n",
                            m68k_get_reg(NULL, M68K_REG_D0),
                            m68k_get_reg(NULL, M68K_REG_D1),
                            m68k_get_reg(NULL, M68K_REG_D2),
                            m68k_get_reg(NULL, M68K_REG_D3));
-                xil_printf("[DMA-TIGHT] D4=$%08X D5=$%08X D6=$%08X D7=$%08X\r\n",
+                DMA_LOG("[DMA-TIGHT] D4=$%08X D5=$%08X D6=$%08X D7=$%08X\r\n",
                            m68k_get_reg(NULL, M68K_REG_D4),
                            m68k_get_reg(NULL, M68K_REG_D5),
                            m68k_get_reg(NULL, M68K_REG_D6),
                            m68k_get_reg(NULL, M68K_REG_D7));
-                xil_printf("[DMA-TIGHT] A0=$%08X A1=$%08X A2=$%08X A3=$%08X\r\n",
+                DMA_LOG("[DMA-TIGHT] A0=$%08X A1=$%08X A2=$%08X A3=$%08X\r\n",
                            m68k_get_reg(NULL, M68K_REG_A0),
                            m68k_get_reg(NULL, M68K_REG_A1),
                            m68k_get_reg(NULL, M68K_REG_A2),
                            m68k_get_reg(NULL, M68K_REG_A3));
-                xil_printf("[DMA-TIGHT] A4=$%08X A5=$%08X A6=$%08X A7=$%08X\r\n",
+                DMA_LOG("[DMA-TIGHT] A4=$%08X A5=$%08X A6=$%08X A7=$%08X\r\n",
                            m68k_get_reg(NULL, M68K_REG_A4),
                            m68k_get_reg(NULL, M68K_REG_A5),
                            a6_orig,
@@ -354,7 +358,7 @@ void next_scsi_dma_csr_write(uint32_t value)
                 /* Dump caller's loop body (24 bytes before & after the JSR).
                  * The JSR that called us sits just before ret in the caller. */
                 uint32_t caller_ret = next_phys_read_32(a6_orig + 4);
-                xil_printf("[DMA-TIGHT] caller code near ret=$%08X:\r\n", caller_ret);
+                DMA_LOG("[DMA-TIGHT] caller code near ret=$%08X:\r\n", caller_ret);
                 for (int off = -24; off < 24; off += 8) {
                     uint32_t addr = caller_ret + off;
                     if (addr < 0x04000000 || addr >= 0x08000000) continue;
@@ -366,9 +370,9 @@ void next_scsi_dma_csr_write(uint32_t value)
                 /* First stack argument is *(A6+8) — likely dcp pointer.
                  * Dump 64 bytes to cover dc_flags at offset 0x2C. */
                 uint32_t arg1 = next_phys_read_32(a6_orig + 8);
-                xil_printf("[DMA-TIGHT] stack arg1=$%08X\r\n", arg1);
+                DMA_LOG("[DMA-TIGHT] stack arg1=$%08X\r\n", arg1);
                 if (arg1 >= 0x04000000 && arg1 < 0x08000000) {
-                    xil_printf("[DMA-TIGHT] arg1 struct head (64 bytes):\r\n");
+                    DMA_LOG("[DMA-TIGHT] arg1 struct head (64 bytes):\r\n");
                     for (int off = 0; off < 64; off += 8) {
                         xil_printf("  +$%02X: $%08X $%08X\r\n", off,
                                    next_phys_read_32(arg1 + off),
@@ -377,7 +381,7 @@ void next_scsi_dma_csr_write(uint32_t value)
                 }
 
                 /* Dump function entry code at $0407C6C8 so we can identify it. */
-                xil_printf("[DMA-TIGHT] callee entry code:\r\n");
+                DMA_LOG("[DMA-TIGHT] callee entry code:\r\n");
                 for (int off = 0; off < 32; off += 8) {
                     uint32_t addr = 0x0407C6C8 + off;
                     xil_printf("  $%08X: %08X %08X\r\n", addr,
@@ -386,7 +390,7 @@ void next_scsi_dma_csr_write(uint32_t value)
                 }
 
                 /* Dump outermost polling loop code at $0409F5C0..$0409F5F0. */
-                xil_printf("[DMA-TIGHT] outer poll code at $0409F5xx:\r\n");
+                DMA_LOG("[DMA-TIGHT] outer poll code at $0409F5xx:\r\n");
                 for (int off = 0; off < 48; off += 8) {
                     uint32_t addr = 0x0409F5C0 + off;
                     xil_printf("  $%08X: %08X %08X\r\n", addr,
@@ -398,7 +402,7 @@ void next_scsi_dma_csr_write(uint32_t value)
                  * hang actually lives.  PC ring shows backward jump from
                  * $040146C2 → $0401469C each iteration.  Dump 64 bytes
                  * covering the loop body plus exit test. */
-                xil_printf("[DMA-TIGHT] OUTER loop body at $040146xx:\r\n");
+                DMA_LOG("[DMA-TIGHT] OUTER loop body at $040146xx:\r\n");
                 for (int off = 0; off < 64; off += 8) {
                     uint32_t addr = 0x04014690 + off;
                     xil_printf("  $%08X: %08X %08X\r\n", addr,
@@ -409,14 +413,14 @@ void next_scsi_dma_csr_write(uint32_t value)
                 /* Also dump $0408ACxx and $0408A6xx — the layers between the
                  * outer loop and dma_abort.  Each might contain the real
                  * exit test if $040146xx is just plumbing. */
-                xil_printf("[DMA-TIGHT] $0408ACxx layer:\r\n");
+                DMA_LOG("[DMA-TIGHT] $0408ACxx layer:\r\n");
                 for (int off = 0; off < 48; off += 8) {
                     uint32_t addr = 0x0408ACF0 + off;
                     xil_printf("  $%08X: %08X %08X\r\n", addr,
                                next_phys_read_32(addr),
                                next_phys_read_32(addr + 4));
                 }
-                xil_printf("[DMA-TIGHT] $0408A6xx layer:\r\n");
+                DMA_LOG("[DMA-TIGHT] $0408A6xx layer:\r\n");
                 for (int off = 0; off < 48; off += 8) {
                     uint32_t addr = 0x0408A650 + off;
                     xil_printf("  $%08X: %08X %08X\r\n", addr,
@@ -431,7 +435,7 @@ void next_scsi_dma_csr_write(uint32_t value)
                  * keeps issuing new commands during the RESET loop. */
                 extern int esp_tight_trace;
                 esp_tight_trace = 1;
-                xil_printf("[DMA-TIGHT] Sticky ESP-cmd trace armed\r\n");
+                DMA_LOG("[DMA-TIGHT] Sticky ESP-cmd trace armed\r\n");
 #endif
             }
         } else {
@@ -489,13 +493,13 @@ void next_scsi_dma_csr_write(uint32_t value)
                 extern void esp_dump_state(void);
                 extern void emu_dump_pc_ring(const char *why);
                 uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
-                xil_printf("[DMA-LOOP] 20 consecutive kernel RESETs! PC=$%08X SR=$%04X\r\n", pc, sr);
+                DMA_LOG("[DMA-LOOP] 20 consecutive kernel RESETs! PC=$%08X SR=$%04X\r\n", pc, sr);
                 esp_dump_state();
                 next_scsi_dma_dump_write_ring();
                 emu_dump_pc_ring("DMA-LOOP trigger");
 #if NEXT_DEBUG_ESP_TRACE
                 extern int esp_loop_trace;
-                xil_printf("[DMA-LOOP] Enabling ESP trace for next 100 accesses\r\n");
+                DMA_LOG("[DMA-LOOP] Enabling ESP trace for next 100 accesses\r\n");
                 esp_loop_trace = 100;
 #endif
             }
@@ -607,10 +611,11 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
             DPRINTF("[DMA] Chain: next=$%08X limit=$%08X\r\n", dma.next, dma.limit);
         }
     } else {
-        /* Memory to device (68K RAM → SCSI write) — discard data.
-         * The kernel flushes dirty buffers via SCSI WRITE; we accept
-         * the DMA transfer and throw away the bytes so the buffer
-         * cache can reclaim buffers for new reads. */
+        /* Memory to device (68K RAM -> SCSI write).  Read bytes from
+         * host RAM at dma.next and hand them to the SCSI target via
+         * next_scsi_write_bytes(), which accumulates into a per-sector
+         * staging buffer and commits to the backing store (eMMC raw
+         * for target 0, FatFS file for target 6 if writable). */
         while (*esp_counter > 0 && dma.next < dma.limit) {
             int avail = next_scsi_get_write_remaining();
             if (avail <= 0)
@@ -622,8 +627,27 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
             if (chunk > *esp_counter) chunk = *esp_counter;
             if (chunk == 0) break;
 
-            /* Just advance pointers — data is discarded */
-            next_scsi_consume_write_bytes((int)chunk);
+            /* Resolve source address in 68K RAM (strip bit 31 for TT) */
+            uint32_t phys = dma.next & 0x7FFFFFFF;
+            if (phys >= NEXT_RAM_BASE && phys < NEXT_RAM_BASE + NEXT_RAM_SIZE) {
+                uint32_t ram_avail = (NEXT_RAM_BASE + NEXT_RAM_SIZE) - phys;
+                if (chunk > ram_avail) chunk = ram_avail;
+                if (phys < 0x08000000u && phys + chunk > 0x08000000u)
+                    chunk = 0x08000000u - phys;
+
+                const uint8_t *src = &next_ram[phys & 0x07FFFFFFu];
+                int wrote = next_scsi_write_bytes(src, (int)chunk);
+                if (wrote <= 0) {
+                    DPRINTF("[DMA] write_bytes returned %d, aborting\r\n", wrote);
+                    break;
+                }
+                chunk = (uint32_t)wrote;
+            } else {
+                DPRINTF("[DMA] Bus error: write source outside RAM $%08X\r\n", phys);
+                dma.csr |= DMA_BUSEXC;
+                break;
+            }
+
             dma.next += chunk;
             *esp_counter -= chunk;
             total += (int)chunk;
@@ -661,7 +685,7 @@ int next_scsi_dma_transfer(int direction, uint32_t *esp_counter)
             dma_complete_count++;
             if (dma_complete_count <= 30 || (dma_complete_count % 100) == 0) {
                 uint32_t sr = m68k_get_reg(NULL, M68K_REG_SR);
-                xil_printf("[DMA-DONE] #%d total=%d bytes, next=$%08X SR=$%04X IPL=%d busexc=%d\r\n",
+                DMA_LOG("[DMA-DONE] #%d total=%d bytes, next=$%08X SR=$%04X IPL=%d busexc=%d\r\n",
                            dma_complete_count, total, dma.next, sr & 0xFFFF,
                            (sr >> 8) & 7, !!(dma.csr & DMA_BUSEXC));
             }
@@ -686,7 +710,7 @@ void next_scsi_dma_start_deferred(int direction, uint32_t esp_counter)
      * dropping the first would leave its esp_deferred_dma_complete
      * unfired and esp.counter stale.  Log loudly so we notice. */
     if (dma_deferred.pending) {
-        xil_printf("[DMA-OVERLAP] new start while pending: "
+        DMA_LOG("[DMA-OVERLAP] new start while pending: "
                    "old dir=%d cnt=%u countdown=%d; new dir=%d cnt=%u (dropping NEW)\r\n",
                    dma_deferred.direction, dma_deferred.esp_counter,
                    dma_deferred.countdown, direction, esp_counter);

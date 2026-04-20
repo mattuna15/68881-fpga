@@ -48,14 +48,30 @@ uint8_t *next_scsi_get_buffer_ptr(void);   /* pointer into current position */
 int      next_scsi_get_buffer_remaining(void);
 void     next_scsi_consume_bytes(int n);   /* advance buffer by n bytes */
 
-/* Write (Data-Out) discard support for DMA. */
+/* Write (Data-Out) support for DMA.
+ * next_scsi_get_write_remaining() reports how many bytes the target still
+ * expects (0 means Data-Out phase is complete).  next_scsi_write_bytes()
+ * hands a run of bytes over to the target - the SCSI layer accumulates
+ * into a per-sector staging buffer and commits to the backing (eMMC
+ * raw or FatFS file) once a whole sector has been delivered. */
 int      next_scsi_get_write_remaining(void);
-void     next_scsi_consume_write_bytes(int n);
+int      next_scsi_write_bytes(const uint8_t *src, int n);
 
 /* Direct raw read from disk image (512-byte sectors). */
 int      next_scsi_read_raw(uint32_t lba, uint8_t *buf, uint32_t nsect);
 
 /* Reset SCSI read log counter (call after kernel bus reset). */
 void     next_scsi_reset_read_log(void);
+
+/* True if target 0 is backed by eMMC but has no valid NeXT disk label
+ * (i.e. a fresh/blank eMMC that needs flashing before it can be used
+ * as a boot disk).  False if target 0 is unavailable or already has
+ * a valid label. */
+bool     next_scsi_emmc_is_blank(void);
+
+/* After writing to eMMC LBA 0 outside of the normal SCSI write path
+ * (e.g. the one-shot flasher), re-probe the disk label so target 0
+ * becomes visible on the bus without needing a reboot. */
+void     next_scsi_emmc_refresh_label(void);
 
 #endif /* NEXT_SCSI_H */

@@ -215,6 +215,14 @@ extern "C" {
 /*---------------------------------------------------------------------------/
 / Drive/Volume Configurations
 /---------------------------------------------------------------------------*/
+/* NeXT-68040: 10 logical drives so we can reach every MBR partition on
+ * both SDIO controllers via the bundled VolToPart[] in ff.c.  That table
+ * maps logical drive -> (pdrv, partition):
+ *   0:/ - 4:/  => pdrv 0 (eMMC), partitions 0(auto)/1/2/3/4
+ *   5:/ - 9:/  => pdrv 1 (SD card), partitions 0(auto)/1/2/3/4
+ * Only FAT partitions are mountable; Linux rootfs partitions fail mount. */
+#undef  FILE_SYSTEM_NUM_LOGIC_VOL
+#define FILE_SYSTEM_NUM_LOGIC_VOL 10
 #define FF_VOLUMES		FILE_SYSTEM_NUM_LOGIC_VOL
 /* Number of volumes (logical drives) to be used. (1-10) */
 
@@ -233,11 +241,10 @@ extern "C" {
 */
 
 
-#ifdef FILE_SYSTEM_MULTI_PARTITION
-#define	FF_MULTI_PARTITION	1	/* 1:Enable multiple partition */
-#else
-#define	FF_MULTI_PARTITION	0	/* 0:Single partition */
-#endif
+/* NeXT-68040: force multi-partition on so we can reach the second
+ * FAT partition of the SD card (NS33_2GB.dd lives there, separately
+ * from the boot/installer FAT and the Linux rootfs). */
+#define	FF_MULTI_PARTITION	1
 /* This option switches support for multiple volumes on the physical drive.
 /  By default (0), each logical drive number is bound to the same physical drive
 /  number and only an FAT volume found on the physical drive will be mounted.

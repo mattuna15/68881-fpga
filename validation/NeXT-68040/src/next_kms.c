@@ -11,7 +11,14 @@
  */
 
 #include "next_kms.h"
+#include "next_hw.h"        /* I_IPL3_KBD_MOUSE */
 #include "xil_printf.h"
+
+/* Interrupt API lives in next_devs.c; avoid pulling in the full next_devs.h
+ * since this module only needs the two functions. */
+extern void next_intr_set(uint32_t bit);
+extern void next_intr_clear(uint32_t bit);
+extern int  next_debug_scsi;
 
 /* ------------------------------------------------------------------ */
 /* NeXT keyboard scan code table (from nextdev/keycodes.h)            */
@@ -185,12 +192,19 @@ static void kms_queue_push(uint32_t event)
     if (next == kms_tail) {
         static int drop_count = 0;
         if (drop_count < 5)
-            xil_printf("[KMS] WARNING: event queue full, key dropped\r\n");
+            if (next_debug_scsi) xil_printf("[KMS] WARNING: event queue full, key dropped\r\n");
         drop_count++;
         return;
     }
     kms_queue[kms_head] = event;
     kms_head = next;
+
+    /* Assert the IPL3 keyboard/mouse interrupt so the kernel's km_intr
+     * handler drains the queue via mon_km_data reads (see NeXTMach
+     * nextdev/km.c).  ROM-monitor polling is unaffected - it reads
+     * mon_csr and sees the KBD_RECEIVED|KBD_INT bits that next_kms_read
+     * synthesises from queue-non-empty at offset 0x00. */
+    next_intr_set(I_IPL3_KBD_MOUSE);
 }
 
 static uint32_t kms_queue_pop(void)
@@ -244,12 +258,17 @@ void next_kms_init(void)
 {
     kms_head = kms_tail = 0;
     build_reverse_map();
-    xil_printf("[KMS] Keyboard emulation initialised (%d keycodes mapped)\r\n",
+    if (next_debug_scsi) xil_printf("[KMS] Keyboard emulation initialised (%d keycodes mapped)\r\n",
                NEXT_KEY_COUNT);
 }
 
+uint32_t kms_push_ascii_total = 0;
+uint32_t kms_push_ascii_0x03  = 0;
+
 void next_kms_push_ascii(uint8_t ch)
 {
+    kms_push_ascii_total++;
+    if (ch == 0x03) kms_push_ascii_0x03++;
     if (!reverse_map_built)
         build_reverse_map();
 
@@ -451,7 +470,7 @@ static void hid_push_key(uint8_t hid_key, uint8_t modifiers, int key_up)
     if (kc == NKC_NONE) {
         static int miss_log = 0;
         if (miss_log < 8) {
-            xil_printf("[KMS-HID] unmapped HID key 0x%02X (dropped)\r\n", hid_key);
+            if (next_debug_scsi) xil_printf("[KMS-HID] unmapped HID key 0x%02X (dropped)\r\n", hid_key);
             miss_log++;
         }
         return;
@@ -460,7 +479,7 @@ static void hid_push_key(uint8_t hid_key, uint8_t modifiers, int key_up)
     {
         static int push_log = 0;
         if (push_log < 16) {
-            xil_printf("[KMS-HID] HID 0x%02X -> kc=%u mods=0x%02X %s ev=0x%08X\r\n",
+            if (next_debug_scsi) xil_printf("[KMS-HID] HID 0x%02X -> kc=%u mods=0x%02X %s ev=0x%08X\r\n",
                        hid_key, kc, modifiers, key_up ? "UP" : "DN", ev);
             push_log++;
         }
@@ -471,6 +490,18 @@ static void hid_push_key(uint8_t hid_key, uint8_t modifiers, int key_up)
 void next_kms_push_hid_report(const uint8_t rpt[8])
 {
     static uint8_t prev[8] = {0};
+    static int baseline_captured = 0;
+
+    /* The very first report after xHCI/HID enumeration can contain
+     * stale data from an uninitialized TRB (seen here as a phantom
+     * Ctrl+C that makes NeXT auto-repeat until a real keypress breaks
+     * the loop).  Capture it as the baseline without emitting events,
+     * so real keypresses diff against the actual keyboard state. */
+    if (!baseline_captured) {
+        memcpy(prev, rpt, 8);
+        baseline_captured = 1;
+        return;
+    }
 
     uint8_t modifiers = rpt[0];
 
@@ -552,7 +583,7 @@ uint32_t next_kms_read(int offset)
 {
     static int kms_read_log = 0;
     if (kms_read_log < 10) {
-        xil_printf("[KMS] read offset=$%X stat_km=$%02X queue_empty=%d\r\n",
+        if (next_debug_scsi) xil_printf("[KMS] read offset=$%X stat_km=$%02X queue_empty=%d\r\n",
                    offset, kms_stat_km, kms_queue_empty());
         kms_read_log++;
     }
@@ -584,6 +615,11 @@ uint32_t next_kms_read(int offset)
             val = kms_km_data_reg;
         }
         kms_stat_km &= ~(KBD_RECEIVED | KBD_INT);
+        /* Keep the IPL3 IRQ asserted while more events remain so the km
+         * ISR loops; deassert once the queue is drained.  A later push
+         * will re-assert via kms_queue_push(). */
+        if (kms_queue_empty())
+            next_intr_clear(I_IPL3_KBD_MOUSE);
         return val;
     }
 
@@ -598,7 +634,7 @@ void next_kms_write(int offset, uint32_t value)
 {
     static int kms_write_log = 0;
     if (kms_write_log < 20) {
-        xil_printf("[KMS] write offset=$%X val=$%08X\r\n", offset, value);
+        if (next_debug_scsi) xil_printf("[KMS] write offset=$%X val=$%08X\r\n", offset, value);
         kms_write_log++;
     }
 

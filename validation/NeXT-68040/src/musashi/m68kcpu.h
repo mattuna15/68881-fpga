@@ -1935,16 +1935,9 @@ static inline void m68ki_stack_frame_1011(uint sr, uint vector, uint pc)
  * CPU is throwing and from where. */
 static inline void emu_exc_log(const char *kind, uint vec)
 {
-	static int exc_log = 0;
-	if (exc_log < 30) {
-		xil_printf("[EXC] %s vec=%d PPC=$%08X PC=$%08X SR=$%04X A7=$%08X\r\n",
-		           kind, vec,
-		           (unsigned int)ADDRESS_68K(REG_PPC),
-		           (unsigned int)ADDRESS_68K(REG_PC),
-		           (unsigned int)(m68ki_get_sr() & 0xFFFF),
-		           (unsigned int)REG_A[7]);
-		exc_log++;
-	}
+	(void)kind; (void)vec;
+	/* [EXC] logging silenced.  Uncomment and declare xil_printf if ever
+	 * needed again during debugging. */
 }
 
 /* Used for Group 2 exceptions.
@@ -2117,16 +2110,9 @@ static inline void m68ki_exception_1111(void)
 	if (m68ki_illg_callback(REG_IR))
 		return;
 
-	/* F-line not handled by callback — falls to kernel's F-line handler.
-	 * Log if this happens in user mode (potential FPU issue). */
-	if (!FLAG_S) {
-		static int fline_user_log = 0;
-		if (fline_user_log < 50) {
-			xil_printf("[FLINE-USER] unhandled F-line $%04X at PC=$%08X URP=$%08X\r\n",
-				REG_IR, ADDRESS_68K(REG_PPC), m68ki_cpu.mmu_040_urp);
-			fline_user_log++;
-		}
-	}
+	/* [FLINE-USER] logging silenced — kept here as a comment for future
+	 * debugging.  Previously this printed when the F-line fell to the
+	 * kernel's handler from user mode (potential FPU issue). */
 
 	sr = m68ki_init_exception();
 	m68ki_stack_frame_0000(REG_PPC, sr, EXCEPTION_1111);
@@ -2156,22 +2142,8 @@ static inline void m68ki_exception_illegal(void)
 	if (m68ki_illg_callback(REG_IR))
 	    return;
 
-	/* Log user-mode illegal instructions */
-	if (!FLAG_S) {
-		static int illg_user_log = 0;
-		if (illg_user_log < 10) {
-			unsigned int ppc = ADDRESS_68K(REG_PPC);
-			xil_printf("[ILLG-USER] illegal $%04X at PC=$%08X\r\n",
-				REG_IR, ppc);
-			/* Dump surrounding words so we can decode the real instruction */
-			for (int i = -8; i <= 8; i += 2) {
-				unsigned int a = ppc + i;
-				xil_printf("  $%08X: %04X\r\n", a,
-					m68k_read_memory_16(a));
-			}
-			illg_user_log++;
-		}
-	}
+	/* [ILLG-USER] logging silenced - kept as a comment for future
+	 * debugging of illegal-instruction traps from user code. */
 
 	sr = m68ki_init_exception();
 

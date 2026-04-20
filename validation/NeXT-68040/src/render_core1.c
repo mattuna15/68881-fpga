@@ -135,13 +135,18 @@ void render_core1_start(uint32_t *pixel_buf, int dp_ok)
     rst &= ~(RST_ACPU1 | RST_ACPU1_PWRON);
     mmio_write32(RST_FPD_APU, rst);
 
-    /* Wait for core 1 to signal it's running */
-    int timeout = 1000000;
-    while (!render_active && --timeout > 0)
-        ;
+    /* Wait for core 1 to signal it's running.  Invalidate the cache
+     * line holding render_active on each poll so we observe core 1's
+     * write even if the shared region isn't fully coherent. */
+    int timeout = 10000000;
+    while (--timeout > 0) {
+        Xil_DCacheInvalidateRange((INTPTR)&render_active, sizeof(render_active));
+        __asm__ volatile ("dsb sy" ::: "memory");
+        if (render_active) break;
+    }
 
     if (render_active)
-        xil_printf("[CORE1] Render core started OK\r\n");
+        xil_printf("[CORE1] Render core started OK (timeout left=%d)\r\n", timeout);
     else
         xil_printf("[CORE1] WARNING: core 1 did not start!\r\n");
 #endif

@@ -57,6 +57,22 @@ extern int next_debug_scsi;
  * fire on the very next instruction, just like real hardware. */
 #define EMU_CYCLES_PER_TICK  10000
 
+/* Read ARMv8 generic-timer virtual count.  Monotonic, counts at
+ * CNTFRQ_EL0 Hz (typically 100 MHz on ZynqMP). */
+static inline uint64_t arm_read_cntpct(void)
+{
+    uint64_t v;
+    __asm__ volatile ("mrs %0, cntpct_el0" : "=r" (v));
+    return v;
+}
+
+static inline uint64_t arm_read_cntfrq(void)
+{
+    uint64_t v;
+    __asm__ volatile ("mrs %0, cntfrq_el0" : "=r" (v));
+    return v;
+}
+
 /* ------------------------------------------------------------------ */
 /* Early instruction trace (first N instructions for boot debugging)   */
 /* ------------------------------------------------------------------ */
@@ -1289,28 +1305,6 @@ static void next_boot(void)
         int ipl = next_intr_pending_ipl();
         m68k_set_irq(ipl);
 
-        /* Detect framebuffer text changes — kernel printf goes to VRAM */
-        {
-            static uint32_t last_vram_hash = 0;
-            static int vram_check_counter = 0;
-            if (++vram_check_counter >= 500) {  /* check every ~200ms */
-                vram_check_counter = 0;
-                extern unsigned char next_vram[];
-                {
-                    /* Hash first 4K of VRAM (top lines of display) */
-                    uint32_t hash = 0;
-                    for (int i = 0; i < 4096; i += 4)
-                        hash ^= *(uint32_t*)(next_vram + i);
-                    if (hash != last_vram_hash && last_vram_hash != 0) {
-                        if (next_debug_scsi) xil_printf("[VRAM] Display changed! (hash $%08X → $%08X)\r\n",
-                                   last_vram_hash, hash);
-                        /* Force a video refresh */
-                    }
-                    last_vram_hash = hash;
-                }
-            }
-        }
-
         /* After ROM settles, find mon_global and dump key fields (one-shot).
          * The ROM may store mg pointer at P_MON, or we can find it via A5
          * (the ROM monitor typically keeps mg in A5). */
@@ -1397,10 +1391,23 @@ static void next_boot(void)
 #endif
 
         /* Request display refresh on core 1 (non-blocking).
-         * Core 1 handles rendering + cache flush + DP refresh. */
+         * Core 1 handles rendering + cache flush + DP refresh.
+         *
+         * Renders are paced to ~60 Hz: DPDMA outputs at 60 Hz so
+         * any rendering above that is wasted work that also thrashes
+         * the shared cache hierarchy core 0 depends on.  We leave
+         * next_vram_is_dirty() set across skipped ticks so the next
+         * eligible iteration picks up all accumulated writes. */
         {
             static int next_vram_active = 0;
-            static int refresh_count = 0;
+            static uint64_t last_render_cycles = 0;
+            static uint64_t frame_cycles = 0;
+            if (frame_cycles == 0) {
+                uint64_t frq = arm_read_cntfrq();
+                frame_cycles = frq ? frq / 60 : 1666667;  /* ~16.67 ms */
+            }
+            uint64_t now_cycles = arm_read_cntpct();
+            int frame_elapsed = (now_cycles - last_render_cycles) >= frame_cycles;
 
             if (next_vram_is_dirty()) {
                 if (!next_vram_active) {
@@ -1408,9 +1415,9 @@ static void next_boot(void)
                                NEXT_VIDEO_NBPL);
                     next_vram_active = 1;
                 }
-                next_vram_mark_clean();
-                if (++refresh_count >= 2) {
-                    refresh_count = 0;
+                if (frame_elapsed) {
+                    next_vram_mark_clean();
+                    last_render_cycles = now_cycles;
 #ifndef QEMU_MODE
                     if (render_core1_is_active()) {
                         render_core1_request(1);  /* 1 = next_vram mode */
@@ -1426,12 +1433,15 @@ static void next_boot(void)
                     }
 #endif
                 }
-            } else if (!next_vram_active) {
+            } else if (!next_vram_active && frame_elapsed) {
 #ifndef QEMU_MODE
                 if (render_core1_is_active()) {
-                    if (text_fb_is_dirty())
+                    if (text_fb_is_dirty()) {
+                        last_render_cycles = now_cycles;
                         render_core1_request(0);  /* 0 = text_fb mode */
+                    }
                 } else if (text_fb_is_dirty()) {
+                    last_render_cycles = now_cycles;
                     text_fb_render();
                     text_fb_mark_clean();
                     /* Flush exactly the text area — matches the tighter

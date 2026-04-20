@@ -92,7 +92,7 @@ static uint32_t intr_status; /* pending interrupt bits */
 /* ------------------------------------------------------------------ */
 /* SCC serial (Zilog 8530) — channel A only for console                */
 /* ------------------------------------------------------------------ */
-#define SCC_RXBUF_SIZE  256
+#define SCC_RXBUF_SIZE  4096   /* was 256 — too small once both UART and USB HID feed ASCII into the SCC RX path; typing bursts during shell prompts were dropping chars like "cat /etc/..." */
 static uint8_t scc_rxbuf[SCC_RXBUF_SIZE];
 static volatile int scc_rx_head, scc_rx_tail;
 static uint8_t scc_wr_reg_ptr;  /* WR register pointer (set by ctrl write) */

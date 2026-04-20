@@ -310,9 +310,18 @@ static fp80_t read_mem_operand(unsigned int addr, int fmt)
         w2 = fh_read_32(addr + 8);  /* sig_lo */
         return FP80((w0 >> 16) & 0xFFFF, w1, w2);
 
-    case FMT_PACKED:
-        xil_printf("FLINE: packed BCD format not implemented, substituting zero\r\n");
+    case FMT_PACKED: {
+        /* Packed-decimal as source operand.  Should decode to fp80 via
+         * the HW packed engine (see memory/project_fpu_packed_fmove_stub.md).
+         * Band-aid: substitute zero.  Rate-limited log so it doesn't
+         * spam the console. */
+        static int packed_in_log = 0;
+        if (packed_in_log < 3) {
+            xil_printf("FLINE: packed BCD src -> zero (stub, msg %d/3)\r\n",
+                       ++packed_in_log);
+        }
         return FP80_ZERO;
+    }
 
     default:
         xil_printf("FLINE: unknown operand format %d\r\n", fmt);

@@ -24,7 +24,7 @@ if(TEST_ROM)
         add_definitions(-DMMU_TEST_ROM)
     endif()
 endif()
-add_compile_options(-Wall -O0 -g3)
+add_compile_options(-Wall -O2 -g)
 include_directories(${BSP_INCLUDE})
 
 # Source files — build as a static library so the linker can do

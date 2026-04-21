@@ -486,6 +486,12 @@ void emu_instr_hook(unsigned int pc)
      * so the kernel's scsi_pollcmd setup finishes before scintr runs. */
     next_esp_select_timeout_tick();
 
+    /* Ethernet TX->RX loopback: catch the case where the driver posts
+     * an RX descriptor after the TX frame has been captured.  The
+     * CSR-write inline path handles the common case; this is a
+     * safety net for re-ordering. */
+    next_enet_loop_step();
+
     emu_instr_count++;
     pc_ring[pc_ring_idx % PC_RING_SIZE] = pc;
     pc_ring_idx++;

@@ -81,5 +81,12 @@ void next_softint_enable(void);
 uint32_t next_intr_get_status(void);
 uint32_t next_intr_get_mask(void);
 
+/* Ethernet loopback: drives the en_tx -> en_rx copy whenever the
+ * driver pokes either DMA channel.  Also safe to call from the main
+ * loop as a catch-all in case a descriptor was posted late. */
+void next_enet_loop_step(void);
+uint32_t next_enet_get_tx_count(void);
+uint32_t next_enet_get_rx_count(void);
+
 
 #endif /* NEXT_DEVS_H */

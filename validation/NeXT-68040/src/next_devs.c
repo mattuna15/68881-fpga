@@ -13,6 +13,7 @@
 
 #include "next_devs.h"
 #include "next_hw.h"
+#include "next_memory.h"
 #include "musashi/m68k.h"
 #include "next_rtc.h"
 #include "next_dsp.h"
@@ -62,6 +63,7 @@ static void io_log(const char *rw, uint32_t addr, uint32_t val, int size)
 }
 #include "xiltimer.h"
 #include <string.h>
+#include <stdbool.h>
 
 /* DSP register block at P_DSP (0x02008000 canonical).
  * The NeXT maps the DSP56001 host interface (8 bytes) plus
@@ -282,8 +284,24 @@ static struct {
 #define EN_REG_MAC5         0xD
 #define EN_REG_COUNTER_HI   0xF
 
-/* Status bits (from Previous) */
-#define EN_TXSTAT_READY     0x80
+/* TX status bits (MB8795, matches previous/src/ethernet.c:44-51) */
+#define EN_TXSTAT_READY     0x80    /* ready to accept next packet */
+#define EN_TXSTAT_NET_BUSY  0x40
+#define EN_TXSTAT_TX_RECVD  0x20    /* loopback heard its own TX */
+#define EN_TXSTAT_SHORTED   0x10
+#define EN_TXSTAT_UNDERFLOW 0x08
+#define EN_TXSTAT_COLL      0x04
+#define EN_TXSTAT_16COLLS   0x02
+#define EN_TXSTAT_PAR_ERR   0x01
+
+/* RX status bits */
+#define EN_RXSTAT_PKT_OK    0x80
+#define EN_RXSTAT_RESET_PKT 0x10
+#define EN_RXSTAT_SHORT_PKT 0x08
+#define EN_RXSTAT_ALIGN_ERR 0x04
+#define EN_RXSTAT_CRC_ERR   0x02
+#define EN_RXSTAT_OVERFLOW  0x01
+
 #define EN_RESET            0x80
 #define EN_ENCTRL_TPE       0x40
 
@@ -297,8 +315,15 @@ static struct {
     uint8_t control;   /* reset on classic, control on Turbo */
     uint8_t mac[6];
 } enet_stub = {
-    /* tx_status starts ready on classic, 0 on Turbo — we are Turbo */
-    .tx_status = 0,
+    /* NeXTMach's en_xmit() (nextif/if_en.c:968) has:
+     *    while (!(en->en_txstat & EN_TXSTAT_READY)) ;
+     * with no timeout — it's called BEFORE the DMA SETENABLE that
+     * would trigger our loopback-driven status update, so we must
+     * start with READY set or the driver spins forever at first use.
+     * Previous gets away with starting at 0 because its enet_io
+     * runs asynchronously on a timer and flips the bit before the
+     * driver's polled wait reaches it. */
+    .tx_status = EN_TXSTAT_READY,
     .tx_mask   = 0,
     .rx_status = 0,
     .rx_mask   = 0,
@@ -339,15 +364,23 @@ static void enet_reg_write(uint32_t reg, uint8_t val)
     case EN_REG_TX_STATUS:
         /* Turbo: write-1-to-clear */
         enet_stub.tx_status &= ~val;
+        if ((enet_stub.tx_status & enet_stub.tx_mask) == 0)
+            next_intr_clear(I_IPL3_ENETX);
         break;
     case EN_REG_TX_MASK:
         enet_stub.tx_mask = val;
+        if ((enet_stub.tx_status & enet_stub.tx_mask) == 0)
+            next_intr_clear(I_IPL3_ENETX);
         break;
     case EN_REG_RX_STATUS:
         enet_stub.rx_status &= ~(val & 0x8F);
+        if ((enet_stub.rx_status & enet_stub.rx_mask) == 0)
+            next_intr_clear(I_IPL3_ENETR);
         break;
     case EN_REG_RX_MASK:
         enet_stub.rx_mask = val;
+        if ((enet_stub.rx_status & enet_stub.rx_mask) == 0)
+            next_intr_clear(I_IPL3_ENETR);
         break;
     case EN_REG_TX_MODE:
         enet_stub.tx_mode = val;
@@ -360,8 +393,12 @@ static void enet_reg_write(uint32_t reg, uint8_t val)
          * controller, stay "ready to transmit" so it doesn't spin. */
         enet_stub.control = val & EN_RESET;
         if (val & EN_RESET) {
-            enet_stub.tx_status = 0;   /* Turbo: cleared on reset */
+            /* Same rationale as the initialiser: start with READY set
+             * so the first en_xmit() polled wait doesn't deadlock. */
+            enet_stub.tx_status = EN_TXSTAT_READY;
             enet_stub.rx_status = 0;
+            next_intr_clear(I_IPL3_ENETX);
+            next_intr_clear(I_IPL3_ENETR);
         }
         break;
     case EN_REG_MAC0:       enet_stub.mac[0] = val; break;
@@ -372,6 +409,173 @@ static void enet_reg_write(uint32_t reg, uint8_t val)
     case EN_REG_MAC5:       enet_stub.mac[5] = val; break;
     default: break;
     }
+}
+
+/* ------------------------------------------------------------------ */
+/* Ethernet DMA loopback                                               */
+/*                                                                     */
+/* We don't emulate the real MB8795 packet path — instead, when the    */
+/* kernel sets up en_tx DMA (channel 7) it gets immediately "drained"  */
+/* into a local buffer, and the bytes are pushed straight back into    */
+/* memory via en_rx DMA (channel 8) when the driver has a receive      */
+/* buffer queued.  This is enough for daemons that rely on observing   */
+/* their own broadcasts / ARP replies (netinfod self-ping, inetd,      */
+/* etc.) on a standalone machine.  No external traffic, no filtering.  */
+/*                                                                     */
+/* dma_scratch layout for each channel (relative to 0x02004000):       */
+/*   +0x00: saved_next   | +0x04: saved_limit                          */
+/*   +0x08: saved_start  | +0x0C: saved_stop                           */
+/* i.e. for ch7 (en_tx at 0x02004110): scratch[0x44]=next, [0x45]=limit */
+/*      for ch8 (en_rx at 0x02004150): scratch[0x54]=next, [0x55]=limit */
+/* ------------------------------------------------------------------ */
+#define ENET_LOOP_BUF_SIZE  2048
+#define ENET_TX_NEXT_IDX    (0x110 >> 2)
+#define ENET_TX_LIMIT_IDX   (0x114 >> 2)
+#define ENET_RX_NEXT_IDX    (0x150 >> 2)
+#define ENET_RX_LIMIT_IDX   (0x154 >> 2)
+
+/* NeXT DMA ethernet channels steal the top two bits of the next/limit
+ * registers as packet-boundary markers (see previous/src/dma.c:796):
+ *   EN_EOP (bit 31) = "end of packet"   — set in TX limit
+ *   EN_BOP (bit 30) = "beginning of packet" — set in RX next
+ * These must be masked off before the registers are interpreted as
+ * physical addresses. */
+#define EN_EOP          0x80000000u
+#define EN_BOP          0x40000000u
+#define ENADDR(x)       ((x) & ~(EN_EOP | EN_BOP))
+
+static struct {
+    uint8_t  data[ENET_LOOP_BUF_SIZE];
+    uint32_t len;
+    bool     pending;   /* a TX packet is waiting to be looped into RX */
+} enet_loop;
+
+/* Physical address -> next_ram offset, matching the SCSI DMA helper.
+ * Returns false if addr is outside the mapped RAM window. */
+static bool enet_phys_to_ram(uint32_t phys, uint32_t len, uint32_t *off)
+{
+    phys &= 0x7FFFFFFFu;
+    if (phys < NEXT_RAM_BASE || phys >= NEXT_RAM_BASE + NEXT_RAM_SIZE)
+        return false;
+    if (phys + len > NEXT_RAM_BASE + NEXT_RAM_SIZE)
+        return false;
+    /* Clip on the 0x08000000 bank boundary, same as scsi_dma. */
+    if (phys < 0x08000000u && phys + len > 0x08000000u)
+        return false;
+    *off = phys & 0x07FFFFFFu;
+    return true;
+}
+
+static uint32_t enet_tx_count = 0;
+static uint32_t enet_rx_count = 0;
+
+uint32_t next_enet_get_tx_count(void) { return enet_tx_count; }
+uint32_t next_enet_get_rx_count(void) { return enet_rx_count; }
+
+static void enet_loop_try_tx(void)
+{
+    /* Only run when TX DMA has been enabled and no packet is still
+     * waiting to be received on the RX side. */
+    if (!(dma_csr[7] & 0x01)) return;          /* TX not enabled */
+    if (enet_loop.pending)    return;           /* prior packet not yet RX'd */
+
+    uint32_t next      = ENADDR(dma_scratch[ENET_TX_NEXT_IDX]);
+    uint32_t limit_raw = dma_scratch[ENET_TX_LIMIT_IDX];
+    uint32_t limit     = ENADDR(limit_raw);
+    bool     eop       = (limit_raw & EN_EOP) != 0;
+    {
+        static int log = 0;
+        if (log < 5) {
+            xil_printf("[ENET-LOOP] TX fire: next=$%08X limit=$%08X(raw $%08X) eop=%d\r\n",
+                       next, limit, limit_raw, eop);
+            log++;
+        }
+    }
+    enet_tx_count++;
+    if (limit <= next) goto tx_done;
+
+    uint32_t len = limit - next;
+    if (len > ENET_LOOP_BUF_SIZE) len = ENET_LOOP_BUF_SIZE;
+
+    extern uint8_t next_ram[];
+    uint32_t ram_off;
+    if (enet_phys_to_ram(next, len, &ram_off)) {
+        memcpy(enet_loop.data, &next_ram[ram_off], len);
+        enet_loop.len = len;
+        /* Only consider the frame ready for loopback at EOP.  Pre-EOP
+         * DMA bursts just accumulate into the buffer. */
+        enet_loop.pending = eop;
+        dma_scratch[ENET_TX_NEXT_IDX] = next + len;
+    }
+
+tx_done:
+    /* Always complete the TX: either we captured the frame, or the
+     * DMA descriptor pointed at unmapped memory and we drop it.
+     * Two interrupts involved — the DMA channel (IPL6) fires on DMA
+     * completion; the chip (IPL3) fires when tx_status bits matching
+     * tx_mask appear.  Both are independent paths that the kernel's
+     * driver services. */
+    dma_csr[7] = (dma_csr[7] & ~0x01) | 0x08;    /* clear ENABLE, set COMPLETE */
+    next_intr_set(I_IPL6_ENETX_DMA);
+
+    /* Chip-level: our hypothetical loopback "transceiver" sees its own
+     * packet.  Set TXSTAT_TX_RECVD + TXSTAT_READY; real hardware also
+     * briefly sets NET_BUSY during the send but by the time SW sees the
+     * interrupt the line has already cleared, so we skip it. */
+    enet_stub.tx_status |= EN_TXSTAT_READY | EN_TXSTAT_TX_RECVD;
+    if (enet_stub.tx_status & enet_stub.tx_mask)
+        next_intr_set(I_IPL3_ENETX);
+}
+
+static void enet_loop_try_rx(void)
+{
+    if (!(dma_csr[8] & 0x01)) return;            /* RX not enabled */
+    if (!enet_loop.pending)   return;            /* nothing to deliver */
+    {
+        static int log = 0;
+        if (log < 5) {
+            xil_printf("[ENET-LOOP] RX deliver: next=$%08X limit=$%08X len=%u\r\n",
+                       ENADDR(dma_scratch[ENET_RX_NEXT_IDX]),
+                       ENADDR(dma_scratch[ENET_RX_LIMIT_IDX]),
+                       (unsigned)enet_loop.len);
+            log++;
+        }
+    }
+    enet_rx_count++;
+
+    uint32_t next  = ENADDR(dma_scratch[ENET_RX_NEXT_IDX]);
+    uint32_t limit = ENADDR(dma_scratch[ENET_RX_LIMIT_IDX]);
+    uint32_t room  = (limit > next) ? (limit - next) : 0;
+    uint32_t n = enet_loop.len < room ? enet_loop.len : room;
+
+    if (n > 0) {
+        extern uint8_t next_ram[];
+        uint32_t ram_off;
+        if (enet_phys_to_ram(next, n, &ram_off)) {
+            memcpy(&next_ram[ram_off], enet_loop.data, n);
+            /* Preserve BOP bit in readback as Previous does after the
+             * last buffer of a chain: marks frame start. */
+            dma_scratch[ENET_RX_NEXT_IDX] = (next + n) | EN_BOP;
+        }
+    }
+    enet_loop.pending = false;
+
+    dma_csr[8] = (dma_csr[8] & ~0x01) | 0x08;    /* clear ENABLE, set COMPLETE */
+    next_intr_set(I_IPL6_ENETR_DMA);
+
+    /* Chip-level: a valid packet just landed in the RX buffer. */
+    enet_stub.rx_status |= EN_RXSTAT_PKT_OK;
+    if (enet_stub.rx_status & enet_stub.rx_mask)
+        next_intr_set(I_IPL3_ENETR);
+}
+
+/* Public hook: called from the main-loop periodic service.  Also
+ * called inline from the DMA CSR write path so a set-enable + ready
+ * buffer combination drains immediately. */
+void next_enet_loop_step(void)
+{
+    enet_loop_try_tx();
+    enet_loop_try_rx();
 }
 
 /* Raise or release the ADB interrupt (shared with disk on I_IPL3_DISK)
@@ -1660,14 +1864,30 @@ void next_io_write_32(uint32_t address, uint32_t value)
                            m68k_get_reg(NULL, M68K_REG_PC));
             /* Decode Turbo write bits and update internal state,
              * same logic as SCSI DMA CSR write */
-            if (value & 0x00100000)  /* TDMA_RESET */
+            if (value & 0x00100000) {  /* TDMA_RESET: clears all CSR bits
+                                        * in real HW, which in turn deasserts
+                                        * the DMA-complete IRQ line.  We must
+                                        * clear the latched IRQ too, else the
+                                        * kernel's ISR sees a phantom second
+                                        * interrupt and prints "Spurious DMA". */
                 dma_csr[ch] &= ~(0x08 | 0x02 | 0x01);
+                if (ch == 7) next_intr_clear(I_IPL6_ENETX_DMA);
+                if (ch == 8) next_intr_clear(I_IPL6_ENETR_DMA);
+            }
             if (value & 0x00020000)  /* TDMA_SETSUPDATE */
                 dma_csr[ch] |= 0x02;
             if (value & 0x00010000)  /* TDMA_SETENABLE */
                 dma_csr[ch] |= 0x01;
-            if (value & 0x00080000)  /* TDMA_CLRCOMPLETE */
+            if (value & 0x00080000) {  /* TDMA_CLRCOMPLETE */
                 dma_csr[ch] &= ~0x08;
+                if (ch == 7) next_intr_clear(I_IPL6_ENETX_DMA);
+                if (ch == 8) next_intr_clear(I_IPL6_ENETR_DMA);
+            }
+            /* Ethernet: drive the loopback path when either channel's
+             * state changes, so an enable (TX start / RX post) is
+             * serviced immediately rather than waiting for the next
+             * main-loop tick. */
+            if (ch == 7 || ch == 8) next_enet_loop_step();
             return;
         }
     }

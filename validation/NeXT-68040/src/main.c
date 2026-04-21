@@ -1580,6 +1580,17 @@ static void poll_uart_rx(void)
             trap_log_dump();
             continue;
         }
+        if (ch == 'R') {
+            /* Toggle RTE-to-user logging — every exception return that
+             * lands in user mode prints its target PC.  Use to verify
+             * whether sendsig() modifications are being honored by RTE. */
+            extern int next_debug_rte;
+            extern unsigned int rte_to_user_count;
+            next_debug_rte = !next_debug_rte;
+            xil_printf("\r\n[DEBUG] RTE→user logging %s (total so far=%u)\r\n",
+                       next_debug_rte ? "ON" : "OFF", rte_to_user_count);
+            continue;
+        }
         if (ch == 'D') {
             /* Toggle SCSI/DMA/interrupt debug logging */
             extern int next_debug_scsi;

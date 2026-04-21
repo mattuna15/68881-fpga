@@ -29611,6 +29611,20 @@ rte_loop:
 				new_sr = m68ki_pull_16();
 				new_pc = m68ki_pull_32();
 				m68ki_fake_pull_16();	/* format word */
+				/* Diagnostic: log RTE returning to user mode.  Gated on
+				 * next_debug_rte so only on during focused debug. */
+				{
+					extern int next_debug_rte;
+					extern unsigned int rte_to_user_count;
+					if (!(new_sr & 0x2000)) {
+						rte_to_user_count++;
+						if (next_debug_rte) {
+							extern void xil_printf(const char *, ...);
+							xil_printf("[RTE0] → user PC=$%08X SR=$%04X\r\n",
+							           new_pc, new_sr);
+						}
+					}
+				}
 				m68ki_jump(new_pc);
 				m68ki_set_sr(new_sr);
 				CPU_INSTR_MODE = INSTRUCTION_YES;
@@ -29641,6 +29655,18 @@ rte_loop:
 				m68ki_fake_pull_16();	/* format word */
 				REG_A[7] += 52;		/* skip EA, SSW, WBnS, FA, WBnA/D, PDn */
 				rte_format7_count++;
+				{
+					extern int next_debug_rte;
+					extern unsigned int rte_to_user_count;
+					if (!(new_sr & 0x2000)) {
+						rte_to_user_count++;
+						if (next_debug_rte) {
+							extern void xil_printf(const char *, ...);
+							xil_printf("[RTE7] → user PC=$%08X SR=$%04X\r\n",
+							           new_pc, new_sr);
+						}
+					}
+				}
 				m68ki_jump(new_pc);
 				m68ki_set_sr(new_sr);
 				CPU_INSTR_MODE = INSTRUCTION_YES;

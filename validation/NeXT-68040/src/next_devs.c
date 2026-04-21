@@ -26,6 +26,15 @@
 /* Debug toggle — toggled by 'D' keypress in main loop */
 int next_debug_scsi = 0;
 
+/* RTE-to-user trace — toggled by 'R' keypress.  When on, Musashi logs
+ * every RTE that lands in user mode.  Lets us verify whether sendsig()
+ * successfully rewrote the return PC in the exception frame: if a
+ * signal handler's PC appears after trap/kill, RTE is honoring the
+ * rewrite; if we only see the original caller PC, sendsig isn't
+ * modifying the frame the RTE reads from. */
+int next_debug_rte = 0;
+unsigned int rte_to_user_count = 0;
+
 /* Verbose I/O logging — toggled by 'I' keypress.
  * Logs every device register read/write with address, value, size, and PC.
  * Filters out timer reads (0x02016000-0x02016004) to avoid flooding. */
@@ -612,60 +621,63 @@ void io_track(uint32_t addr) {
     io_act_idx = (io_act_idx + 1) % 8;
 }
 
-/* Search kernel memory for sf_access_head by finding empty queue_head pattern:
- * two consecutive words where both equal the address of the first word (self-referencing).
- * Then dump the struct following it to show sfah_busy. */
+/* Search kernel memory for sf_access_head structures.
+ *
+ * Correct layout (NeXTMach/nextdev/sf_access.h:61):
+ *   offset 0:  sfah_lock       (int lock_data; 0 = free, non-zero = held)
+ *   offset 4:  sfah_wait_cnt   (u_char; padded to 4)
+ *   offset 8:  sfah_q.next     (queue_head_t, 8 bytes)
+ *   offset 12: sfah_q.prev
+ *   offset 16: sfah_flags
+ *   offset 20: sfah_last_dev   (0=NONE, 1=SCSI, 2=FD)
+ *   offset 24: sfah_excl_q
+ *   offset 28: sfah_busy       (# devices currently using bus)
+ *
+ * For an empty queue, q.next == q.prev == &q (i.e., addr+8).
+ * We scan for that self-reference at the queue offsets (not the
+ * struct base!), then report the struct starting 8 bytes earlier.
+ * The older version looked for self-refs at offset 0 which matched
+ * any empty queue_head_t in the kernel, including ones embedded in
+ * unrelated structs — producing the garbage "32 waiters" readout. */
 void sfa_dump(void) {
     extern uint8_t next_ram[];
-    /* Virtual-address indexer — applies the bank-mask offset used by
-     * the main memory accessors in next_memory.c.  Required because
-     * VA $04xxxxxx doesn't map to next_ram[$00xxxxxx] anymore; it maps
-     * to next_ram[$04xxxxxx]. */
     #define RDVA32(va) ((uint32_t)(                                             \
         (next_ram[(va)   & 0x07FFFFFFu] << 24) |                                \
         (next_ram[((va)+1) & 0x07FFFFFFu] << 16) |                              \
         (next_ram[((va)+2) & 0x07FFFFFFu] <<  8) |                              \
          next_ram[((va)+3) & 0x07FFFFFFu]))
     int found = 0;
-    /* sf_access_head has: queue_head(8), lock(4), wait_cnt(4), flags(4), last_dev(4), excl_q(4), busy(4)
-     * For an empty queue: q.next == q.prev == &q (self-pointer)
-     * For a non-empty queue: q.next and q.prev are different kernel pointers */
     for (uint32_t va = 0x04000000;
-         va < 0x04000000 + 0x00200000 && found < 5; va += 4) {
-        uint32_t addr = va;
-        uint32_t w0 = RDVA32(va);
-        uint32_t w1 = RDVA32(va+4);
-        /* Check for self-referencing queue (empty) or two valid kernel pointers */
-        if (w0 == addr && w1 == addr) {
-            /* Empty queue — both next and prev point to queue head itself.
-             * Check that following fields look like sfah (small integers). */
-            uint32_t wait_cnt = RDVA32(va+0x0C);
-            uint32_t flags = RDVA32(va+0x10);
-            uint32_t last_dev = RDVA32(va+0x14);
-            uint32_t excl_q = RDVA32(va+0x18);
-            uint32_t busy = RDVA32(va+0x1C);
-            if (wait_cnt < 100 && flags < 100 && last_dev < 100 && excl_q < 100 && busy < 100) {
-                xil_printf("[SFA-HEAD] @$%08X: q={self,self} lock=%d wait=%d flags=%d last=%d excl=%d BUSY=%d\r\n",
-                           addr, RDVA32(va+8), wait_cnt, flags, last_dev, excl_q, busy);
-                found++;
-            }
-        }
-        /* Also check non-empty queue: two different kernel ptrs, followed by small ints */
-        else if (w0 >= 0x04000000 && w0 < 0x04200000 &&
-                 w1 >= 0x04000000 && w1 < 0x04200000 && w0 != w1) {
-            uint32_t lock = RDVA32(va+8);
-            uint32_t wait_cnt = RDVA32(va+0x0C);
-            uint32_t flags = RDVA32(va+0x10);
-            uint32_t last_dev = RDVA32(va+0x14);
-            uint32_t excl_q = RDVA32(va+0x18);
-            uint32_t busy = RDVA32(va+0x1C);
-            if (lock == 0 && wait_cnt > 0 && wait_cnt < 10 &&
-                flags < 10 && last_dev < 10 && excl_q < 10 && busy > 0 && busy < 10) {
-                xil_printf("[SFA-HEAD] @$%08X: q={$%08X,$%08X} lock=%d wait=%d flags=%d last=%d excl=%d BUSY=%d\r\n",
-                           addr, w0, w1, lock, wait_cnt, flags, last_dev, excl_q, busy);
-                found++;
-            }
-        }
+         va < 0x04000000 + 0x00200000 && found < 8; va += 4) {
+        /* Candidate struct base at va.  Check queue self-ref at +8,+12. */
+        uint32_t q_next = RDVA32(va + 8);
+        uint32_t q_prev = RDVA32(va + 12);
+        uint32_t q_addr = va + 8;
+        uint32_t lock = RDVA32(va + 0);
+        uint32_t wait = RDVA32(va + 4) & 0xFF;  /* u_char, low byte only */
+        uint32_t flags = RDVA32(va + 16);
+        uint32_t last_dev = RDVA32(va + 20);
+        uint32_t excl_q = RDVA32(va + 24);
+        uint32_t busy = RDVA32(va + 28);
+
+        int empty_q = (q_next == q_addr && q_prev == q_addr);
+        int ptr_q  = (q_next >= 0x04000000 && q_next < 0x04200000 &&
+                      q_prev >= 0x04000000 && q_prev < 0x04200000 &&
+                      q_next != q_addr && q_prev != q_addr);
+        if (!empty_q && !ptr_q) continue;
+        /* Plausibility: lock is 0 or 1 on m68k simple_lock; wait_cnt is
+         * u_char so <256; last_dev is SF_LD_{NONE,SCSI,FD} = 0/1/2;
+         * flags/excl_q/busy are small. */
+        if (lock > 1)           continue;
+        if (last_dev > 2)       continue;
+        if (flags > 0xFF)       continue;
+        if (excl_q > 32)        continue;
+        if (busy > 16)          continue;
+
+        xil_printf("[SFA-HEAD] @$%08X: q=%s lock=%u wait=%u flags=%u last=%u excl=%u busy=%u\r\n",
+                   va, empty_q ? "{self,self}" : "{ptrs}",
+                   lock, wait, flags, last_dev, excl_q, busy);
+        found++;
     }
     if (!found)
         xil_printf("[SFA-HEAD] No sf_access_head found in kernel RAM!\r\n");

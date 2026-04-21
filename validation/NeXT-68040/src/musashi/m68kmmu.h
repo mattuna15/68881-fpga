@@ -528,6 +528,51 @@ uint pmmu_translate_addr_040(uint addr_in)
 			mmu040_fault_ring_idx++;
 		}
 
+		/* Dynamic-exec bus-error diagnostic.
+		 *
+		 * The /bin/ls failure path shows 15 consecutive faults at one
+		 * high-user-VA (~stack region ~$1BExxxxx) followed by a fetch
+		 * fault in the binary's low text.  Hypothesis: the user-stack
+		 * auto-grow path in the bus-error handler doesn't fire when a
+		 * dynamic binary's FVM-bootstrap pushes into an unmapped stack
+		 * page.  Static binaries work because their stack is pre-sized.
+		 *
+		 * Gate on next_debug_fault (toggled by 'F' from the host UART)
+		 * and only log user-mode faults (FC 1 = user data, 2 = user
+		 * code) to keep the signal clean — kernel paging is expected
+		 * to fault constantly.  Rate-limit to 1 per 64 identical-VA
+		 * repeats so a true cascade prints once, not spam.
+		 *
+		 * Output fields:
+		 *   VA   — faulting virtual address
+		 *   PC   — program counter at fault
+		 *   SSW  — reconstructed special status word (bit 8 = read,
+		 *          clear = write; low 3 bits = function code)
+		 *   streak — consecutive faults at same VA (detects cascade) */
+		{
+			extern int next_debug_fault;
+			static uint32_t last_va = 0;
+			static uint32_t streak  = 0;
+			if (fc == 1 || fc == 2) {               /* user-mode only */
+				if (addr_in == last_va) streak++;
+				else                    streak = 1;
+				last_va = addr_in;
+
+				if (next_debug_fault) {
+					/* Print first hit; then every 64th repeat; then
+					 * the transition away. */
+					int should_print = (streak == 1)
+					                 || ((streak & 63) == 0);
+					if (should_print) {
+						xil_printf("[UFAULT] VA=$%08X PC=$%08X SSW=$%04X fc=%u %s streak=%u\r\n",
+						           addr_in, REG_PPC, (unsigned)ssw, fc,
+						           (ssw & 0x0100) ? "read" : "write",
+						           streak);
+					}
+				}
+			}
+		}
+
 		/* Detect infinite fault loop (double bus fault → CPU halt).
 		 *
 		 * Heuristic: count faults that have NOT been matched by a

@@ -1591,6 +1591,17 @@ static void poll_uart_rx(void)
                        next_debug_rte ? "ON" : "OFF", rte_to_user_count);
             continue;
         }
+        if (ch == 'F') {
+            /* Toggle user-mode page-fault trace.  Dumps one line per
+             * user-mode MMU fault with VA, PC, direction, and a streak
+             * counter that reveals cascade loops (e.g. repeated faults
+             * at one VA when user stack auto-grow fails). */
+            extern int next_debug_fault;
+            next_debug_fault = !next_debug_fault;
+            xil_printf("\r\n[DEBUG] User-fault logging %s\r\n",
+                       next_debug_fault ? "ON" : "OFF");
+            continue;
+        }
         if (ch == 'D') {
             /* Toggle SCSI/DMA/interrupt debug logging */
             extern int next_debug_scsi;

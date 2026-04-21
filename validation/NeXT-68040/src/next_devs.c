@@ -35,6 +35,14 @@ int next_debug_scsi = 0;
 int next_debug_rte = 0;
 unsigned int rte_to_user_count = 0;
 
+/* User-mode page-fault trace — toggled by 'F' keypress.  When on,
+ * the MMU's fault handler logs user-mode faults (FC 1/2) with the
+ * VA, PC, SSW, and a consecutive-at-same-VA "streak" counter.  Used
+ * to pinpoint the dynamic-exec bus-error (/bin/ls et al.) which
+ * shows a ~15-fault cascade at one high-user-VA (~$1BExxxxx) —
+ * likely a user-stack auto-grow path not firing for FVM bootstrap. */
+int next_debug_fault = 0;
+
 /* Verbose I/O logging — toggled by 'I' keypress.
  * Logs every device register read/write with address, value, size, and PC.
  * Filters out timer reads (0x02016000-0x02016004) to avoid flooding. */

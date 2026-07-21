@@ -239,32 +239,10 @@ architecture sim of tb_mc68881_top is
     end loop;
   end procedure;
 
-  -- Verify `sense_n` transitions to the expected busy/idle state.
-  procedure wait_for_sense(
-    signal sense_n_s : in std_logic;
-    constant expected : std_logic;
-    constant test_name : string
-  ) is
-    variable seen : boolean := false;
-  begin
-    for idx in 0 to 200 loop
-      wait for CLK_PERIOD;
-      if sense_n_s = expected then
-        seen := true;
-        exit;
-      end if;
-    end loop;
-    assert seen
-      report "SENSE did not reach expected state for " & test_name &
-             " expected=" & std_logic'image(expected) &
-             " got=" & std_logic'image(sense_n_s)
-      severity failure;
-    report "SENSE state: " & test_name &
-           " value=" & std_logic'image(sense_n_s)
-      severity note;
-  end procedure;
-
   -- Sanity-check idle outputs before/after major stimulus sequences.
+  -- SENSE is a presence-detect strap (grounded on-die on real MC6888x parts,
+  -- pulled up by the host) and does not track busy/idle status, so it is
+  -- checked here as a constant low rather than an idle-specific state.
   procedure assert_idle_outputs(
     signal dsack0_n_s : in std_logic;
     signal dsack1_n_s : in std_logic;
@@ -277,8 +255,8 @@ architecture sim of tb_mc68881_top is
              " dsack1_n=" & std_logic'image(dsack1_n_s) &
              " dsack0_n=" & std_logic'image(dsack0_n_s)
       severity failure;
-    assert sense_n_s = '1'
-      report "SENSE should be deasserted during idle for " & test_name &
+    assert sense_n_s = '0'
+      report "SENSE should be held low (presence detect) for " & test_name &
              " sense_n=" & std_logic'image(sense_n_s)
       severity failure;
     report "Idle output check: " & test_name &
@@ -409,9 +387,13 @@ begin
       severity note;
     write_binary_operands(a_in, d_in, rw, cs_n, as_n, ds_n, op_a, op_b);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000001");
-    wait_for_sense(sense_n, '0', "busy assert after ADD start");
+    assert sense_n = '0'
+      report "SENSE should be held low (presence detect) during ADD execution"
+      severity failure;
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
-    wait_for_sense(sense_n, '1', "idle deassert after ADD completion");
+    assert sense_n = '0'
+      report "SENSE should be held low (presence detect) after ADD completion"
+      severity failure;
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
     rd_res  <= rd_full;
     report "ADD readback: ex=" & to_hstring(rd_ex) & " hi=" & to_hstring(rd_hi) & " lo=" & to_hstring(rd_lo)

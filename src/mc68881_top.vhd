@@ -70,7 +70,6 @@ architecture rtl of mc68881_top is
   signal quotient_byte : std_logic_vector(7 downto 0) := (others => '0');
   signal busy      : std_logic := '0';
   signal alu_flag_divzero : std_logic := '0';
-  signal sense_drive : std_logic := '1';
   signal op_start_reg  : std_logic := '0';
   signal status_valid_reg : std_logic := '0';
   signal status_busy_reg  : std_logic := '0';
@@ -4377,7 +4376,9 @@ begin
   d_out <= d_out_reg when (sync_read = '1' or sync_read_latched = '1') else d_out_comb;
   dsack0_n <= dsack0_i;
   dsack1_n <= dsack1_i;
-  sense_drive <= '0' when status_busy_reg = '1' else '1';
-  sense_n  <= sense_drive;
+  -- SENSE is a presence-detect strap grounded on-die on real MC6888x parts
+  -- (host pulls it up to detect a populated coprocessor); it does not
+  -- reflect busy/idle status, so drive it constant low.
+  sense_n  <= '0';
   status_valid <= status_valid_reg;
 end architecture rtl;

@@ -13,7 +13,8 @@ architecture sim of tb_mc68881_top is
   signal a_in     : std_logic_vector(4 downto 0) := (others => '0');
   signal d_in     : std_logic_vector(31 downto 0) := (others => '0');
   signal d_out    : std_logic_vector(31 downto 0);
-  signal size_n   : std_logic_vector(1 downto 0) := "11";
+  signal size_n   : std_logic := '1';
+  signal a0_in    : std_logic := '1';
   signal as_n     : std_logic := '1';
   signal cs_n     : std_logic := '1';
   signal rw       : std_logic := '1';
@@ -239,32 +240,10 @@ architecture sim of tb_mc68881_top is
     end loop;
   end procedure;
 
-  -- Verify `sense_n` transitions to the expected busy/idle state.
-  procedure wait_for_sense(
-    signal sense_n_s : in std_logic;
-    constant expected : std_logic;
-    constant test_name : string
-  ) is
-    variable seen : boolean := false;
-  begin
-    for idx in 0 to 200 loop
-      wait for CLK_PERIOD;
-      if sense_n_s = expected then
-        seen := true;
-        exit;
-      end if;
-    end loop;
-    assert seen
-      report "SENSE did not reach expected state for " & test_name &
-             " expected=" & std_logic'image(expected) &
-             " got=" & std_logic'image(sense_n_s)
-      severity failure;
-    report "SENSE state: " & test_name &
-           " value=" & std_logic'image(sense_n_s)
-      severity note;
-  end procedure;
-
   -- Sanity-check idle outputs before/after major stimulus sequences.
+  -- SENSE is a presence-detect strap (grounded on-die on real MC6888x parts,
+  -- pulled up by the host) and does not track busy/idle status, so it is
+  -- checked here as a constant low rather than an idle-specific state.
   procedure assert_idle_outputs(
     signal dsack0_n_s : in std_logic;
     signal dsack1_n_s : in std_logic;
@@ -277,8 +256,8 @@ architecture sim of tb_mc68881_top is
              " dsack1_n=" & std_logic'image(dsack1_n_s) &
              " dsack0_n=" & std_logic'image(dsack0_n_s)
       severity failure;
-    assert sense_n_s = '1'
-      report "SENSE should be deasserted during idle for " & test_name &
+    assert sense_n_s = '0'
+      report "SENSE should be held low (presence detect) for " & test_name &
              " sense_n=" & std_logic'image(sense_n_s)
       severity failure;
     report "Idle output check: " & test_name &
@@ -362,6 +341,7 @@ begin
       d_in     => d_in,
       d_out    => d_out,
       size_n   => size_n,
+      a0_in    => a0_in,
       as_n     => as_n,
       cs_n     => cs_n,
       rw       => rw,
@@ -397,7 +377,7 @@ begin
               to_unsigned(13, 5), x"00000000");
 
     -- Write operands and op select (ADD)
-    size_n <= "11";
+    size_n <= '1';
     op_a := fp80_from_int(10);
     op_b := fp80_from_int(5);
     exp_r := add_sub_fp80(op_a, op_b, false, FP_RND_NEAREST, FP_PREC_EXTENDED);
@@ -409,9 +389,13 @@ begin
       severity note;
     write_binary_operands(a_in, d_in, rw, cs_n, as_n, ds_n, op_a, op_b);
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, to_unsigned(0, 5), x"00000001");
-    wait_for_sense(sense_n, '0', "busy assert after ADD start");
+    assert sense_n = '0'
+      report "SENSE should be held low (presence detect) during ADD execution"
+      severity failure;
     wait_for_valid(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, status_word);
-    wait_for_sense(sense_n, '1', "idle deassert after ADD completion");
+    assert sense_n = '0'
+      report "SENSE should be held low (presence detect) after ADD completion"
+      severity failure;
     read_result_fp80(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, rd_hi, rd_ex, rd_full);
     rd_res  <= rd_full;
     report "ADD readback: ex=" & to_hstring(rd_ex) & " hi=" & to_hstring(rd_hi) & " lo=" & to_hstring(rd_lo)
@@ -1492,8 +1476,9 @@ begin
     -- =========================================================
     report "DSACK single-shot encoding tests" severity note;
 
-    -- Single-shot: 32-bit A4=1 → dsack0='0', dsack1='0'
-    size_n <= "11";
+    -- Single-shot: 32-bit port (size_n='1', a0_in='1'), A4=1 → dsack0='0', dsack1='0'.
+    size_n <= '1';
+    a0_in  <= '1';
     a_in   <= "10000";
     cs_n   <= '0';
     as_n   <= '0';
@@ -1511,7 +1496,7 @@ begin
     ds_n <= '1';
     wait for CLK_PERIOD;
 
-    -- Single-shot: 32-bit A4=0 → dsack0='1', dsack1='0'
+    -- Single-shot: 32-bit port (size_n='1', a0_in='1'), A4=0 → dsack0='1', dsack1='0'.
     a_in <= "00000";
     cs_n <= '0';
     as_n <= '0';
@@ -1534,14 +1519,18 @@ begin
     -- =========================================================
     report "Multi-beat DSACK transfer tests" severity note;
 
-    -- Seed FPIAR with known value for read-back tests
-    size_n <= "11";
+    -- Seed FPIAR with known value for read-back tests. Port size (Table 9-2)
+    -- is driven independently via size_n/a0_in — a_in only selects the
+    -- register (A4-A1), so the same address works for every port width.
+    size_n <= '1';
+    a0_in  <= '1';
     bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, ADDR_FPIAR, x"DEADBEEF");
 
     -- Test 1: 32-bit read — 1 beat
-    -- FPIAR A4=1, size_n="11" → dsack0='0', dsack1='0' (32-bit port)
+    -- FPIAR A4=1, size_n='1', a0_in='1' → dsack0='0', dsack1='0' (32-bit port)
     report "DSACK multi-beat test 1: 32-bit read, 1 beat" severity note;
-    size_n <= "11";
+    size_n <= '1';
+    a0_in  <= '1';
     a_in   <= std_logic_vector(ADDR_FPIAR);
     rw     <= '1';
     cs_n   <= '0';
@@ -1561,11 +1550,12 @@ begin
     wait for CLK_PERIOD;
 
     -- Test 2: 16-bit read — 2 consecutive beats
-    -- size_n="10" → dsack0='1', dsack1='0' (16-bit port)
+    -- FPIAR A0=0, size_n='1' → dsack0='1', dsack1='0' (16-bit port)
     -- Confirms state machine returns to IDLE and re-responds on each beat.
     report "DSACK multi-beat test 2: 16-bit read, 2 beats" severity note;
     for beat in 0 to 1 loop
-      size_n <= "10";
+      size_n <= '1';
+      a0_in  <= '0';
       a_in   <= std_logic_vector(ADDR_FPIAR);
       rw     <= '1';
       cs_n   <= '0';
@@ -1588,11 +1578,11 @@ begin
     end loop;
 
     -- Test 3: 8-bit read — 4 consecutive beats
-    -- size_n="01" → dsack0='0', dsack1='1' (8-bit port)
+    -- size_n='0' → dsack0='0', dsack1='1' (8-bit port; A0 immaterial)
     -- Confirms 4 independent DSACK handshakes complete without stalling.
     report "DSACK multi-beat test 3: 8-bit read, 4 beats" severity note;
     for beat in 0 to 3 loop
-      size_n <= "01";
+      size_n <= '0';
       a_in   <= std_logic_vector(ADDR_FPIAR);
       rw     <= '1';
       cs_n   <= '0';
@@ -1618,7 +1608,8 @@ begin
     -- FPU captures full 32-bit d_in each cycle; last write wins.
     report "DSACK multi-beat test 4: 16-bit write, 2 beats + readback" severity note;
     for beat in 0 to 1 loop
-      size_n <= "10";
+      size_n <= '1';
+      a0_in  <= '0';
       a_in   <= std_logic_vector(ADDR_FPIAR);
       d_in   <= x"CAFEBABE";
       rw     <= '0';
@@ -1637,7 +1628,7 @@ begin
       rw   <= '1';
       wait for CLK_PERIOD;
     end loop;
-    size_n <= "11";
+    size_n <= '1';
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPIAR);
     assert rd_lo = x"CAFEBABE"
       report "Readback mismatch after 16-bit writes: expected CAFEBABE got " & to_hstring(rd_lo)
@@ -1646,7 +1637,7 @@ begin
     -- Test 5: 8-bit write — 4 beats + 32-bit readback
     report "DSACK multi-beat test 5: 8-bit write, 4 beats + readback" severity note;
     for beat in 0 to 3 loop
-      size_n <= "01";
+      size_n <= '0';
       a_in   <= std_logic_vector(ADDR_FPIAR);
       d_in   <= x"12345678";
       rw     <= '0';
@@ -1665,30 +1656,21 @@ begin
       rw   <= '1';
       wait for CLK_PERIOD;
     end loop;
-    size_n <= "11";
+    size_n <= '1';
     bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, rd_lo, ADDR_FPIAR);
     assert rd_lo = x"12345678"
       report "Readback mismatch after 8-bit writes: expected 12345678 got " & to_hstring(rd_lo)
       severity failure;
 
-    -- Test 6: Wait-state (size_n="00") — no DSACK
-    report "DSACK multi-beat test 6: wait-state, no DSACK" severity note;
-    size_n <= "00";
-    cs_n   <= '0';
-    as_n   <= '0';
-    ds_n   <= '0';
-    wait for CLK_PERIOD;
-    assert dsack0_n = '1' and dsack1_n = '1'
-      report "DSACK mismatch for wait state insertion: dsack0_n=" &
-             std_logic'image(dsack0_n) & " dsack1_n=" & std_logic'image(dsack1_n)
-      severity failure;
-    cs_n <= '1';
-    as_n <= '1';
-    ds_n <= '1';
-    wait for CLK_PERIOD;
+    -- Note: the old "wait-state" test (size_n="00" under the previous 2-bit
+    -- encoding) has no equivalent under the real single-bit SIZE + A0 model —
+    -- every legal (size_n, A0) combination now yields an immediate, valid
+    -- 8/16/32-bit DSACK encoding (Table 9-2/9-3), so there is no input state
+    -- that produces "no DSACK".
 
     -- Restore default size and verify idle
-    size_n <= "11";
+    size_n <= '1';
+    a0_in  <= '1';
     assert_idle_outputs(dsack0_n, dsack1_n, sense_n, "post-DSACK multi-beat tests idle");
 
     -- ===== DEF-DIVREM-002: SNaN vs QNaN FPSR INVALID discrimination =====

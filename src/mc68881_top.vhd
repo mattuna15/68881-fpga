@@ -23,10 +23,17 @@ entity mc68881_top is
   );
   port (
     -- Bus interface
+    -- a_in carries the register-select address (A4-A1, matching Table 9-1;
+    -- A0 is not part of register selection and is intentionally not present
+    -- here). a0_in below is the real hardware A0 pin, used only to help
+    -- select the system data bus port size.
     a_in    : in  std_logic_vector(4 downto 0);
     d_in    : in  std_logic_vector(31 downto 0);
     d_out   : out std_logic_vector(31 downto 0);
-    size_n  : in  std_logic_vector(1 downto 0); -- active low
+    -- Active-low SIZE pin; combined with a0_in to select the 8/16/32-bit
+    -- port size (Table 9-2). Normally hardwired on the motherboard.
+    size_n  : in  std_logic;
+    a0_in   : in  std_logic;
     as_n    : in  std_logic; -- active low
     cs_n    : in  std_logic; -- active low
     rw      : in  std_logic; -- high=read, low=write
@@ -70,7 +77,6 @@ architecture rtl of mc68881_top is
   signal quotient_byte : std_logic_vector(7 downto 0) := (others => '0');
   signal busy      : std_logic := '0';
   signal alu_flag_divzero : std_logic := '0';
-  signal sense_drive : std_logic := '1';
   signal op_start_reg  : std_logic := '0';
   signal status_valid_reg : std_logic := '0';
   signal status_busy_reg  : std_logic := '0';
@@ -3492,7 +3498,6 @@ begin
   -- DSACK timing/handshake state machine.
   process(clk, reset_n)
     variable size_code : std_logic_vector(1 downto 0);
-    variable dsack_wait : boolean;
     variable assert_cycles : natural;
   begin
     if reset_n = '0' then
@@ -3515,18 +3520,23 @@ begin
         when DSACK_IDLE =>
           dsack_active <= '0';
           if start_access = '1' then
-            size_code := not size_n;
+            -- Port size per Table 9-2: SIZE low -> 8-bit; SIZE high with
+            -- A0 low -> 16-bit; SIZE high with A0 high -> 32-bit.
+            if size_n = '0' then
+              size_code := "10";
+            elsif a0_in = '0' then
+              size_code := "01";
+            else
+              size_code := "00";
+            end if;
             latched_size <= size_code;
             latched_a4   <= a_in(4);
-            dsack_wait := (size_code = "11");
             if bus_read = '1' then
               assert_cycles := DSACK_ASSERT_CYCLES_READ;
             else
               assert_cycles := DSACK_ASSERT_CYCLES_WRITE;
             end if;
-            if dsack_wait then
-              dsack_state <= DSACK_IDLE;
-            elsif assert_cycles = 0 then
+            if assert_cycles = 0 then
               dsack_active <= '1';
               dsack_state <= DSACK_ASSERTED;
             else
@@ -4377,7 +4387,9 @@ begin
   d_out <= d_out_reg when (sync_read = '1' or sync_read_latched = '1') else d_out_comb;
   dsack0_n <= dsack0_i;
   dsack1_n <= dsack1_i;
-  sense_drive <= '0' when status_busy_reg = '1' else '1';
-  sense_n  <= sense_drive;
+  -- SENSE is a presence-detect strap grounded on-die on real MC6888x parts
+  -- (host pulls it up to detect a populated coprocessor); it does not
+  -- reflect busy/idle status, so drive it constant low.
+  sense_n  <= '0';
   status_valid <= status_valid_reg;
 end architecture rtl;

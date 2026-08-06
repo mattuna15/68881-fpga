@@ -10,7 +10,8 @@ architecture sim of tb_mc68881_ac_timing is
   signal a_in     : std_logic_vector(4 downto 0) := (others => '0');
   signal d_in     : std_logic_vector(31 downto 0) := (others => '0');
   signal d_out    : std_logic_vector(31 downto 0);
-  signal size_n   : std_logic_vector(1 downto 0) := "11";
+  signal size_n   : std_logic := '1';
+  signal a0_in    : std_logic := '1';
   signal as_n     : std_logic := '1';
   signal cs_n     : std_logic := '1';
   signal rw       : std_logic := '1';
@@ -27,13 +28,13 @@ architecture sim of tb_mc68881_ac_timing is
 
   procedure start_access(
     signal a_in_s  : out std_logic_vector(4 downto 0);
-    signal size_n_s: out std_logic_vector(1 downto 0);
+    signal size_n_s: out std_logic;
     signal rw_s    : out std_logic;
     signal cs_n_s  : out std_logic;
     signal as_n_s  : out std_logic;
     signal ds_n_s  : out std_logic;
     constant is_read : boolean;
-    constant size_val : std_logic_vector(1 downto 0);
+    constant size_val : std_logic;
     constant addr_val : std_logic_vector(4 downto 0);
     variable start_cycle : out natural
   ) is
@@ -77,7 +78,7 @@ architecture sim of tb_mc68881_ac_timing is
 
   procedure assert_dsack_latency(
     signal a_in_s    : out std_logic_vector(4 downto 0);
-    signal size_n_s  : out std_logic_vector(1 downto 0);
+    signal size_n_s  : out std_logic;
     signal rw_s      : out std_logic;
     signal cs_n_s    : out std_logic;
     signal as_n_s    : out std_logic;
@@ -85,7 +86,7 @@ architecture sim of tb_mc68881_ac_timing is
     signal dsack0_n_s: in  std_logic;
     signal dsack1_n_s: in  std_logic;
     constant is_read : boolean;
-    constant size_val : std_logic_vector(1 downto 0);
+    constant size_val : std_logic;
     constant addr_val : std_logic_vector(4 downto 0);
     constant expected_cycles : natural;
     constant label_text : string
@@ -116,34 +117,6 @@ architecture sim of tb_mc68881_ac_timing is
     end_access(rw_s, cs_n_s, as_n_s, ds_n_s, dsack0_n_s, dsack1_n_s, label_text);
   end procedure;
 
-  procedure assert_dsack_wait_state(
-    signal a_in_s    : out std_logic_vector(4 downto 0);
-    signal size_n_s  : out std_logic_vector(1 downto 0);
-    signal rw_s      : out std_logic;
-    signal cs_n_s    : out std_logic;
-    signal as_n_s    : out std_logic;
-    signal ds_n_s    : out std_logic;
-    signal dsack0_n_s: in  std_logic;
-    signal dsack1_n_s: in  std_logic;
-    constant size_val : std_logic_vector(1 downto 0);
-    constant addr_val : std_logic_vector(4 downto 0);
-    constant hold_cycles : natural;
-    constant label_text : string
-  ) is
-    variable start_cycle : natural := 0;
-  begin
-    start_access(a_in_s, size_n_s, rw_s, cs_n_s, as_n_s, ds_n_s, true, size_val, addr_val, start_cycle);
-    for loop_idx in 0 to hold_cycles-1 loop
-      report "DSACK wait-state hold " & label_text &
-             " cycle=" & integer'image(cycle_cnt)
-        severity note;
-      assert dsack0_n_s = '1' and dsack1_n_s = '1'
-        report "DSACK asserted during wait-state for " & label_text
-        severity error;
-      wait until rising_edge(clk);
-    end loop;
-    end_access(rw_s, cs_n_s, as_n_s, ds_n_s, dsack0_n_s, dsack1_n_s, label_text);
-  end procedure;
 begin
   start_access_tb <= '1' when (cs_n = '0' and as_n = '0' and ((rw = '1' and ds_n = '0') or rw = '0')) else '0';
 
@@ -162,6 +135,7 @@ begin
       d_in     => d_in,
       d_out    => d_out,
       size_n   => size_n,
+      a0_in    => a0_in,
       as_n     => as_n,
       cs_n     => cs_n,
       rw       => rw,
@@ -180,6 +154,9 @@ begin
     reset_n <= '1';
     wait for 2 * CLK_PERIOD;
 
+    -- DSACK assert latency is independent of port size (Table 9-2 / 9-3 only
+    -- change which DSACK line(s) are asserted, not the timing), so these
+    -- checks just exercise a fixed size_n='1' (16-bit, A0=0) configuration.
     assert_dsack_latency(
       a_in,
       size_n,
@@ -190,10 +167,10 @@ begin
       dsack0_n,
       dsack1_n,
       true,
-      "01",
+      '1',
       "10000",
       1,
-      "read 32-bit A4=1"
+      "read A4=1"
     );
 
     assert_dsack_latency(
@@ -206,26 +183,16 @@ begin
       dsack0_n,
       dsack1_n,
       false,
-      "01",
+      '1',
       "10000",
       1,
-      "write 32-bit A4=1"
+      "write A4=1"
     );
 
-    assert_dsack_wait_state(
-      a_in,
-      size_n,
-      rw,
-      cs_n,
-      as_n,
-      ds_n,
-      dsack0_n,
-      dsack1_n,
-      "00",
-      "00000",
-      3,
-      "wait-state size"
-    );
+    -- Note: the old "wait-state" case (size_n="00" under the previous 2-bit
+    -- encoding) has no equivalent under the real single-bit SIZE + A0 model;
+    -- every legal (size_n, A0) combination now yields an immediate, valid
+    -- DSACK encoding (Table 9-2/9-3), so there is no input that stalls DSACK.
 
     report "TB SUCCESS: AC timing checks complete."
       severity note;

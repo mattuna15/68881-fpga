@@ -53,7 +53,8 @@ architecture rtl of mc68881_wishbone_wrapper is
   signal fpu_a_in       : std_logic_vector(4 downto 0);
   signal fpu_d_in       : std_logic_vector(31 downto 0);
   signal fpu_d_out      : std_logic_vector(31 downto 0);
-  signal fpu_size_n     : std_logic_vector(1 downto 0);
+  signal fpu_size_n     : std_logic;
+  signal fpu_a0_in      : std_logic;
   signal fpu_as_n       : std_logic;
   signal fpu_cs_n       : std_logic;
   signal fpu_rw         : std_logic;
@@ -101,6 +102,7 @@ begin
       fpu_d_in         => fpu_d_in,
       fpu_d_out        => fpu_d_out,
       fpu_size_n       => fpu_size_n,
+      fpu_a0_in        => fpu_a0_in,
       fpu_as_n         => fpu_as_n,
       fpu_cs_n         => fpu_cs_n,
       fpu_rw           => fpu_rw,
@@ -122,7 +124,7 @@ begin
       )
       port map (
         a_in => fpu_a_in, d_in => fpu_d_in, d_out => fpu_d_out,
-        size_n => fpu_size_n, as_n => fpu_as_n, cs_n => fpu_cs_n,
+        size_n => fpu_size_n, a0_in => fpu_a0_in, as_n => fpu_as_n, cs_n => fpu_cs_n,
         rw => fpu_rw, ds_n => fpu_ds_n, dsack0_n => fpu_dsack0_n,
         dsack1_n => fpu_dsack1_n, reset_n => fpu_reset_n,
         clk => fpu_clk, sense_n => fpu_sense_n, status_valid => fpu_status_valid
@@ -137,7 +139,7 @@ begin
       )
       port map (
         a_in => fpu_a_in, d_in => fpu_d_in, d_out => fpu_d_out,
-        size_n => fpu_size_n, as_n => fpu_as_n, cs_n => fpu_cs_n,
+        size_n => fpu_size_n, a0_in => fpu_a0_in, as_n => fpu_as_n, cs_n => fpu_cs_n,
         rw => fpu_rw, ds_n => fpu_ds_n, dsack0_n => fpu_dsack0_n,
         dsack1_n => fpu_dsack1_n, reset_n => fpu_reset_n,
         clk => fpu_clk, sense_n => fpu_sense_n, status_valid => fpu_status_valid

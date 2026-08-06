@@ -12,7 +12,8 @@ architecture sim of tb_mc68881_cycle_counts_top is
   signal a_in     : std_logic_vector(4 downto 0) := (others => '0');
   signal d_in     : std_logic_vector(31 downto 0) := (others => '0');
   signal d_out    : std_logic_vector(31 downto 0);
-  signal size_n   : std_logic_vector(1 downto 0) := "11";
+  signal size_n   : std_logic := '1';
+  signal a0_in    : std_logic := '1';
   signal as_n     : std_logic := '1';
   signal cs_n     : std_logic := '1';
   signal rw       : std_logic := '1';
@@ -296,6 +297,7 @@ begin
       d_in     => d_in,
       d_out    => d_out,
       size_n   => size_n,
+      a0_in    => a0_in,
       as_n     => as_n,
       cs_n     => cs_n,
       rw       => rw,

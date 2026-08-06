@@ -32,7 +32,8 @@ entity mc68881_bus_bridge is
     fpu_a_in     : out std_logic_vector(4 downto 0);
     fpu_d_in     : out std_logic_vector(31 downto 0);
     fpu_d_out    : in  std_logic_vector(31 downto 0);
-    fpu_size_n   : out std_logic_vector(1 downto 0);
+    fpu_size_n   : out std_logic;
+    fpu_a0_in    : out std_logic;
     fpu_as_n     : out std_logic;
     fpu_cs_n     : out std_logic;
     fpu_rw       : out std_logic;
@@ -197,7 +198,11 @@ begin
   -- ========================================================================
   -- FPU-clock domain process: M68K bus cycle generation
   -- ========================================================================
-  fpu_size_n <= "11";  -- longword transfers (active-low: not "11" = "00" = 32-bit)
+  -- SIZE and A0 both high select a 32-bit port (Table 9-2). Since this
+  -- bridge always transfers full longwords and bridge_done only ORs
+  -- dsack0_n/dsack1_n, the exact width encoding doesn't otherwise matter.
+  fpu_size_n <= '1';
+  fpu_a0_in  <= '1';
 
   p_fpu_clk : process(fpu_clk)
   begin

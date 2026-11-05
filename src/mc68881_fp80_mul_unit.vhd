@@ -92,6 +92,7 @@ begin
     variable a_mant_v   : unsigned(FP_MANT_WIDTH-1 downto 0);
     variable b_mant_v   : unsigned(FP_MANT_WIDTH-1 downto 0);
     variable denorm_shift : natural;
+    variable is_denorm  : boolean;
   begin
     if rising_edge(clk) then
     if reset_n = '0' then
@@ -222,6 +223,20 @@ begin
             mant_ext(0) := '1';
           end if;
 
+          -- Gradual underflow: decide normal vs. denormal *before* extracting
+          -- guard/round/sticky so the result is rounded exactly once, at the
+          -- bit position it will be stored at.  Denormalize the unrounded
+          -- extended mantissa (shifted-out bits fold into sticky), then fall
+          -- through to the common rounding.  Rounding first and shifting
+          -- afterwards would round twice and lose the bits that fall off.
+          is_denorm := false;
+          if exp_var <= 0 and mant_ext /= 0 then
+            denorm_shift := 1 - exp_var;
+            mant_ext  := shift_right_with_sticky(mant_ext, denorm_shift);
+            exp_var   := 0;
+            is_denorm := true;
+          end if;
+
           -- Inline apply_rounding.
           mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
 
@@ -298,15 +313,20 @@ begin
             when others         => null;
           end case;
 
-          -- Underflow: produce subnormal output or flush to zero.
-          if exp_var <= 0 then
-            denorm_shift := 1 - exp_var;
-            if denorm_shift >= FP_MANT_WIDTH or mant_main = 0 then
+          -- Denormal result (already denormalized and rounded once above).
+          if is_denorm or exp_var <= 0 then
+            if mant_main = 0 or not is_denorm then
               result_reg <= (others => '0');
             else
               result_reg(FP_WIDTH-1) <= res_sign_reg;
-              result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '0');
-              result_reg(FP_MANT_WIDTH-1 downto 0) <= std_logic_vector(shift_right(mant_main, denorm_shift));
+              if mant_main(mant_main'left) = '1' then
+                -- Rounding carried into the integer bit: smallest normal.
+                result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <=
+                  std_logic_vector(to_unsigned(1, FP_EXP_WIDTH));
+              else
+                result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '0');
+              end if;
+              result_reg(FP_MANT_WIDTH-1 downto 0) <= std_logic_vector(mant_main);
             end if;
           -- Overflow check.
           elsif exp_var >= FP_EXP_MAX then

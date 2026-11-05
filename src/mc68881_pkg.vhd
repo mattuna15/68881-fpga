@@ -1538,6 +1538,26 @@ package body mc68881_pkg is
     exp_out := exp_var;
   end procedure;
 
+  -- Gradual-underflow helper shared by add_sub_fp80 / mul_fp80 / div_fp80.
+  -- Decides normal vs. denormal *before* rounding: a result whose exponent is
+  -- <= 0 has its still-unrounded extended mantissa shifted right once (bits
+  -- shifted out fold into sticky) and the exponent forced to 0, so that the
+  -- subsequent apply_rounding is the only rounding step.  Rounding at the
+  -- normal position and then shifting would round twice (issue #73).
+  procedure denormalize_before_rounding(
+    mant_ext  : inout unsigned(FP_MANT_EXT_WIDTH-1 downto 0);
+    exp_i     : inout integer;
+    is_denorm : out boolean
+  ) is
+  begin
+    is_denorm := false;
+    if exp_i <= 0 and mant_ext /= 0 then
+      mant_ext  := shift_right_with_sticky(mant_ext, 1 - exp_i);
+      exp_i     := 0;
+      is_denorm := true;
+    end if;
+  end procedure;
+
   procedure int_sqrt_with_rem(
     radicand : in unsigned;
     root     : out unsigned;
@@ -1748,7 +1768,7 @@ package body mc68881_pkg is
     variable a_exp_i    : integer := 0;
     variable b_exp_i    : integer := 0;
     variable lz_norm    : natural := 0;
-    variable denorm_shift : natural := 0;
+    variable is_denorm : boolean := false;
     variable sign_b     : std_logic := '0';
   begin
     res_u.sign := '0';
@@ -1837,6 +1857,7 @@ package body mc68881_pkg is
     end if;
 
     mant_ext := mant_sum(mant_sum'left-1 downto 0);
+    denormalize_before_rounding(mant_ext, exp_res_i, is_denorm);
     apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);
 
     if mant_main = 0 then
@@ -1852,16 +1873,19 @@ package body mc68881_pkg is
       return pack_fp80(res_u);
     end if;
 
-    if exp_res_i <= 0 then
-      -- Subnormal output: right-shift mantissa, set exp=0.
-      denorm_shift := 1 - exp_res_i;
-      if denorm_shift >= FP_MANT_WIDTH or mant_main = 0 then
+    if is_denorm or exp_res_i <= 0 then
+      -- Subnormal output (already denormalized and rounded once above).
+      if mant_main = 0 or not is_denorm then
         res_u.sign := '0';
         res_u.exp := (others => '0');
         res_u.mant := (others => '0');
+      elsif mant_main(mant_main'left) = '1' then
+        -- Rounding carried into the integer bit: smallest normal.
+        res_u.exp := to_unsigned(1, FP_EXP_WIDTH);
+        res_u.mant := mant_main;
       else
         res_u.exp := (others => '0');
-        res_u.mant := shift_right(mant_main, denorm_shift);
+        res_u.mant := mant_main;
       end if;
       return pack_fp80(res_u);
     end if;
@@ -1887,7 +1911,7 @@ package body mc68881_pkg is
     variable a_exp_i   : integer := 0;
     variable b_exp_i   : integer := 0;
     variable lz_norm   : natural := 0;
-    variable denorm_shift : natural := 0;
+    variable is_denorm : boolean := false;
     variable low_or : std_logic := '0';
     variable mant_hi : integer := 0;
     variable low_hi  : integer := 0;
@@ -1950,18 +1974,22 @@ package body mc68881_pkg is
       mant_ext(0) := '1';
     end if;
 
+    denormalize_before_rounding(mant_ext, exp_res_i, is_denorm);
     apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);
 
-    if exp_res_i <= 0 then
-      -- Subnormal output: right-shift mantissa, set exp=0.
-      denorm_shift := 1 - exp_res_i;
-      if denorm_shift >= FP_MANT_WIDTH or mant_main = 0 then
+    if is_denorm or exp_res_i <= 0 then
+      -- Subnormal output (already denormalized and rounded once above).
+      if mant_main = 0 or not is_denorm then
         res_u.sign := '0';
         res_u.exp := (others => '0');
         res_u.mant := (others => '0');
+      elsif mant_main(mant_main'left) = '1' then
+        -- Rounding carried into the integer bit: smallest normal.
+        res_u.exp := to_unsigned(1, FP_EXP_WIDTH);
+        res_u.mant := mant_main;
       else
         res_u.exp := (others => '0');
-        res_u.mant := shift_right(mant_main, denorm_shift);
+        res_u.mant := mant_main;
       end if;
       return pack_fp80(res_u);
     end if;
@@ -1995,7 +2023,7 @@ package body mc68881_pkg is
     variable a_exp_i   : integer := 0;
     variable b_exp_i   : integer := 0;
     variable lz_norm   : natural := 0;
-    variable denorm_shift : natural := 0;
+    variable is_denorm : boolean := false;
     variable shift     : integer := 0;
     variable low_or : std_logic := '0';
     variable top_index : integer := FP_MANT_WIDTH + FP_GRS_BITS;
@@ -2092,18 +2120,22 @@ package body mc68881_pkg is
       mant_ext(0) := '1';
     end if;
 
+    denormalize_before_rounding(mant_ext, exp_res_i, is_denorm);
     apply_rounding(res_u.sign, mant_ext, exp_res_i, round_mode, round_prec, mant_main, exp_res_i);
 
-    if exp_res_i <= 0 then
-      -- Subnormal output: right-shift mantissa, set exp=0.
-      denorm_shift := 1 - exp_res_i;
-      if denorm_shift >= FP_MANT_WIDTH or mant_main = 0 then
+    if is_denorm or exp_res_i <= 0 then
+      -- Subnormal output (already denormalized and rounded once above).
+      if mant_main = 0 or not is_denorm then
         res_u.sign := '0';
         res_u.exp := (others => '0');
         res_u.mant := (others => '0');
+      elsif mant_main(mant_main'left) = '1' then
+        -- Rounding carried into the integer bit: smallest normal.
+        res_u.exp := to_unsigned(1, FP_EXP_WIDTH);
+        res_u.mant := mant_main;
       else
         res_u.exp := (others => '0');
-        res_u.mant := shift_right(mant_main, denorm_shift);
+        res_u.mant := mant_main;
       end if;
       return pack_fp80(res_u);
     end if;

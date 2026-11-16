@@ -251,6 +251,17 @@ set_multicycle_path -hold 1 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *trig_inst/exp_k_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *trig_inst/result_reg_reg*}]
 set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *trig_inst/exp_k_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *trig_inst/result_reg_reg*}]
 
+# --- Trig exp_k_reg -> add_a_reg (2-cycle MCP) ---
+# Same fscale_fp80(exp_k_reg, tmp_reg) as above, captured into add_a_reg at
+# ST_TRANS_FINAL_ROUND_POST for FETOXM1 (add_a_reg <= fscale(...) - 1).
+# exp_k_reg is last written at ST_EXP_REDUCE_K_POST / ST_EXP64_N_POST /
+# ST_EXP_CW_LO_POST / ST_TWOTOX_ROUND_POST, and is then stable across at least
+# an FP ADD or MUL pass, the polynomial and ST_TRANS_ADD_PREP before
+# FINAL_ROUND_POST samples it. Only exp_k_reg is relaxed; tmp_reg -> add_a_reg
+# (the other fscale input) stays a single-cycle path.
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *trig_inst/exp_k_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *trig_inst/add_a_reg_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *trig_inst/exp_k_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *trig_inst/add_a_reg_reg*}]
+
 # --- Divrem sqrt_exp_out_reg -> result_reg (2-cycle MCP) ---
 # sqrt_exp_out_reg loaded at ST_SQRT_INIT, consumed at ST_SQRT_POST after the
 # entire SQRT iteration loop (67+ cycles separation). Covers both ALU and trig

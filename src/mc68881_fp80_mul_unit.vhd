@@ -36,7 +36,8 @@ architecture rtl of mc68881_fp80_mul_unit is
     ST_IDLE,
     ST_UNPACK,
     ST_MULTIPLY,
-    ST_NORM_ROUND
+    ST_NORM,    -- align product, fold sticky, denormalize (no rounding)
+    ST_ROUND    -- round once, pack, flag result
   );
 
   signal state_reg : mul_state_t := ST_IDLE;
@@ -59,6 +60,13 @@ architecture rtl of mc68881_fp80_mul_unit is
 
   -- 128-bit product register.
   signal mant_prod_reg : unsigned((FP_MANT_WIDTH*2)-1 downto 0) := (others => '0');
+
+  -- ST_NORM -> ST_ROUND pipeline registers.  Splitting here keeps the
+  -- denormalizing right shift and the rounding incrementer out of a single
+  -- clock (they were one 20 ns path once denormals were rounded exactly once).
+  signal mant_ext_reg   : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
+  signal exp_norm_reg   : integer range -65536 to 65536 := 0;
+  signal is_denorm_reg  : std_logic := '0';
 
   -- Output registers.
   signal done_reg    : std_logic := '0';
@@ -92,6 +100,7 @@ begin
     variable a_mant_v   : unsigned(FP_MANT_WIDTH-1 downto 0);
     variable b_mant_v   : unsigned(FP_MANT_WIDTH-1 downto 0);
     variable denorm_shift : natural;
+    variable is_denorm  : boolean;
   begin
     if rising_edge(clk) then
     if reset_n = '0' then
@@ -109,6 +118,9 @@ begin
       early_exit_reg <= '0';
       early_result_reg <= (others => '0');
       mant_prod_reg <= (others => '0');
+      mant_ext_reg <= (others => '0');
+      exp_norm_reg <= 0;
+      is_denorm_reg <= '0';
     else
       done_reg <= '0';
 
@@ -191,10 +203,10 @@ begin
           else
             -- 64x64 -> 128-bit multiply (infers DSP48E1 cascade).
             mant_prod_reg <= a_mant_reg * b_mant_reg;
-            state_reg <= ST_NORM_ROUND;
+            state_reg <= ST_NORM;
           end if;
 
-        when ST_NORM_ROUND =>
+        when ST_NORM =>
           -- Determine alignment from product MSB.
           exp_var := exp_res_reg;
           if mant_prod_reg(mant_prod_reg'left) = '1' then
@@ -221,6 +233,34 @@ begin
           if low_or = '1' then
             mant_ext(0) := '1';
           end if;
+
+          -- Gradual underflow: decide normal vs. denormal *before* extracting
+          -- guard/round/sticky so the result is rounded exactly once, at the
+          -- bit position it will be stored at.  Denormalize the unrounded
+          -- extended mantissa (shifted-out bits fold into sticky), then fall
+          -- through to the common rounding.  Rounding first and shifting
+          -- afterwards would round twice and lose the bits that fall off.
+          is_denorm := false;
+          if exp_var <= 0 and mant_ext /= 0 then
+            denorm_shift := 1 - exp_var;
+            mant_ext  := shift_right_with_sticky(mant_ext, denorm_shift);
+            exp_var   := 0;
+            is_denorm := true;
+          end if;
+
+          mant_ext_reg <= mant_ext;
+          exp_norm_reg <= exp_var;
+          if is_denorm then
+            is_denorm_reg <= '1';
+          else
+            is_denorm_reg <= '0';
+          end if;
+          state_reg <= ST_ROUND;
+
+        when ST_ROUND =>
+          mant_ext  := mant_ext_reg;
+          exp_var   := exp_norm_reg;
+          is_denorm := (is_denorm_reg = '1');
 
           -- Inline apply_rounding.
           mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);
@@ -298,15 +338,20 @@ begin
             when others         => null;
           end case;
 
-          -- Underflow: produce subnormal output or flush to zero.
-          if exp_var <= 0 then
-            denorm_shift := 1 - exp_var;
-            if denorm_shift >= FP_MANT_WIDTH or mant_main = 0 then
+          -- Denormal result (already denormalized and rounded once above).
+          if is_denorm or exp_var <= 0 then
+            if mant_main = 0 or not is_denorm then
               result_reg <= (others => '0');
             else
               result_reg(FP_WIDTH-1) <= res_sign_reg;
-              result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '0');
-              result_reg(FP_MANT_WIDTH-1 downto 0) <= std_logic_vector(shift_right(mant_main, denorm_shift));
+              if mant_main(mant_main'left) = '1' then
+                -- Rounding carried into the integer bit: smallest normal.
+                result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <=
+                  std_logic_vector(to_unsigned(1, FP_EXP_WIDTH));
+              else
+                result_reg(FP_WIDTH-2 downto FP_WIDTH-1-FP_EXP_WIDTH) <= (others => '0');
+              end if;
+              result_reg(FP_MANT_WIDTH-1 downto 0) <= std_logic_vector(mant_main);
             end if;
           -- Overflow check.
           elsif exp_var >= FP_EXP_MAX then

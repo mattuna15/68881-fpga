@@ -31,7 +31,7 @@ architecture sim of tb_mc68881_alu is
   constant CLK_PERIOD : time := 10 ns;
   constant ADD_LATENCY : natural := 7;  -- sequential addsub unit (6 stages + 1 start delay)
   constant SUB_LATENCY : natural := 7;  -- sequential addsub unit (6 stages + 1 start delay)
-  constant MUL_LATENCY : natural := 5;  -- sequential mul unit (4 stages + 1 start delay)
+  constant MUL_LATENCY : natural := 6;  -- sequential mul unit (5 stages: unpack, multiply, norm, round + 1 start delay)
   constant DIV_LATENCY : natural := op_alu_latency(FPU_OP_DIV);
   constant SQRT_LATENCY : natural := op_alu_latency(FPU_OP_SQRT);
   constant CMP_LATENCY : natural := 5;  -- lightweight combinational, bounded by op_alu_latency countdown

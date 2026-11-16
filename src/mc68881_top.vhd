@@ -226,6 +226,10 @@ architecture rtl of mc68881_top is
   signal cir_condition_written : std_logic := '0';
   signal cir_exc_vector        : std_logic_vector(9 downto 0) := (others => '0');
   signal cir_control_ack       : std_logic := '0';
+  -- One-cycle pulse on ANY Control CIR write (MC68881 UM 7.2.2: a control
+  -- write aborts the dialog in progress). cir_control_ack stays the bit-0
+  -- exception acknowledge used by the CIR_EXCEPT_* states.
+  signal cir_abort_req         : std_logic := '0';
   signal frame_format_word_reg : std_logic_vector(15 downto 0) := (others => '0');
   signal cir_operand_read_data : std_logic_vector(31 downto 0) := (others => '0');
   signal cir_regselect_word    : std_logic_vector(15 downto 0) := (others => '0');
@@ -3613,6 +3617,7 @@ begin
       cir_command_written <= '0';
       cir_condition_written <= '0';
       cir_control_ack <= '0';
+      cir_abort_req <= '0';
       cir_operand_staging <= (others => '0');
       cir_operand_word_arrived <= '0';
       cir_operand_read_done <= '0';
@@ -3626,6 +3631,7 @@ begin
     elsif rising_edge(clk) then
       -- Clear one-shot flags
       cir_control_ack <= '0';
+      cir_abort_req <= '0';
       cir_operand_word_arrived <= '0';
       cir_operand_read_done <= '0';
       cir_save_read_done <= '0';
@@ -3763,6 +3769,7 @@ begin
             -- Gate on cir_mode_reg: addr 1 overlaps ADDR_OPA_L in peripheral mode.
             if cir_mode_reg = '1' then
               cir_control_ack <= d_in(0);
+              cir_abort_req <= '1';
             end if;
 
           when others =>
@@ -3915,7 +3922,21 @@ begin
         when CIR_XFER_SRC =>
           -- Wait for host to write operand words via Operand CIR.
           -- cir_operand_word_arrived is pulsed by the bus write process.
-          if cir_operand_word_arrived = '1' then
+          -- The host may instead cut the dialog short (bus error on the
+          -- operand transfer): a Control CIR write abandons the instruction,
+          -- and the handler's FSAVE / FRESTORE must be honoured here too.
+          if cir_abort_req = '1' then
+            cir_xfer_word_idx <= 0;
+            cir_state_reg <= CIR_IDLE;
+          elsif cir_opword_written = '1' and cir_instr_type = CIR_TYPE_CPSAVE then
+            cir_xfer_word_idx <= 0;
+            cir_save_req <= '1';
+            cir_state_reg <= CIR_SAVE_WAIT;
+          elsif cir_opword_written = '1' and cir_instr_type = CIR_TYPE_CPRESTORE then
+            cir_xfer_word_idx <= 0;
+            cir_restore_word_idx <= 0;
+            cir_state_reg <= CIR_RESTORE_FORMAT;
+          elsif cir_operand_word_arrived = '1' then
             if cir_xfer_word_idx + 1 >= cir_xfer_word_count then
               -- All words received.  Transition to CIR_XFER_SRC_WAIT
               -- for two hold cycles so the format conversion path
@@ -4041,8 +4062,20 @@ begin
           end if;
 
         when CIR_XFER_DST =>
-          -- Host reads operand words via CIR_ADDR_OPERAND.
-          if cir_operand_read_done = '1' then
+          -- Host reads operand words via CIR_ADDR_OPERAND, or cuts the
+          -- dialog short (see CIR_XFER_SRC).
+          if cir_abort_req = '1' then
+            cir_xfer_word_idx <= 0;
+            cir_state_reg <= CIR_IDLE;
+          elsif cir_opword_written = '1' and cir_instr_type = CIR_TYPE_CPSAVE then
+            cir_xfer_word_idx <= 0;
+            cir_save_req <= '1';
+            cir_state_reg <= CIR_SAVE_WAIT;
+          elsif cir_opword_written = '1' and cir_instr_type = CIR_TYPE_CPRESTORE then
+            cir_xfer_word_idx <= 0;
+            cir_restore_word_idx <= 0;
+            cir_state_reg <= CIR_RESTORE_FORMAT;
+          elsif cir_operand_read_done = '1' then
             if cir_xfer_word_idx + 1 >= cir_xfer_word_count then
               -- Hold state one extra cycle so d_out_comb returns staging
               -- data through the dsack assertion window.  Don't increment

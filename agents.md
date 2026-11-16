@@ -49,9 +49,11 @@
 - For LUT/area checks, do not use incremental synthesis results.
   Disable run-level incremental reuse on `synth_1` (`AUTO_INCREMENTAL_CHECKPOINT=0`,
   `INCREMENTAL_CHECKPOINT=""`) before collecting utilization numbers.
-- Current implementation signoff baseline (2026-02-23):
-  routed timing met (`WNS 1.356 ns`, `TNS 0.000 ns`) and post-impl LUT usage
-  `66523 / 134600 (49.42%)`. Treat this as the reference for regression checks.
+- Current implementation signoff baseline (2026-11-16, `main` at PR #75 merge `29001da`,
+  non-incremental synthesis, 50 MHz): routed timing met (`WNS 0.359 ns`, `TNS 0.000 ns`,
+  `WHS 0.024 ns`, 0 failing endpoints) and post-impl LUT usage `60539 / 134600 (44.98%)`
+  (FF 14084, BRAM 10.5, DSP 34). Treat this as the reference for regression checks.
+  Supersedes the 2026-02-23 baseline (`WNS 1.356 ns`, `66523` LUT / 49.42%).
 - For area triage, generate hierarchical utilization reports from the synthesized checkpoint
   (`report_utilization -hierarchical`) and prioritize the largest LUT consumers.
 - Keep opcode decode/class coverage updated in `tb/mc68881_microseq_tb.vhd`.

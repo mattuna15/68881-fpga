@@ -36,7 +36,8 @@ architecture rtl of mc68881_fp80_mul_unit is
     ST_IDLE,
     ST_UNPACK,
     ST_MULTIPLY,
-    ST_NORM_ROUND
+    ST_NORM,    -- align product, fold sticky, denormalize (no rounding)
+    ST_ROUND    -- round once, pack, flag result
   );
 
   signal state_reg : mul_state_t := ST_IDLE;
@@ -59,6 +60,13 @@ architecture rtl of mc68881_fp80_mul_unit is
 
   -- 128-bit product register.
   signal mant_prod_reg : unsigned((FP_MANT_WIDTH*2)-1 downto 0) := (others => '0');
+
+  -- ST_NORM -> ST_ROUND pipeline registers.  Splitting here keeps the
+  -- denormalizing right shift and the rounding incrementer out of a single
+  -- clock (they were one 20 ns path once denormals were rounded exactly once).
+  signal mant_ext_reg   : unsigned(FP_MANT_EXT_WIDTH-1 downto 0) := (others => '0');
+  signal exp_norm_reg   : integer range -65536 to 65536 := 0;
+  signal is_denorm_reg  : std_logic := '0';
 
   -- Output registers.
   signal done_reg    : std_logic := '0';
@@ -110,6 +118,9 @@ begin
       early_exit_reg <= '0';
       early_result_reg <= (others => '0');
       mant_prod_reg <= (others => '0');
+      mant_ext_reg <= (others => '0');
+      exp_norm_reg <= 0;
+      is_denorm_reg <= '0';
     else
       done_reg <= '0';
 
@@ -192,10 +203,10 @@ begin
           else
             -- 64x64 -> 128-bit multiply (infers DSP48E1 cascade).
             mant_prod_reg <= a_mant_reg * b_mant_reg;
-            state_reg <= ST_NORM_ROUND;
+            state_reg <= ST_NORM;
           end if;
 
-        when ST_NORM_ROUND =>
+        when ST_NORM =>
           -- Determine alignment from product MSB.
           exp_var := exp_res_reg;
           if mant_prod_reg(mant_prod_reg'left) = '1' then
@@ -236,6 +247,20 @@ begin
             exp_var   := 0;
             is_denorm := true;
           end if;
+
+          mant_ext_reg <= mant_ext;
+          exp_norm_reg <= exp_var;
+          if is_denorm then
+            is_denorm_reg <= '1';
+          else
+            is_denorm_reg <= '0';
+          end if;
+          state_reg <= ST_ROUND;
+
+        when ST_ROUND =>
+          mant_ext  := mant_ext_reg;
+          exp_var   := exp_norm_reg;
+          is_denorm := (is_denorm_reg = '1');
 
           -- Inline apply_rounding.
           mant_main := mant_ext(FP_MANT_EXT_WIDTH-1 downto FP_GRS_BITS);

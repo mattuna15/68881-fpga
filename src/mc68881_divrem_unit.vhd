@@ -95,6 +95,7 @@ architecture rtl of mc68881_divrem_unit is
   signal dividend_reg : unsigned(DIVIDEND_BITS-1 downto 0) := (others => '0');
   signal rem_reg : unsigned(REM_WIDTH-1 downto 0) := (others => '0');
   signal quot_reg : unsigned(DIVIDEND_BITS-1 downto 0) := (others => '0');
+  signal div_mul3_reg : unsigned(REM_WIDTH-1 downto 0) := (others => '0');
   signal iter_idx_reg : integer range 0 to DIVIDEND_BITS-1 := 0;
   signal div_sign_reg : std_logic := '0';
   signal div_exp_base_reg : integer := 0;
@@ -688,44 +689,54 @@ begin
           end if;
 
         when ST_DIV_ITER =>
-          quot_next := quot_reg;
+          -- The dividend is consumed MSB first and the quotient is produced MSB
+          -- first, so both are shift registers: the next dividend bits are always
+          -- dividend_reg(top) and the new quotient bits are always shifted in at
+          -- bit 0. This avoids a 131-way indexed read of dividend_reg and indexed
+          -- writes of quot_reg (a long, high-fanout mux on the critical path).
+          -- After all 131 bits have been shifted in, quot_reg has the same bit
+          -- positions as the old indexed form. The first (radix-2) step also
+          -- registers 3*divisor so the radix-4 steps need no adder before the
+          -- compares.
           divisor_ext := resize("00" & divisor_reg, REM_WIDTH);
           if iter_idx_reg = DIVIDEND_BITS-1 then
             rem_next := shift_left(rem_reg, 1);
-            rem_next(0) := dividend_reg(iter_idx_reg);
+            rem_next(0) := dividend_reg(DIVIDEND_BITS-1);
             if rem_next >= divisor_ext then
               rem_next := rem_next - divisor_ext;
-              quot_next(iter_idx_reg) := '1';
+              quot_next := shift_left(quot_reg, 1);
+              quot_next(0) := '1';
             else
-              quot_next(iter_idx_reg) := '0';
+              quot_next := shift_left(quot_reg, 1);
+              quot_next(0) := '0';
             end if;
             rem_reg <= rem_next;
             quot_reg <= quot_next;
+            dividend_reg <= shift_left(dividend_reg, 1);
+            div_mul3_reg <= divisor_ext + shift_left(divisor_ext, 1);
             iter_idx_reg <= iter_idx_reg - 1;
           else
             rem_next := shift_left(rem_reg, 2);
-            rem_next(1) := dividend_reg(iter_idx_reg);
-            rem_next(0) := dividend_reg(iter_idx_reg-1);
+            rem_next(1) := dividend_reg(DIVIDEND_BITS-1);
+            rem_next(0) := dividend_reg(DIVIDEND_BITS-2);
             div_mul2 := shift_left(divisor_ext, 1);
-            div_mul3 := divisor_ext + div_mul2;
+            div_mul3 := div_mul3_reg;
+            quot_next := shift_left(quot_reg, 2);
             if rem_next >= div_mul3 then
               rem_next := rem_next - div_mul3;
-              quot_next(iter_idx_reg) := '1';
-              quot_next(iter_idx_reg-1) := '1';
+              quot_next(1 downto 0) := "11";
             elsif rem_next >= div_mul2 then
               rem_next := rem_next - div_mul2;
-              quot_next(iter_idx_reg) := '1';
-              quot_next(iter_idx_reg-1) := '0';
+              quot_next(1 downto 0) := "10";
             elsif rem_next >= divisor_ext then
               rem_next := rem_next - divisor_ext;
-              quot_next(iter_idx_reg) := '0';
-              quot_next(iter_idx_reg-1) := '1';
+              quot_next(1 downto 0) := "01";
             else
-              quot_next(iter_idx_reg) := '0';
-              quot_next(iter_idx_reg-1) := '0';
+              quot_next(1 downto 0) := "00";
             end if;
             rem_reg <= rem_next;
             quot_reg <= quot_next;
+            dividend_reg <= shift_left(dividend_reg, 2);
 
             if iter_idx_reg <= 1 then
               state_reg <= ST_POST_DIV;

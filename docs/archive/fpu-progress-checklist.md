@@ -506,7 +506,8 @@ requests hardcode `wIndex=0`.
   - FSAVE/FRESTORE/abort are not handled in other waiting states: decode, condition
     evaluation (`COND_*`), execute, and the 68882 pending-transfer states.
   - AB/XA response-bit semantics for the abort path are not confirmed against hardware.
-- Vivado: not yet run on this change (touches the dialog FSM).
+- Vivado (non-incremental, 50 MHz, 2026-11-17): with the staging XDC block, WNS +0.425 ns, TNS 0, 0 failing
+  endpoints (28927). Re-run still needed after the trig divider shift-register change.
 
 ### DEF-DIVREM-001: DIV/SQRT Underflow Flushes Tiny Results To Zero
 - Status: Closed (2026-03-02)

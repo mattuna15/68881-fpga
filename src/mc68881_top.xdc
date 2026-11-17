@@ -270,3 +270,20 @@ set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_N
 set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *sqrt_exp_out_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *divrem_inst/result_reg_reg*}]
 
 # Modpost add/mul paths now use sequential units — no combinational FP MCP needed.
+
+# --- FMOVE-out conversion -> cir_operand_staging ---
+# In CIR_XFER_DST (word_idx = 0, operand not yet read) cir_operand_staging is
+# reloaded every cycle from conv_single_out / conv_double_out / fp80_to_int_trunc
+# of conv_fp_src = fp_reg_file_reg(cir_dst_reg_idx). Those inputs are stable for the
+# whole state, and the state is only left by a CPU bus access (the operand read,
+# an abort or a new FSAVE/FRESTORE opword), which is at least a couple of clocks
+# after entry, so the second capture is the one that is consumed. This is the same
+# staging argument as the 4-cycle staging -> operand_reg MCP above.
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ cir_operand_staging_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_dst_reg_idx_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ cir_operand_staging_reg*}]
+set_multicycle_path -setup 2 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ cir_operand_staging_reg*}]
+set_multicycle_path -hold 1 -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *cir_state_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ cir_operand_staging_reg*}]
+# conv_fp_src also muxes in fp_reg_file_reg(move_cfg_decoded_reg.src_idx) (decoded from move_cfg_reg) when the
+# state is not CIR_XFER_DST. Staging only captures conversion results while the
+# state IS CIR_XFER_DST, so that arm never reaches cir_operand_staging.
+set_false_path -quiet -from [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ *move_cfg_reg_reg*}] -to [get_cells -quiet -hier -filter {REF_NAME =~ FD* && NAME =~ cir_operand_staging_reg*}]

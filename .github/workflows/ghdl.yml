@@ -35,6 +35,7 @@ jobs:
             tb/tb_mc68881_ea_cycles.vhd \
             tb/tb_mc68881_cycle_counts.vhd \
             tb/tb_mc68881_cir_dialog.vhd \
+            tb/tb_mc68881_cir_interrupt.vhd \
             tb/tb_mc68881_torture.vhd
       - name: Run tb_mc68881_alu
         run: |
@@ -68,6 +69,10 @@ jobs:
         run: |
           ghdl -e --std=08 tb_mc68881_cir_dialog
           ghdl -r --std=08 tb_mc68881_cir_dialog --assert-level=error
+      - name: Run tb_mc68881_cir_interrupt
+        run: |
+          ghdl -e --std=08 tb_mc68881_cir_interrupt
+          ghdl -r --std=08 tb_mc68881_cir_interrupt --assert-level=error
       - name: Run tb_mc68881_torture
         run: |
           ghdl -e --std=08 tb_mc68881_torture

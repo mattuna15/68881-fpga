@@ -488,6 +488,27 @@ requests hardcode `wIndex=0`.
   - Removed dead `divrem_flag_invalid` signal from ALU.
   - Added 6 NaN discrimination regression tests to `tb/tb_mc68881_alu.vhd`.
 
+### DEF-CIR-004: Dialog Stuck On Transfer Primitive After FSAVE/FRESTORE/Abort
+- Status: Closed for operand-transfer states (2026-11-16); follow-ups open (below)
+- Files: `src/mc68881_top.vhd`, `tb/tb_mc68881_cir_interrupt.vhd`
+- Problem: `CIR_XFER_SRC`/`CIR_XFER_DST` ignored a new FSAVE/FRESTORE opword and a
+  Control CIR write while waiting for operand words (e.g. after a bus error on the
+  operand transfer), so the dialog stayed on a transfer primitive.
+- Resolution summary:
+  - Control CIR write raises one-shot `cir_abort_req` (UM 7.2.2: abort).
+  - Both transfer states handle, in priority order: abort -> `CIR_IDLE`; FSAVE ->
+    `CIR_SAVE_WAIT`; FRESTORE -> `CIR_RESTORE_FORMAT`; else the original transfer logic.
+  - `tb_mc68881_cir_interrupt` covers FSAVE in SRC and DST, control-CIR abort in SRC and
+    DST (FP0 unchanged), and null FRESTORE in SRC; each expects the response back to
+    `$0900` and a follow-up FMOVE.L round trip to work.
+- Open follow-ups (exit: each covered by a test in `tb_mc68881_cir_interrupt`):
+  - The interrupted instruction is abandoned, not resumable after FRESTORE.
+  - FSAVE/FRESTORE/abort are not handled in other waiting states: decode, condition
+    evaluation (`COND_*`), execute, and the 68882 pending-transfer states.
+  - AB/XA response-bit semantics for the abort path are not confirmed against hardware.
+- Vivado (non-incremental, 50 MHz, 2026-11-17): with the staging XDC block, WNS +0.425 ns, TNS 0, 0 failing
+  endpoints (28927). Re-run still needed after the trig divider shift-register change.
+
 ### DEF-DIVREM-001: DIV/SQRT Underflow Flushes Tiny Results To Zero
 - Status: Closed (2026-03-02)
 - File: `src/mc68881_divrem_unit.vhd`

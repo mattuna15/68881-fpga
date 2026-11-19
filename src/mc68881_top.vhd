@@ -129,6 +129,7 @@ architecture rtl of mc68881_top is
   signal bl_item      : std_logic_vector(31 downto 0);   -- assembled write item
   signal d_out_core   : std_logic_vector(31 downto 0);   -- core read data before lane steering
   signal bl_rbyte     : std_logic_vector(7 downto 0);    -- read byte driven on all lanes
+  signal bl_imm_n_reg : natural range 1 to 4 := 4;       -- registered Operand CIR item width
 
   -- Memory-mapped register offsets used by host-side command/data protocol.
   constant ADDR_OPSEL  : unsigned(4 downto 0) := "00000";  -- 0
@@ -1830,8 +1831,7 @@ begin
   -- upper half of Instruction Address, so 8-bit host writes of Instruction
   -- Address are not supported; Operand Address (14/15) is.
   -- ---------------------------------------------------------------------
-  bl_geometry : process(a_in, a0_in, size_n, rw, cir_mode_reg, cir_state_reg,
-                        cir_src_fmt, cir_command_reg)
+  bl_geometry : process(a_in, a0_in, size_n, rw, cir_mode_reg, bl_imm_n_reg)
     variable code : integer range 0 to 31;
     variable n    : natural range 1 to 4;
     variable fold : std_logic;
@@ -1863,18 +1863,11 @@ begin
     end case;
 
     -- Byte/word immediate and destination operands are a single left-aligned
-    -- unit of 1 or 2 bytes.  Only memory-format cpGEN/FMOVE dialogs carry a
-    -- format code (command bits 15:14 = "01"); control-register moves reuse
-    -- those bits as a register select.
-    if (code = 8 or code = 9) and cir_command_reg(15 downto 14) = "01" and
-       (cir_state_reg = CIR_XFER_SRC or cir_state_reg = CIR_XFER_SRC_WAIT or
-        cir_state_reg = CIR_XFER_SRC_WAIT2 or cir_state_reg = CIR_XFER_DST or
-        cir_state_reg = CIR_XFER_DST_WAIT) then
-      if cir_src_fmt = CIR_SRC_BYTE then
-        n := 1;
-      elsif cir_src_fmt = CIR_SRC_WORD then
-        n := 2;
-      end if;
+    -- unit of 1 or 2 bytes.  The width comes from bl_imm_n_reg, a registered
+    -- summary of the dialog state (see bl_imm_proc) so that the strobe gating
+    -- below depends only on the bus pins and one flop, not on the dialog FSM.
+    if code = 8 or code = 9 then
+      n := bl_imm_n_reg;
     end if;
 
     -- Byte index within the item (Figure 10-2: lane k carries D31-24 for
@@ -1920,6 +1913,29 @@ begin
           when 2 => bl_bytes(7 downto 0)   <= bl_lane_byte;
           when others => null;
         end case;
+      end if;
+    end if;
+  end process;
+
+  -- Registered item width for the Operand CIR in a memory-format transfer:
+  -- 1 byte for a byte operand, 2 for a word operand, otherwise 4.  Only
+  -- memory-format cpGEN/FMOVE dialogs carry a format code (command bits 15:14
+  -- = "01"); control-register moves reuse those bits as a register select.
+  -- The dialog enters a transfer state at least a clock before the host can
+  -- access the Operand CIR, so the one-clock register delay is not visible.
+  bl_imm_proc : process(clk)
+  begin
+    if rising_edge(clk) then
+      bl_imm_n_reg <= 4;
+      if cir_command_reg(15 downto 14) = "01" and
+         (cir_state_reg = CIR_XFER_SRC or cir_state_reg = CIR_XFER_SRC_WAIT or
+          cir_state_reg = CIR_XFER_SRC_WAIT2 or cir_state_reg = CIR_XFER_DST or
+          cir_state_reg = CIR_XFER_DST_WAIT) then
+        if cir_src_fmt = CIR_SRC_BYTE then
+          bl_imm_n_reg <= 1;
+        elsif cir_src_fmt = CIR_SRC_WORD then
+          bl_imm_n_reg <= 2;
+        end if;
       end if;
     end if;
   end process;

@@ -534,6 +534,11 @@ requests hardcode `wIndex=0`.
   - Peripheral mode (`cir_mode_reg='0'`) and legacy-only codes 16..27/29..31 keep the
     repeat-the-word-per-beat behaviour in 8-bit mode (no byte lanes).
   - 16-bit port still repeats the 32-bit value per beat instead of steering D31-D16/D15-D0.
+- Vivado (non-incremental, 50 MHz, 2026-11-19): first build with the combinational strobe gating met
+  timing at only WNS +0.058 ns (the gating's state dependence sat in front of the CIR write-enable
+  cone feeding op_sel -> micro_total -> micro_remaining).  With the immediate width registered
+  (`bl_imm_n_reg`): WNS +0.260 ns, TNS 0, WHS +0.024 ns, 0 failing endpoints (30333), post-impl
+  Slice LUTs 59986, FF 14265, BRAM 10.5.
 
 ### DEF-DIVREM-001: DIV/SQRT Underflow Flushes Tiny Results To Zero
 - Status: Closed (2026-03-02)

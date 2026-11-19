@@ -488,7 +488,7 @@ requests hardcode `wIndex=0`.
   - Removed dead `divrem_flag_invalid` signal from ALU.
   - Added 6 NaN discrimination regression tests to `tb/tb_mc68881_alu.vhd`.
 
-### DEF-CIR-001: Dialog Stuck On Transfer Primitive After FSAVE/FRESTORE/Abort
+### DEF-CIR-004: Dialog Stuck On Transfer Primitive After FSAVE/FRESTORE/Abort
 - Status: Closed for operand-transfer states (2026-11-16); follow-ups open (below)
 - Files: `src/mc68881_top.vhd`, `tb/tb_mc68881_cir_interrupt.vhd`
 - Problem: `CIR_XFER_SRC`/`CIR_XFER_DST` ignored a new FSAVE/FRESTORE opword and a

@@ -509,6 +509,32 @@ requests hardcode `wIndex=0`.
 - Vivado (non-incremental, 50 MHz, 2026-11-17): with the staging XDC block, WNS +0.425 ns, TNS 0, 0 failing
   endpoints (28927). Re-run still needed after the trig divider shift-register change.
 
+### DEF-BUS-001: 8-Bit Port Byte-Lane Access And DSACK A4 (issues #72, #74)
+- Status: Closed for the CIR dialog (2026-11-19); register-map overlap tracked below
+- Files: `src/mc68881_top.vhd`, `tb/tb_mc68881_cir_dialog.vhd` (TESTS 16, 16A-16D)
+- Problem 1 (#74): with `size_n='0'` the host repeated a whole 32-bit value at one address
+  for every beat; `a0_in` only fed the DSACK size code, so a real 8-bit host stepping
+  through bytes (UM 10.1.3, Fig 10-2) corrupted every CIR transfer.
+- Problem 2 (#72b): DSACK took A4 from `a_in(4)`, but the CIR register code is A4..A1, so
+  real A4 is `a_in(3)`.  Every CIR operand access on a 32-bit port got a 16-bit DSACK.
+- Resolution summary:
+  - Byte-lane adapter in `mc68881_top.vhd` (active when `size_n='0'` and `cir_mode_reg='1'`
+    for the Table 9-1 CIR codes plus Restore): assembles written bytes per Fig 10-2 and
+    gives the core one write carrying the whole item on the final byte; slices the core's
+    read word into bytes (driven on all four lanes) and pulses the core read strobe on the
+    final byte only.  Item widths: 16-bit CIRs 2 bytes (A0), 32-bit CIRs 4 bytes ({A1,A0}),
+    byte/word immediates and destinations 1/2 bytes (memory-format commands only).
+  - Latched DSACK A4 is `a_in(3) or a_in(4)` in CIR mode (legacy mode keeps `a_in(4)`).
+  - Items stay low-aligned inside the core, as for 32-bit hosts.
+- Open (exit: the register map is remapped to the datasheet offsets, see
+  `docs/plans/2026-11-19-true-cir-register-remap.md`):
+  - Response/Save sit at legacy codes 13/12, which alias the upper half of Instruction
+    Address, so 8-bit host writes of Instruction Address (12/13) are not supported.
+    Operand Address (14/15) is.
+  - Peripheral mode (`cir_mode_reg='0'`) and legacy-only codes 16..27/29..31 keep the
+    repeat-the-word-per-beat behaviour in 8-bit mode (no byte lanes).
+  - 16-bit port still repeats the 32-bit value per beat instead of steering D31-D16/D15-D0.
+
 ### DEF-DIVREM-001: DIV/SQRT Underflow Flushes Tiny Results To Zero
 - Status: Closed (2026-03-02)
 - File: `src/mc68881_divrem_unit.vhd`

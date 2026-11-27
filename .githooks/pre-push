@@ -22,6 +22,9 @@ echo "Running GHDL tests before push..."
   src/mc68881_alu.vhd \
   src/mc68881_packed_decimal_unit.vhd \
   src/mc68881_top.vhd \
+  wrappers/mc68881_bus_bridge.vhd \
+  wrappers/mc68881_axilite_wrapper.vhd \
+  wrappers/mc68881_wishbone_wrapper.vhd \
   tb/mc68881_golden_vectors_pkg.vhd \
   tb/tb_mc68881_alu.vhd \
   tb/tb_mc68881_alu_lite.vhd \
@@ -33,7 +36,11 @@ echo "Running GHDL tests before push..."
   tb/tb_mc68881_cir_interrupt.vhd \
   tb/tb_mc68881_torture.vhd \
   tb/tb_mc68881_packed_lite.vhd \
-  tb/tb_mc68881_cir_datasheet_map.vhd
+  tb/tb_mc68881_cir_datasheet_map.vhd \
+  tb/tb_mc68881_axilite.vhd \
+  tb/tb_mc68881_wishbone.vhd \
+  tb/tb_mc68881_timeout.vhd \
+  tb/tb_mc68881_wrapper_datasheet.vhd
 
 "$GHDL_EXE" -e --std=08 tb_mc68881_alu
 "$GHDL_EXE" -r --std=08 tb_mc68881_alu --assert-level=error
@@ -64,5 +71,17 @@ echo "Running GHDL tests before push..."
 
 "$GHDL_EXE" -e --std=08 tb_mc68881_cir_datasheet_map
 "$GHDL_EXE" -r --std=08 tb_mc68881_cir_datasheet_map --assert-level=error
+
+"$GHDL_EXE" -e --std=08 tb_mc68881_axilite
+"$GHDL_EXE" -r --std=08 tb_mc68881_axilite --assert-level=error
+
+"$GHDL_EXE" -e --std=08 tb_mc68881_wishbone
+"$GHDL_EXE" -r --std=08 tb_mc68881_wishbone --assert-level=error
+
+"$GHDL_EXE" -e --std=08 tb_mc68881_timeout
+"$GHDL_EXE" -r --std=08 tb_mc68881_timeout --assert-level=error
+
+"$GHDL_EXE" -e --std=08 tb_mc68881_wrapper_datasheet
+"$GHDL_EXE" -r --std=08 tb_mc68881_wrapper_datasheet --assert-level=error
 
 echo "GHDL tests passed."

@@ -1,7 +1,14 @@
 -- mc68881_wishbone_wrapper.vhd
 -- Wishbone B4 slave wrapper for the MC68881 FPU (one transaction at a time).
 -- Instantiates the bus bridge and FPU core as a self-contained peripheral.
--- Address mapping: Wishbone byte address bits [6:2] map to MC68881 register address [4:0].
+-- Address mapping: Wishbone byte address bits [6:2] map to MC68881 register address [4:0]
+-- (word-stride aperture: register code n at byte offset n*4, one 32-bit access each).
+-- With datasheet_cir_map_g => true, CIR mode decodes MC68881UM Table 9-1 codes, so the
+-- CIRs sit at Response $00, Control $04, Save $08, Restore $0C, Operation Word $10,
+-- Command $14, Condition $1C, Operand $20, Register Select $28, Instruction Address $30
+-- and Operand Address $38.  Offsets $40-$7C alias $00-$3C in CIR mode.  Writing $00 with
+-- bit 0 clear selects peripheral mode; writing $34 with bit 0 set returns to CIR mode.
+-- With the generic false (default) the legacy map is unchanged.
 
 library ieee;
 use ieee.std_logic_1164.all;
@@ -13,7 +20,10 @@ entity mc68881_wishbone_wrapper is
     -- MC68882 mode: enables pending instruction pipeline, larger FSAVE frames.
     fpu_68882_g          : boolean := false;
     -- DSACK timeout passed to bridge (fpu_clk cycles; 0 disables)
-    dsack_timeout_g      : natural := 1024
+    dsack_timeout_g      : natural := 1024;
+    -- MC68881UM Table 9-1 CIR decode in CIR mode (see header).  Default false keeps the
+    -- legacy register map; see docs/plans/2026-11-19-true-cir-register-remap.md.
+    datasheet_cir_map_g  : boolean := false
   );
   port (
     -- Wishbone B4 Slave Interface
@@ -120,7 +130,8 @@ begin
     u_fpu : entity work.mc68881_top
       generic map (
         packed_decimal_full_g => packed_decimal_full_g,
-        fpu_version_g         => FPU_68881
+        fpu_version_g         => FPU_68881,
+        datasheet_cir_map_g   => datasheet_cir_map_g
       )
       port map (
         a_in => fpu_a_in, d_in => fpu_d_in, d_out => fpu_d_out,
@@ -135,7 +146,8 @@ begin
     u_fpu : entity work.mc68881_top
       generic map (
         packed_decimal_full_g => packed_decimal_full_g,
-        fpu_version_g         => FPU_68882
+        fpu_version_g         => FPU_68882,
+        datasheet_cir_map_g   => datasheet_cir_map_g
       )
       port map (
         a_in => fpu_a_in, d_in => fpu_d_in, d_out => fpu_d_out,

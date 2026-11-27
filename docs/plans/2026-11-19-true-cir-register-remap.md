@@ -1,8 +1,9 @@
 # Plan: remap the CIR register file to the MC68881 datasheet map
 
 Status: Steps 1-5 implemented behind `datasheet_cir_map_g` (default false, 2026-11-27);
-Steps 6-8 open.  Follow-up to issues #72 / #74 and `DEF-BUS-001` in
-`docs/archive/fpu-progress-checklist.md`.  Coverage: `tb/tb_mc68881_cir_datasheet_map.vhd`.
+Step 6 done with option (a) (2026-11-27); Steps 7-8 open.  Follow-up to issues #72 / #74 and
+`DEF-BUS-001` in `docs/archive/fpu-progress-checklist.md`.  Coverage:
+`tb/tb_mc68881_cir_datasheet_map.vhd` (core), `tb/tb_mc68881_wrapper_datasheet.vhd` (wrappers).
 
 Implementation notes (Steps 2-5):
 - `ds_translate` in `mc68881_top.vhd` maps each Table 9-1 code (A4..A1, per direction) onto
@@ -18,6 +19,24 @@ Implementation notes (Steps 2-5):
 - Step 3: STATUS cannot be reached in datasheet CIR mode; moving `cir_periph.h` over is Step 8.
 - Step 4: no new gate was needed, because `cir_active` already blocks the back-door operand/FPSR
   writes in CIR mode.  The `cir_mode_reg` special cases stay until Step 8 removes the generic.
+
+Implementation notes (Step 6, option (a)):
+- Both wrappers take `datasheet_cir_map_g` and pass it to both core instantiations (68881 and
+  68882).  The word-stride aperture stays: bus byte address bits [6:2] are the register code.
+- No translation is needed in the wrapper.  The bridge already passes the code straight to
+  `a_in` and runs 32-bit cycles, and the core does the Table 9-1 decode.  So with the generic on,
+  CIR code n is at byte offset n*4: Response $00, Control $04, Save $08, Restore $0C,
+  Operation Word $10, Command $14, Condition $1C, Operand $20, Register Select $28,
+  Instruction Address $30, Operand Address $38.  Offsets $40-$7C alias $00-$3C in CIR mode.
+- Software that moves to the generic changes only its `OFF_CIR_*` codes (Step 8): Response
+  13 -> 0, Save 12 -> 2, Restore 28 -> 3, and the mode switch becomes a write to $00.  The
+  others keep their codes.  Control (1) and Register Select (10) gain offsets; `cir_periph.h`
+  does not define them today.
+- Option (b), a datasheet byte aperture ($00-$1E with 16-bit accesses through `wstrb`/`wb_sel`),
+  depends on Step 7's data placement and stays open as a later option.
+- The wrapper testbenches (`tb_mc68881_axilite`, `tb_mc68881_wishbone`, `tb_mc68881_timeout`)
+  were not in the regression lists.  They now run alongside the new one in
+  `scripts/run_tests.ps1`, `.githooks/pre-push` and CI.
 
 ## Why
 

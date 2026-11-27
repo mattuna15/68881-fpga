@@ -25,7 +25,7 @@ function Invoke-Ghdl {
   }
 }
 
-Invoke-Ghdl @('-a', '--std=08', 'src/mc68881_pkg.vhd', 'src/mc68881_fp80_mul_unit.vhd', 'src/mc68881_fp80_addsub_unit.vhd', 'src/mc68881_modrem_post_unit.vhd', 'src/mc68881_divrem_unit.vhd', 'src/mc68881_trig_unit.vhd', 'src/mc68881_sgl_ops_unit.vhd', 'src/mc68881_alu.vhd', 'src/mc68881_packed_decimal_unit.vhd', 'src/mc68881_top.vhd', 'tb/mc68881_golden_vectors_pkg.vhd', 'tb/mc68881_microseq_tb.vhd', 'tb/tb_mc68881_alu.vhd', 'tb/tb_mc68881_addsub_denormal.vhd', 'tb/tb_mc68881_denormal_rounding.vhd', 'tb/tb_mc68881_top.vhd', 'tb/tb_mc68881_fpcr_fpsr.vhd', 'tb/tb_mc68881_ea_cycles.vhd', 'tb/tb_mc68881_cycle_counts.vhd', 'tb/tb_mc68881_cycle_counts_top.vhd', 'tb/tb_mc68881_fmove_fmovem.vhd', 'tb/tb_mc68881_packed_lite.vhd', 'tb/tb_mc68881_fmovecr.vhd', 'tb/tb_mc68881_ac_timing.vhd', 'tb/tb_mc68881_op_class_dispatch.vhd', 'tb/tb_mc68881_known_defects.vhd', 'tb/tb_mc68881_cir_dialog.vhd', 'tb/tb_mc68881_cir_datasheet_map.vhd', 'tb/tb_mc68881_cir_interrupt.vhd', 'tb/tb_mc68881_torture.vhd', 'tb/tb_mc68882_fsave.vhd')
+Invoke-Ghdl @('-a', '--std=08', 'src/mc68881_pkg.vhd', 'src/mc68881_fp80_mul_unit.vhd', 'src/mc68881_fp80_addsub_unit.vhd', 'src/mc68881_modrem_post_unit.vhd', 'src/mc68881_divrem_unit.vhd', 'src/mc68881_trig_unit.vhd', 'src/mc68881_sgl_ops_unit.vhd', 'src/mc68881_alu.vhd', 'src/mc68881_packed_decimal_unit.vhd', 'src/mc68881_top.vhd', 'wrappers/mc68881_bus_bridge.vhd', 'wrappers/mc68881_axilite_wrapper.vhd', 'wrappers/mc68881_wishbone_wrapper.vhd', 'tb/mc68881_golden_vectors_pkg.vhd', 'tb/mc68881_microseq_tb.vhd', 'tb/tb_mc68881_alu.vhd', 'tb/tb_mc68881_addsub_denormal.vhd', 'tb/tb_mc68881_denormal_rounding.vhd', 'tb/tb_mc68881_top.vhd', 'tb/tb_mc68881_fpcr_fpsr.vhd', 'tb/tb_mc68881_ea_cycles.vhd', 'tb/tb_mc68881_cycle_counts.vhd', 'tb/tb_mc68881_cycle_counts_top.vhd', 'tb/tb_mc68881_fmove_fmovem.vhd', 'tb/tb_mc68881_packed_lite.vhd', 'tb/tb_mc68881_fmovecr.vhd', 'tb/tb_mc68881_ac_timing.vhd', 'tb/tb_mc68881_op_class_dispatch.vhd', 'tb/tb_mc68881_known_defects.vhd', 'tb/tb_mc68881_cir_dialog.vhd', 'tb/tb_mc68881_cir_datasheet_map.vhd', 'tb/tb_mc68881_axilite.vhd', 'tb/tb_mc68881_wishbone.vhd', 'tb/tb_mc68881_timeout.vhd', 'tb/tb_mc68881_wrapper_datasheet.vhd', 'tb/tb_mc68881_cir_interrupt.vhd', 'tb/tb_mc68881_torture.vhd', 'tb/tb_mc68882_fsave.vhd')
 Invoke-Ghdl @('-e', '--std=08', 'mc68881_microseq_tb')
 Invoke-Ghdl @('-r', '--std=08', 'mc68881_microseq_tb', '--assert-level=error')
 Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_alu')
@@ -66,5 +66,13 @@ Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_torture')
 Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_torture', '--assert-level=error')
 Invoke-Ghdl @('-e', '--std=08', 'tb_mc68882_fsave')
 Invoke-Ghdl @('-r', '--std=08', 'tb_mc68882_fsave', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_axilite')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_axilite', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_wishbone')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_wishbone', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_timeout')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_timeout', '--assert-level=error')
+Invoke-Ghdl @('-e', '--std=08', 'tb_mc68881_wrapper_datasheet')
+Invoke-Ghdl @('-r', '--std=08', 'tb_mc68881_wrapper_datasheet', '--assert-level=error')
 
 Write-Host 'GHDL tests passed.'

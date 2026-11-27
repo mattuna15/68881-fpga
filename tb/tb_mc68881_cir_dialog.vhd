@@ -639,11 +639,42 @@ architecture sim of tb_mc68881_cir_dialog is
   end procedure;
 
   -- ----- Sized bus access for sub-32-bit peripheral modes -----
-  -- Each 32-bit CIR register access becomes N beats (2 for 16-bit, 4 for 8-bit).
-  -- FPU always captures/presents full 32-bit data; only DSACK encoding changes.
+  -- 16-bit port (sz="10"): each 32-bit CIR access becomes `beats` (2) beats
+  -- that repeat the whole 32-bit value; only the DSACK encoding changes.
+  --
+  -- 8-bit port (sz/="10"): real byte-lane access per MC68881UM Fig 10-2.
+  --   beats=4: 32-bit CIR ({A1,A0} = beat, register code has A1 cleared)
+  --   beats=2: 16-bit CIR (A0 = beat, A1 is part of the register code)
+  --   beats=1: byte immediate (A0 = 0)
+  -- Byte `beat` of the item is driven MSB first on lane `beat` only; the other
+  -- lanes carry a filler pattern so the DUT must really steer by lane.
+
+  -- Byte address pins for an 8-bit beat.
+  procedure byte_beat_pins(
+    constant addr_c : in  unsigned(4 downto 0);
+    constant beats  : in  natural;
+    constant beat   : in  natural;
+    variable a_code : out std_logic_vector(4 downto 0);
+    variable a0_v   : out std_logic
+  ) is
+  begin
+    a_code := std_logic_vector(addr_c);
+    if beats = 4 then
+      if beat >= 2 then
+        a_code(0) := '1';
+      else
+        a_code(0) := '0';
+      end if;
+    end if;
+    if beat mod 2 = 1 then
+      a0_v := '1';
+    else
+      a0_v := '0';
+    end if;
+  end procedure;
 
   -- sz selects the simulated port: "10" -> 16-bit (size_n='1', a0_in='0'),
-  -- anything else -> 8-bit (size_n='0'; a0_in is a don't-care per Table 9-2).
+  -- anything else -> 8-bit (size_n='0').
   procedure bus_write_sized(
     signal a_in_s     : out std_logic_vector(4 downto 0);
     signal d_in_s     : out std_logic_vector(31 downto 0);
@@ -660,17 +691,33 @@ architecture sim of tb_mc68881_cir_dialog is
     constant sz       : std_logic_vector(1 downto 0);
     constant beats    : natural
   ) is
+    variable a_code : std_logic_vector(4 downto 0);
+    variable a0_v   : std_logic;
+    variable dword  : std_logic_vector(31 downto 0);
   begin
     for beat in 0 to beats - 1 loop
       if sz = "10" then
         size_n_s <= '1';
         a0_in_s  <= '0';
+        a_in_s   <= std_logic_vector(addr_c);
+        d_in_s   <= data;
       else
         size_n_s <= '0';
-        a0_in_s  <= '1';
+        byte_beat_pins(addr_c, beats, beat, a_code, a0_v);
+        a0_in_s  <= a0_v;
+        a_in_s   <= a_code;
+        dword    := x"A5A5A5A5";
+        if beats = 4 then
+          dword(31 - 8 * beat downto 24 - 8 * beat) :=
+            data(31 - 8 * beat downto 24 - 8 * beat);
+        elsif beats = 2 then
+          dword(31 - 8 * beat downto 24 - 8 * beat) :=
+            data(15 - 8 * beat downto 8 - 8 * beat);
+        else
+          dword(31 downto 24) := data(7 downto 0);
+        end if;
+        d_in_s <= dword;
       end if;
-      a_in_s <= std_logic_vector(addr_c);
-      d_in_s <= data;
       rw_s   <= '0';
       cs_n_s <= '0';
       as_n_s <= '0';
@@ -709,16 +756,21 @@ architecture sim of tb_mc68881_cir_dialog is
     constant sz       : std_logic_vector(1 downto 0);
     constant beats    : natural
   ) is
+    variable a_code : std_logic_vector(4 downto 0);
+    variable a0_v   : std_logic;
   begin
+    data_s := (others => '0');
     for beat in 0 to beats - 1 loop
       if sz = "10" then
         size_n_s <= '1';
         a0_in_s  <= '0';
+        a_in_s   <= std_logic_vector(addr_c);
       else
         size_n_s <= '0';
-        a0_in_s  <= '1';
+        byte_beat_pins(addr_c, beats, beat, a_code, a0_v);
+        a0_in_s  <= a0_v;
+        a_in_s   <= a_code;
       end if;
-      a_in_s <= std_logic_vector(addr_c);
       rw_s   <= '1';
       cs_n_s <= '0';
       as_n_s <= '0';
@@ -734,8 +786,26 @@ architecture sim of tb_mc68881_cir_dialog is
           severity failure;
       end if;
       wait for CLK_PERIOD/4;
-      if beat = 0 then
-        data_s := d_out_s;
+      if sz = "10" then
+        if beat = 0 then
+          data_s := d_out_s;
+        end if;
+      else
+        -- The byte is driven on every lane (the board ties the lanes of an
+        -- 8-bit port together); assemble the item MSB first.
+        assert d_out_s(31 downto 24) = d_out_s(23 downto 16) and
+               d_out_s(31 downto 24) = d_out_s(15 downto 8) and
+               d_out_s(31 downto 24) = d_out_s(7 downto 0)
+          report "8-bit read byte not replicated on all lanes, beat " &
+                 integer'image(beat) & " d_out=" & to_hstring(d_out_s)
+          severity failure;
+        if beats = 4 then
+          data_s(31 - 8 * beat downto 24 - 8 * beat) := d_out_s(31 downto 24);
+        elsif beats = 2 then
+          data_s(15 - 8 * beat downto 8 - 8 * beat) := d_out_s(31 downto 24);
+        else
+          data_s(7 downto 0) := d_out_s(31 downto 24);
+        end if;
       end if;
       wait for CLK_PERIOD/4;
       cs_n_s <= '1';
@@ -772,6 +842,29 @@ architecture sim of tb_mc68881_cir_dialog is
       severity failure;
   end procedure;
 
+  -- 8-bit host: enable CIR mode, then write OpWord and Command as byte pairs.
+  procedure bl_start8(
+    signal a_in_s     : out std_logic_vector(4 downto 0);
+    signal d_in_s     : out std_logic_vector(31 downto 0);
+    signal rw_s       : out std_logic;
+    signal cs_n_s     : out std_logic;
+    signal as_n_s     : out std_logic;
+    signal ds_n_s     : out std_logic;
+    signal size_n_s   : out std_logic;
+    signal a0_in_s    : out std_logic;
+    signal dsack0_n_s : in std_logic;
+    signal dsack1_n_s : in std_logic;
+    constant cmd      : std_logic_vector(31 downto 0)
+  ) is
+  begin
+    bus_write_sized(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s, size_n_s, a0_in_s,
+                    dsack0_n_s, dsack1_n_s, CIR_RESPONSE, x"00000001", "01", 2);
+    bus_write_sized(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s, size_n_s, a0_in_s,
+                    dsack0_n_s, dsack1_n_s, CIR_OPWORD, CPGEN_OPWORD, "01", 2);
+    bus_write_sized(a_in_s, d_in_s, rw_s, cs_n_s, as_n_s, ds_n_s, size_n_s, a0_in_s,
+                    dsack0_n_s, dsack1_n_s, CIR_COMMAND, cmd, "01", 2);
+  end procedure;
+
 begin
   clk <= not clk after CLK_PERIOD/2;
 
@@ -797,6 +890,12 @@ begin
     variable status_word : std_logic_vector(31 downto 0) := (others => '0');
     variable result_fp80 : fp80_t := (others => '0');
     variable single_result : std_logic_vector(31 downto 0) := (others => '0');
+    variable item_a : std_logic_vector(31 downto 0) := (others => '0');
+    variable item_b : std_logic_vector(31 downto 0) := (others => '0');
+    variable item_c : std_logic_vector(31 downto 0) := (others => '0');
+    variable ref_a  : std_logic_vector(31 downto 0) := (others => '0');
+    variable ref_b  : std_logic_vector(31 downto 0) := (others => '0');
+    variable ref_c  : std_logic_vector(31 downto 0) := (others => '0');
     variable resp : std_logic_vector(15 downto 0) := (others => '0');
     variable last_resp : std_logic_vector(15 downto 0) := (others => '0');
     variable cmd_word : std_logic_vector(31 downto 0) := (others => '0');
@@ -1267,14 +1366,16 @@ begin
     -- ================================================================
     report "TEST 16: 8-bit peripheral mode E2E" severity note;
 
-    -- Load FP4 = 8.0 via CIR FMOVE.S (8-bit bus, 4 beats per access)
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
-              CIR_RESPONSE, x"00000001");
+
+    -- Load FP4 = 8.0 via CIR FMOVE.S.  8-bit bus: 16-bit CIRs take 2 byte
+    -- beats (A0 selects the byte), 32-bit CIRs take 4 ({A1,A0} select).
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
-                    dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "01", 4);
+                    dsack0_n, dsack1_n, CIR_RESPONSE, x"00000001", "01", 2);
+    bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                    dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "01", 2);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_SINGLE, 4, OPCODE_FMOVE);
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
-                    dsack0_n, dsack1_n, CIR_COMMAND, cmd_word, "01", 4);
+                    dsack0_n, dsack1_n, CIR_COMMAND, cmd_word, "01", 2);
     wait for CLK_PERIOD * 2;
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
                     dsack0_n, dsack1_n, CIR_OPERAND, x"41000000", "01", 4);
@@ -1282,13 +1383,13 @@ begin
                          dsack0_n, dsack1_n, d_out, status_word, "01", 4);
 
     -- FMUL.S #0.5,FP4 via CIR mem-source (8-bit bus)
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
-              CIR_RESPONSE, x"00000001");
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
-                    dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "01", 4);
+                    dsack0_n, dsack1_n, CIR_RESPONSE, x"00000001", "01", 2);
+    bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                    dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "01", 2);
     cmd_word := make_cpgen_mem_cmd(CIR_SRC_SINGLE, 4, OPCODE_FMUL);
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
-                    dsack0_n, dsack1_n, CIR_COMMAND, cmd_word, "01", 4);
+                    dsack0_n, dsack1_n, CIR_COMMAND, cmd_word, "01", 2);
     wait for CLK_PERIOD * 2;
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
                     dsack0_n, dsack1_n, CIR_OPERAND, x"3F000000", "01", 4);
@@ -1296,10 +1397,10 @@ begin
                          dsack0_n, dsack1_n, d_out, status_word, "01", 4);
 
     -- Readback FP4 as single via CIR FMOVE reg→mem (8-bit bus)
-    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
-              CIR_RESPONSE, x"00000001");
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
-                    dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "01", 4);
+                    dsack0_n, dsack1_n, CIR_RESPONSE, x"00000001", "01", 2);
+    bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                    dsack0_n, dsack1_n, CIR_OPWORD, CPGEN_OPWORD, "01", 2);
     cmd_word := (others => '0');
     cmd_word(14) := '1';  -- R/M = 1 = EA/memory (Motorola)
     cmd_word(13) := '1';  -- direction = reg→mem
@@ -1308,7 +1409,7 @@ begin
     cmd_word(6 downto 0) := OPCODE_FMOVE;
     bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
                     dsack0_n, dsack1_n, CIR_COMMAND,
-                    x"0000" & cmd_word(15 downto 0), "01", 4);
+                    x"0000" & cmd_word(15 downto 0), "01", 2);
     wait for CLK_PERIOD * 3;
     bus_read_sized(a_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
                    dsack0_n, dsack1_n, d_out, single_result,
@@ -1322,6 +1423,183 @@ begin
              to_hstring(single_result)
       severity failure;
     report "TEST 16 PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 16A: 32-bit port DSACK follows the real A4 for CIR addresses
+    --   Table 9-3: A4=1 (offsets $10-$1F, e.g. Operand) -> 32-bit DSACK
+    --   (both low); A4=0 (offsets $00-$0F, e.g. OpWord) -> 16-bit DSACK.
+    -- ================================================================
+    report "TEST 16A: 32-bit port DSACK for CIR addresses" severity note;
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, CIR_RESPONSE, x"00000001");
+    size_n <= '1';
+    a0_in  <= '1';
+    a_in   <= std_logic_vector(CIR_OPERAND);
+    rw     <= '1';
+    cs_n   <= '0';
+    as_n   <= '0';
+    ds_n   <= '0';
+    wait until (dsack0_n = '0') or (dsack1_n = '0');
+    assert dsack0_n = '0' and dsack1_n = '0'
+      report "FAIL TEST 16A: 32-bit port Operand CIR (A4=1) must return 32-bit DSACK"
+      severity failure;
+    cs_n <= '1'; as_n <= '1'; ds_n <= '1';
+    wait for CLK_PERIOD;
+    a_in   <= std_logic_vector(CIR_OPWORD);
+    cs_n   <= '0'; as_n <= '0'; ds_n <= '0';
+    wait until (dsack0_n = '0') or (dsack1_n = '0');
+    assert dsack0_n = '1' and dsack1_n = '0'
+      report "FAIL TEST 16A: 32-bit port OpWord CIR (A4=0) must return 16-bit DSACK"
+      severity failure;
+    cs_n <= '1'; as_n <= '1'; ds_n <= '1';
+    wait for CLK_PERIOD;
+    report "TEST 16A PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 16B: 8-bit byte-lane write and read with distinct bytes
+    --   FMOVE.S #0x40490FDB -> FP2, one byte per beat (40,49,0F,DB), each
+    --   driven only on its own lane with filler on the others.  Read back
+    --   through the 8-bit port and through the 32-bit port.
+    -- ================================================================
+    report "TEST 16B: 8-bit byte lanes, distinct bytes per beat" severity note;
+    cmd_word := make_cpgen_mem_cmd(CIR_SRC_SINGLE, 2, OPCODE_FMOVE);
+    bl_start8(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+              dsack0_n, dsack1_n, cmd_word);
+    wait for CLK_PERIOD * 2;
+    bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                    dsack0_n, dsack1_n, CIR_OPERAND, x"40490FDB", "01", 4);
+    wait_for_valid_sized(a_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                         dsack0_n, dsack1_n, d_out, status_word, "01", 4);
+    cmd_word := (others => '0');
+    cmd_word(14) := '1';
+    cmd_word(13) := '1';
+    cmd_word(12 downto 10) := CIR_SRC_SINGLE;
+    cmd_word(9 downto 7) := "010";  -- FP2
+    cmd_word(6 downto 0) := OPCODE_FMOVE;
+    bl_start8(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+              dsack0_n, dsack1_n, cmd_word);
+    wait for CLK_PERIOD * 3;
+    bus_read_sized(a_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                   dsack0_n, dsack1_n, d_out, single_result,
+                   CIR_OPERAND, "01", 4);
+    size_n <= '1';
+    a0_in  <= '1';
+    report "TEST 16B 8-bit readback=" & to_hstring(single_result) severity note;
+    assert single_result = x"40490FDB"
+      report "FAIL TEST 16B: 8-bit readback expected=40490FDB got=" &
+             to_hstring(single_result)
+      severity failure;
+    cpgen_reg_to_mem_single(a_in, d_in, rw, cs_n, as_n, ds_n,
+                            dsack0_n, dsack1_n, d_out, 2, item_a);
+    report "TEST 16B 32-bit readback=" & to_hstring(item_a) severity note;
+    assert item_a = x"40490FDB"
+      report "FAIL TEST 16B: 32-bit readback of 8-bit load expected=40490FDB got=" &
+             to_hstring(item_a)
+      severity failure;
+    report "TEST 16B PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 16C: 8-bit byte and word immediates / destinations
+    --   FADD.B #3 as ONE byte beat on lane 0 (left-aligned, D31-D24);
+    --   FMOVE.W FP0 -> memory reads two bytes (00,05); FMOVE.B reads one.
+    -- ================================================================
+    report "TEST 16C: 8-bit byte/word items" severity note;
+    cpgen_mem_single(a_in, d_in, rw, cs_n, as_n, ds_n,
+                     dsack0_n, dsack1_n, d_out,
+                     OPCODE_FMOVE, 0, x"40000000");  -- FP0 = 2.0 (32-bit port)
+    cmd_word := make_cpgen_mem_cmd(CIR_SRC_BYTE, 0, OPCODE_FADD);
+    bl_start8(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+              dsack0_n, dsack1_n, cmd_word);
+    wait for CLK_PERIOD * 2;
+    bus_write_sized(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                    dsack0_n, dsack1_n, CIR_OPERAND, x"00000003", "01", 1);
+    wait_for_valid_sized(a_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                         dsack0_n, dsack1_n, d_out, status_word, "01", 4);
+    size_n <= '1';
+    a0_in  <= '1';
+    cpgen_reg_to_mem_single(a_in, d_in, rw, cs_n, as_n, ds_n,
+                            dsack0_n, dsack1_n, d_out, 0, single_result);
+    assert single_result = x"40A00000"
+      report "FAIL TEST 16C: 8-bit FADD.B 2+3=5 expected=40A00000 got=" &
+             to_hstring(single_result)
+      severity failure;
+
+    cmd_word := (others => '0');
+    cmd_word(14) := '1';
+    cmd_word(13) := '1';
+    cmd_word(12 downto 10) := CIR_SRC_WORD;
+    cmd_word(9 downto 7) := "000";  -- FP0
+    cmd_word(6 downto 0) := OPCODE_FMOVE;
+    bl_start8(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+              dsack0_n, dsack1_n, cmd_word);
+    wait for CLK_PERIOD * 3;
+    bus_read_sized(a_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                   dsack0_n, dsack1_n, d_out, item_a,
+                   CIR_OPERAND, "01", 2);
+    size_n <= '1';
+    a0_in  <= '1';
+    assert item_a(15 downto 0) = x"0005"
+      report "FAIL TEST 16C: 8-bit FMOVE.W readback expected=0005 got=" &
+             to_hstring(item_a(15 downto 0))
+      severity failure;
+
+    cmd_word(12 downto 10) := CIR_SRC_BYTE;
+    bl_start8(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+              dsack0_n, dsack1_n, cmd_word);
+    wait for CLK_PERIOD * 3;
+    bus_read_sized(a_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                   dsack0_n, dsack1_n, d_out, item_a,
+                   CIR_OPERAND, "01", 1);
+    size_n <= '1';
+    a0_in  <= '1';
+    assert item_a(7 downto 0) = x"05"
+      report "FAIL TEST 16C: 8-bit FMOVE.B readback expected=05 got=" &
+             to_hstring(item_a(7 downto 0))
+      severity failure;
+    report "TEST 16C PASSED" severity note;
+
+    -- ================================================================
+    -- TEST 16D: 12-byte extended read through the 8-bit port equals the
+    --   32-bit port read.  Read side effects (operand word advance) must
+    --   fire once per 4-byte item, not once per byte.
+    -- ================================================================
+    report "TEST 16D: 8-bit extended read (12 byte beats)" severity note;
+    cmd_word := (others => '0');
+    cmd_word(14) := '1';
+    cmd_word(13) := '1';
+    cmd_word(12 downto 10) := CIR_SRC_EXTENDED;
+    cmd_word(9 downto 7) := "010";  -- FP2 = 0x40490FDB single = pi
+    cmd_word(6 downto 0) := OPCODE_FMOVE;
+    bl_start8(a_in, d_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+              dsack0_n, dsack1_n, cmd_word);
+    wait for CLK_PERIOD * 3;
+    bus_read_sized(a_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                   dsack0_n, dsack1_n, d_out, item_a, CIR_OPERAND, "01", 4);
+    bus_read_sized(a_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                   dsack0_n, dsack1_n, d_out, item_b, CIR_OPERAND, "01", 4);
+    bus_read_sized(a_in, rw, cs_n, as_n, ds_n, size_n, a0_in,
+                   dsack0_n, dsack1_n, d_out, item_c, CIR_OPERAND, "01", 4);
+    size_n <= '1';
+    a0_in  <= '1';
+
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, CIR_RESPONSE, x"00000001");
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n, CIR_OPWORD, CPGEN_OPWORD);
+    bus_write(a_in, d_in, rw, cs_n, as_n, ds_n,
+              CIR_COMMAND, x"0000" & cmd_word(15 downto 0));
+    wait for CLK_PERIOD * 3;
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, ref_a, CIR_OPERAND);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, ref_b, CIR_OPERAND);
+    bus_read(a_in, rw, cs_n, as_n, ds_n, dsack0_n, dsack1_n, d_out, ref_c, CIR_OPERAND);
+    report "TEST 16D 8-bit : " & to_hstring(item_a) & " " & to_hstring(item_b) &
+           " " & to_hstring(item_c) severity note;
+    report "TEST 16D 32-bit: " & to_hstring(ref_a) & " " & to_hstring(ref_b) &
+           " " & to_hstring(ref_c) severity note;
+    assert item_a = ref_a and item_b = ref_b and item_c = ref_c
+      report "FAIL TEST 16D: 8-bit extended read differs from 32-bit read"
+      severity failure;
+    assert ref_b = x"C90FDB00" and ref_c = x"00000000"
+      report "FAIL TEST 16D: extended mantissa words expected C90FDB00/00000000"
+      severity failure;
+    report "TEST 16D PASSED" severity note;
 
     -- ================================================================
     -- TEST 17: FADD.B #3, FP0 (byte-integer memory source)

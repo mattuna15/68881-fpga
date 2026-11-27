@@ -1578,7 +1578,10 @@ begin
     end loop;
 
     -- Test 3: 8-bit read — 4 consecutive beats
-    -- size_n='0' → dsack0='0', dsack1='1' (8-bit port; A0 immaterial)
+    -- size_n='0' → dsack0='0', dsack1='1' (8-bit port).  FPIAR is a legacy-map register
+    -- (a_in(4)=1, outside the Table 9-1 CIR codes), so the byte-lane adapter is
+    -- inactive and each beat repeats the whole word.  Real byte-lane access to
+    -- the CIR map is covered in tb_mc68881_cir_dialog.vhd TESTS 16-16D.
     -- Confirms 4 independent DSACK handshakes complete without stalling.
     report "DSACK multi-beat test 3: 8-bit read, 4 beats" severity note;
     for beat in 0 to 3 loop

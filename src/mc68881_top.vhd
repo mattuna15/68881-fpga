@@ -104,10 +104,32 @@ architecture rtl of mc68881_top is
   signal dsack0_i  : std_logic := '1';
   signal dsack1_i  : std_logic := '1';
 
+  -- Pin-level bus strobes (every bus cycle, including each byte beat of an
+  -- 8-bit access).  Used for DSACK timing and the read data path.
+  signal bus_write_pin : std_logic;
+  signal bus_read_pin  : std_logic;
+  -- Core-visible strobes.  Identical to the pin-level strobes except in 8-bit
+  -- CIR mode, where they pulse only on the final byte of an item so register
+  -- side effects fire once per item rather than once per byte.
   signal bus_write : std_logic;
   signal bus_read  : std_logic;
   signal start_access : std_logic;
   signal addr      : unsigned(4 downto 0);
+  -- Core-visible write data (assembled item in 8-bit CIR mode).
+  signal d_in_i    : std_logic_vector(31 downto 0);
+
+  -- 8-bit port byte-lane adapter (MC68881UM 10.1.3, Figure 10-2).
+  signal bl_active    : std_logic;                       -- adapter steering this access
+  signal bl_n         : natural range 1 to 4;            -- item width in bytes
+  signal bl_fold      : std_logic;                       -- clear A1 in the register code
+  signal bl_k         : natural range 0 to 3;            -- byte index within the item
+  signal bl_last      : std_logic;                       -- final byte of the item
+  signal bl_lane_byte : std_logic_vector(7 downto 0);    -- write byte on lane k
+  signal bl_bytes     : std_logic_vector(23 downto 0) := (others => '0');   -- bytes 0..2 assembled so far
+  signal bl_item      : std_logic_vector(31 downto 0);   -- assembled write item
+  signal d_out_core   : std_logic_vector(31 downto 0);   -- core read data before lane steering
+  signal bl_rbyte     : std_logic_vector(7 downto 0);    -- read byte driven on all lanes
+  signal bl_imm_n_reg : natural range 1 to 4 := 4;       -- registered Operand CIR item width
 
   -- Memory-mapped register offsets used by host-side command/data protocol.
   constant ADDR_OPSEL  : unsigned(4 downto 0) := "00000";  -- 0
@@ -1781,9 +1803,169 @@ begin
   conv_single_out <= fp80_to_single(conv_fp_src, round_mode);
   conv_double_out <= fp80_to_double(conv_fp_src, round_mode);
 
-  addr      <= unsigned(a_in);
-  bus_write <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '0') else '0';
-  bus_read  <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '1') else '0';
+  bus_write_pin <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '0') else '0';
+  bus_read_pin  <= '1' when (cs_n = '0' and as_n = '0' and ds_n = '0' and rw = '1') else '0';
+
+  -- ---------------------------------------------------------------------
+  -- 8-bit port byte-lane adapter (MC68881UM 10.1.3, Figure 10-2).
+  --
+  -- With SIZE low every CIR access moves ONE byte, selected by the address
+  -- pins, and a multi-byte item (16-bit CIR, 32-bit CIR, byte/word immediate)
+  -- is transferred MSB first across consecutive byte addresses.  The core
+  -- itself always sees whole items, so this adapter:
+  --   * assembles written bytes and hands the core one write pulse, carrying
+  --     the whole item, on the item's final byte;
+  --   * slices the core's read word into bytes and pulses the core-visible
+  --     read strobe only on the item's final byte, so read side effects
+  --     (operand word advance, Save/Response read-done) fire once per item;
+  --   * clears A1 in the register code for the 32-bit CIRs, where {A1,A0}
+  --     select the byte instead of being part of the register select.
+  -- Items are low-aligned in the core's d_in_i/d_out_core (16-bit CIRs in
+  -- bits 15:0, immediates in bits 7:0 / 15:0), exactly as for 32-bit hosts.
+  --
+  -- Active only for the datasheet CIR codes (a_in 0..15 plus Restore) while
+  -- cir_mode_reg = '1'.  Peripheral-mode (cir_mode_reg = '0') registers and
+  -- the legacy-only codes 16..27/29..31 keep the repeat-the-whole-word-per-
+  -- beat behaviour.  Known limitation (until the register map is remapped to
+  -- the datasheet offsets): Response/Save live at codes 13/12, which alias the
+  -- upper half of Instruction Address, so 8-bit host writes of Instruction
+  -- Address are not supported; Operand Address (14/15) is.
+  -- ---------------------------------------------------------------------
+  bl_geometry : process(a_in, a0_in, size_n, rw, cir_mode_reg, bl_imm_n_reg)
+    variable code : integer range 0 to 31;
+    variable n    : natural range 1 to 4;
+    variable fold : std_logic;
+    variable act  : std_logic;
+    variable k    : natural range 0 to 3;
+  begin
+    code := to_integer(unsigned(a_in));
+    n    := 2;
+    fold := '0';
+    act  := '1';
+    case code is
+      when 0 to 7 =>
+        n := 2;                       -- 16-bit CIRs; A1 is part of the code
+      when 8 to 11 | 14 to 15 =>
+        n := 4;                       -- Operand, Register Select, Operand Address
+        fold := '1';
+      when 12 =>
+        if rw = '1' then
+          n := 2;                     -- Save (read)
+        else
+          n := 4;                     -- Instruction Address (write)
+        end if;
+      when 13 =>
+        n := 2;                       -- Response
+      when 28 =>
+        n := 2;                       -- Restore
+      when others =>
+        act := '0';
+    end case;
+
+    -- Byte/word immediate and destination operands are a single left-aligned
+    -- unit of 1 or 2 bytes.  The width comes from bl_imm_n_reg, a registered
+    -- summary of the dialog state (see bl_imm_proc) so that the strobe gating
+    -- below depends only on the bus pins and one flop, not on the dialog FSM.
+    if code = 8 or code = 9 then
+      n := bl_imm_n_reg;
+    end if;
+
+    -- Byte index within the item (Figure 10-2: lane k carries D31-24 for
+    -- k=0 down to D7-0 for k=3).
+    k := 0;
+    if n = 4 then
+      if a_in(0) = '1' then k := 2; end if;
+      if a0_in = '1' then k := k + 1; end if;
+    elsif n = 2 then
+      if a0_in = '1' then k := 1; end if;
+    end if;
+
+    if size_n = '0' and cir_mode_reg = '1' then
+      bl_active <= act;
+    else
+      bl_active <= '0';
+    end if;
+    bl_n    <= n;
+    bl_fold <= fold;
+    bl_k    <= k;
+    if k = n - 1 then
+      bl_last <= '1';
+    else
+      bl_last <= '0';
+    end if;
+  end process;
+
+  -- Write byte arrives on the lane selected by k.
+  with bl_k select bl_lane_byte <=
+    d_in(31 downto 24) when 0,
+    d_in(23 downto 16) when 1,
+    d_in(15 downto 8)  when 2,
+    d_in(7 downto 0)   when others;
+
+  -- Remember bytes 0..2 of the item as they arrive.
+  bl_capture : process(clk)
+  begin
+    if rising_edge(clk) then
+      if bl_active = '1' and bus_write_pin = '1' then
+        case bl_k is
+          when 0 => bl_bytes(23 downto 16) <= bl_lane_byte;
+          when 1 => bl_bytes(15 downto 8)  <= bl_lane_byte;
+          when 2 => bl_bytes(7 downto 0)   <= bl_lane_byte;
+          when others => null;
+        end case;
+      end if;
+    end if;
+  end process;
+
+  -- Registered item width for the Operand CIR in a memory-format transfer:
+  -- 1 byte for a byte operand, 2 for a word operand, otherwise 4.  Only
+  -- memory-format cpGEN/FMOVE dialogs carry a format code (command bits 15:14
+  -- = "01"); control-register moves reuse those bits as a register select.
+  -- The dialog enters a transfer state at least a clock before the host can
+  -- access the Operand CIR, so the one-clock register delay is not visible.
+  bl_imm_proc : process(clk)
+  begin
+    if rising_edge(clk) then
+      bl_imm_n_reg <= 4;
+      if cir_command_reg(15 downto 14) = "01" and
+         (cir_state_reg = CIR_XFER_SRC or cir_state_reg = CIR_XFER_SRC_WAIT or
+          cir_state_reg = CIR_XFER_SRC_WAIT2 or cir_state_reg = CIR_XFER_DST or
+          cir_state_reg = CIR_XFER_DST_WAIT) then
+        if cir_src_fmt = CIR_SRC_BYTE then
+          bl_imm_n_reg <= 1;
+        elsif cir_src_fmt = CIR_SRC_WORD then
+          bl_imm_n_reg <= 2;
+        end if;
+      end if;
+    end if;
+  end process;
+
+  bl_item <= bl_bytes(23 downto 16) & bl_bytes(15 downto 8) & bl_bytes(7 downto 0) & bl_lane_byte
+               when bl_n = 4 else
+             x"0000" & bl_bytes(23 downto 16) & bl_lane_byte
+               when bl_n = 2 else
+             x"000000" & bl_lane_byte;
+
+  d_in_i <= bl_item when bl_active = '1' else d_in;
+  addr   <= unsigned(a_in(4 downto 1) & '0') when (bl_active = '1' and bl_fold = '1')
+            else unsigned(a_in);
+  bus_write <= bus_write_pin when (bl_active = '0' or bl_last = '1') else '0';
+  bus_read  <= bus_read_pin  when (bl_active = '0' or bl_last = '1') else '0';
+
+  -- Read byte: slice byte k out of the low-aligned n-byte item and drive it
+  -- on every lane (the board ties D31/D23/D15/D7 etc. together for an 8-bit
+  -- port, so the byte is visible whichever lane the host samples).
+  bl_read_byte : process(bl_n, bl_k, d_out_core)
+
+    variable lsb      : natural range 0 to 24;
+    variable b        : std_logic_vector(7 downto 0);
+  begin
+    lsb := 8 * (bl_n - 1 - bl_k);
+    b := d_out_core(lsb + 7 downto lsb);
+    bl_rbyte <= b;
+  end process;
+  d_out <= bl_rbyte & bl_rbyte & bl_rbyte & bl_rbyte when (bl_active = '1' and rw = '1')
+           else d_out_core;
   -- START = CS + AS + (R/W · DS) (active low signals except R/W).
   start_access <= '1' when (cs_n = '0' and as_n = '0' and ((rw = '1' and ds_n = '0') or rw = '0')) else '0';
 
@@ -1820,14 +2002,14 @@ begin
   -- CIR is active when the mode register is set OR the FSM is running.
   cir_active <= '1' when (cir_mode_reg = '1' or cir_state_reg /= CIR_IDLE) else '0';
 
-  sync_read <= '1' when (bus_read = '1' and
+  sync_read <= '1' when (bus_read_pin = '1' and
                          (access_class = ACCESS_CIR or cir_state_reg = CIR_SAVE_FRAME or
                           (addr = CIR_ADDR_OPERAND and
                            (cir_state_reg = CIR_XFER_DST or cir_state_reg = CIR_XFER_DST_WAIT)))) else '0';
   -- FPCR mode control: bits 7-6 precision, 5-4 rounding mode.
   round_mode <= decode_round_mode(fpcr_reg(5 downto 4));
   round_prec <= decode_round_prec(fpcr_reg(7 downto 6));
-  op_sel_write_decoded <= decode_op_sel_word(d_in);
+  op_sel_write_decoded <= decode_op_sel_word(d_in_i);
   op_class_write_decoded <= op_class(op_sel_write_decoded);
   conditional_prog_op_write <= '1' when is_conditional_prog_op(op_sel_write_decoded) else '0';
   -- CIR: combinational decode of command word opcode bits [6:0] to fpu_op_t.
@@ -1980,68 +2162,68 @@ begin
           -- when CIR active.  (7,8 also overlap but are read-only in peripheral mode.)
           when ADDR_OPA_L =>
             if cir_active = '0' then
-              operand_reg(0)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in;
+              operand_reg(0)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in_i;
             end if;
           when ADDR_OPA_H =>
-            operand_reg(0)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in;
+            operand_reg(0)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in_i;
           when ADDR_OPA_E =>
-            operand_reg(0)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH) <= d_in(FP80_RESULT_EX_WIDTH-1 downto 0);
-            operand_hi16_reg(0) <= d_in(31 downto 16);
+            operand_reg(0)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH) <= d_in_i(FP80_RESULT_EX_WIDTH-1 downto 0);
+            operand_hi16_reg(0) <= d_in_i(31 downto 16);
           when ADDR_OPB_L =>
             if cir_active = '0' then
-              operand_reg(1)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in;
+              operand_reg(1)(FP80_RESULT_LO_WIDTH-1 downto 0) <= d_in_i;
             end if;
           when ADDR_OPB_H =>
             if cir_active = '0' then
-              operand_reg(1)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in;
+              operand_reg(1)(FP80_RESULT_LO_WIDTH+FP80_RESULT_HI_WIDTH-1 downto FP80_RESULT_LO_WIDTH) <= d_in_i;
             end if;
           when ADDR_OPB_E =>
-            operand_reg(1)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH) <= d_in(FP80_RESULT_EX_WIDTH-1 downto 0);
-            operand_hi16_reg(1) <= d_in(31 downto 16);
+            operand_reg(1)(FP_WIDTH-1 downto FP_WIDTH-FP80_RESULT_EX_WIDTH) <= d_in_i(FP80_RESULT_EX_WIDTH-1 downto 0);
+            operand_hi16_reg(1) <= d_in_i(31 downto 16);
           when ADDR_FPCR =>
-            fpcr_reg(15 downto 0) <= d_in(15 downto 0);
+            fpcr_reg(15 downto 0) <= d_in_i(15 downto 0);
             fpcr_reg(31 downto 16) <= (others => '0');
           when ADDR_FPSR =>
             if cir_active = '0' then
-              fpsr_reg <= d_in;
+              fpsr_reg <= d_in_i;
             end if;
           when ADDR_FPIAR =>
-            fpiar_reg <= d_in;
+            fpiar_reg <= d_in_i;
           when ADDR_CIR_SAVE =>
-            fpiar_reg <= d_in;
+            fpiar_reg <= d_in_i;
           when ADDR_CIR_RESTORE =>
             -- Capture format word for FRESTORE dialog.
-            cir_restore_fw_reg <= d_in(15 downto 0);
+            cir_restore_fw_reg <= d_in_i(15 downto 0);
             cir_restore_trigger <= '1';
           when ADDR_MOVE_CFG =>
-            move_cfg_reg <= d_in;
-            move_cfg_decoded_reg <= decode_move_cfg(d_in);
+            move_cfg_reg <= d_in_i;
+            move_cfg_decoded_reg <= decode_move_cfg(d_in_i);
           when ADDR_CYCLE_CFG0 =>
-            src_kind_reg <= decode_src_kind(d_in(2 downto 0));
-            ea_mode_reg <= decode_ea_mode(d_in(7 downto 3));
+            src_kind_reg <= decode_src_kind(d_in_i(2 downto 0));
+            ea_mode_reg <= decode_ea_mode(d_in_i(7 downto 3));
           when ADDR_CYCLE_CFG1 =>
-            cycle_case_reg <= decode_cycle_case(d_in(1 downto 0));
-            mc68020_src_reg <= d_in(2);
-            mc68020_dst_reg <= d_in(3);
-            packed_dynamic_k_reg <= d_in(4);
+            cycle_case_reg <= decode_cycle_case(d_in_i(1 downto 0));
+            mc68020_src_reg <= d_in_i(2);
+            mc68020_dst_reg <= d_in_i(3);
+            packed_dynamic_k_reg <= d_in_i(4);
           when ADDR_FRAME_CMD =>
-            if d_in(0) = '1' then
+            if d_in_i(0) = '1' then
               frame_start_save_reg <= '1';
             end if;
-            if d_in(1) = '1' then
+            if d_in_i(1) = '1' then
               frame_start_restore_reg <= '1';
             end if;
           when ADDR_FRAME_W0 =>
-            frame_mem_reg(0) <= d_in;
+            frame_mem_reg(0) <= d_in_i;
             frame_valid_reg <= '1';
           when ADDR_FRAME_W1 =>
-            frame_mem_reg(1) <= d_in;
+            frame_mem_reg(1) <= d_in_i;
             frame_valid_reg <= '1';
           when ADDR_FRAME_W2 =>
-            frame_mem_reg(2) <= d_in;
+            frame_mem_reg(2) <= d_in_i;
             frame_valid_reg <= '1';
           when ADDR_FRAME_W3 =>
-            frame_mem_reg(3) <= d_in;
+            frame_mem_reg(3) <= d_in_i;
             frame_valid_reg <= '1';
           when others =>
             null;
@@ -3251,7 +3433,7 @@ begin
   -- Read-data mux for memory-mapped register space.
   process(
     addr,
-    bus_read,
+    bus_read_pin,
     result_lo_reg,
     result_hi_reg,
     result_ex_reg,
@@ -3308,7 +3490,7 @@ begin
     cfg1(4) := packed_dynamic_k_reg;
 
     d_out_comb <= (others => '0');
-    if bus_read = '1' then
+    if bus_read_pin = '1' then
       case addr is
         when ADDR_RES_L => d_out_comb <= result_lo_reg;
         when ADDR_RES_H =>
@@ -3534,8 +3716,15 @@ begin
               size_code := "00";
             end if;
             latched_size <= size_code;
-            latched_a4   <= a_in(4);
-            if bus_read = '1' then
+            -- A4 selects the 16/32-bit DSACK encoding (Table 9-3).  In CIR
+            -- mode the register code is A4..A1, so real A4 is a_in(3); the
+            -- legacy-only codes 16..23 keep their historical a_in(4) meaning.
+            if cir_mode_reg = '1' then
+              latched_a4 <= a_in(3) or a_in(4);
+            else
+              latched_a4 <= a_in(4);
+            end if;
+            if bus_read_pin = '1' then
               assert_cycles := DSACK_ASSERT_CYCLES_READ;
             else
               assert_cycles := DSACK_ASSERT_CYCLES_WRITE;
@@ -3639,7 +3828,7 @@ begin
       -- CIR mode: controlled only by explicit writes to ADDR_CIR_RESPONSE.
       -- No auto-clear: CIR mode persists across dialogs (matches real 68881).
       if bus_write = '1' and addr = ADDR_CIR_RESPONSE then
-        cir_mode_reg <= d_in(0);
+        cir_mode_reg <= d_in_i(0);
       end if;
 
       -- Clear written flags when FSM consumes them (BEFORE bus_write handling
@@ -3702,8 +3891,8 @@ begin
           when CIR_ADDR_OPWORD =>
             -- Gate on cir_mode_reg: addr 4 overlaps ADDR_OPB_L in peripheral mode.
             if cir_mode_reg = '1' then
-              cir_opword_reg <= d_in(15 downto 0);
-              cir_instr_type <= d_in(8 downto 6);
+              cir_opword_reg <= d_in_i(15 downto 0);
+              cir_instr_type <= d_in_i(8 downto 6);
               cir_opword_written <= '1';
               -- 68882: latch opword arrival during CIR_EXECUTE for pending pipeline.
               if fpu_version_g = FPU_68882 and cir_state_reg = CIR_EXECUTE then
@@ -3714,12 +3903,12 @@ begin
           when CIR_ADDR_COMMAND =>
             -- Gate on cir_mode_reg: addr 5 overlaps ADDR_OPB_H in peripheral mode.
             if cir_mode_reg = '1' then
-              cir_command_reg <= d_in(15 downto 0);
-              cir_src_fmt <= d_in(12 downto 10);
-              cir_dst_reg_idx <= to_integer(unsigned(d_in(9 downto 7)));
-              cir_src_reg_idx <= to_integer(unsigned(d_in(12 downto 10)));
-              cir_reg_to_reg <= not d_in(14);  -- MC68881: R/M=0=register, R/M=1=EA/memory
-              cir_direction <= d_in(13);
+              cir_command_reg <= d_in_i(15 downto 0);
+              cir_src_fmt <= d_in_i(12 downto 10);
+              cir_dst_reg_idx <= to_integer(unsigned(d_in_i(9 downto 7)));
+              cir_src_reg_idx <= to_integer(unsigned(d_in_i(12 downto 10)));
+              cir_reg_to_reg <= not d_in_i(14);  -- MC68881: R/M=0=register, R/M=1=EA/memory
+              cir_direction <= d_in_i(13);
               cir_command_written <= '1';
               -- 68882: latch command arrival during CIR_EXECUTE for pending pipeline.
               if fpu_version_g = FPU_68882 and cir_state_reg = CIR_EXECUTE then
@@ -3730,7 +3919,7 @@ begin
           when CIR_ADDR_CONDITION =>
             -- Gate on cir_mode_reg: addr 7 overlaps ADDR_RES_L in peripheral mode.
             if cir_mode_reg = '1' then
-              cir_condition_reg <= d_in(5 downto 0);
+              cir_condition_reg <= d_in_i(5 downto 0);
               cir_condition_written <= '1';
             end if;
 
@@ -3740,9 +3929,9 @@ begin
             -- to prevent multi-pulse from a sustained bus strobe.
             if cir_state_reg = CIR_XFER_SRC and cir_operand_write_prev = '0' then
               case cir_xfer_word_idx is
-                when 0 => cir_operand_staging(31 downto 0) <= d_in;
-                when 1 => cir_operand_staging(63 downto 32) <= d_in;
-                when 2 => cir_operand_staging(95 downto 64) <= d_in;
+                when 0 => cir_operand_staging(31 downto 0) <= d_in_i;
+                when 1 => cir_operand_staging(63 downto 32) <= d_in_i;
+                when 2 => cir_operand_staging(95 downto 64) <= d_in_i;
                 when others => null;
               end case;
               cir_operand_word_arrived <= '1';
@@ -3754,21 +3943,21 @@ begin
             -- Store frame data word during FRESTORE frame transfer.
             if cir_state_reg = CIR_RESTORE_FRAME and cir_operand_write_prev = '0' then
               if cir_restore_word_idx < CIR_FRAME_BUSY_HDR then
-                cir_frame_data_reg(cir_restore_word_idx) <= d_in;
+                cir_frame_data_reg(cir_restore_word_idx) <= d_in_i;
               end if;
               -- Capture incoming word for sub-unit restore routing.
-              cir_restore_word_data <= d_in;
+              cir_restore_word_data <= d_in_i;
               cir_operand_word_arrived <= '1';
             end if;
 
           when CIR_ADDR_INSTADDR =>
             -- Capture CPU's instruction PC for FPIAR.
-            cir_instaddr_reg <= d_in;
+            cir_instaddr_reg <= d_in_i;
 
           when CIR_ADDR_CONTROL =>
             -- Gate on cir_mode_reg: addr 1 overlaps ADDR_OPA_L in peripheral mode.
             if cir_mode_reg = '1' then
-              cir_control_ack <= d_in(0);
+              cir_control_ack <= d_in_i(0);
               cir_abort_req <= '1';
             end if;
 
@@ -4222,28 +4411,28 @@ begin
                and cir_restore_word_idx >= 6 and cir_restore_word_idx <= 13 then
               case cir_restore_word_idx - 6 is
                 when 0 =>
-                  pending_valid_reg <= d_in(31);
-                  pending_opword_reg <= d_in(15 downto 0);
+                  pending_valid_reg <= d_in_i(31);
+                  pending_opword_reg <= d_in_i(15 downto 0);
                 when 1 =>
-                  pending_command_reg <= d_in(31 downto 16);
-                  pending_src_fmt_reg <= d_in(7 downto 5);
-                  pending_instr_type <= d_in(4 downto 2);
-                  pending_direction <= d_in(1);
-                  pending_reg_to_reg <= d_in(0);
+                  pending_command_reg <= d_in_i(31 downto 16);
+                  pending_src_fmt_reg <= d_in_i(7 downto 5);
+                  pending_instr_type <= d_in_i(4 downto 2);
+                  pending_direction <= d_in_i(1);
+                  pending_reg_to_reg <= d_in_i(0);
                 when 2 =>
-                  pending_operand_staging(31 downto 0) <= d_in;
+                  pending_operand_staging(31 downto 0) <= d_in_i;
                 when 3 =>
-                  pending_operand_staging(63 downto 32) <= d_in;
+                  pending_operand_staging(63 downto 32) <= d_in_i;
                 when 4 =>
-                  pending_operand_staging(95 downto 64) <= d_in;
+                  pending_operand_staging(95 downto 64) <= d_in_i;
                 when 5 =>
-                  pending_instaddr_reg <= d_in;
+                  pending_instaddr_reg <= d_in_i;
                 when 6 =>
-                  pending_dst_reg_idx_reg <= to_integer(unsigned(d_in(31 downto 28)));
-                  pending_src_reg_idx_reg <= to_integer(unsigned(d_in(27 downto 24)));
-                  pending_decoded_op <= fpu_op_t'val(to_integer(unsigned(d_in(23 downto 16))));
-                  pending_xfer_word_count <= to_integer(unsigned(d_in(15 downto 12)));
-                  pending_xfer_word_idx <= to_integer(unsigned(d_in(11 downto 8)));
+                  pending_dst_reg_idx_reg <= to_integer(unsigned(d_in_i(31 downto 28)));
+                  pending_src_reg_idx_reg <= to_integer(unsigned(d_in_i(27 downto 24)));
+                  pending_decoded_op <= fpu_op_t'val(to_integer(unsigned(d_in_i(23 downto 16))));
+                  pending_xfer_word_count <= to_integer(unsigned(d_in_i(15 downto 12)));
+                  pending_xfer_word_idx <= to_integer(unsigned(d_in_i(11 downto 8)));
                 when others =>
                   null;  -- Word 13 (7): reserved
               end case;
@@ -4251,28 +4440,28 @@ begin
                   and cir_restore_word_idx >= 45 and cir_restore_word_idx <= 52 then
               case cir_restore_word_idx - 45 is
                 when 0 =>
-                  pending_valid_reg <= d_in(31);
-                  pending_opword_reg <= d_in(15 downto 0);
+                  pending_valid_reg <= d_in_i(31);
+                  pending_opword_reg <= d_in_i(15 downto 0);
                 when 1 =>
-                  pending_command_reg <= d_in(31 downto 16);
-                  pending_src_fmt_reg <= d_in(7 downto 5);
-                  pending_instr_type <= d_in(4 downto 2);
-                  pending_direction <= d_in(1);
-                  pending_reg_to_reg <= d_in(0);
+                  pending_command_reg <= d_in_i(31 downto 16);
+                  pending_src_fmt_reg <= d_in_i(7 downto 5);
+                  pending_instr_type <= d_in_i(4 downto 2);
+                  pending_direction <= d_in_i(1);
+                  pending_reg_to_reg <= d_in_i(0);
                 when 2 =>
-                  pending_operand_staging(31 downto 0) <= d_in;
+                  pending_operand_staging(31 downto 0) <= d_in_i;
                 when 3 =>
-                  pending_operand_staging(63 downto 32) <= d_in;
+                  pending_operand_staging(63 downto 32) <= d_in_i;
                 when 4 =>
-                  pending_operand_staging(95 downto 64) <= d_in;
+                  pending_operand_staging(95 downto 64) <= d_in_i;
                 when 5 =>
-                  pending_instaddr_reg <= d_in;
+                  pending_instaddr_reg <= d_in_i;
                 when 6 =>
-                  pending_dst_reg_idx_reg <= to_integer(unsigned(d_in(31 downto 28)));
-                  pending_src_reg_idx_reg <= to_integer(unsigned(d_in(27 downto 24)));
-                  pending_decoded_op <= fpu_op_t'val(to_integer(unsigned(d_in(23 downto 16))));
-                  pending_xfer_word_count <= to_integer(unsigned(d_in(15 downto 12)));
-                  pending_xfer_word_idx <= to_integer(unsigned(d_in(11 downto 8)));
+                  pending_dst_reg_idx_reg <= to_integer(unsigned(d_in_i(31 downto 28)));
+                  pending_src_reg_idx_reg <= to_integer(unsigned(d_in_i(27 downto 24)));
+                  pending_decoded_op <= fpu_op_t'val(to_integer(unsigned(d_in_i(23 downto 16))));
+                  pending_xfer_word_count <= to_integer(unsigned(d_in_i(15 downto 12)));
+                  pending_xfer_word_idx <= to_integer(unsigned(d_in_i(11 downto 8)));
                 when others =>
                   null;  -- Word 52 (7): reserved
               end case;
@@ -4314,9 +4503,9 @@ begin
             cir_state_reg <= CIR_EXECUTE_DONE;
           elsif cir_operand_word_arrived = '1' then
             case pending_xfer_word_idx is
-              when 0 => pending_operand_staging(31 downto 0) <= d_in;
-              when 1 => pending_operand_staging(63 downto 32) <= d_in;
-              when 2 => pending_operand_staging(95 downto 64) <= d_in;
+              when 0 => pending_operand_staging(31 downto 0) <= d_in_i;
+              when 1 => pending_operand_staging(63 downto 32) <= d_in_i;
+              when 2 => pending_operand_staging(95 downto 64) <= d_in_i;
               when others => null;
             end case;
             if pending_xfer_word_idx + 1 >= pending_xfer_word_count then
@@ -4417,7 +4606,7 @@ begin
   -- CIR reads use a registered data path; other reads are combinational.
   -- sync_read_latched holds the registered path active through the full bus
   -- access even if the FSM state changes mid-cycle (e.g. CIR_XFER_DST → IDLE).
-  d_out <= d_out_reg when (sync_read = '1' or sync_read_latched = '1') else d_out_comb;
+  d_out_core <= d_out_reg when (sync_read = '1' or sync_read_latched = '1') else d_out_comb;
   dsack0_n <= dsack0_i;
   dsack1_n <= dsack1_i;
   -- SENSE is a presence-detect strap grounded on-die on real MC6888x parts

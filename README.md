@@ -253,6 +253,10 @@ the converted code.** The VHDL sources remain the authoritative implementation.
 ## Block design integration (Xilinx Vivado)
 
 The AXI-Lite wrapper can be added to a Vivado block design as a custom RTL module.
+Registers sit at a word stride: register code n is at byte offset n*4.  Setting
+`datasheet_cir_map_g => true` makes CIR mode decode the MC68881UM Table 9-1 CIR
+codes (Response $00, Command $14, Operand $20, and so on; see the wrapper header).
+The default keeps the legacy map.
 Both XDC constraint files must be included with the IP:
 
 - `mc68881_wrapper.xdc` — CDC false paths for the toggle-handshake bridge

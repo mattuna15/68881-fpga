@@ -154,6 +154,13 @@ architecture rtl of mc68881_top is
   signal d_out_core   : std_logic_vector(31 downto 0);   -- core read data before lane steering
   signal bl_rbyte     : std_logic_vector(7 downto 0);    -- read byte driven on all lanes
   signal bl_imm_n_reg : natural range 1 to 4 := 4;       -- registered Operand CIR item width
+  -- Datasheet data placement (datasheet_cir_map_g; 16/32-bit ports too).
+  signal bl_w         : natural range 1 to 4;            -- port width in bytes
+  signal bl_c         : natural range 1 to 4;            -- bytes moved by this beat
+  signal bl_lo16      : std_logic;                       -- 16-bit port: item on D15-D0
+  signal bl_rsel32    : std_logic;                       -- 32-bit port Register Select read
+  signal bl_chunk     : std_logic_vector(31 downto 0);   -- this beat's bytes, right-aligned
+  signal bl_rdrive    : std_logic_vector(31 downto 0);   -- steered read data
 
   -- Memory-mapped register offsets used by host-side command/data protocol.
   constant ADDR_OPSEL  : unsigned(4 downto 0) := "00000";  -- 0
@@ -1854,13 +1861,24 @@ begin
   -- Items are low-aligned in the core's d_in_i/d_out_core (16-bit CIRs in
   -- bits 15:0, immediates in bits 7:0 / 15:0), exactly as for 32-bit hosts.
   --
-  -- Active only for the datasheet CIR codes (a_in 0..15 plus Restore) while
-  -- cir_mode_reg = '1'.  Peripheral-mode (cir_mode_reg = '0') registers and
-  -- the legacy-only codes 16..27/29..31 keep the repeat-the-whole-word-per-
-  -- beat behaviour.  Known limitation (until the register map is remapped to
-  -- the datasheet offsets): Response/Save live at codes 13/12, which alias the
-  -- upper half of Instruction Address, so 8-bit host writes of Instruction
-  -- Address are not supported; Operand Address (14/15) is.
+  -- Legacy map (datasheet_cir_map_g false): active on 8-bit ports only, for
+  -- the CIR codes (a_in 0..15 plus Restore) while cir_mode_reg = '1'.
+  -- Peripheral-mode registers and the legacy-only codes 16..27/29..31 keep the
+  -- repeat-the-whole-word-per-beat behaviour.  Response/Save live at codes
+  -- 13/12 there, which alias the upper half of Instruction Address, so 8-bit
+  -- host writes of Instruction Address are not supported in that map.
+  --
+  -- Datasheet map (datasheet_cir_map_g true): active for every port width in
+  -- CIR mode, decoding the Table 9-1 geometry on A4..A1, and placing data per
+  -- MC68881UM 10.1.1-10.1.3.  Each beat moves a chunk of bl_c bytes:
+  --   * 32-bit port: the whole item in one beat, left-aligned (16-bit CIRs and
+  --     word immediates on D31-D16, byte immediates on D31-D24); a Register
+  --     Select read drives D15-D0 high.
+  --   * 16-bit port: 16-bit units on D15-D0 when A4=1 and A1=1, else D31-D16;
+  --     a 32-bit item takes two beats, A1=0 (bits 31-16) then A1=1 (15-0),
+  --     so the odd codes 9/13/15 fold onto their 32-bit CIR.
+  --   * 8-bit port: Figure 10-2 byte lanes, as for the legacy map.
+  -- Read chunks are replicated across the bus.
   -- ---------------------------------------------------------------------
   bl_geometry : process(a_in, a0_in, size_n, rw, cir_mode_reg, cir_mode_dec, bl_imm_n_reg)
     variable code : integer range 0 to 31;
@@ -1868,10 +1886,19 @@ begin
     variable fold : std_logic;
     variable act  : std_logic;
     variable k    : natural range 0 to 3;
+    variable w    : natural range 1 to 4;
+    variable c    : natural range 1 to 4;
   begin
     n    := 2;
     fold := '0';
     act  := '1';
+    if size_n = '0' then
+      w := 1;
+    elsif a0_in = '0' then
+      w := 2;
+    else
+      w := 4;
+    end if;
     if datasheet_cir_map_g then
       -- Table 9-1 geometry on A4..A1 only (a_in(4) is not a CIR address bit).
       code := to_integer(unsigned(a_in(3 downto 0)));
@@ -1913,18 +1940,37 @@ begin
       n := bl_imm_n_reg;
     end if;
 
-    -- Byte index within the item (Figure 10-2: lane k carries D31-24 for
-    -- k=0 down to D7-0 for k=3).
-    k := 0;
-    if n = 4 then
-      if a_in(0) = '1' then k := 2; end if;
-      if a0_in = '1' then k := k + 1; end if;
-    elsif n = 2 then
-      if a0_in = '1' then k := 1; end if;
+    -- Bytes per beat: one on an 8-bit port (the only width the legacy map
+    -- adapts); in the datasheet map up to the port width.
+    c := 1;
+    if datasheet_cir_map_g and w > 1 then
+      if n < w then c := n; else c := w; end if;
+      -- 32-bit port: a 32-bit CIR is one beat at its even code; the odd
+      -- codes 9/13/15 stay undecoded there.
+      if w = 4 then fold := '0'; end if;
     end if;
 
-    if size_n = '0' and ((datasheet_cir_map_g and cir_mode_dec = '1') or
-                         (not datasheet_cir_map_g and cir_mode_reg = '1')) then
+    -- Index of the beat's first byte within the item (Figure 10-2: lane k
+    -- carries D31-24 for k=0 down to D7-0 for k=3).
+    k := 0;
+    if c = 1 then
+      if n = 4 then
+        if a_in(0) = '1' then k := 2; end if;
+        if a0_in = '1' then k := k + 1; end if;
+      elsif n = 2 then
+        if a0_in = '1' then k := 1; end if;
+      end if;
+    elsif c = 2 and n = 4 then
+      if a_in(0) = '1' then k := 2; end if;  -- 16-bit port: A1 selects the half
+    end if;
+
+    if datasheet_cir_map_g then
+      if cir_mode_dec = '1' then
+        bl_active <= act;
+      else
+        bl_active <= '0';
+      end if;
+    elsif size_n = '0' and cir_mode_reg = '1' then
       bl_active <= act;
     else
       bl_active <= '0';
@@ -1932,7 +1978,19 @@ begin
     bl_n    <= n;
     bl_fold <= fold;
     bl_k    <= k;
-    if k = n - 1 then
+    bl_w    <= w;
+    bl_c    <= c;
+    if w = 2 and a_in(3) = '1' and a_in(0) = '1' then
+      bl_lo16 <= '1';
+    else
+      bl_lo16 <= '0';
+    end if;
+    if w = 4 and code = 10 then
+      bl_rsel32 <= '1';
+    else
+      bl_rsel32 <= '0';
+    end if;
+    if k + c = n then
       bl_last <= '1';
     else
       bl_last <= '0';
@@ -1951,12 +2009,16 @@ begin
   begin
     if rising_edge(clk) then
       if bl_active = '1' and bus_write_pin = '1' then
-        case bl_k is
-          when 0 => bl_bytes(23 downto 16) <= bl_lane_byte;
-          when 1 => bl_bytes(15 downto 8)  <= bl_lane_byte;
-          when 2 => bl_bytes(7 downto 0)   <= bl_lane_byte;
-          when others => null;
-        end case;
+        if bl_c = 1 then
+          case bl_k is
+            when 0 => bl_bytes(23 downto 16) <= bl_lane_byte;
+            when 1 => bl_bytes(15 downto 8)  <= bl_lane_byte;
+            when 2 => bl_bytes(7 downto 0)   <= bl_lane_byte;
+            when others => null;
+          end case;
+        elsif bl_c = 2 and bl_k = 0 then
+          bl_bytes(23 downto 8) <= bl_chunk(15 downto 0);   -- 16-bit port, high half
+        end if;
       end if;
     end if;
   end process;
@@ -1967,28 +2029,59 @@ begin
   -- = "01"); control-register moves reuse those bits as a register select.
   -- The dialog enters a transfer state at least a clock before the host can
   -- access the Operand CIR, so the one-clock register delay is not visible.
+  -- The width is frozen while a bus access is open: the dialog leaves the
+  -- transfer state about two clocks after DSACK, and a host still holding
+  -- the read must keep seeing the same lanes.
   bl_imm_proc : process(clk)
   begin
     if rising_edge(clk) then
-      bl_imm_n_reg <= 4;
-      if cir_command_reg(15 downto 14) = "01" and
-         (cir_state_reg = CIR_XFER_SRC or cir_state_reg = CIR_XFER_SRC_WAIT or
-          cir_state_reg = CIR_XFER_SRC_WAIT2 or cir_state_reg = CIR_XFER_DST or
-          cir_state_reg = CIR_XFER_DST_WAIT) then
-        if cir_src_fmt = CIR_SRC_BYTE then
-          bl_imm_n_reg <= 1;
-        elsif cir_src_fmt = CIR_SRC_WORD then
-          bl_imm_n_reg <= 2;
+      if start_access = '0' then
+        bl_imm_n_reg <= 4;
+        if cir_command_reg(15 downto 14) = "01" and
+           (cir_state_reg = CIR_XFER_SRC or cir_state_reg = CIR_XFER_SRC_WAIT or
+            cir_state_reg = CIR_XFER_SRC_WAIT2 or cir_state_reg = CIR_XFER_DST or
+            cir_state_reg = CIR_XFER_DST_WAIT) then
+          if cir_src_fmt = CIR_SRC_BYTE then
+            bl_imm_n_reg <= 1;
+          elsif cir_src_fmt = CIR_SRC_WORD then
+            bl_imm_n_reg <= 2;
+          end if;
         end if;
       end if;
     end if;
   end process;
 
+  -- This beat's bytes, right-aligned, taken from the lanes of section 10.1.
+  bl_chunk_proc : process(bl_w, bl_c, bl_lo16, bl_lane_byte, d_in)
+    variable h : std_logic_vector(15 downto 0);
+  begin
+    if bl_w = 1 then
+      bl_chunk <= x"000000" & bl_lane_byte;
+    elsif bl_w = 2 then
+      if bl_lo16 = '1' then h := d_in(15 downto 0); else h := d_in(31 downto 16); end if;
+      if bl_c = 1 then
+        bl_chunk <= x"000000" & h(15 downto 8);
+      else
+        bl_chunk <= x"0000" & h;
+      end if;
+    else
+      if bl_c = 1 then
+        bl_chunk <= x"000000" & d_in(31 downto 24);
+      elsif bl_c = 2 then
+        bl_chunk <= x"0000" & d_in(31 downto 16);
+      else
+        bl_chunk <= d_in;
+      end if;
+    end if;
+  end process;
+
   bl_item <= bl_bytes(23 downto 16) & bl_bytes(15 downto 8) & bl_bytes(7 downto 0) & bl_lane_byte
-               when bl_n = 4 else
+               when (bl_n = 4 and bl_c = 1) else
+             bl_bytes(23 downto 8) & bl_chunk(15 downto 0)
+               when (bl_n = 4 and bl_c = 2 and bl_k = 2) else
              x"0000" & bl_bytes(23 downto 16) & bl_lane_byte
-               when bl_n = 2 else
-             x"000000" & bl_lane_byte;
+               when (bl_n = 2 and bl_c = 1) else
+             bl_chunk;
 
   d_in_i <= bl_item when bl_active = '1' else d_in;
   addr_pin <= unsigned(a_in(4 downto 1) & '0') when (bl_active = '1' and bl_fold = '1')
@@ -2049,16 +2142,35 @@ begin
   -- Read byte: slice byte k out of the low-aligned n-byte item and drive it
   -- on every lane (the board ties D31/D23/D15/D7 etc. together for an 8-bit
   -- port, so the byte is visible whichever lane the host samples).
-  bl_read_byte : process(bl_n, bl_k, d_out_core)
+  bl_read_byte : process(bl_n, bl_k, bl_c, bl_rsel32, d_out_core)
 
     variable lsb      : natural range 0 to 24;
     variable b        : std_logic_vector(7 downto 0);
+    variable h        : std_logic_vector(15 downto 0);
   begin
     lsb := 8 * (bl_n - 1 - bl_k);
     b := d_out_core(lsb + 7 downto lsb);
     bl_rbyte <= b;
+    -- Datasheet map, 16/32-bit ports: the beat's 16-bit unit (bytes k, k+1)
+    -- on both halves, or the whole item.
+    if bl_k = 0 and bl_n = 4 then
+      h := d_out_core(31 downto 16);
+    else
+      h := d_out_core(15 downto 0);
+    end if;
+    if bl_c = 1 then
+      bl_rdrive <= b & b & b & b;
+    elsif bl_c = 2 then
+      if bl_rsel32 = '1' then
+        bl_rdrive <= h & x"FFFF";           -- UM 10.1.1: D15-D0 driven high
+      else
+        bl_rdrive <= h & h;
+      end if;
+    else
+      bl_rdrive <= d_out_core;
+    end if;
   end process;
-  d_out <= bl_rbyte & bl_rbyte & bl_rbyte & bl_rbyte when (bl_active = '1' and rw = '1')
+  d_out <= bl_rdrive when (bl_active = '1' and rw = '1')
            else d_out_core;
   -- START = CS + AS + (R/W · DS) (active low signals except R/W).
   start_access <= '1' when (cs_n = '0' and as_n = '0' and ((rw = '1' and ds_n = '0') or rw = '0')) else '0';
@@ -2349,9 +2461,15 @@ begin
                 cir_source_val := fp80_from_single(
                   cir_operand_staging(31 downto 0));
               when CIR_SRC_EXTENDED =>
-                cir_source_val := cir_operand_staging(15 downto 0) &
-                                  cir_operand_staging(63 downto 32) &
-                                  cir_operand_staging(95 downto 64);
+                if datasheet_cir_map_g then
+                  cir_source_val := cir_operand_staging(31 downto 16) &
+                                    cir_operand_staging(63 downto 32) &
+                                    cir_operand_staging(95 downto 64);
+                else
+                  cir_source_val := cir_operand_staging(15 downto 0) &
+                                    cir_operand_staging(63 downto 32) &
+                                    cir_operand_staging(95 downto 64);
+                end if;
               when CIR_SRC_WORD =>
                 cir_source_val := fp80_from_int(
                   signed16_to_integer(cir_operand_staging(15 downto 0)));
@@ -2398,9 +2516,15 @@ begin
               cir_source_val := fp80_from_single(
                 pending_operand_staging(31 downto 0));
             when CIR_SRC_EXTENDED =>
-              cir_source_val := pending_operand_staging(15 downto 0) &
-                                pending_operand_staging(63 downto 32) &
-                                pending_operand_staging(95 downto 64);
+              if datasheet_cir_map_g then
+                cir_source_val := pending_operand_staging(31 downto 16) &
+                                  pending_operand_staging(63 downto 32) &
+                                  pending_operand_staging(95 downto 64);
+              else
+                cir_source_val := pending_operand_staging(15 downto 0) &
+                                  pending_operand_staging(63 downto 32) &
+                                  pending_operand_staging(95 downto 64);
+              end if;
             when CIR_SRC_WORD =>
               cir_source_val := fp80_from_int(
                 signed16_to_integer(pending_operand_staging(15 downto 0)));
@@ -4144,9 +4268,16 @@ begin
             -- Double: word 0 = upper 32, word 1 = lower 32
             cir_operand_staging(63 downto 0) <= conv_double_out;
           when CIR_SRC_EXTENDED =>
-            -- Extended: word 0[15:0]=sign+exp, word 1=mant_hi, word 2=mant_lo
-            cir_operand_staging(15 downto 0) <=
-              fp_reg_file_reg(cir_dst_reg_idx)(79 downto 64);
+            -- Extended: word 0 = sign+exp (bits 31-16 in the datasheet map,
+            -- low half zero; bits 15-0 in the legacy map), word 1 = mant_hi,
+            -- word 2 = mant_lo.
+            if datasheet_cir_map_g then
+              cir_operand_staging(31 downto 0) <=
+                fp_reg_file_reg(cir_dst_reg_idx)(79 downto 64) & x"0000";
+            else
+              cir_operand_staging(15 downto 0) <=
+                fp_reg_file_reg(cir_dst_reg_idx)(79 downto 64);
+            end if;
             cir_operand_staging(63 downto 32) <=
               fp_reg_file_reg(cir_dst_reg_idx)(63 downto 32);
             cir_operand_staging(95 downto 64) <=
@@ -4693,7 +4824,18 @@ begin
 
   -- Combinational response primitive generation from FSM state.
   cir_response_gen : process(all)
+    variable xfer_len : natural range 0 to 255;
   begin
+    -- Evaluate-and-transfer length in bytes.  The legacy map always counts
+    -- 32-bit words; the datasheet map gives byte/word operands their size.
+    xfer_len := cir_xfer_word_count * 4;
+    if datasheet_cir_map_g and cir_command_reg(15 downto 14) = "01" then
+      if cir_src_fmt = CIR_SRC_BYTE then
+        xfer_len := 1;
+      elsif cir_src_fmt = CIR_SRC_WORD then
+        xfer_len := 2;
+      end if;
+    end if;
     case cir_state_reg is
       when CIR_IDLE =>
         cir_response_prim <= CIR_PRIM_NULL;
@@ -4710,7 +4852,7 @@ begin
       when CIR_XFER_SRC =>
         -- AN-947: Evaluate EA + Transfer Data, CPU→FPU (CA=1, DR=0, len=bytes)
         cir_response_prim <= "1001" & "0110" &
-          std_logic_vector(to_unsigned(cir_xfer_word_count * 4, 8));
+          std_logic_vector(to_unsigned(xfer_len, 8));
       when CIR_XFER_SRC_WAIT =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_XFER_SRC_WAIT2 =>
@@ -4718,7 +4860,7 @@ begin
       when CIR_XFER_DST =>
         -- AN-947: Evaluate EA + Transfer Data, FPU→CPU (CA=1, DR=1, len=bytes)
         cir_response_prim <= "1011" & "0010" &
-          std_logic_vector(to_unsigned(cir_xfer_word_count * 4, 8));
+          std_logic_vector(to_unsigned(xfer_len, 8));
       when CIR_XFER_DST_WAIT =>
         cir_response_prim <= CIR_PRIM_BUSY;
       when CIR_COND_EVAL =>

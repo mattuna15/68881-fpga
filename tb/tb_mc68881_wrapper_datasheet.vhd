@@ -269,6 +269,7 @@ begin
     end procedure;
 
     -- One cpGEN dialog: OpWord, Command, then service Response primitives.
+    -- 16-bit CIRs sit on D31-D16 of the 32-bit port (MC68881UM 10.1.1).
     -- src is the single-precision source (if requested); returns the first
     -- destination word (if any).
     procedure dialog(b : natural; cmd : std_logic_vector(31 downto 0);
@@ -279,10 +280,11 @@ begin
       variable done : boolean := false;
       variable got  : std_logic_vector(31 downto 0) := (others => '0');
     begin
-      bwr(b, OFF_OPWORD, CPGEN_OPWORD);
-      bwr(b, OFF_COMMAND, cmd);
+      bwr(b, OFF_OPWORD, CPGEN_OPWORD(15 downto 0) & x"0000");
+      bwr(b, OFF_COMMAND, cmd(15 downto 0) & x"0000");
       for poll in 0 to 500 loop
         brd(b, OFF_RESPONSE, r);
+        r := x"0000" & r(31 downto 16);
         len := to_integer(unsigned(r(7 downto 0))) / 4;
         if r(15 downto 0) = CIR_PRIM_NULL then
           done := true;
@@ -313,7 +315,7 @@ begin
     begin
       report "=== " & N & " W1: idle Response at offset $00 ===" severity note;
       brd(b, OFF_RESPONSE, q);
-      check(N & " W1 idle Response", x"0000" & q(15 downto 0), x"0000" & CIR_PRIM_NULL);
+      check(N & " W1 idle Response (D31-D16)", x"0000" & q(31 downto 16), x"0000" & CIR_PRIM_NULL);
 
       report "=== " & N & " W2: CIR dialog 3.0 + 2.0 through word-stride CIRs ===" severity note;
       dialog(b, cmd_mem_to_reg(CIR_SRC_SINGLE, 1, OPC_FMOVE), x"40400000", q);
@@ -330,7 +332,7 @@ begin
 
       report "=== " & N & " W4: no legacy decode in CIR mode ===" severity note;
       brd(b, OFF_REGSELECT, q);
-      check(N & " W4 $28 is Register Select (reads 0), not STATUS", q, x"00000000");
+      check(N & " W4 $28 is Register Select (reads 0, D15-D0 high), not STATUS", q, x"0000FFFF");
       bwr(b, OFF_LEG_FPCR, x"00000010");          -- reserved code 11: ignored
 
       report "=== " & N & " W5: mode switch via $00, return via legacy $34 ===" severity note;
@@ -343,7 +345,7 @@ begin
       bwr(b, OFF_LEG_FPCR, x"00000000");
       bwr(b, OFF_LEG_RESPONSE, x"00000001");       -- back to CIR mode
       brd(b, OFF_RESPONSE, q);
-      check(N & " W5 back in CIR mode (Response idle)", x"0000" & q(15 downto 0), x"0000" & CIR_PRIM_NULL);
+      check(N & " W5 back in CIR mode (Response idle)", x"0000" & q(31 downto 16), x"0000" & CIR_PRIM_NULL);
       dialog(b, cmd_reg_to_mem(CIR_SRC_SINGLE, 1), x"00000000", q);
       check(N & " W5 FP1 preserved across mode switches", q, x"40A00000");
     end procedure;

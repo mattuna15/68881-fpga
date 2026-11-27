@@ -154,6 +154,12 @@ begin
     variable outw  : word_array_t(0 to 2);
     variable frame : word_array_t(0 to CIR_FRAME_IDLE_WORDS - 1);
     variable nout  : natural;
+    variable w3    : word_array_t(0 to 2);
+    variable o3    : word_array_t(0 to 2);
+    variable pp    : natural;
+    -- Hold read cycles open for several clocks after DSACK and require d_out
+    -- to stay stable (a slow host or wait states).
+    variable slow_rd : boolean := false;
 
     -- One bus beat; returns the sampled d_out on reads.
     procedure beat(code : std_logic_vector(4 downto 0); a0 : std_logic;
@@ -172,17 +178,29 @@ begin
         report "DSACK timeout at code " & to_hstring(code) severity failure;
       wait for CLK_PERIOD/4;
       q := d_out;
+      if slow_rd and not wr then
+        wait for 8 * CLK_PERIOD;
+        report "held read at code " & to_hstring(code) & ": first=" & to_hstring(q) &
+               " after 8 clocks=" & to_hstring(d_out) severity note;
+        assert d_out = q
+          report "FAIL read data changed while DS held at code " & to_hstring(code) &
+                 ": first=" & to_hstring(q) & " later=" & to_hstring(d_out)
+          severity failure;
+      end if;
       cs_n <= '1'; as_n <= '1'; ds_n <= '1'; rw <= '1';
       wait for CLK_PERIOD;
     end procedure;
 
-    -- Access one item of nbytes (2 = 16-bit CIR, 4 = 32-bit CIR) through a
-    -- port of width p.  Items are low-aligned in data/q (core convention).
-    --   32-bit port: one beat.
-    --   16-bit port: two beats repeating the item (current 16-bit convention).
-    --   8-bit port : per MC68881UM Fig 10-2, byte k on lane k, A0 (and A1
-    --                for 32-bit CIRs) select the byte; read bytes appear on
-    --                every lane.
+    -- Access one item of nbytes (1 = byte immediate, 2 = 16-bit CIR or word
+    -- immediate, 4 = 32-bit item) through a port of width p, placing data
+    -- on the MC68881UM section 10.1 lanes.  data/q hold the item right-aligned.
+    -- Lanes the item does not use carry the filler x"A5", so the DUT must
+    -- really steer by lane.
+    --   32-bit port: one beat, item left-aligned (D31-D0 / D31-D16 / D31-D24).
+    --   16-bit port: 16-bit units; D15-D0 when A4=1 and A1=1, else D31-D16.
+    --                A 32-bit item takes two beats, A1=0 (high half) then A1=1.
+    --   8-bit port : per Fig 10-2, byte k on lane k; A0 (and A1 for 32-bit
+    --                items) select the byte; read bytes appear on every lane.
     procedure acc(code : natural; wr : boolean; p : natural; nbytes : natural;
                   data : std_logic_vector(31 downto 0);
                   variable q : out std_logic_vector(31 downto 0)) is
@@ -191,14 +209,59 @@ begin
       variable b    : std_logic_vector(31 downto 0);
       variable item : std_logic_vector(31 downto 0) := (others => '0');
       variable a0   : std_logic;
+      variable h    : std_logic_vector(15 downto 0);
     begin
       c := std_logic_vector(to_unsigned(code, 5));
       if p = P32 then
-        beat(c, '1', '1', wr, data, q);
+        dw := x"A5A5A5A5";
+        if nbytes = 4 then
+          dw := data;
+        elsif nbytes = 2 then
+          dw(31 downto 16) := data(15 downto 0);
+        else
+          dw(31 downto 24) := data(7 downto 0);
+        end if;
+        beat(c, '1', '1', wr, dw, b);
+        if nbytes = 4 then
+          item := b;
+        elsif nbytes = 2 then
+          item(15 downto 0) := b(31 downto 16);
+        else
+          item(7 downto 0) := b(31 downto 24);
+        end if;
+        q := item;
       elsif p = P16 then
-        beat(c, '0', '1', wr, data, b);
-        q := b;
-        beat(c, '0', '1', wr, data, b);
+        for k in 0 to (nbytes + 1) / 2 - 1 loop
+          c := std_logic_vector(to_unsigned(code, 5));
+          if nbytes = 4 then
+            if k = 1 then c(0) := '1'; else c(0) := '0'; end if;
+            h := data(31 - 16*k downto 16 - 16*k);
+          elsif nbytes = 2 then
+            h := data(15 downto 0);
+          else
+            h := data(7 downto 0) & x"A5";
+          end if;
+          dw := x"A5A5A5A5";
+          if c(3) = '1' and c(0) = '1' then
+            dw(15 downto 0) := h;
+          else
+            dw(31 downto 16) := h;
+          end if;
+          beat(c, '0', '1', wr, dw, b);
+          if c(3) = '1' and c(0) = '1' then
+            h := b(15 downto 0);
+          else
+            h := b(31 downto 16);
+          end if;
+          if nbytes = 4 then
+            item(31 - 16*k downto 16 - 16*k) := h;
+          elsif nbytes = 2 then
+            item(15 downto 0) := h;
+          else
+            item(7 downto 0) := h(15 downto 8);
+          end if;
+        end loop;
+        q := item;
       else
         for k in 0 to nbytes - 1 loop
           c := std_logic_vector(to_unsigned(code, 5));
@@ -241,35 +304,46 @@ begin
       acc(code, false, p, 4, x"00000000", q);
     end procedure;
 
-    -- CPU-style cpGEN dialog over port p.
+    -- CPU-style cpGEN dialog over port p.  The Response length field is in
+    -- bytes: 1 or 2 moves one byte/word item, otherwise len/4 long words.
+    -- exp_len (when non-zero) is the transfer length the DUT must request.
     procedure dialog(p : natural; cmd : std_logic_vector(31 downto 0);
                      src : word_array_t; nsrc : natural;
-                     variable dst : out word_array_t; variable ndst : out natural) is
+                     variable dst : out word_array_t; variable ndst : out natural;
+                     exp_len : natural := 0) is
       variable r    : std_logic_vector(31 downto 0);
       variable si   : natural := 0;
       variable di   : natural := 0;
       variable done : boolean := false;
+      variable lenb : natural;
       variable len  : natural;
+      variable nb   : natural;
     begin
       wr16(DS_OPWORD, p, CPGEN_OPWORD);
       wr16(DS_COMMAND, p, cmd);
       wait for 2 * CLK_PERIOD;
       for poll in 0 to 2000 loop
         rd16(DS_RESPONSE, p, r);
-        len := to_integer(unsigned(r(7 downto 0))) / 4;
+        lenb := to_integer(unsigned(r(7 downto 0)));
+        if lenb < 4 then len := 1; nb := lenb; else len := lenb / 4; nb := 4; end if;
+        if (r(15 downto 8) = x"96" or r(15 downto 8) = x"B2") and exp_len /= 0 then
+          assert lenb = exp_len
+            report "FAIL dialog: transfer length " & integer'image(lenb) &
+                   " expected " & integer'image(exp_len) severity failure;
+        end if;
         if r(15 downto 0) = CIR_PRIM_NULL then
           done := true;
           exit;
         elsif r(15 downto 8) = x"96" then
           for i in 1 to len loop
             assert si < nsrc report "dialog: DUT asked for more source words" severity failure;
-            wr32(DS_OPERAND, p, src(si));
+            acc(DS_OPERAND, true, p, nb, src(si), r);
             si := si + 1;
           end loop;
           wait for 2 * CLK_PERIOD;
         elsif r(15 downto 8) = x"B2" then
           for i in 1 to len loop
-            rd32(DS_OPERAND, p, r);
+            acc(DS_OPERAND, false, p, nb, x"00000000", r);
             dst(di) := r;
             di := di + 1;
           end loop;
@@ -588,6 +662,53 @@ begin
     op_s(P32, 1, OPC_FADD, x"00000000");               -- FP1 += 0 still works
     store_s(P32, 1, rd);
     check("DS11 dialog works after abort (FP1)", rd, x"40A00000");
+
+    -- ==============================================================
+    -- DS12-DS13: data placement (plan step 7) on every port width.
+    --   DS12: byte/word immediates and destinations are single left-aligned
+    --         items and the Response length field is 1 or 2 bytes.
+    --   DS13: extended word 0 carries sign+exponent in bits 31-16
+    --         (operand bits 95-80), bits 15-0 zero.
+    -- ==============================================================
+    for pi in 0 to 2 loop
+      if pi = 0 then pp := P32; elsif pi = 1 then pp := P16; else pp := P8; end if;
+      report "DS12: byte/word immediates, port " & integer'image(pp) severity note;
+      w3 := (x"0000FFFD", x"00000000", x"00000000");        -- FMOVE.W #-3,FP7
+      dialog(pp, cmd_mem_to_reg(CIR_SRC_WORD, 7, OPC_FMOVE), w3, 1, o3, nout, 2);
+      store_s(pp, 7, rd);
+      check("DS12 port " & integer'image(pp) & " FMOVE.W #-3", rd, x"C0400000");
+      w3 := (x"00000005", x"00000000", x"00000000");        -- FMOVE.B #5,FP7
+      dialog(pp, cmd_mem_to_reg(CIR_SRC_BYTE, 7, OPC_FMOVE), w3, 1, o3, nout, 1);
+      store_s(pp, 7, rd);
+      check("DS12 port " & integer'image(pp) & " FMOVE.B #5", rd, x"40A00000");
+      w3 := (others => x"00000000");
+      slow_rd := true;                                      -- read data held stable
+      dialog(pp, cmd_reg_to_mem(CIR_SRC_WORD, 7), w3, 0, o3, nout, 2);
+      check("DS12 port " & integer'image(pp) & " FMOVE.W FP7 destination", o3(0), x"00000005");
+      dialog(pp, cmd_reg_to_mem(CIR_SRC_BYTE, 7), w3, 0, o3, nout, 1);
+      check("DS12 port " & integer'image(pp) & " FMOVE.B FP7 destination", o3(0), x"00000005");
+      slow_rd := false;
+
+      report "DS13: extended word 0 placement, port " & integer'image(pp) severity note;
+      w3 := (x"BFFF0000", x"C0000000", x"00000000");        -- FMOVE.X #-1.5,FP6
+      dialog(pp, cmd_mem_to_reg(CIR_SRC_EXTENDED, 6, OPC_FMOVE), w3, 3, o3, nout, 12);
+      store_s(pp, 6, rd);
+      check("DS13 port " & integer'image(pp) & " FMOVE.X #-1.5", rd, x"BFC00000");
+      w3 := (others => x"00000000");
+      load_s(pp, 6, x"40400000");                           -- FP6 = 3.0
+      dialog(pp, cmd_reg_to_mem(CIR_SRC_EXTENDED, 6), w3, 0, o3, nout, 12);
+      check("DS13 port " & integer'image(pp) & " FMOVE.X word 0", o3(0), x"40000000");
+      check("DS13 port " & integer'image(pp) & " FMOVE.X word 1", o3(1), x"C0000000");
+      check("DS13 port " & integer'image(pp) & " FMOVE.X word 2", o3(2), x"00000000");
+    end loop;
+
+    -- ==============================================================
+    -- DS14: Register Select on a 32-bit port: D31-D16 carry the register,
+    -- D15-D0 are undefined and driven high (UM 10.1.1).
+    -- ==============================================================
+    report "DS14: Register Select lanes on 32-bit port" severity note;
+    beat("01010", '1', '1', false, x"00000000", rd);
+    check("DS14 Register Select D31-D0 (16-bit CIR, low half driven high)", rd, x"0000FFFF");
 
     report "TB SUCCESS: datasheet CIR map checks passed" severity note;
     std.env.stop;

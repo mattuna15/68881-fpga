@@ -2479,14 +2479,65 @@ begin
       );
   end generate;
 
+  -- Lightweight packed engine (packed_decimal_full_g = false).
+  -- fp80_to_packed96_fast / packed96_to_fp80_fast are single large
+  -- combinational cones (~150 ns encode, ~65 ns decode on Artix-7 -1), so
+  -- they are evaluated from the registered packed_req_* operands and captured
+  -- PACKED_FAST_CYCLES clock edges after the request registers load.  The
+  -- packed_req_* registers are only written together with
+  -- packed_req_start_reg and hold while packed_pending_reg = '1', so the
+  -- capture is a true multicycle path (see the matching
+  -- set_multicycle_path in mc68881_top.xdc; keep the two in sync).
   packed_engine_bypass_g : if not packed_decimal_full_g generate
+    constant PACKED_FAST_CYCLES : natural := 10;
+    signal fast_busy_reg  : std_logic := '0';
+    signal fast_count_reg : natural range 0 to PACKED_FAST_CYCLES := 0;
   begin
-    packed_unit_busy <= '0';
-    packed_result_valid_reg <= '0';
-    packed_result_word_reg <= (others => '0');
-    packed_result_fp_reg <= (others => '0');
-    packed_result_inexact_reg <= '0';
-    packed_result_invalid_reg <= '0';
+    packed_unit_busy <= fast_busy_reg;
+
+    packed_fast_proc : process(clk, reset_n)
+    begin
+      if reset_n = '0' then
+        fast_busy_reg <= '0';
+        fast_count_reg <= 0;
+        packed_result_valid_reg <= '0';
+        packed_result_word_reg <= (others => '0');
+        packed_result_fp_reg <= (others => '0');
+        packed_result_inexact_reg <= '0';
+        packed_result_invalid_reg <= '0';
+      elsif rising_edge(clk) then
+        packed_result_valid_reg <= '0';
+        if packed_req_start_reg = '1' then
+          -- Request registers loaded on the previous edge (E0).  Capture
+          -- happens on edge E0 + PACKED_FAST_CYCLES.
+          fast_busy_reg <= '1';
+          fast_count_reg <= PACKED_FAST_CYCLES - 2;
+        elsif fast_busy_reg = '1' then
+          if fast_count_reg = 0 then
+            if packed_req_is_encode = '1' then
+              packed_result_word_reg <= fp80_to_packed96_fast(packed_req_fp_reg);
+              packed_result_fp_reg <= packed_req_fp_reg;
+              packed_result_invalid_reg <= '0';
+            else
+              packed_result_word_reg <= (others => '0');
+              packed_result_fp_reg <= packed96_to_fp80_fast(packed_req_word_reg,
+                                                            packed_req_fallback_reg);
+              if packed96_has_invalid_bcd(packed_req_word_reg) then
+                packed_result_invalid_reg <= '1';
+              else
+                packed_result_invalid_reg <= '0';
+              end if;
+            end if;
+            packed_result_inexact_reg <= '0';
+            packed_result_valid_reg <= '1';
+            fast_busy_reg <= '0';
+          else
+            fast_count_reg <= fast_count_reg - 1;
+          end if;
+        end if;
+      end if;
+    end process;
+
     packed_fp_mul_start <= '0';
     packed_fp_mul_a <= (others => '0');
     packed_fp_mul_b <= (others => '0');
@@ -2830,24 +2881,17 @@ begin
                           move_exc_result := move_result;
                           move_exc_opa := move_result;
                         when "11" =>
+                          -- Both packed engines (full sequential unit and the
+                          -- packed_decimal_full_g=false fast unit) complete
+                          -- through the deferred packed_result_valid_reg path.
                           packed_word := operand_hi16_reg(0) & operand_reg(0);
-                          if packed_decimal_full_g then
-                            packed_req_mode_reg <= PACKED_REQ_DECODE;
-                            packed_req_word_reg <= packed_word;
-                            packed_req_fallback_reg <= operand_reg(0);
-                            packed_req_dst_idx_reg <= dst_idx;
-                            packed_req_start_reg <= '1';
-                            packed_pending_reg <= '1';
-                            move_deferred := '1';
-                          else
-                            if packed96_has_invalid_bcd(packed_word) then
-                              move_exc_force_invalid := '1';
-                            end if;
-                            move_result := packed96_to_fp80_fast(packed_word, operand_reg(0));
-                            move_exc_enable := '1';
-                            move_exc_result := move_result;
-                            move_exc_opa := move_result;
-                          end if;
+                          packed_req_mode_reg <= PACKED_REQ_DECODE;
+                          packed_req_word_reg <= packed_word;
+                          packed_req_fallback_reg <= operand_reg(0);
+                          packed_req_dst_idx_reg <= dst_idx;
+                          packed_req_start_reg <= '1';
+                          packed_pending_reg <= '1';
+                          move_deferred := '1';
                         when others =>
                           move_result := operand_reg(0);
                           move_exc_enable := '1';
@@ -2862,28 +2906,18 @@ begin
                     move_result := fp_reg_file_reg(src_idx);
                     move_exc_opa := move_result;
                     if move_cfg.reg_to_mem_packed = '1' then
-                      if packed_decimal_full_g then
-                        if move_cfg.packed_k_from_opa = '1' then
-                          packed_k := signed8_to_integer(operand_reg(0)(7 downto 0));
-                        else
-                          packed_k := signed8_to_integer(operand_reg(1)(7 downto 0));
-                        end if;
-                        packed_req_mode_reg <= PACKED_REQ_ENCODE;
-                        packed_req_fp_reg <= move_result;
-                        packed_req_k_reg <= clamp_integer(packed_k, -64, 17);
-                        packed_req_start_reg <= '1';
-                        packed_pending_reg <= '1';
-                        move_deferred := '1';
+                      -- Deferred for both packed engines; see the decode case.
+                      if move_cfg.packed_k_from_opa = '1' then
+                        packed_k := signed8_to_integer(operand_reg(0)(7 downto 0));
                       else
-                        packed_word := fp80_to_packed96_fast(move_result);
-                        move_exc_enable := '0';
+                        packed_k := signed8_to_integer(operand_reg(1)(7 downto 0));
                       end if;
-                      if move_deferred = '0' then
-                        result_lo_reg <= packed_word(31 downto 0);
-                        result_hi_reg <= packed_word(63 downto 32);
-                        result_ex_reg <= packed_word(79 downto 64);
-                        result_ex_hi_reg <= packed_word(95 downto 80);
-                      end if;
+                      packed_req_mode_reg <= PACKED_REQ_ENCODE;
+                      packed_req_fp_reg <= move_result;
+                      packed_req_k_reg <= clamp_integer(packed_k, -64, 17);
+                      packed_req_start_reg <= '1';
+                      packed_pending_reg <= '1';
+                      move_deferred := '1';
                     else
                       case mem_fmt is
                         when "01" =>

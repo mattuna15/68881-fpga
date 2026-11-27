@@ -413,6 +413,48 @@ requests hardcode `wIndex=0`.
 
 ## Closed Defects
 
+### DEF-TIMING-002: `packed_decimal_full_g=false` Build Fails Timing By >100 ns (GitHub #70)
+- Status: Closed (2026-11-26)
+- Files: `src/mc68881_top.vhd`, `src/mc68881_top.xdc`, `tb/tb_mc68881_packed_lite.vhd`,
+  `scripts/run_tests.ps1`, `.githooks/pre-push`, `.github/workflows/ghdl.yml`
+- Reproduction (before fix): non-incremental synth + impl with generics
+  `fpu_lite_g=false packed_decimal_full_g=false` gave `WNS -131.986 ns`,
+  `TNS -36533.031 ns`, 3765 failing endpoints.  Worst families:
+  - `fp_reg_file_reg` / `move_cfg_decoded_reg[src_idx]` -> `result_ex_reg`,
+    `result_ex_hi_reg` (-132 / -113 ns): FMOVE.P reg->mem evaluated
+    `fp80_to_packed96_fast` (int truncate + divide-by-10 chain) in one cycle
+    inside `alu_control_proc`.
+  - `operand_hi16_reg` -> `fp_reg_file_reg`, `result_*`, `exc_event_*`
+    (about -43 ns): FMOVE.P mem->reg evaluated `packed96_to_fp80_fast` +
+    `packed96_has_invalid_bcd` in one cycle.
+  - Synthesis also raised two CRITICAL WARNINGs: the packed-unit MCP in the XDC
+    used `get_pins` without `-quiet`, and `packed_unit_inst` does not exist in
+    this build.
+- Resolution summary:
+  - Both packed engines now use the deferred `packed_req_*` /
+    `packed_result_valid_reg` handshake in `alu_control_proc` (no more inline
+    fast conversion).
+  - `packed_engine_bypass_g` contains `packed_fast_proc`, which captures the
+    fast encoder/decoder outputs exactly `PACKED_FAST_CYCLES` (10) edges after
+    the request registers load.
+  - `mc68881_top.xdc`: 10-cycle setup / 9-cycle hold MCP from
+    `packed_req_{fp,word,fallback,mode}_reg` to `packed_result_*_reg`
+    (`-quiet`; inactive in the full-engine build); `-quiet` added to the
+    full-engine packed-unit MCP.
+  - New self-checking TB `tb_mc68881_packed_lite` (DUT built with
+    `packed_decimal_full_g => false`): encode of 100, -7, 1234567, +inf and +0;
+    decode of 1E+2, -3E+0 and 9E+5; invalid BCD sets EXC.OPERR.
+- Closure evidence (2026-11-27, Vivado 2025.2, xc7a200t-1, 50 MHz, non-incremental,
+  `packed_decimal_full_g=false`): `WNS 0.001 ns`, `TNS 0.000 ns`, `WHS 0.018 ns`,
+  `THS 0.000 ns`, 0 failing of 27237 endpoints; 0 synthesis critical warnings.
+  `report_exceptions -coverage`: the new 10/9 MCP covers 93 endpoints
+  (178 from-pins, 94 to-pins).  Post-impl `Slice LUTs 62367 / 134600 (46.34%)`,
+  `Slice Registers 13060`, `Block RAM 10.5`.  Remaining worst paths are not
+  packed-related (`move_cfg_decoded_reg[src_idx]` -> `cir_operand_staging_reg`,
+  trig `tmp_reg` -> `result_reg`).  The setup margin is small, so re-run this
+  build after any change that touches those paths.
+  `scripts/run_tests.ps1` passes, including the new `tb_mc68881_packed_lite`.
+
 ### DEF-LUT-002: Further LUT Reduction via FP Unit Sharing
 - Status: Closed (2026-03-03)
 - Files: `src/mc68881_alu.vhd`, `src/mc68881_divrem_unit.vhd`,

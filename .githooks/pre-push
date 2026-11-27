@@ -31,7 +31,8 @@ echo "Running GHDL tests before push..."
   tb/tb_mc68881_top.vhd \
   tb/tb_mc68881_cir_dialog.vhd \
   tb/tb_mc68881_cir_interrupt.vhd \
-  tb/tb_mc68881_torture.vhd
+  tb/tb_mc68881_torture.vhd \
+  tb/tb_mc68881_packed_lite.vhd
 
 "$GHDL_EXE" -e --std=08 tb_mc68881_alu
 "$GHDL_EXE" -r --std=08 tb_mc68881_alu --assert-level=error
@@ -56,5 +57,8 @@ echo "Running GHDL tests before push..."
 
 "$GHDL_EXE" -e --std=08 tb_mc68881_torture
 "$GHDL_EXE" -r --std=08 tb_mc68881_torture --assert-level=error
+
+"$GHDL_EXE" -e --std=08 tb_mc68881_packed_lite
+"$GHDL_EXE" -r --std=08 tb_mc68881_packed_lite --assert-level=error
 
 echo "GHDL tests passed."

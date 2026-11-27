@@ -77,8 +77,20 @@ set_multicycle_path -hold 2 -from [get_pins -hier -filter {REF_PIN_NAME == C && 
 
 # --- Packed decimal fp80_to_int_trunc (4-cycle MCP = 121ns) ---
 # MUL/ADD paths now use sequential units; only int_trunc remains combinational.
-set_multicycle_path -setup 4 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_int_arg_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_int_res_reg_reg*/D}]
-set_multicycle_path -hold 3 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_int_arg_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_int_res_reg_reg*/D}]
+# packed_unit_inst exists only when packed_decimal_full_g = true, hence -quiet.
+set_multicycle_path -setup 4 -quiet -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_int_arg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_int_res_reg_reg*/D}]
+set_multicycle_path -hold 3 -quiet -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && NAME =~ *packed_unit_inst/arith_int_arg_reg_reg*/C}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_unit_inst/arith_int_res_reg_reg*/D}]
+
+# --- Lightweight packed engine, packed_decimal_full_g = false (10-cycle MCP = 200ns) ---
+# packed_engine_bypass_g/packed_fast_proc in mc68881_top.vhd evaluates
+# fp80_to_packed96_fast / packed96_to_fp80_fast / packed96_has_invalid_bcd from
+# packed_req_{fp,word,fallback,mode}_reg and captures into packed_result_*_reg
+# exactly PACKED_FAST_CYCLES (10) edges after those request registers load; they
+# hold while the request is pending.  packed_req_start_reg is deliberately not a
+# startpoint (it gates the capture enable one cycle later).  These registers do
+# not exist in the full-engine build, hence -quiet.  Keep N = PACKED_FAST_CYCLES.
+set_multicycle_path -setup 10 -quiet -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && (NAME =~ *packed_req_fp_reg_reg*/C || NAME =~ *packed_req_word_reg_reg*/C || NAME =~ *packed_req_fallback_reg_reg*/C || NAME =~ *packed_req_mode_reg_reg*/C)}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_result_*_reg_reg*/D}]
+set_multicycle_path -hold 9 -quiet -from [get_pins -quiet -hier -filter {REF_PIN_NAME == C && (NAME =~ *packed_req_fp_reg_reg*/C || NAME =~ *packed_req_word_reg_reg*/C || NAME =~ *packed_req_fallback_reg_reg*/C || NAME =~ *packed_req_mode_reg_reg*/C)}] -to [get_pins -quiet -hier -filter {REF_PIN_NAME == D && NAME =~ *packed_result_*_reg_reg*/D}]
 
 # --- operand_reg -> result (14-cycle MCP = 424ns) ---
 set_multicycle_path -setup 14 -from [get_pins -hier -filter {REF_PIN_NAME == C && NAME =~ *operand_reg_reg*/C}] -to [get_pins -hier -filter {REF_PIN_NAME == D && NAME =~ *result_reg_reg*/D}]

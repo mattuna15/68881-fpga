@@ -577,12 +577,24 @@ requests hardcode `wIndex=0`.
   It also covers: the Condition CIR (cpBcc), a Control abort, a Response read clearing
   `cir_response_pending`, and mode switches with non-zero data that leave the core untouched.
 - Known deviations with the generic on (each exits when the named plan step lands):
-  - Odd halves of 32-bit CIRs ($12/$1A/$1E, codes 9/13/15) decode to nothing: reads return 0
-    and writes are dropped.  A 16-bit host that sizes the bus dynamically, writing Operand
-    $10 then $12, loses the second word.  Repro: generic on, 16-bit port, write the Operand
-    CIR at code 9.  Exit: plan Step 7 (D31-D16/D15-D0 steering).
-  - A read of Restore (code 3) returns 0, but Table 9-1 makes Restore R/W.  This already
-    happens with the generic off.  Exit: plan Step 7.
+  - Odd halves of 32-bit CIRs ($12/$1A/$1E, codes 9/13/15) decode to nothing on the 32-bit
+    port: reads return 0 and writes are dropped.  On 8- and 16-bit ports they fold onto their
+    32-bit CIR (Step 7, 2026-11-27).  A 32-bit host always uses the even code, so this is
+    left as is.  Repro: generic on, 32-bit port, write the Operand CIR at code 9.
+  - A read of Restore (code 3) returns 0, but Table 9-1 makes Restore R/W and FRESTORE reads
+    the format word back to verify it (MC68881UM: an invalid word reads back as $02XX).  This already
+    happens with the generic off.  It is a protocol feature, not data placement, so Step 7
+    does not fix it.  Exit: Restore read-back support (not in the remap plan).
+  - 68882 pending-instruction path (`CIR_PENDING_XFER_SRC`): byte/word memory-format
+    immediates still get a 4-byte length and a 4-byte item, unlike the main path.  Repro:
+    generic on, `fpu_version_g = FPU_68882`, issue FMOVE.B #imm while an instruction is
+    executing.  Exit: extend `bl_imm_proc` and the pending primitive length to the pending
+    format (`pending_src_fmt_reg`).
+- Data placement with the generic on (plan Step 7, 2026-11-27): 16-bit CIRs and word/byte
+  immediates left-aligned on the 32-bit port, D31-D16/D15-D0 steering on the 16-bit port,
+  extended word 0 sign+exponent in bits 31-16, and byte/word transfer lengths of 1/2.
+  Covered by `tb_mc68881_cir_datasheet_map` (DS12-DS14) for 8-, 16- and 32-bit ports, and
+  by `tb_mc68881_wrapper_datasheet`.
   - A read of Operand (code 8) outside a transfer returns the legacy `result_hi_reg`, not a
     defined value.  Exit: plan Step 8, when the legacy decode is removed.
   - Register Select (code 10) always reads 0, because `cir_regselect_word` is never
@@ -595,7 +607,8 @@ requests hardcode `wIndex=0`.
     Operand Address (14/15) is.
   - Peripheral mode (`cir_mode_reg='0'`) and legacy-only codes 16..27/29..31 keep the
     repeat-the-word-per-beat behaviour in 8-bit mode (no byte lanes).
-  - 16-bit port still repeats the 32-bit value per beat instead of steering D31-D16/D15-D0.
+  - 16-bit port still repeats the 32-bit value per beat instead of steering D31-D16/D15-D0
+    (fixed with the generic on by Step 7).
 - Vivado (non-incremental, 50 MHz, 2026-11-19): first build with the combinational strobe gating met
   timing at only WNS +0.058 ns (the gating's state dependence sat in front of the CIR write-enable
   cone feeding op_sel -> micro_total -> micro_remaining).  With the immediate width registered

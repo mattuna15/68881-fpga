@@ -1,14 +1,15 @@
 # Plan: remap the CIR register file to the MC68881 datasheet map
 
 Status: Steps 1-5 implemented behind `datasheet_cir_map_g` (default false, 2026-11-27);
-Step 6 done with option (a) (2026-11-27); Steps 7-8 open.  Follow-up to issues #72 / #74 and
+Step 6 done with option (a) (2026-11-27); Step 7 done (2026-11-27); Step 8 open.  Follow-up to issues #72 / #74 and
 `DEF-BUS-001` in `docs/archive/fpu-progress-checklist.md`.  Coverage:
 `tb/tb_mc68881_cir_datasheet_map.vhd` (core), `tb/tb_mc68881_wrapper_datasheet.vhd` (wrappers).
 
 Implementation notes (Steps 2-5):
 - `ds_translate` in `mc68881_top.vhd` maps each Table 9-1 code (A4..A1, per direction) onto
   the internal handler that already implements it; reserved codes (6, 11), wrong-direction
-  accesses and the odd halves of 32-bit CIRs (9, 13, 15; Step 7) decode to nothing.
+  accesses decode to nothing.  The odd halves of 32-bit CIRs (9, 13, 15) fold onto their
+  32-bit CIR on 8- and 16-bit ports (Step 7) and decode to nothing on the 32-bit port.
   `a_in(4)` is ignored, so the 16 codes alias.  Peripheral mode is unchanged.
 - Register Select (code 10) is a 16-bit CIR, so `bl_geometry` uses 2 bytes for codes 0..7 and
   10..11 and 4 bytes for 8..9 and 12..15 (Step 5's "8..15 are 32-bit" is corrected here).
@@ -67,7 +68,35 @@ Consequences today:
   of Instruction Address would flip `cir_mode_reg`.
 - DSACK A4 had to be derived as `a_in(3) or a_in(4)` to cover both maps.
 
+Implementation notes (Step 7):
+- The datasheet map uses the same generic for data placement.  With it on, the port adapter in
+  `mc68881_top.vhd` (`bl_*`) is active for every port width in CIR mode, not just 8-bit.
+  Each beat moves `bl_c` bytes: the whole item on a 32-bit port, 16-bit units on a 16-bit
+  port, single bytes on an 8-bit port.  The core keeps its low-aligned convention, so the
+  adapter does all the steering and the core strobe still fires only on the item's last beat.
+- 32-bit port: 16-bit CIRs and word immediates on D31-D16, byte immediates on D31-D24.  A
+  Register Select read drives D15-D0 high (UM 10.1.1).  Other reads replicate the item across
+  the unused lanes.
+- 16-bit port: D15-D0 when A4=1 and A1=1, else D31-D16.  A 32-bit item takes two beats, A1=0
+  (bits 31-16) then A1=1 (bits 15-0), most significant word first, so codes 9/13/15 now fold
+  onto Operand / Instruction Address / Operand Address.  The half comes from A1, as the 8-bit
+  adapter takes the byte from {A1,A0}.
+- Extended operand word 0 carries sign+exponent in bits 31-16 with the low half zero, in both
+  directions and for the 68882 pending source.  FSAVE/FRESTORE copy the staging words raw, so
+  they stay symmetric.
+- Evaluate-and-transfer primitives give byte/word memory-format operands a length of 1/2 bytes
+  (the legacy map keeps counting 32-bit words).
+- The byte/word item width (`bl_imm_n_reg`) is frozen while a bus access is open.  The dialog
+  leaves the transfer state about two clocks after DSACK, and without the freeze a host still
+  holding a byte/word destination read saw its lanes change (D31-D16 dropping to zero).  The
+  legacy 8-bit path had the same exposure and shares the fix.
+- Software changes are deferred to Step 8: nothing in `validation/` runs with the generic on yet.
+- The 68882 pending-instruction source path is not adapted for byte/word immediates; see
+  `DEF-BUS-001`.
+
 ## Other datasheet deviations to fix in the same effort
+
+Step 7 fixes all four with the generic on; they remain with it off.
 
 These are data-placement conventions inside the core, separate from the register codes:
 

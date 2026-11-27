@@ -37,7 +37,8 @@ jobs:
             tb/tb_mc68881_cir_dialog.vhd \
             tb/tb_mc68881_cir_interrupt.vhd \
             tb/tb_mc68881_torture.vhd \
-            tb/tb_mc68881_packed_lite.vhd
+            tb/tb_mc68881_packed_lite.vhd \
+            tb/tb_mc68881_cir_datasheet_map.vhd
       - name: Run tb_mc68881_alu
         run: |
           ghdl -e --std=08 tb_mc68881_alu
@@ -82,3 +83,7 @@ jobs:
         run: |
           ghdl -e --std=08 tb_mc68881_packed_lite
           ghdl -r --std=08 tb_mc68881_packed_lite --assert-level=error
+      - name: Run tb_mc68881_cir_datasheet_map
+        run: |
+          ghdl -e --std=08 tb_mc68881_cir_datasheet_map
+          ghdl -r --std=08 tb_mc68881_cir_datasheet_map --assert-level=error

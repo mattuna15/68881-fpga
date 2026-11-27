@@ -19,7 +19,15 @@ entity mc68881_top is
     fpu_lite_g : boolean := false;
     -- FPU version: FPU_68881 (default) or FPU_68882.
     -- Selects FSAVE frame format and enables pending instruction pipeline.
-    fpu_version_g : fpu_version_t := FPU_68881
+    fpu_version_g : fpu_version_t := FPU_68881;
+    -- `true`: in CIR mode decode exactly the MC68881UM Table 9-1 register
+    -- map on a_in(3 downto 0) = A4..A1 (Response 0, Control 1, Save 2,
+    -- Restore 3, Operation word 4, Command 5, Condition 7, Operand 8,
+    -- Register select 10, Instruction address 12, Operand address 14); no
+    -- legacy peripheral register is reachable and a write to the Response
+    -- CIR selects peripheral mode.  `false`: historical overlapping map
+    -- (Response 13, Save 12, Restore 28, legacy registers visible).
+    datasheet_cir_map_g : boolean := false
   );
   port (
     -- Bus interface
@@ -115,6 +123,22 @@ architecture rtl of mc68881_top is
   signal bus_read  : std_logic;
   signal start_access : std_logic;
   signal addr      : unsigned(4 downto 0);
+  -- Register code after the 8-bit byte-lane fold, before the datasheet map
+  -- translation (ds_translate) produces addr.
+  signal addr_pin  : unsigned(4 downto 0);
+  -- '1' while the Table 9-1 decode is in force (datasheet_cir_map_g and
+  -- CIR mode).  addr then only ever carries a CIR handler code or ADDR_INT_*.
+  signal ds_decode : std_logic;
+  -- Decode-side view of cir_mode_reg, frozen for the length of a bus cycle
+  -- (datasheet_cir_map_g only).  The mode-switch write changes cir_mode_reg
+  -- while bus_write is still high; without the freeze the rest of that cycle
+  -- would be decoded under the other map (a write to code 0 becoming a legacy
+  -- OPSEL launch, or an 8-bit return write folding onto Instruction Address).
+  signal cir_mode_dec      : std_logic;
+  signal cir_mode_hold_reg : std_logic := '1';
+  -- Operand Address CIR (Table 9-1, $1C, R/W).  Only decoded when
+  -- datasheet_cir_map_g selects the Table 9-1 map.
+  signal cir_opaddr_reg : std_logic_vector(31 downto 0) := (others => '0');
   -- Core-visible write data (assembled item in 8-bit CIR mode).
   signal d_in_i    : std_logic_vector(31 downto 0);
 
@@ -161,6 +185,13 @@ architecture rtl of mc68881_top is
   constant ADDR_AUX_RES_H  : unsigned(4 downto 0) := "11010";  -- 26
   constant ADDR_AUX_RES_E  : unsigned(4 downto 0) := "11011";  -- 27
   constant ADDR_CIR_RESTORE : unsigned(4 downto 0) := "11100";  -- 28
+  -- Internal-only codes produced by ds_translate for Table 9-1 registers that
+  -- have no legacy handler code.  Their read-mux/write entries are gated on
+  -- ds_decode, so the legacy map (where pins 29..31 decode to nothing) is
+  -- unchanged.
+  constant ADDR_INT_REGSELECT : unsigned(4 downto 0) := "11101";  -- 29
+  constant ADDR_INT_OPADDR    : unsigned(4 downto 0) := "11110";  -- 30
+  constant ADDR_INT_NONE      : unsigned(4 downto 0) := "11111";  -- 31
 
   type dsack_state_t is (DSACK_IDLE, DSACK_WAIT_ASSERT, DSACK_ASSERTED);
   signal dsack_state  : dsack_state_t := DSACK_IDLE;
@@ -1831,42 +1862,54 @@ begin
   -- upper half of Instruction Address, so 8-bit host writes of Instruction
   -- Address are not supported; Operand Address (14/15) is.
   -- ---------------------------------------------------------------------
-  bl_geometry : process(a_in, a0_in, size_n, rw, cir_mode_reg, bl_imm_n_reg)
+  bl_geometry : process(a_in, a0_in, size_n, rw, cir_mode_reg, cir_mode_dec, bl_imm_n_reg)
     variable code : integer range 0 to 31;
     variable n    : natural range 1 to 4;
     variable fold : std_logic;
     variable act  : std_logic;
     variable k    : natural range 0 to 3;
   begin
-    code := to_integer(unsigned(a_in));
     n    := 2;
     fold := '0';
     act  := '1';
-    case code is
-      when 0 to 7 =>
-        n := 2;                       -- 16-bit CIRs; A1 is part of the code
-      when 8 to 11 | 14 to 15 =>
-        n := 4;                       -- Operand, Register Select, Operand Address
-        fold := '1';
-      when 12 =>
-        if rw = '1' then
-          n := 2;                     -- Save (read)
-        else
-          n := 4;                     -- Instruction Address (write)
-        end if;
-      when 13 =>
-        n := 2;                       -- Response
-      when 28 =>
-        n := 2;                       -- Restore
-      when others =>
-        act := '0';
-    end case;
+    if datasheet_cir_map_g then
+      -- Table 9-1 geometry on A4..A1 only (a_in(4) is not a CIR address bit).
+      code := to_integer(unsigned(a_in(3 downto 0)));
+      case code is
+        when 0 to 7 | 10 to 11 =>
+          n := 2;                     -- 16-bit CIRs (incl. Register Select)
+        when others =>
+          n := 4;                     -- Operand, Instruction/Operand Address
+          fold := '1';
+      end case;
+    else
+      code := to_integer(unsigned(a_in));
+      case code is
+        when 0 to 7 =>
+          n := 2;                     -- 16-bit CIRs; A1 is part of the code
+        when 8 to 11 | 14 to 15 =>
+          n := 4;                     -- Operand, Register Select, Operand Address
+          fold := '1';
+        when 12 =>
+          if rw = '1' then
+            n := 2;                   -- Save (read)
+          else
+            n := 4;                   -- Instruction Address (write)
+          end if;
+        when 13 =>
+          n := 2;                     -- Response
+        when 28 =>
+          n := 2;                     -- Restore
+        when others =>
+          act := '0';
+      end case;
+    end if;
 
     -- Byte/word immediate and destination operands are a single left-aligned
     -- unit of 1 or 2 bytes.  The width comes from bl_imm_n_reg, a registered
     -- summary of the dialog state (see bl_imm_proc) so that the strobe gating
     -- below depends only on the bus pins and one flop, not on the dialog FSM.
-    if code = 8 or code = 9 then
+    if code = 8 or code = 9 then      -- Operand CIR in both maps
       n := bl_imm_n_reg;
     end if;
 
@@ -1880,7 +1923,8 @@ begin
       if a0_in = '1' then k := 1; end if;
     end if;
 
-    if size_n = '0' and cir_mode_reg = '1' then
+    if size_n = '0' and ((datasheet_cir_map_g and cir_mode_dec = '1') or
+                         (not datasheet_cir_map_g and cir_mode_reg = '1')) then
       bl_active <= act;
     else
       bl_active <= '0';
@@ -1947,8 +1991,58 @@ begin
              x"000000" & bl_lane_byte;
 
   d_in_i <= bl_item when bl_active = '1' else d_in;
-  addr   <= unsigned(a_in(4 downto 1) & '0') when (bl_active = '1' and bl_fold = '1')
-            else unsigned(a_in);
+  addr_pin <= unsigned(a_in(4 downto 1) & '0') when (bl_active = '1' and bl_fold = '1')
+              else unsigned(a_in);
+  cir_mode_dec <= cir_mode_hold_reg when (datasheet_cir_map_g and start_access = '1')
+                  else cir_mode_reg;
+  cir_mode_hold_proc : process(clk, reset_n)
+  begin
+    if reset_n = '0' then
+      cir_mode_hold_reg <= '1';
+    elsif rising_edge(clk) then
+      cir_mode_hold_reg <= cir_mode_dec;
+    end if;
+  end process;
+  ds_decode <= '1' when (datasheet_cir_map_g and cir_mode_dec = '1') else '0';
+
+  -- Table 9-1 decode (datasheet_cir_map_g, CIR mode only).  The CIR code on
+  -- A4..A1 is translated, per direction, onto the internal handler code that
+  -- already implements it; reserved codes and wrong-direction accesses become
+  -- ADDR_INT_NONE (reads 0, writes ignored).  a_in(4) is not a CIR address bit
+  -- and is ignored, so the 16-code block aliases.  A write to Response (code 0)
+  -- keeps the legacy CIR/peripheral mode escape (d(0)=0 leaves CIR mode).
+  -- With the generic off, or in peripheral mode, addr = addr_pin unchanged.
+  ds_translate : process(addr_pin, rw, ds_decode)
+    variable c : natural range 0 to 15;
+  begin
+    addr <= addr_pin;
+    if ds_decode = '1' then
+      c := to_integer(addr_pin(3 downto 0));
+      addr <= ADDR_INT_NONE;
+      case c is
+        when 0 =>
+          addr <= ADDR_CIR_RESPONSE;
+        when 1 =>
+          if rw = '0' then addr <= CIR_ADDR_CONTROL; end if;
+        when 2 =>
+          if rw = '1' then addr <= ADDR_CIR_SAVE; end if;
+        when 3 =>
+          addr <= ADDR_CIR_RESTORE;
+        when 4 | 5 | 7 =>
+          if rw = '0' then addr <= '0' & addr_pin(3 downto 0); end if;
+        when 8 =>
+          addr <= CIR_ADDR_OPERAND;
+        when 10 =>
+          if rw = '1' then addr <= ADDR_INT_REGSELECT; end if;
+        when 12 =>
+          if rw = '0' then addr <= CIR_ADDR_INSTADDR; end if;
+        when 14 =>
+          addr <= ADDR_INT_OPADDR;
+        when others =>
+          null;                       -- 6, 11 reserved; 9/13/15 until Step 7
+      end case;
+    end if;
+  end process;
   bus_write <= bus_write_pin when (bl_active = '0' or bl_last = '1') else '0';
   bus_read  <= bus_read_pin  when (bl_active = '0' or bl_last = '1') else '0';
 
@@ -3688,6 +3782,16 @@ begin
           d_out_comb <= x"0000" & frame_format_word_reg;
         when ADDR_CIR_RESPONSE =>
           d_out_comb <= cir_response_reg;
+        when ADDR_INT_REGSELECT =>
+          -- Table 9-1 Register Select (datasheet decode only).
+          if ds_decode = '1' then
+            d_out_comb <= x"0000" & cir_regselect_word;
+          end if;
+        when ADDR_INT_OPADDR =>
+          -- Table 9-1 Operand Address (datasheet decode only).
+          if ds_decode = '1' then
+            d_out_comb <= cir_opaddr_reg;
+          end if;
         when ADDR_FPCR =>
           d_out_comb <= fpcr_reg;
         when ADDR_FPSR =>
@@ -3753,7 +3857,11 @@ begin
             -- A4 selects the 16/32-bit DSACK encoding (Table 9-3).  In CIR
             -- mode the register code is A4..A1, so real A4 is a_in(3); the
             -- legacy-only codes 16..23 keep their historical a_in(4) meaning.
-            if cir_mode_reg = '1' then
+            -- With datasheet_cir_map_g the CIR address is A4..A1 only, so
+            -- a_in(4) (A5) plays no part.
+            if datasheet_cir_map_g and cir_mode_reg = '1' then
+              latched_a4 <= a_in(3);
+            elsif cir_mode_reg = '1' then
               latched_a4 <= a_in(3) or a_in(4);
             else
               latched_a4 <= a_in(4);
@@ -3849,6 +3957,7 @@ begin
       cir_save_read_done <= '0';
       cir_save_read_prev <= '0';
       cir_instaddr_reg <= (others => '0');
+      cir_opaddr_reg <= (others => '0');
       cir_frame_data_reg <= (others => (others => '0'));
       cir_mode_reg <= '1';  -- Default CIR mode on (real MC68881 protocol)
     elsif rising_edge(clk) then
@@ -3987,6 +4096,12 @@ begin
           when CIR_ADDR_INSTADDR =>
             -- Capture CPU's instruction PC for FPIAR.
             cir_instaddr_reg <= d_in_i;
+
+          when ADDR_INT_OPADDR =>
+            -- Table 9-1 Operand Address (datasheet decode only).
+            if ds_decode = '1' then
+              cir_opaddr_reg <= d_in_i;
+            end if;
 
           when CIR_ADDR_CONTROL =>
             -- Gate on cir_mode_reg: addr 1 overlaps ADDR_OPA_L in peripheral mode.

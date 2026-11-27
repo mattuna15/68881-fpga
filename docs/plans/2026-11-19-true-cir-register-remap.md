@@ -1,7 +1,23 @@
 # Plan: remap the CIR register file to the MC68881 datasheet map
 
-Status: proposed (not started). Follow-up to issues #72 / #74 and `DEF-BUS-001` in
-`docs/archive/fpu-progress-checklist.md`.
+Status: Steps 1-5 implemented behind `datasheet_cir_map_g` (default false, 2026-11-27);
+Steps 6-8 open.  Follow-up to issues #72 / #74 and `DEF-BUS-001` in
+`docs/archive/fpu-progress-checklist.md`.  Coverage: `tb/tb_mc68881_cir_datasheet_map.vhd`.
+
+Implementation notes (Steps 2-5):
+- `ds_translate` in `mc68881_top.vhd` maps each Table 9-1 code (A4..A1, per direction) onto
+  the internal handler that already implements it; reserved codes (6, 11), wrong-direction
+  accesses and the odd halves of 32-bit CIRs (9, 13, 15; Step 7) decode to nothing.
+  `a_in(4)` is ignored, so the 16 codes alias.  Peripheral mode is unchanged.
+- Register Select (code 10) is a 16-bit CIR, so `bl_geometry` uses 2 bytes for codes 0..7 and
+  10..11 and 4 bytes for 8..9 and 12..15 (Step 5's "8..15 are 32-bit" is corrected here).
+- Operand Address (code 14) is a real read/write register.  DSACK A4 is `a_in(3)`.
+- The decode mode (`cir_mode_dec`) is frozen for the whole bus cycle.  Without that, the
+  mode-switch write changed the map mid-cycle: a write to code 0 issued a legacy OPSEL
+  launch, and an 8-bit return write folded onto Instruction Address and overwrote FPIAR.
+- Step 3: STATUS cannot be reached in datasheet CIR mode; moving `cir_periph.h` over is Step 8.
+- Step 4: no new gate was needed, because `cir_active` already blocks the back-door operand/FPSR
+  writes in CIR mode.  The `cir_mode_reg` special cases stay until Step 8 removes the generic.
 
 ## Why
 

@@ -568,7 +568,27 @@ requests hardcode `wIndex=0`.
     byte/word immediates and destinations 1/2 bytes (memory-format commands only).
   - Latched DSACK A4 is `a_in(3) or a_in(4)` in CIR mode (legacy mode keeps `a_in(4)`).
   - Items stay low-aligned inside the core, as for 32-bit hosts.
-- Open (exit: the register map is remapped to the datasheet offsets, see
+- Datasheet map (2026-11-27): generic `datasheet_cir_map_g` (default false) decodes the CIR
+  registers at their Table 9-1 codes in CIR mode, with no aliasing: Response 0, Control 1,
+  Save 2, Restore 3, Operand 8, Register Select 10, Instruction Address 12, Operand Address 14.
+  This removes the Instruction Address 8-bit limitation below when the generic is on.
+  Covered by `tb/tb_mc68881_cir_datasheet_map.vhd`: 8-, 16- and 32-bit ports, DSACK, and
+  FSAVE/FRESTORE.
+  It also covers: the Condition CIR (cpBcc), a Control abort, a Response read clearing
+  `cir_response_pending`, and mode switches with non-zero data that leave the core untouched.
+- Known deviations with the generic on (each exits when the named plan step lands):
+  - Odd halves of 32-bit CIRs ($12/$1A/$1E, codes 9/13/15) decode to nothing: reads return 0
+    and writes are dropped.  A 16-bit host that sizes the bus dynamically, writing Operand
+    $10 then $12, loses the second word.  Repro: generic on, 16-bit port, write the Operand
+    CIR at code 9.  Exit: plan Step 7 (D31-D16/D15-D0 steering).
+  - A read of Restore (code 3) returns 0, but Table 9-1 makes Restore R/W.  This already
+    happens with the generic off.  Exit: plan Step 7.
+  - A read of Operand (code 8) outside a transfer returns the legacy `result_hi_reg`, not a
+    defined value.  Exit: plan Step 8, when the legacy decode is removed.
+  - Register Select (code 10) always reads 0, because `cir_regselect_word` is never
+    assigned.  FMOVEM with a dynamic list cannot read it.  Exit: FMOVEM Register Select
+    support (not in the remap plan).
+- Open with the generic off (the default), and open until plan Steps 6-8 flip the default (see
   `docs/plans/2026-11-19-true-cir-register-remap.md`):
   - Response/Save sit at legacy codes 13/12, which alias the upper half of Instruction
     Address, so 8-bit host writes of Instruction Address (12/13) are not supported.
